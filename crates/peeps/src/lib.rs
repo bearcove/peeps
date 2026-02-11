@@ -13,6 +13,12 @@ use std::path::{Path, PathBuf};
 pub use peeps_tasks as tasks;
 pub use peeps_threads as threads;
 
+#[cfg(feature = "locks")]
+pub use peeps_locks as locks;
+
+#[cfg(feature = "roam-session")]
+pub use peeps_roam as roam;
+
 /// The dump directory where processes write their JSON dumps.
 pub const DUMP_DIR: &str = "/tmp/peeps-dumps";
 
@@ -29,6 +35,15 @@ pub struct ProcessDump {
     pub tasks: Vec<peeps_tasks::TaskSnapshot>,
     /// Thread stack traces (captured via SIGPROF).
     pub threads: Vec<peeps_threads::ThreadStackSnapshot>,
+    /// Lock contention diagnostics (if locks feature enabled).
+    #[cfg(feature = "locks")]
+    pub locks: Option<peeps_locks::LockSnapshot>,
+    /// Roam session diagnostics (if roam-session feature enabled).
+    #[cfg(feature = "roam-session")]
+    pub roam: Option<peeps_roam::DiagnosticSnapshot>,
+    /// Roam SHM diagnostics (if roam-shm feature enabled).
+    #[cfg(feature = "roam-shm")]
+    pub shm: Option<peeps_roam::ShmSnapshot>,
     /// Process-specific key-value extras.
     pub custom: HashMap<String, String>,
 }
@@ -60,8 +75,8 @@ pub fn install_sigusr1(process_name: impl Into<String>) {
     let name = process_name.into();
     peeps_tasks::spawn_tracked("peeps_sigusr1_handler", async move {
         use tokio::signal::unix::{signal, SignalKind};
-        let mut sigusr1 = signal(SignalKind::user_defined1())
-            .expect("failed to register SIGUSR1 handler");
+        let mut sigusr1 =
+            signal(SignalKind::user_defined1()).expect("failed to register SIGUSR1 handler");
         loop {
             sigusr1.recv().await;
             eprintln!("[peeps] SIGUSR1 received, dumping diagnostics");
@@ -112,6 +127,12 @@ pub fn collect_dump(process_name: &str, custom: HashMap<String, String>) -> Proc
         timestamp,
         tasks,
         threads,
+        #[cfg(feature = "locks")]
+        locks: Some(peeps_locks::snapshot_lock_diagnostics()),
+        #[cfg(feature = "roam-session")]
+        roam: Some(peeps_roam::snapshot_session()),
+        #[cfg(feature = "roam-shm")]
+        shm: Some(peeps_roam::snapshot_shm()),
         custom,
     }
 }
@@ -224,8 +245,13 @@ pub async fn serve_dashboard() -> std::io::Result<()> {
     // For now, just print the dumps
     eprintln!("[peeps] Found {} dumps", dumps.len());
     for dump in &dumps {
-        eprintln!("  {} (pid {}): {} tasks, {} threads",
-            dump.process_name, dump.pid, dump.tasks.len(), dump.threads.len());
+        eprintln!(
+            "  {} (pid {}): {} tasks, {} threads",
+            dump.process_name,
+            dump.pid,
+            dump.tasks.len(),
+            dump.threads.len()
+        );
     }
 
     Ok(())

@@ -4,7 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+roam-session = ["dep:roam-session"]
+roam-shm = ["dep:roam-shm"]
+
 [dependencies]
 facet.workspace = true
-
-# TODO: Add roam-session dependency when ready to integrate
+roam-session = { workspace = true, optional = true }
+roam-shm = { workspace = true, optional = true }

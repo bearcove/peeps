@@ -26,8 +26,10 @@ peeps-dump = { path = "crates/peeps-dump" }
 
 # External
 backtrace = "0.3"
-facet = { git = "https://github.com/facet-rs/facet", rev = "8a80c52" }
-facet-json = { git = "https://github.com/facet-rs/facet", rev = "8a80c52" }
+facet = { git = "https://github.com/facet-rs/facet", branch = "main" }
+facet-json = { git = "https://github.com/facet-rs/facet", branch = "main" }
 libc = "0.2"
 parking_lot = "0.12"
+roam-session = { path = "../roam/rust/roam-session", features = ["diagnostics"] }
+roam-shm = { path = "../roam/rust/roam-shm", features = ["diagnostics"] }
 tokio = { version = "1.49", features = ["full"] }

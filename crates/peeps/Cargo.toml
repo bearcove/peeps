@@ -4,9 +4,16 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+locks = ["dep:peeps-locks", "peeps-locks/diagnostics"]
+roam-session = ["dep:peeps-roam", "peeps-roam/roam-session"]
+roam-shm = ["dep:peeps-roam", "peeps-roam/roam-shm"]
+
 [dependencies]
 facet.workspace = true
 facet-json.workspace = true
+peeps-locks = { workspace = true, optional = true }
+peeps-roam = { workspace = true, optional = true }
 peeps-tasks.workspace = true
 peeps-threads.workspace = true
 tokio.workspace = true
