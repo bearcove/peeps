@@ -5,9 +5,15 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-locks = ["dep:peeps-locks", "peeps-locks/diagnostics"]
+locks = ["dep:peeps-locks"]
 roam-session = ["dep:peeps-roam", "peeps-roam/roam-session"]
 roam-shm = ["dep:peeps-roam", "peeps-roam/roam-shm"]
+diagnostics = [
+  "peeps-tasks/diagnostics",
+  "peeps-threads/diagnostics",
+  "peeps-locks?/diagnostics",
+  "peeps-roam?/diagnostics",
+]
 
 [dependencies]
 facet.workspace = true

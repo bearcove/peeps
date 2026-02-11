@@ -828,15 +828,13 @@ pub use inner::*;
 // ── Structured snapshot types (for JSON dumps) ───────────────
 
 /// Snapshot of all tracked locks.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "diagnostics", derive(facet::Facet))]
+#[derive(Debug, Clone, facet::Facet)]
 pub struct LockSnapshot {
     pub locks: Vec<LockInfoSnapshot>,
 }
 
 /// Snapshot of a single tracked lock.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "diagnostics", derive(facet::Facet))]
+#[derive(Debug, Clone, facet::Facet)]
 pub struct LockInfoSnapshot {
     pub name: String,
     pub acquires: u64,
@@ -846,8 +844,7 @@ pub struct LockInfoSnapshot {
 }
 
 /// Kind of lock acquisition.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "diagnostics", derive(facet::Facet))]
+#[derive(Debug, Clone, facet::Facet)]
 #[repr(u8)]
 pub enum LockAcquireKind {
     Read,
@@ -856,8 +853,7 @@ pub enum LockAcquireKind {
 }
 
 /// A current lock holder.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "diagnostics", derive(facet::Facet))]
+#[derive(Debug, Clone, facet::Facet)]
 pub struct LockHolderSnapshot {
     pub kind: LockAcquireKind,
     pub held_secs: f64,
@@ -865,8 +861,7 @@ pub struct LockHolderSnapshot {
 }
 
 /// A lock waiter.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "diagnostics", derive(facet::Facet))]
+#[derive(Debug, Clone, facet::Facet)]
 pub struct LockWaiterSnapshot {
     pub kind: LockAcquireKind,
     pub waiting_secs: f64,

@@ -1584,8 +1584,8 @@ function fmtArgs(args) {
   const panel = document.getElementById('panel-threads');
   const allThreads = [];
   for (const d of DUMPS) {
-    if (!d.thread_stacks) continue;
-    for (const t of d.thread_stacks) {
+    if (!d.threads) continue;
+    for (const t of d.threads) {
       allThreads.push({ process: d.process_name, pid: d.pid, ...t });
     }
   }

@@ -7,3 +7,6 @@ license.workspace = true
 [dependencies]
 facet.workspace = true
 libc.workspace = true
+
+[features]
+diagnostics = []
