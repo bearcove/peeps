@@ -1,14 +1,14 @@
-//! peeps-core - Easy instrumentation and diagnostics
+//! peeps - Easy instrumentation and diagnostics
 //!
 //! This crate provides the main API for instrumenting your application:
 //! - `peeps::init()` - Initialize all instrumentation
 //! - `peeps::install_sigusr1()` - Set up SIGUSR1 dump on signal
-//! - `peeps::dump()` - Manually trigger a diagnostic dump
-//! - `peeps::serve_dashboard()` - Serve the interactive web dashboard
+//! - `peeps::collect_dump()` - Manually collect a diagnostic dump
+//! - `peeps::write_dump()` - Write a dump to disk
 
 use facet::Facet;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub use peeps_tasks as tasks;
 pub use peeps_threads as threads;
@@ -219,40 +219,4 @@ pub fn clean_dumps() {
             }
         }
     }
-}
-
-/// Serve the interactive dashboard on a local port.
-///
-/// This loads all dumps from `/tmp/peeps-dumps/` and serves a web UI.
-/// Opens the browser automatically if possible.
-///
-/// # Example
-/// ```no_run
-/// # async fn example() {
-/// peeps::serve_dashboard().await.unwrap();
-/// # }
-/// ```
-#[cfg(feature = "dashboard")]
-pub async fn serve_dashboard() -> std::io::Result<()> {
-    let dumps = read_all_dumps();
-    if dumps.is_empty() {
-        eprintln!("[peeps] No dumps found in {}", DUMP_DIR);
-        eprintln!("[peeps] Trigger a dump with: kill -SIGUSR1 <pid>");
-        return Ok(());
-    }
-
-    // TODO: Implement dashboard server (similar to vx debug)
-    // For now, just print the dumps
-    eprintln!("[peeps] Found {} dumps", dumps.len());
-    for dump in &dumps {
-        eprintln!(
-            "  {} (pid {}): {} tasks, {} threads",
-            dump.process_name,
-            dump.pid,
-            dump.tasks.len(),
-            dump.threads.len()
-        );
-    }
-
-    Ok(())
 }
