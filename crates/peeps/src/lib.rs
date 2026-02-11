@@ -6,47 +6,18 @@
 //! - `peeps::collect_dump()` - Manually collect a diagnostic dump
 //! - `peeps::write_dump()` - Write a dump to disk
 
-use facet::Facet;
 use std::collections::HashMap;
 use std::path::Path;
 
 pub use peeps_tasks as tasks;
 pub use peeps_threads as threads;
+pub use peeps_types::{self as types, Diagnostics, ProcessDump};
 
 #[cfg(feature = "locks")]
 pub use peeps_locks as locks;
 
-#[cfg(feature = "roam-session")]
-pub use peeps_roam as roam;
-
 /// The dump directory where processes write their JSON dumps.
 pub const DUMP_DIR: &str = "/tmp/peeps-dumps";
-
-/// Per-process diagnostic dump.
-#[derive(Debug, Clone, Facet)]
-pub struct ProcessDump {
-    /// Process name (e.g., "my-server").
-    pub process_name: String,
-    /// Process ID.
-    pub pid: u32,
-    /// ISO 8601 timestamp of when the dump was taken.
-    pub timestamp: String,
-    /// Tracked Tokio task snapshots.
-    pub tasks: Vec<peeps_tasks::TaskSnapshot>,
-    /// Thread stack traces (captured via SIGPROF).
-    pub threads: Vec<peeps_threads::ThreadStackSnapshot>,
-    /// Lock contention diagnostics (if locks feature enabled).
-    #[cfg(feature = "locks")]
-    pub locks: Option<peeps_locks::LockSnapshot>,
-    /// Roam session diagnostics (if roam-session feature enabled).
-    #[cfg(feature = "roam-session")]
-    pub roam: Option<peeps_roam::DiagnosticSnapshot>,
-    /// Roam SHM diagnostics (if roam-shm feature enabled).
-    #[cfg(feature = "roam-shm")]
-    pub shm: Option<peeps_roam::ShmSnapshot>,
-    /// Process-specific key-value extras.
-    pub custom: HashMap<String, String>,
-}
 
 /// Initialize peeps instrumentation.
 ///
@@ -61,15 +32,6 @@ pub fn init() {
 /// Install a SIGUSR1 handler that dumps diagnostics on signal.
 ///
 /// On Unix systems, sending SIGUSR1 to the process will trigger a dump to `/tmp/peeps-dumps/{pid}.json`.
-///
-/// # Example
-/// ```no_run
-/// peeps::init();
-/// peeps::install_sigusr1("my-service");
-///
-/// // Now run: kill -SIGUSR1 <pid>
-/// // Dump will be written to /tmp/peeps-dumps/<pid>.json
-/// ```
 #[cfg(unix)]
 pub fn install_sigusr1(process_name: impl Into<String>) {
     let name = process_name.into();
@@ -87,39 +49,27 @@ pub fn install_sigusr1(process_name: impl Into<String>) {
 }
 
 /// Manually collect a diagnostic dump.
-///
-/// This is useful for triggered dumps or periodic snapshots.
 pub fn collect_dump(process_name: &str, custom: HashMap<String, String>) -> ProcessDump {
-    let timestamp = {
-        let d = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default();
-        let total_secs = d.as_secs();
-        let millis = d.subsec_millis();
-
-        // Compute UTC date/time from epoch seconds (civil_from_days algorithm)
-        let days = (total_secs / 86400) as i64;
-        let day_secs = (total_secs % 86400) as u32;
-        let hours = day_secs / 3600;
-        let minutes = (day_secs % 3600) / 60;
-        let seconds = day_secs % 60;
-
-        let z = days + 719468;
-        let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
-        let doe = (z - era * 146097) as u32;
-        let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-        let y = yoe as i64 + era * 400;
-        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-        let mp = (5 * doy + 2) / 153;
-        let d = doy - (153 * mp + 2) / 5 + 1;
-        let m = if mp < 10 { mp + 3 } else { mp - 9 };
-        let y = if m <= 2 { y + 1 } else { y };
-
-        format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}.{millis:03}Z")
-    };
+    let timestamp = format_timestamp();
 
     let tasks = peeps_tasks::snapshot_all_tasks();
     let threads = peeps_threads::collect_all_thread_stacks();
+
+    #[cfg(feature = "locks")]
+    let locks = Some(peeps_locks::snapshot_lock_diagnostics());
+    #[cfg(not(feature = "locks"))]
+    let locks = None;
+
+    // Collect roam diagnostics from inventory-registered sources
+    let all_diags = peeps_types::collect_all_diagnostics();
+    let mut roam = None;
+    let mut shm = None;
+    for diag in all_diags {
+        match diag {
+            Diagnostics::RoamSession(s) => roam = Some(s),
+            Diagnostics::RoamShm(s) => shm = Some(s),
+        }
+    }
 
     ProcessDump {
         process_name: process_name.to_string(),
@@ -127,12 +77,9 @@ pub fn collect_dump(process_name: &str, custom: HashMap<String, String>) -> Proc
         timestamp,
         tasks,
         threads,
-        #[cfg(feature = "locks")]
-        locks: Some(peeps_locks::snapshot_lock_diagnostics()),
-        #[cfg(feature = "roam-session")]
-        roam: Some(peeps_roam::snapshot_session()),
-        #[cfg(feature = "roam-shm")]
-        shm: Some(peeps_roam::snapshot_shm()),
+        locks,
+        roam,
+        shm,
         custom,
     }
 }
@@ -219,4 +166,31 @@ pub fn clean_dumps() {
             }
         }
     }
+}
+
+fn format_timestamp() -> String {
+    let d = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let total_secs = d.as_secs();
+    let millis = d.subsec_millis();
+
+    let day_secs = (total_secs % 86400) as u32;
+    let hours = day_secs / 3600;
+    let minutes = (day_secs % 3600) / 60;
+    let seconds = day_secs % 60;
+
+    let days = (total_secs / 86400) as i64;
+    let z = days + 719468;
+    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
+    let doe = (z - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+
+    format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}.{millis:03}Z")
 }
