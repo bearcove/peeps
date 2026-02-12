@@ -7,6 +7,7 @@ members = [
   "crates/peeps-threads",
   "crates/peeps-roam",
   "crates/peeps-types",
+  "crates/peeps-sync",
   "crates/peeps-dump",
 ]
 
@@ -24,6 +25,7 @@ peeps-tasks = { path = "crates/peeps-tasks" }
 peeps-threads = { path = "crates/peeps-threads" }
 peeps-roam = { path = "crates/peeps-roam" }
 peeps-types = { path = "crates/peeps-types" }
+peeps-sync = { path = "crates/peeps-sync" }
 peeps-dump = { path = "crates/peeps-dump" }
 
 # External

@@ -9,6 +9,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+pub use peeps_sync as sync;
 pub use peeps_tasks as tasks;
 pub use peeps_threads as threads;
 pub use peeps_types::{self as types, Diagnostics, ProcessDump};
@@ -60,6 +61,19 @@ pub fn collect_dump(process_name: &str, custom: HashMap<String, String>) -> Proc
     #[cfg(not(feature = "locks"))]
     let locks = None;
 
+    let sync = {
+        let snap = peeps_sync::snapshot_all();
+        if snap.mpsc_channels.is_empty()
+            && snap.oneshot_channels.is_empty()
+            && snap.watch_channels.is_empty()
+            && snap.once_cells.is_empty()
+        {
+            None
+        } else {
+            Some(snap)
+        }
+    };
+
     // Collect roam diagnostics from inventory-registered sources
     let all_diags = peeps_types::collect_all_diagnostics();
     let mut roam = None;
@@ -78,6 +92,7 @@ pub fn collect_dump(process_name: &str, custom: HashMap<String, String>) -> Proc
         tasks,
         threads,
         locks,
+        sync,
         roam,
         shm,
         custom,

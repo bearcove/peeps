@@ -592,6 +592,40 @@ details[open] summary::before { content: '▾ '; }
    LAYOUT
    ═══════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════
+   SYNC STATE BADGES
+   ═══════════════════════════════════════════ */
+
+.state-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.state-pending      { background: var(--amber-bg); color: var(--amber); }
+.state-sent         { background: var(--green-bg); color: var(--green); }
+.state-initialized  { background: var(--green-bg); color: var(--green); }
+.state-initializing { background: var(--blue-bg);  color: var(--blue); }
+.state-empty        { background: var(--surface);  color: var(--fg-dim); }
+.state-dropped      { background: var(--red-bg);   color: var(--red); }
+
+.backpressure-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  background: var(--red-bg);
+  color: var(--red);
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -625,6 +659,7 @@ details[open] summary::before { content: '▾ '; }
     <div class="tab" data-tab="locks">Locks</div>
     <div class="tab" data-tab="threads">Threads <span class="tab-badge" id="badge-threads">0</span></div>
     <div class="tab" data-tab="tasks">Tasks <span class="tab-badge" id="badge-tasks">0</span></div>
+    <div class="tab" data-tab="sync" id="tab-sync" style="display:none">Sync <span class="tab-badge" id="badge-sync">0</span></div>
   </div>
 
   <!-- CONTENT -->
@@ -637,6 +672,7 @@ details[open] summary::before { content: '▾ '; }
     <div class="panel" id="panel-locks"></div>
     <div class="panel" id="panel-threads"></div>
     <div class="panel" id="panel-tasks"></div>
+    <div class="panel" id="panel-sync"></div>
   </div>
 </div>
 
@@ -1811,6 +1847,219 @@ function fmtArgs(args) {
     html += '</tr>';
   }
   html += '</tbody></table></div>';
+
+  panel.innerHTML = html;
+  panel.querySelectorAll('table').forEach(makeSortable);
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// SYNC TAB
+// ═══════════════════════════════════════════════════════════════
+
+(function buildSync() {
+  const panel = document.getElementById('panel-sync');
+
+  // Collect all sync data across processes
+  const allMpsc = [];
+  const allOneshot = [];
+  const allWatch = [];
+  const allOnceCell = [];
+
+  for (const d of DUMPS) {
+    if (!d.sync) continue;
+    for (const ch of (d.sync.mpsc_channels || [])) {
+      allMpsc.push({ process: d.process_name, pid: d.pid, ...ch });
+    }
+    for (const ch of (d.sync.oneshot_channels || [])) {
+      allOneshot.push({ process: d.process_name, pid: d.pid, ...ch });
+    }
+    for (const ch of (d.sync.watch_channels || [])) {
+      allWatch.push({ process: d.process_name, pid: d.pid, ...ch });
+    }
+    for (const cell of (d.sync.once_cells || [])) {
+      allOnceCell.push({ process: d.process_name, pid: d.pid, ...cell });
+    }
+  }
+
+  const totalItems = allMpsc.length + allOneshot.length + allWatch.length + allOnceCell.length;
+  if (totalItems === 0) return; // tab stays hidden
+
+  // Show the tab and update badge
+  document.getElementById('tab-sync').style.display = '';
+  document.getElementById('badge-sync').textContent = totalItems;
+
+  function syncStateBadge(state) {
+    const s = String(state);
+    if (s === 'Pending')          return '<span class="state-badge state-pending">Pending</span>';
+    if (s === 'Sent')             return '<span class="state-badge state-sent">Sent</span>';
+    if (s === 'Initialized')      return '<span class="state-badge state-initialized">Initialized</span>';
+    if (s === 'Initializing')     return '<span class="state-badge state-initializing">Initializing</span>';
+    if (s === 'Empty')            return '<span class="state-badge state-empty">Empty</span>';
+    if (s === 'SenderDropped')    return '<span class="state-badge state-dropped">SenderDropped</span>';
+    if (s === 'ReceiverDropped')  return '<span class="state-badge state-dropped">ReceiverDropped</span>';
+    return `<span class="state-badge state-empty">${esc(s)}</span>`;
+  }
+
+  let html = '';
+
+  // ── MPSC Channels ──────────────────────────────────────────
+  if (allMpsc.length > 0) {
+    // Sort: channels with send_waiters first (backpressure), then by queue depth
+    const sorted = [...allMpsc].sort((a, b) => {
+      if ((b.send_waiters || 0) !== (a.send_waiters || 0)) return (b.send_waiters || 0) - (a.send_waiters || 0);
+      return (b.sent - b.received) - (a.sent - a.received);
+    });
+
+    html += '<div class="card"><div class="card-head">MPSC Channels';
+    const backpressureCount = allMpsc.filter(c => (c.send_waiters || 0) > 0).length;
+    if (backpressureCount > 0) {
+      html += ` <span class="tag" style="background:var(--red-bg);color:var(--red);margin-left:8px">${backpressureCount} backpressure</span>`;
+    }
+    html += '</div><table><thead><tr>';
+    html += '<th data-sort="p">Process</th>';
+    html += '<th data-sort="nm">Name</th>';
+    html += '<th data-sort="ty">Type</th>';
+    html += '<th data-sort="cap" data-type="n">Capacity</th>';
+    html += '<th data-sort="tx" data-type="n">Sent</th>';
+    html += '<th data-sort="rx" data-type="n">Received</th>';
+    html += '<th data-sort="q" data-type="n">Queue</th>';
+    html += '<th data-sort="sw" data-type="n">Send Waiters</th>';
+    html += '<th data-sort="sc" data-type="n">Senders</th>';
+    html += '<th data-sort="cl">Closed</th>';
+    html += '<th data-sort="age" data-type="n">Age</th>';
+    html += '</tr></thead><tbody>';
+
+    for (const ch of sorted) {
+      const queueDepth = ch.sent - ch.received;
+      const hasBackpressure = (ch.send_waiters || 0) > 0;
+      const rowClass = hasBackpressure ? 'severity-danger' : queueDepth > 0 && ch.bounded && ch.capacity > 0 && queueDepth / ch.capacity > 0.8 ? 'severity-warn' : '';
+      const typeLabel = ch.bounded
+        ? '<span class="tag" style="background:var(--blue-bg);color:var(--blue)">bounded</span>'
+        : '<span class="tag" style="background:var(--surface);color:var(--fg-muted)">unbounded</span>';
+
+      html += `<tr class="${rowClass}">`;
+      html += `<td>${procTag(ch.process)}</td>`;
+      html += `<td class="mono">${esc(ch.name)}</td>`;
+      html += `<td>${typeLabel}</td>`;
+      html += `<td class="num" data-v="${ch.capacity ?? 0}">${ch.bounded ? (ch.capacity ?? 0).toLocaleString() : '<span class="muted">-</span>'}</td>`;
+      html += `<td class="num" data-v="${ch.sent}">${ch.sent.toLocaleString()}</td>`;
+      html += `<td class="num" data-v="${ch.received}">${ch.received.toLocaleString()}</td>`;
+      html += `<td class="num ${queueDepth > 0 ? 'text-amber' : ''}" data-v="${queueDepth}">${queueDepth.toLocaleString()}</td>`;
+      if (hasBackpressure) {
+        html += `<td data-v="${ch.send_waiters}"><span class="backpressure-warn">${ch.send_waiters} waiting</span></td>`;
+      } else {
+        html += `<td class="num" data-v="0">0</td>`;
+      }
+      html += `<td class="num" data-v="${ch.sender_count}">${ch.sender_count}</td>`;
+
+      // Closed status
+      const closedParts = [];
+      if (ch.sender_closed) closedParts.push('<span class="text-red">tx</span>');
+      if (ch.receiver_closed) closedParts.push('<span class="text-red">rx</span>');
+      html += `<td>${closedParts.length > 0 ? closedParts.join(', ') : '<span class="muted">no</span>'}</td>`;
+
+      html += `<td class="num" data-v="${ch.age_secs}">${fmtAge(ch.age_secs)}</td>`;
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+  }
+
+  // ── Oneshot Channels ───────────────────────────────────────
+  if (allOneshot.length > 0) {
+    html += '<div class="card"><div class="card-head">Oneshot Channels';
+    const pendingCount = allOneshot.filter(c => c.state === 'Pending').length;
+    const droppedCount = allOneshot.filter(c => c.state === 'SenderDropped' || c.state === 'ReceiverDropped').length;
+    if (pendingCount > 0) {
+      html += ` <span class="tag" style="background:var(--amber-bg);color:var(--amber);margin-left:8px">${pendingCount} pending</span>`;
+    }
+    if (droppedCount > 0) {
+      html += ` <span class="tag" style="background:var(--red-bg);color:var(--red);margin-left:8px">${droppedCount} dropped</span>`;
+    }
+    html += '</div><table><thead><tr>';
+    html += '<th data-sort="p">Process</th>';
+    html += '<th data-sort="nm">Name</th>';
+    html += '<th data-sort="st">State</th>';
+    html += '<th data-sort="age" data-type="n">Age</th>';
+    html += '</tr></thead><tbody>';
+
+    const sorted = [...allOneshot].sort((a, b) => {
+      // Dropped first, then pending, then sent
+      const stateOrder = { SenderDropped: 0, ReceiverDropped: 0, Pending: 1, Sent: 2 };
+      const so = (stateOrder[a.state] ?? 9) - (stateOrder[b.state] ?? 9);
+      if (so !== 0) return so;
+      return b.age_secs - a.age_secs;
+    });
+
+    for (const ch of sorted) {
+      const rowClass = (ch.state === 'SenderDropped' || ch.state === 'ReceiverDropped') ? 'severity-danger' : '';
+      html += `<tr class="${rowClass}">`;
+      html += `<td>${procTag(ch.process)}</td>`;
+      html += `<td class="mono">${esc(ch.name)}</td>`;
+      html += `<td>${syncStateBadge(ch.state)}</td>`;
+      html += `<td class="num" data-v="${ch.age_secs}">${fmtAge(ch.age_secs)}</td>`;
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+  }
+
+  // ── Watch Channels ─────────────────────────────────────────
+  if (allWatch.length > 0) {
+    html += '<div class="card"><div class="card-head">Watch Channels</div><table><thead><tr>';
+    html += '<th data-sort="p">Process</th>';
+    html += '<th data-sort="nm">Name</th>';
+    html += '<th data-sort="ch" data-type="n">Changes</th>';
+    html += '<th data-sort="rc" data-type="n">Receivers</th>';
+    html += '<th data-sort="age" data-type="n">Age</th>';
+    html += '</tr></thead><tbody>';
+
+    const sorted = [...allWatch].sort((a, b) => b.age_secs - a.age_secs);
+
+    for (const ch of sorted) {
+      html += '<tr>';
+      html += `<td>${procTag(ch.process)}</td>`;
+      html += `<td class="mono">${esc(ch.name)}</td>`;
+      html += `<td class="num" data-v="${ch.changes}">${ch.changes.toLocaleString()}</td>`;
+      html += `<td class="num" data-v="${ch.receiver_count}">${ch.receiver_count}</td>`;
+      html += `<td class="num" data-v="${ch.age_secs}">${fmtAge(ch.age_secs)}</td>`;
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+  }
+
+  // ── OnceCell ───────────────────────────────────────────────
+  if (allOnceCell.length > 0) {
+    html += '<div class="card"><div class="card-head">OnceCell Instances';
+    const initializingCount = allOnceCell.filter(c => c.state === 'Initializing').length;
+    if (initializingCount > 0) {
+      html += ` <span class="tag" style="background:var(--blue-bg);color:var(--blue);margin-left:8px">${initializingCount} initializing</span>`;
+    }
+    html += '</div><table><thead><tr>';
+    html += '<th data-sort="p">Process</th>';
+    html += '<th data-sort="nm">Name</th>';
+    html += '<th data-sort="st">State</th>';
+    html += '<th data-sort="age" data-type="n">Age</th>';
+    html += '<th data-sort="dur" data-type="n">Init Duration</th>';
+    html += '</tr></thead><tbody>';
+
+    const sorted = [...allOnceCell].sort((a, b) => {
+      const stateOrder = { Initializing: 0, Empty: 1, Initialized: 2 };
+      const so = (stateOrder[a.state] ?? 9) - (stateOrder[b.state] ?? 9);
+      if (so !== 0) return so;
+      return b.age_secs - a.age_secs;
+    });
+
+    for (const cell of sorted) {
+      const rowClass = cell.state === 'Initializing' ? 'severity-warn' : '';
+      html += `<tr class="${rowClass}">`;
+      html += `<td>${procTag(cell.process)}</td>`;
+      html += `<td class="mono">${esc(cell.name)}</td>`;
+      html += `<td>${syncStateBadge(cell.state)}</td>`;
+      html += `<td class="num" data-v="${cell.age_secs}">${fmtAge(cell.age_secs)}</td>`;
+      html += `<td class="num" data-v="${cell.init_duration_secs ?? -1}">${cell.init_duration_secs != null ? fmtDuration(cell.init_duration_secs) : '<span class="muted">-</span>'}</td>`;
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+  }
 
   panel.innerHTML = html;
   panel.querySelectorAll('table').forEach(makeSortable);

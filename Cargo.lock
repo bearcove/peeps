@@ -355,6 +355,7 @@ dependencies = [
  "facet-json",
  "libc",
  "peeps-locks",
+ "peeps-sync",
  "peeps-tasks",
  "peeps-threads",
  "peeps-types",
@@ -384,6 +385,14 @@ name = "peeps-roam"
 version = "0.1.0"
 dependencies = [
  "peeps-types",
+]
+
+[[package]]
+name = "peeps-sync"
+version = "0.1.0"
+dependencies = [
+ "peeps-types",
+ "tokio",
 ]
 
 [[package]]

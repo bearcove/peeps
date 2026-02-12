@@ -107,6 +107,80 @@ pub struct LockWaiterSnapshot {
     pub backtrace: Option<String>,
 }
 
+// ── Channel & sync snapshot types ───────────────────────────────
+
+/// Snapshot of all tracked channels and sync primitives.
+#[derive(Debug, Clone, Facet)]
+pub struct SyncSnapshot {
+    pub mpsc_channels: Vec<MpscChannelSnapshot>,
+    pub oneshot_channels: Vec<OneshotChannelSnapshot>,
+    pub watch_channels: Vec<WatchChannelSnapshot>,
+    pub once_cells: Vec<OnceCellSnapshot>,
+}
+
+/// Snapshot of a tracked mpsc channel.
+#[derive(Debug, Clone, Facet)]
+pub struct MpscChannelSnapshot {
+    pub name: String,
+    pub bounded: bool,
+    /// Max capacity (None for unbounded).
+    pub capacity: Option<u64>,
+    pub sent: u64,
+    pub received: u64,
+    /// Number of senders currently blocked waiting to send (bounded only).
+    pub send_waiters: u64,
+    pub sender_count: u64,
+    pub sender_closed: bool,
+    pub receiver_closed: bool,
+    pub age_secs: f64,
+}
+
+/// Snapshot of a tracked oneshot channel.
+#[derive(Debug, Clone, Facet)]
+pub struct OneshotChannelSnapshot {
+    pub name: String,
+    pub state: OneshotState,
+    pub age_secs: f64,
+}
+
+/// State of a oneshot channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Facet)]
+#[repr(u8)]
+pub enum OneshotState {
+    Pending,
+    Sent,
+    Received,
+    SenderDropped,
+    ReceiverDropped,
+}
+
+/// Snapshot of a tracked watch channel.
+#[derive(Debug, Clone, Facet)]
+pub struct WatchChannelSnapshot {
+    pub name: String,
+    pub changes: u64,
+    pub receiver_count: u64,
+    pub age_secs: f64,
+}
+
+/// Snapshot of a tracked OnceCell.
+#[derive(Debug, Clone, Facet)]
+pub struct OnceCellSnapshot {
+    pub name: String,
+    pub state: OnceCellState,
+    pub age_secs: f64,
+    pub init_duration_secs: Option<f64>,
+}
+
+/// State of a OnceCell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Facet)]
+#[repr(u8)]
+pub enum OnceCellState {
+    Empty,
+    Initializing,
+    Initialized,
+}
+
 // ── Roam session snapshot types ──────────────────────────────────
 
 /// Direction of an RPC request (serializable).
@@ -301,6 +375,7 @@ pub struct ProcessDump {
     pub tasks: Vec<TaskSnapshot>,
     pub threads: Vec<ThreadStackSnapshot>,
     pub locks: Option<LockSnapshot>,
+    pub sync: Option<SyncSnapshot>,
     pub roam: Option<SessionSnapshot>,
     pub shm: Option<ShmSnapshot>,
     pub custom: HashMap<String, String>,
