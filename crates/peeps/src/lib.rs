@@ -2,12 +2,9 @@
 //!
 //! This crate provides the main API for instrumenting your application:
 //! - `peeps::init()` - Initialize all instrumentation
-//! - `peeps::install_sigusr1()` - Set up SIGUSR1 dump on signal
 //! - `peeps::collect_dump()` - Manually collect a diagnostic dump
-//! - `peeps::write_dump()` - Write a dump to disk
 
 use std::collections::HashMap;
-use std::path::Path;
 
 #[cfg(feature = "dashboard")]
 mod dashboard_client;
@@ -19,9 +16,6 @@ pub use peeps_types::{self as types, Diagnostics, ProcessDump};
 
 #[cfg(feature = "locks")]
 pub use peeps_locks as locks;
-
-/// The dump directory where processes write their JSON dumps.
-pub const DUMP_DIR: &str = "/tmp/peeps-dumps";
 
 /// Initialize peeps instrumentation.
 ///
@@ -51,25 +45,6 @@ pub fn init_named(process_name: impl Into<String>) {
         }
     }
     let _ = process_name;
-}
-
-/// Install a SIGUSR1 handler that dumps diagnostics on signal.
-///
-/// On Unix systems, sending SIGUSR1 to the process will trigger a dump to `/tmp/peeps-dumps/{pid}.json`.
-#[cfg(unix)]
-pub fn install_sigusr1(process_name: impl Into<String>) {
-    let name = process_name.into();
-    peeps_tasks::spawn_tracked("peeps_sigusr1_handler", async move {
-        use tokio::signal::unix::{signal, SignalKind};
-        let mut sigusr1 =
-            signal(SignalKind::user_defined1()).expect("failed to register SIGUSR1 handler");
-        loop {
-            sigusr1.recv().await;
-            eprintln!("[peeps] SIGUSR1 received, dumping diagnostics");
-            let dump = collect_dump(&name, HashMap::new());
-            write_dump(&dump);
-        }
-    });
 }
 
 /// Manually collect a diagnostic dump.
@@ -119,90 +94,6 @@ pub fn collect_dump(process_name: &str, custom: HashMap<String, String>) -> Proc
         roam,
         shm,
         custom,
-    }
-}
-
-/// Write a process dump as JSON to `/tmp/peeps-dumps/{pid}.json`.
-pub fn write_dump(dump: &ProcessDump) {
-    let dir = Path::new(DUMP_DIR);
-    if let Err(e) = std::fs::create_dir_all(dir) {
-        eprintln!("[peeps] failed to create {DUMP_DIR}: {e}");
-        return;
-    }
-
-    let path = dir.join(format!("{}.json", dump.pid));
-
-    let json = match facet_json::to_string(dump) {
-        Ok(j) => j,
-        Err(e) => {
-            eprintln!("[peeps] failed to serialize dump: {e}");
-            return;
-        }
-    };
-
-    let tmp_path = dir.join(format!("{}.json.tmp", dump.pid));
-    match std::fs::File::create(&tmp_path) {
-        Ok(mut f) => {
-            use std::io::Write;
-            if let Err(e) = f.write_all(json.as_bytes()) {
-                eprintln!("[peeps] failed to write {}: {e}", tmp_path.display());
-                let _ = std::fs::remove_file(&tmp_path);
-                return;
-            }
-        }
-        Err(e) => {
-            eprintln!("[peeps] failed to create {}: {e}", tmp_path.display());
-            return;
-        }
-    }
-
-    if let Err(e) = std::fs::rename(&tmp_path, &path) {
-        eprintln!("[peeps] failed to rename to {}: {e}", path.display());
-        let _ = std::fs::remove_file(&tmp_path);
-    } else {
-        eprintln!("[peeps] dump written to {}", path.display());
-    }
-}
-
-/// Read all process dumps from the dump directory.
-pub fn read_all_dumps() -> Vec<ProcessDump> {
-    let dir = Path::new(DUMP_DIR);
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-
-    let mut dumps = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().is_some_and(|e| e == "json") {
-            match std::fs::read_to_string(&path) {
-                Ok(json) => match facet_json::from_str::<ProcessDump>(&json) {
-                    Ok(dump) => dumps.push(dump),
-                    Err(e) => {
-                        eprintln!("[peeps] failed to parse {}: {e}", path.display());
-                    }
-                },
-                Err(e) => {
-                    eprintln!("[peeps] failed to read {}: {e}", path.display());
-                }
-            }
-        }
-    }
-
-    dumps.sort_by(|a, b| a.process_name.cmp(&b.process_name));
-    dumps
-}
-
-/// Clean stale dump files from the dump directory.
-pub fn clean_dumps() {
-    let dir = Path::new(DUMP_DIR);
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|e| e == "json" || e == "tmp") {
-                let _ = std::fs::remove_file(&path);
-            }
-        }
     }
 }
 

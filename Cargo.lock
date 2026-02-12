@@ -657,7 +657,6 @@ version = "0.1.0"
 dependencies = [
  "facet",
  "facet-json",
- "libc",
  "peeps-locks",
  "peeps-sync",
  "peeps-tasks",

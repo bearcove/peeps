@@ -1,8 +1,7 @@
 //! peeps CLI tool — live dashboard server
 //!
-//! Commands:
+//! Command:
 //! - `peeps` — Start dashboard (TCP on :9119, HTTP on :9120)
-//! - `peeps clean` — Clean stale dump files
 
 mod http;
 mod server;
@@ -13,35 +12,7 @@ use server::DashboardState;
 
 #[tokio::main]
 async fn main() {
-    let args: Vec<String> = std::env::args().collect();
-
-    if args.len() > 1 && args[1] == "clean" {
-        peeps::clean_dumps();
-        eprintln!("[peeps] Cleaned dump directory");
-        return;
-    }
-
     let state = Arc::new(DashboardState::new());
-
-    // Load existing file-based dumps for backwards compatibility.
-    let file_dumps = peeps::read_all_dumps();
-    if !file_dumps.is_empty() {
-        eprintln!(
-            "[peeps] Loaded {} existing dumps from {}",
-            file_dumps.len(),
-            peeps::DUMP_DIR
-        );
-        for dump in file_dumps {
-            eprintln!(
-                "  {} (pid {}): {} tasks, {} threads",
-                dump.process_name,
-                dump.pid,
-                dump.tasks.len(),
-                dump.threads.len()
-            );
-            state.upsert_dump(dump).await;
-        }
-    }
 
     let tcp_addr = std::env::var("PEEPS_LISTEN").unwrap_or_else(|_| "127.0.0.1:9119".into());
     let http_addr = std::env::var("PEEPS_HTTP").unwrap_or_else(|_| "127.0.0.1:9120".into());

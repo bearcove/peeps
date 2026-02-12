@@ -12,44 +12,24 @@ Low-overhead instrumentation for production Rust systems.
 
 **Roam + SHM Diagnostics**: Records connection state and shared-memory diagnostics from registered providers.
 
-**JSON Dumps**: On SIGUSR1, writes structured diagnostics to `/tmp/peeps-dumps/{pid}.json`. Format is stable and designed for programmatic consumption.
-
-**Live Dashboard**: A `peeps` CLI server receives push snapshots and serves a web UI.
+**Live Dashboard Push**: Instrumented processes push structured JSON snapshots to a `peeps` dashboard server over TCP. The web UI and API read from this live stream.
 
 ## Usage
 
-### 1) File-based dumps (SIGUSR1)
+### Live push mode
 
 ```rust
 use peeps::tasks;
 
 #[tokio::main]
 async fn main() {
-    peeps::init();
-    peeps::install_sigusr1("my-service");
+    peeps::init_named("my-service");
 
     tasks::spawn_tracked("connection_handler", async {
         // Task execution is instrumented
     });
 }
 ```
-
-Trigger a dump:
-
-```bash
-kill -SIGUSR1 <pid>
-```
-
-Open dashboard from dump files:
-
-```bash
-cargo install peeps-dump
-peeps
-```
-
-The dashboard server reads existing JSON dumps from `/tmp/peeps-dumps` on startup.
-
-### 2) Live dashboard push mode
 
 Start the dashboard server:
 
@@ -62,28 +42,23 @@ By default:
 - TCP ingest: `127.0.0.1:9119` (`PEEPS_LISTEN`)
 - HTTP UI: `127.0.0.1:9120` (`PEEPS_HTTP`)
 
-Enable dashboard push in your app and call `init_named`:
+Enable dashboard push in your app:
 
 ```toml
 peeps = { git = "https://github.com/bearcove/peeps", branch = "main", features = ["dashboard"] }
 ```
 
-```rust
-#[tokio::main]
-async fn main() {
-    peeps::init_named("my-service");
-}
-```
-
-Then run your app with:
+Run your app with:
 
 ```bash
 PEEPS_DASHBOARD=127.0.0.1:9119 <your-binary>
 ```
 
+`peeps` is push-only: no file dump / SIGUSR1 ingestion mode.
+
 ## Architecture
 
-- `peeps`: Main API, dump collection, SIGUSR1 integration, optional dashboard push client
+- `peeps`: Main API, live snapshot collection, optional dashboard push client
 - `peeps-tasks`: Tokio task instrumentation
 - `peeps-threads`: SIGPROF-based thread sampling
 - `peeps-locks`: Lock contention tracking
