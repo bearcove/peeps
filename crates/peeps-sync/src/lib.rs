@@ -100,6 +100,7 @@ mod diag {
         sender_closed: AtomicU8,
         receiver_closed: AtomicU8,
         created_at: Instant,
+        creator_task_id: Option<u64>,
     }
 
     impl MpscInfo {
@@ -115,6 +116,8 @@ mod diag {
                 sender_closed: self.sender_closed.load(Ordering::Relaxed) != 0,
                 receiver_closed: self.receiver_closed.load(Ordering::Relaxed) != 0,
                 age_secs: now.duration_since(self.created_at).as_secs_f64(),
+                creator_task_id: self.creator_task_id,
+                creator_task_name: self.creator_task_id.and_then(peeps_tasks::task_name),
             }
         }
     }
@@ -232,6 +235,7 @@ mod diag {
             sender_closed: AtomicU8::new(0),
             receiver_closed: AtomicU8::new(0),
             created_at: Instant::now(),
+            creator_task_id: peeps_tasks::current_task_id(),
         });
         prune_and_register_mpsc(&info);
         (
@@ -334,6 +338,7 @@ mod diag {
             sender_closed: AtomicU8::new(0),
             receiver_closed: AtomicU8::new(0),
             created_at: Instant::now(),
+            creator_task_id: peeps_tasks::current_task_id(),
         });
         prune_and_register_mpsc(&info);
         (
@@ -354,6 +359,7 @@ mod diag {
         name: String,
         state: AtomicU8,
         created_at: Instant,
+        creator_task_id: Option<u64>,
     }
 
     impl OneshotInfo {
@@ -369,6 +375,8 @@ mod diag {
                 name: self.name.clone(),
                 state,
                 age_secs: now.duration_since(self.created_at).as_secs_f64(),
+                creator_task_id: self.creator_task_id,
+                creator_task_name: self.creator_task_id.and_then(peeps_tasks::task_name),
             }
         }
     }
@@ -452,6 +460,7 @@ mod diag {
             name: name.into(),
             state: AtomicU8::new(ONESHOT_PENDING),
             created_at: Instant::now(),
+            creator_task_id: peeps_tasks::current_task_id(),
         });
         prune_and_register_oneshot(&info);
         (
@@ -466,6 +475,7 @@ mod diag {
         name: String,
         changes: AtomicU64,
         created_at: Instant,
+        creator_task_id: Option<u64>,
         // We need the sender to query receiver_count, so we store a weak
         // reference to the sender wrapper's inner sender. But the sender
         // is generic, so instead we just snapshot receiver_count at
@@ -480,6 +490,8 @@ mod diag {
                 changes: self.changes.load(Ordering::Relaxed),
                 receiver_count: (self.receiver_count)() as u64,
                 age_secs: now.duration_since(self.created_at).as_secs_f64(),
+                creator_task_id: self.creator_task_id,
+                creator_task_name: self.creator_task_id.and_then(peeps_tasks::task_name),
             }
         }
     }
@@ -575,6 +587,7 @@ mod diag {
             name: name.into(),
             changes: AtomicU64::new(0),
             created_at: Instant::now(),
+            creator_task_id: peeps_tasks::current_task_id(),
             receiver_count: Box::new(move || tx_clone.receiver_count()),
         });
         prune_and_register_watch(&info);

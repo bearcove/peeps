@@ -5,10 +5,11 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-diagnostics = []
+diagnostics = ["peeps-tasks/diagnostics"]
 
 [dependencies]
 facet.workspace = true
 parking_lot.workspace = true
+peeps-tasks.workspace = true
 peeps-types.workspace = true
 tokio.workspace = true

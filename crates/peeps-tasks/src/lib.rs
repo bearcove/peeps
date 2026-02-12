@@ -18,6 +18,16 @@ mod imp {
     pub fn init_task_tracking() {}
 
     #[inline(always)]
+    pub fn current_task_id() -> Option<TaskId> {
+        None
+    }
+
+    #[inline(always)]
+    pub fn task_name(_id: TaskId) -> Option<String> {
+        None
+    }
+
+    #[inline(always)]
     pub fn spawn_tracked<F>(
         _name: impl Into<String>,
         future: F,
@@ -51,12 +61,27 @@ mod imp {
 
     use backtrace::Backtrace;
 
+    tokio::task_local! {
+        static CURRENT_TASK_ID: TaskId;
+    }
+
+    pub fn current_task_id() -> Option<TaskId> {
+        CURRENT_TASK_ID.try_with(|id| *id).ok()
+    }
+
+    pub fn task_name(id: TaskId) -> Option<String> {
+        let registry = TASK_REGISTRY.lock().unwrap();
+        let tasks = registry.as_ref()?;
+        tasks.iter().find(|t| t.id == id).map(|t| t.name.clone())
+    }
+
     static NEXT_TASK_ID: AtomicU64 = AtomicU64::new(1);
     static TASK_REGISTRY: Mutex<Option<Vec<Arc<TaskInfo>>>> = Mutex::new(None);
 
     struct TaskInfo {
         id: TaskId,
         name: String,
+        parent_id: Option<TaskId>,
         spawned_at: Instant,
         spawn_backtrace: String,
         state: Mutex<TaskInfoState>,
@@ -75,9 +100,13 @@ mod imp {
     }
 
     impl TaskInfo {
-        fn snapshot(&self, now: Instant) -> TaskSnapshot {
+        fn snapshot(&self, now: Instant, registry: &[Arc<TaskInfo>]) -> TaskSnapshot {
             let state = self.state.lock().unwrap();
             let age = now.duration_since(self.spawned_at);
+
+            let parent_task_name = self.parent_id.and_then(|pid| {
+                registry.iter().find(|t| t.id == pid).map(|t| t.name.clone())
+            });
 
             TaskSnapshot {
                 id: self.id,
@@ -96,6 +125,8 @@ mod imp {
                         backtrace: e.backtrace.clone(),
                     })
                     .collect(),
+                parent_task_id: self.parent_id,
+                parent_task_name,
             }
         }
 
@@ -147,7 +178,8 @@ mod imp {
             let backtrace = Some(format!("{:?}", Backtrace::new()));
             this.task_info.record_poll_start(backtrace);
 
-            let result = inner.poll(cx);
+            let task_id = this.task_info.id;
+            let result = CURRENT_TASK_ID.sync_scope(task_id, || inner.poll(cx));
 
             let poll_result = match result {
                 Poll::Ready(_) => PollResult::Ready,
@@ -174,11 +206,13 @@ mod imp {
     {
         let name = name.into();
         let task_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
+        let parent_id = current_task_id();
         let spawn_backtrace = format!("{:?}", Backtrace::new());
 
         let task_info = Arc::new(TaskInfo {
             id: task_id,
             name,
+            parent_id,
             spawned_at: Instant::now(),
             spawn_backtrace,
             state: Mutex::new(TaskInfoState {
@@ -220,7 +254,7 @@ mod imp {
                 let state = task.state.lock().unwrap();
                 state.state != TaskState::Completed || task.spawned_at > cutoff
             })
-            .map(|task| task.snapshot(now))
+            .map(|task| task.snapshot(now, tasks))
             .collect()
     }
 
@@ -242,6 +276,17 @@ mod imp {
 /// Initialize the task tracking registry. No-op without `diagnostics`.
 pub fn init_task_tracking() {
     imp::init_task_tracking();
+}
+
+/// Returns the current peeps task ID, if running inside a tracked task.
+/// Returns `None` outside of a tracked task or without `diagnostics`.
+pub fn current_task_id() -> Option<TaskId> {
+    imp::current_task_id()
+}
+
+/// Look up a task's name by ID. Returns `None` if not found or without `diagnostics`.
+pub fn task_name(id: TaskId) -> Option<String> {
+    imp::task_name(id)
 }
 
 /// Spawn a tracked task with the given name.

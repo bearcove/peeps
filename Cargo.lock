@@ -376,6 +376,7 @@ version = "0.1.0"
 dependencies = [
  "facet",
  "parking_lot",
+ "peeps-tasks",
  "peeps-types",
  "tokio",
 ]
@@ -391,6 +392,7 @@ dependencies = [
 name = "peeps-sync"
 version = "0.1.0"
 dependencies = [
+ "peeps-tasks",
  "peeps-types",
  "tokio",
 ]

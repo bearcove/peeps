@@ -23,6 +23,10 @@ pub struct TaskSnapshot {
     pub age_secs: f64,
     pub spawn_backtrace: String,
     pub poll_events: Vec<PollEvent>,
+    /// Which task spawned this one.
+    pub parent_task_id: Option<TaskId>,
+    /// Name of the parent task (resolved at snapshot time).
+    pub parent_task_name: Option<String>,
 }
 
 /// Task state.
@@ -97,6 +101,9 @@ pub struct LockHolderSnapshot {
     pub kind: LockAcquireKind,
     pub held_secs: f64,
     pub backtrace: Option<String>,
+    /// Which peeps task holds this lock.
+    pub task_id: Option<u64>,
+    pub task_name: Option<String>,
 }
 
 /// A lock waiter.
@@ -105,6 +112,9 @@ pub struct LockWaiterSnapshot {
     pub kind: LockAcquireKind,
     pub waiting_secs: f64,
     pub backtrace: Option<String>,
+    /// Which peeps task is waiting for this lock.
+    pub task_id: Option<u64>,
+    pub task_name: Option<String>,
 }
 
 // ── Channel & sync snapshot types ───────────────────────────────
@@ -133,6 +143,9 @@ pub struct MpscChannelSnapshot {
     pub sender_closed: bool,
     pub receiver_closed: bool,
     pub age_secs: f64,
+    /// Which task created this channel.
+    pub creator_task_id: Option<u64>,
+    pub creator_task_name: Option<String>,
 }
 
 /// Snapshot of a tracked oneshot channel.
@@ -141,6 +154,9 @@ pub struct OneshotChannelSnapshot {
     pub name: String,
     pub state: OneshotState,
     pub age_secs: f64,
+    /// Which task created this channel.
+    pub creator_task_id: Option<u64>,
+    pub creator_task_name: Option<String>,
 }
 
 /// State of a oneshot channel.
@@ -161,6 +177,9 @@ pub struct WatchChannelSnapshot {
     pub changes: u64,
     pub receiver_count: u64,
     pub age_secs: f64,
+    /// Which task created this channel.
+    pub creator_task_id: Option<u64>,
+    pub creator_task_name: Option<String>,
 }
 
 /// Snapshot of a tracked OnceCell.

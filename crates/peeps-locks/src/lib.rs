@@ -75,7 +75,7 @@ mod inner {
                 out.push_str(&format!("  Holders ({}):\n", holders.len()));
                 for h in holders.iter() {
                     let elapsed = h.since.elapsed();
-                    let task_info = format_task_info(h.task_id, h.task_name);
+                    let task_info = format_peeps_task_info(h.peeps_task_id);
                     out.push_str(&format!(
                         "    [{}]{} held for {:.3}s\n",
                         h.kind,
@@ -92,7 +92,7 @@ mod inner {
                 out.push_str(&format!("  Waiters ({}):\n", waiters.len()));
                 for w in waiters.iter() {
                     let elapsed = w.since.elapsed();
-                    let task_info = format_task_info(w.task_id, w.task_name);
+                    let task_info = format_peeps_task_info(w.peeps_task_id);
                     out.push_str(&format!(
                         "    [{}]{} waiting for {:.3}s\n",
                         w.kind,
@@ -135,6 +135,8 @@ mod inner {
                         },
                         held_secs: h.since.elapsed().as_secs_f64(),
                         backtrace: if bt.is_empty() { None } else { Some(bt) },
+                        task_id: h.peeps_task_id,
+                        task_name: h.peeps_task_id.and_then(peeps_tasks::task_name),
                     }
                 })
                 .collect();
@@ -151,6 +153,8 @@ mod inner {
                         },
                         waiting_secs: w.since.elapsed().as_secs_f64(),
                         backtrace: if bt.is_empty() { None } else { Some(bt) },
+                        task_id: w.peeps_task_id,
+                        task_name: w.peeps_task_id.and_then(peeps_tasks::task_name),
                     }
                 })
                 .collect();
@@ -167,11 +171,16 @@ mod inner {
         crate::LockSnapshot { locks }
     }
 
-    fn format_task_info(task_id: Option<tokio::task::Id>, task_name: Option<&str>) -> String {
-        match (task_id, task_name) {
-            (Some(id), Some(name)) => format!(" task={id}({name})"),
-            (Some(id), None) => format!(" task={id}"),
-            _ => String::new(),
+    fn format_peeps_task_info(peeps_task_id: Option<u64>) -> String {
+        match peeps_task_id {
+            Some(id) => {
+                let name = peeps_tasks::task_name(id);
+                match name {
+                    Some(name) => format!(" task={id}({name})"),
+                    None => format!(" task={id}"),
+                }
+            }
+            None => String::new(),
         }
     }
 
@@ -227,8 +236,7 @@ mod inner {
         kind: AcquireKind,
         since: Instant,
         backtrace: Backtrace,
-        task_id: Option<tokio::task::Id>,
-        task_name: Option<&'static str>,
+        peeps_task_id: Option<u64>,
     }
 
     struct LockInfo {
@@ -254,20 +262,14 @@ mod inner {
             info
         }
 
-        fn capture_task_info() -> (Option<tokio::task::Id>, Option<&'static str>) {
-            (tokio::task::try_id(), None)
-        }
-
         fn add_waiter(&self, kind: AcquireKind) -> u64 {
             let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-            let (task_id, task_name) = Self::capture_task_info();
             self.waiters.lock().unwrap().push(WaiterOrHolder {
                 id,
                 kind,
                 since: Instant::now(),
                 backtrace: Backtrace::force_capture(),
-                task_id,
-                task_name,
+                peeps_task_id: peeps_tasks::current_task_id(),
             });
             id
         }
@@ -283,7 +285,6 @@ mod inner {
 
         fn promote_waiter_to_holder(&self, waiter_id: u64, kind: AcquireKind) -> u64 {
             let holder_id = self.next_id.fetch_add(1, Ordering::Relaxed);
-            let (task_id, task_name) = Self::capture_task_info();
 
             let mut waiters = self.waiters.lock().unwrap();
             let mut holders = self.holders.lock().unwrap();
@@ -294,8 +295,7 @@ mod inner {
                 kind,
                 since: Instant::now(),
                 backtrace: Backtrace::force_capture(),
-                task_id,
-                task_name,
+                peeps_task_id: peeps_tasks::current_task_id(),
             });
 
             self.total_acquires.fetch_add(1, Ordering::Relaxed);
@@ -534,15 +534,13 @@ mod inner {
                 Ok(guard) => {
                     let holder_id = {
                         let id = self.info.next_id.fetch_add(1, Ordering::Relaxed);
-                        let (task_id, task_name) = LockInfo::capture_task_info();
                         let mut holders = self.info.holders.lock().unwrap();
                         holders.push(WaiterOrHolder {
                             id,
                             kind: AcquireKind::Read,
                             since: Instant::now(),
                             backtrace: Backtrace::force_capture(),
-                            task_id,
-                            task_name,
+                            peeps_task_id: peeps_tasks::current_task_id(),
                         });
                         self.info.total_acquires.fetch_add(1, Ordering::Relaxed);
                         id
@@ -564,15 +562,13 @@ mod inner {
                 Ok(guard) => {
                     let holder_id = {
                         let id = self.info.next_id.fetch_add(1, Ordering::Relaxed);
-                        let (task_id, task_name) = LockInfo::capture_task_info();
                         let mut holders = self.info.holders.lock().unwrap();
                         holders.push(WaiterOrHolder {
                             id,
                             kind: AcquireKind::Write,
                             since: Instant::now(),
                             backtrace: Backtrace::force_capture(),
-                            task_id,
-                            task_name,
+                            peeps_task_id: peeps_tasks::current_task_id(),
                         });
                         self.info.total_acquires.fetch_add(1, Ordering::Relaxed);
                         id
@@ -670,15 +666,13 @@ mod inner {
                 Ok(guard) => {
                     let holder_id = {
                         let id = self.info.next_id.fetch_add(1, Ordering::Relaxed);
-                        let (task_id, task_name) = LockInfo::capture_task_info();
                         let mut holders = self.info.holders.lock().unwrap();
                         holders.push(WaiterOrHolder {
                             id,
                             kind: AcquireKind::Mutex,
                             since: Instant::now(),
                             backtrace: Backtrace::force_capture(),
-                            task_id,
-                            task_name,
+                            peeps_task_id: peeps_tasks::current_task_id(),
                         });
                         self.info.total_acquires.fetch_add(1, Ordering::Relaxed);
                         id

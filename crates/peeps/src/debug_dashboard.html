@@ -825,6 +825,12 @@ function expandBtn(content) {
     <div class="expandable-content" id="${id}">${esc(content)}</div>`;
 }
 
+function taskRef(id, name) {
+  if (id == null) return '<span class="muted">—</span>';
+  const label = name ? `${esc(name)} (#${id})` : `#${id}`;
+  return `<span class="mono" style="font-size:11px">${label}</span>`;
+}
+
 function dirArrow(d) {
   if (d === 'Outgoing') return '<span class="dir dir-out" title="outgoing">→</span>';
   return '<span class="dir dir-in" title="incoming">←</span>';
@@ -1590,12 +1596,13 @@ function fmtArgs(args) {
   for (const lock of allLocks) {
     if (lock.holders.length === 0 && lock.waiters.length === 0) continue;
     html += `<div class="card"><div class="card-head">${procTag(lock.process)} ${esc(lock.name)}</div>`;
-    html += '<table><thead><tr><th>Role</th><th>Kind</th><th>Duration</th><th>Backtrace</th></tr></thead><tbody>';
+    html += '<table><thead><tr><th>Role</th><th>Kind</th><th>Task</th><th>Duration</th><th>Backtrace</th></tr></thead><tbody>';
 
     for (const h of lock.holders) {
       html += '<tr>';
       html += '<td class="text-amber">Holder</td>';
       html += `<td class="mono">${esc(h.kind)}</td>`;
+      html += `<td>${taskRef(h.task_id, h.task_name)}</td>`;
       html += `<td class="num">${fmtDuration(h.held_secs)}</td>`;
       html += `<td>${expandBtn(h.backtrace)}</td>`;
       html += '</tr>';
@@ -1604,6 +1611,7 @@ function fmtArgs(args) {
       html += '<tr class="severity-danger">';
       html += '<td class="text-red">Waiter</td>';
       html += `<td class="mono">${esc(w.kind)}</td>`;
+      html += `<td>${taskRef(w.task_id, w.task_name)}</td>`;
       html += `<td class="num">${fmtDuration(w.waiting_secs)}</td>`;
       html += `<td>${expandBtn(w.backtrace)}</td>`;
       html += '</tr>';
@@ -1798,6 +1806,7 @@ function fmtArgs(args) {
   html += '<th data-sort="p">Process</th>';
   html += '<th data-sort="id" data-type="n">ID</th>';
   html += '<th data-sort="nm">Name</th>';
+  html += '<th data-sort="par">Parent</th>';
   html += '<th data-sort="st">State</th>';
   html += '<th data-sort="age" data-type="n">Age (s)</th>';
   html += '<th data-sort="polls" data-type="n"># Polls</th>';
@@ -1823,6 +1832,7 @@ function fmtArgs(args) {
     html += `<td>${procTag(t.process)} <span class="mono muted">${t.pid}</span></td>`;
     html += `<td class="num" data-v="${t.id}">${t.id}</td>`;
     html += `<td class="mono" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.name)}">${esc(t.name)}</td>`;
+    html += `<td>${taskRef(t.parent_task_id, t.parent_task_name)}</td>`;
     html += `<td>${stateLabel}</td>`;
     html += `<td class="num" data-v="${t.age_secs.toFixed(3)}">${t.age_secs.toFixed(3)}</td>`;
     html += `<td class="num" data-v="${t.poll_events.length}">${t.poll_events.length}</td>`;
@@ -1918,6 +1928,7 @@ function fmtArgs(args) {
     html += '</div><table><thead><tr>';
     html += '<th data-sort="p">Process</th>';
     html += '<th data-sort="nm">Name</th>';
+    html += '<th data-sort="cr">Creator</th>';
     html += '<th data-sort="ty">Type</th>';
     html += '<th data-sort="cap" data-type="n">Capacity</th>';
     html += '<th data-sort="tx" data-type="n">Sent</th>';
@@ -1940,6 +1951,7 @@ function fmtArgs(args) {
       html += `<tr class="${rowClass}">`;
       html += `<td>${procTag(ch.process)}</td>`;
       html += `<td class="mono">${esc(ch.name)}</td>`;
+      html += `<td>${taskRef(ch.creator_task_id, ch.creator_task_name)}</td>`;
       html += `<td>${typeLabel}</td>`;
       html += `<td class="num" data-v="${ch.capacity ?? 0}">${ch.bounded ? (ch.capacity ?? 0).toLocaleString() : '<span class="muted">-</span>'}</td>`;
       html += `<td class="num" data-v="${ch.sent}">${ch.sent.toLocaleString()}</td>`;
@@ -1978,6 +1990,7 @@ function fmtArgs(args) {
     html += '</div><table><thead><tr>';
     html += '<th data-sort="p">Process</th>';
     html += '<th data-sort="nm">Name</th>';
+    html += '<th data-sort="cr">Creator</th>';
     html += '<th data-sort="st">State</th>';
     html += '<th data-sort="age" data-type="n">Age</th>';
     html += '</tr></thead><tbody>';
@@ -1995,6 +2008,7 @@ function fmtArgs(args) {
       html += `<tr class="${rowClass}">`;
       html += `<td>${procTag(ch.process)}</td>`;
       html += `<td class="mono">${esc(ch.name)}</td>`;
+      html += `<td>${taskRef(ch.creator_task_id, ch.creator_task_name)}</td>`;
       html += `<td>${syncStateBadge(ch.state)}</td>`;
       html += `<td class="num" data-v="${ch.age_secs}">${fmtAge(ch.age_secs)}</td>`;
       html += '</tr>';
@@ -2007,6 +2021,7 @@ function fmtArgs(args) {
     html += '<div class="card"><div class="card-head">Watch Channels</div><table><thead><tr>';
     html += '<th data-sort="p">Process</th>';
     html += '<th data-sort="nm">Name</th>';
+    html += '<th data-sort="cr">Creator</th>';
     html += '<th data-sort="ch" data-type="n">Changes</th>';
     html += '<th data-sort="rc" data-type="n">Receivers</th>';
     html += '<th data-sort="age" data-type="n">Age</th>';
@@ -2018,6 +2033,7 @@ function fmtArgs(args) {
       html += '<tr>';
       html += `<td>${procTag(ch.process)}</td>`;
       html += `<td class="mono">${esc(ch.name)}</td>`;
+      html += `<td>${taskRef(ch.creator_task_id, ch.creator_task_name)}</td>`;
       html += `<td class="num" data-v="${ch.changes}">${ch.changes.toLocaleString()}</td>`;
       html += `<td class="num" data-v="${ch.receiver_count}">${ch.receiver_count}</td>`;
       html += `<td class="num" data-v="${ch.age_secs}">${fmtAge(ch.age_secs)}</td>`;
