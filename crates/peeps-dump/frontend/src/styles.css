@@ -193,6 +193,22 @@ body {
   background: var(--purple-bg);
   color: var(--purple);
 }
+.tab-badge-danger {
+  background: var(--red-bg);
+  color: var(--red);
+}
+.tab.active .tab-badge-danger {
+  background: var(--red-bg);
+  color: var(--red);
+}
+.tab-badge-warn {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+.tab.active .tab-badge-warn {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
 
 /* ═══════════════════════════════════════════
    CONTENT AREA
@@ -230,6 +246,30 @@ body {
 
 .fade-in {
   animation: fadeIn 0.2s ease;
+}
+
+/* ═══════════════════════════════════════════
+   PROBLEMS SUMMARY
+   ═══════════════════════════════════════════ */
+
+.problems-summary {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.problems-count {
+  padding: 4px 12px;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.problems-count-danger {
+  background: var(--red-bg);
+  color: var(--red);
+}
+.problems-count-warn {
+  background: var(--amber-bg);
+  color: var(--amber);
 }
 
 /* ═══════════════════════════════════════════

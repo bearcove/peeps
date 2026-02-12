@@ -1,6 +1,7 @@
 import type { Tab } from "../App";
 import type { ProcessDump } from "../types";
 import { classNames } from "../util";
+import { detectProblems, hasDanger } from "../problems";
 
 interface TabBarProps {
   tabs: readonly Tab[];
@@ -11,6 +12,8 @@ interface TabBarProps {
 
 function badgeCount(tab: Tab, dumps: ProcessDump[]): number | null {
   switch (tab) {
+    case "problems":
+      return null;
     case "tasks":
       return dumps.reduce((s, d) => s + d.tasks.length, 0);
     case "threads":
@@ -55,6 +58,7 @@ function badgeCount(tab: Tab, dumps: ProcessDump[]): number | null {
 }
 
 const TAB_LABELS: Record<Tab, string> = {
+  problems: "Problems",
   tasks: "Tasks",
   threads: "Threads",
   locks: "Locks",
@@ -66,9 +70,35 @@ const TAB_LABELS: Record<Tab, string> = {
 };
 
 export function TabBar({ tabs, active, onSelect, dumps }: TabBarProps) {
+  const problems = detectProblems(dumps);
+  const problemCount = problems.length;
+  const danger = hasDanger(problems);
+
   return (
     <div class="tab-bar">
       {tabs.map((t) => {
+        if (t === "problems") {
+          return (
+            <div
+              key={t}
+              class={classNames("tab", t === active && "active")}
+              onClick={() => onSelect(t)}
+            >
+              {TAB_LABELS[t]}
+              {problemCount > 0 && (
+                <span
+                  class={classNames(
+                    "tab-badge",
+                    danger ? "tab-badge-danger" : "tab-badge-warn"
+                  )}
+                >
+                  {problemCount}
+                </span>
+              )}
+            </div>
+          );
+        }
+
         const count = badgeCount(t, dumps);
         return (
           <div
