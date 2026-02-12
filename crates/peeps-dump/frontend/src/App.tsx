@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { ProcessDump } from "./types";
-import { fetchDumps } from "./api";
+import { connectWebSocket, fetchDumps } from "./api";
 import { Header } from "./components/Header";
 import { TabBar } from "./components/TabBar";
 import { TasksView } from "./components/TasksView";
@@ -26,14 +26,88 @@ const TABS = [
 ] as const;
 export type Tab = (typeof TABS)[number];
 
+const RECONNECT_DELAY_MS = 2000;
+const MAX_WS_FAILURES = 3;
+
 export function App() {
   const [dumps, setDumps] = useState<ProcessDump[]>([]);
   const [tab, setTab] = useState<Tab>("tasks");
   const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
-  const refresh = useCallback(async () => {
+  useEffect(() => {
+    let cancelled = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let wsFailures = 0;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+    function startPolling() {
+      if (pollInterval) return;
+      const poll = async () => {
+        try {
+          const data = await fetchDumps();
+          if (!cancelled) {
+            setDumps(data);
+            setError(null);
+          }
+        } catch (e) {
+          if (!cancelled) setError(String(e));
+        }
+      };
+      poll();
+      pollInterval = setInterval(poll, 2000);
+    }
+
+    function stopPolling() {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    }
+
+    function connect() {
+      if (cancelled) return;
+
+      const close = connectWebSocket({
+        onDumps: (data) => {
+          if (!cancelled) {
+            wsFailures = 0;
+            setDumps(data);
+            setError(null);
+            stopPolling();
+          }
+        },
+        onError: (err) => {
+          if (!cancelled) setError(err);
+        },
+        onClose: () => {
+          if (cancelled) return;
+          wsFailures++;
+          if (wsFailures >= MAX_WS_FAILURES) {
+            startPolling();
+          }
+          reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS);
+        },
+      });
+
+      cleanupRef.current = close;
+    }
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      stopPolling();
+      if (cleanupRef.current) {
+        cleanupRef.current();
+        cleanupRef.current = null;
+      }
+    };
+  }, []);
+
+  const refresh = async () => {
     try {
       const data = await fetchDumps();
       setDumps(data);
@@ -41,15 +115,7 @@ export function App() {
     } catch (e) {
       setError(String(e));
     }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    intervalRef.current = setInterval(refresh, 2000);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [refresh]);
+  };
 
   const hasSync = dumps.some((d) => d.sync != null);
   const hasRoam = dumps.some((d) => d.roam != null);

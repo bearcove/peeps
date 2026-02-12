@@ -38,6 +38,6 @@ parking_lot = "0.12"
 roam-session = { path = "../roam/rust/roam-session", features = ["diagnostics"] }
 roam-shm = { path = "../roam/rust/roam-shm", features = ["diagnostics"] }
 tokio = { version = "1.49", features = ["full"] }
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 rust-embed = "8"
 mime_guess = "2"
