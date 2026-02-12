@@ -188,6 +188,12 @@ mod imp {
         });
 
         if let Some(registry) = TASK_REGISTRY.lock().unwrap().as_mut() {
+            // Prune completed tasks older than 30s to keep the registry bounded.
+            let cutoff = Instant::now() - std::time::Duration::from_secs(30);
+            registry.retain(|task| {
+                let state = task.state.lock().unwrap();
+                state.state != TaskState::Completed || task.spawned_at > cutoff
+            });
             registry.push(Arc::clone(&task_info));
         }
 
