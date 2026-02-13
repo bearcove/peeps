@@ -24,6 +24,7 @@ const FRAME_NOISE = [
   "backtrace_rs",
   "backtrace::",
   "vx_dump::thread_stacks::sigprof_handler",
+  "peeps_threads::imp::sigprof_handler",
   "__os_lock",
   "_pthread_",
   "pthread_",
@@ -41,6 +42,18 @@ const FRAME_NOISE = [
   "mio::poll",
 ];
 
+const IDLE_FRAME_MARKERS = [
+  "parking_lot_core::thread_parker",
+  "parking_lot_core::parking_lot::park",
+  "parking_lot::condvar::Condvar::wait",
+  "parking_lot::condvar::Condvar::wait_until_internal",
+  "tokio::runtime::park::",
+  "tokio::park",
+  "mio::poll",
+  "epoll_wait",
+  "kevent",
+];
+
 export function firstUsefulFrame(bt: string | null): string | null {
   if (!bt) return null;
   for (const line of bt.split("\n")) {
@@ -51,6 +64,24 @@ export function firstUsefulFrame(bt: string | null): string | null {
     return fn_name;
   }
   return null;
+}
+
+export function isLikelyIdleBacktrace(bt: string | null | undefined): boolean {
+  if (!bt) return false;
+  for (const line of bt.split("\n")) {
+    const m = line.trim().match(/^\d+:\s+(.+)/);
+    if (!m) continue;
+    const fn_name = m[1].split("\n")[0].trim();
+    if (FRAME_NOISE.some((prefix) => fn_name.startsWith(prefix))) continue;
+    if (IDLE_FRAME_MARKERS.some((marker) => fn_name.includes(marker))) return true;
+    return false;
+  }
+  return false;
+}
+
+export function isLikelyIdleFrameName(frame: string | null | undefined): boolean {
+  if (!frame) return false;
+  return IDLE_FRAME_MARKERS.some((marker) => frame.includes(marker));
 }
 
 export function classNames(

@@ -1,5 +1,12 @@
 import type { ProcessDump } from "../types";
-import { detectProblems, type Problem, type ProblemCategory } from "../problems";
+import {
+  detectProblems,
+  detectRelationshipIssues,
+  summarizeRootCauses,
+  type Problem,
+  type ProblemCategory,
+  type RelationshipIssue,
+} from "../problems";
 import { Expandable } from "./Expandable";
 import { classNames } from "../util";
 
@@ -8,23 +15,45 @@ interface Props {
   filter: string;
 }
 
-const CATEGORY_ORDER: ProblemCategory[] = ["Tasks", "Threads", "Locks", "Channels", "RPC", "SHM"];
+const CATEGORY_ORDER: ProblemCategory[] = [
+  "Tasks",
+  "Threads",
+  "Locks",
+  "Channels",
+  "RPC",
+  "SHM",
+];
+
+function matchesProblem(p: Problem, lq: string): boolean {
+  return (
+    p.process.toLowerCase().includes(lq) ||
+    p.resource.toLowerCase().includes(lq) ||
+    p.description.toLowerCase().includes(lq) ||
+    p.category.toLowerCase().includes(lq)
+  );
+}
+
+function matchesIssue(i: RelationshipIssue, lq: string): boolean {
+  return (
+    i.process.toLowerCase().includes(lq) ||
+    i.blocked.toLowerCase().includes(lq) ||
+    i.waitsOn.toLowerCase().includes(lq) ||
+    (i.owner?.toLowerCase().includes(lq) ?? false) ||
+    i.description.toLowerCase().includes(lq) ||
+    i.category.toLowerCase().includes(lq)
+  );
+}
 
 export function ProblemsView({ dumps, filter }: Props) {
-  const all = detectProblems(dumps);
+  const allProblems = detectProblems(dumps);
+  const allIssues = detectRelationshipIssues(dumps);
 
   const lq = filter.toLowerCase();
-  const filtered = lq
-    ? all.filter(
-        (p) =>
-          p.process.toLowerCase().includes(lq) ||
-          p.resource.toLowerCase().includes(lq) ||
-          p.description.toLowerCase().includes(lq) ||
-          p.category.toLowerCase().includes(lq),
-      )
-    : all;
+  const problems = lq ? allProblems.filter((p) => matchesProblem(p, lq)) : allProblems;
+  const issues = lq ? allIssues.filter((i) => matchesIssue(i, lq)) : allIssues;
+  const rootCauses = summarizeRootCauses(issues);
 
-  if (filtered.length === 0) {
+  if (problems.length === 0 && issues.length === 0) {
     return (
       <div class="fade-in">
         <div class="empty-state">
@@ -38,11 +67,13 @@ export function ProblemsView({ dumps, filter }: Props) {
     );
   }
 
-  const dangerCount = filtered.filter((p) => p.severity === "danger").length;
-  const warnCount = filtered.filter((p) => p.severity === "warn").length;
+  const dangerCount = problems.filter((p) => p.severity === "danger").length
+    + issues.filter((i) => i.severity === "danger").length;
+  const warnCount = problems.filter((p) => p.severity === "warn").length
+    + issues.filter((i) => i.severity === "warn").length;
 
   const grouped = new Map<ProblemCategory, Problem[]>();
-  for (const p of filtered) {
+  for (const p of problems) {
     let list = grouped.get(p.category);
     if (!list) {
       list = [];
@@ -64,11 +95,108 @@ export function ProblemsView({ dumps, filter }: Props) {
         )}
       </div>
 
+      {rootCauses.length > 0 && (
+        <div class="card">
+          <div class="card-head">Likely Root Causes</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Severity</th>
+                <th>Owner</th>
+                <th>Blocked Groups</th>
+                <th>Total Edges</th>
+                <th>Worst Wait</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rootCauses.map((r, idx) => (
+                <tr
+                  key={`${r.owner}-${idx}`}
+                  class={classNames(
+                    r.severity === "danger" && "severity-danger",
+                    r.severity === "warn" && "severity-warn",
+                  )}
+                >
+                  <td>
+                    <span
+                      class={classNames(
+                        "state-badge",
+                        r.severity === "danger" ? "state-dropped" : "state-pending",
+                      )}
+                    >
+                      {r.severity}
+                    </span>
+                  </td>
+                  <td class="mono">{r.owner}</td>
+                  <td class="num">{r.blockedCount}</td>
+                  <td class="num">{r.edgeCount}</td>
+                  <td class="num">{r.worstTimingLabel}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {issues.length > 0 && (
+        <div class="card">
+          <div class="card-head">Blocking Relationships</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Severity</th>
+                <th>Category</th>
+                <th>Process</th>
+                <th>Blocked</th>
+                <th>Waits On</th>
+                <th>Owner</th>
+                <th>Impact</th>
+                <th>Backtrace</th>
+              </tr>
+            </thead>
+            <tbody>
+              {issues.map((i, idx) => (
+                <tr
+                  key={`${i.process}-${i.blocked}-${idx}`}
+                  class={classNames(
+                    i.severity === "danger" && "severity-danger",
+                    i.severity === "warn" && "severity-warn",
+                  )}
+                >
+                  <td>
+                    <span
+                      class={classNames(
+                        "state-badge",
+                        i.severity === "danger" ? "state-dropped" : "state-pending",
+                      )}
+                    >
+                      {i.severity}
+                    </span>
+                  </td>
+                  <td class="mono">{i.category}</td>
+                  <td class="mono">{i.process}</td>
+                  <td class="mono">{i.blocked}</td>
+                  <td class="mono">{i.waitsOn}</td>
+                  <td class="mono">{i.owner ?? "—"}</td>
+                  <td>
+                    {i.description}
+                    {i.count > 1 ? <span class="muted"> ({i.count}x)</span> : null}
+                  </td>
+                  <td>
+                    <Expandable content={i.backtrace} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {CATEGORY_ORDER.filter((cat) => grouped.has(cat)).map((cat) => {
-        const problems = grouped.get(cat)!;
+        const categoryProblems = grouped.get(cat)!;
         return (
           <div class="card" key={cat}>
-            <div class="card-head">{cat}</div>
+            <div class="card-head">Raw Signals: {cat}</div>
             <table>
               <thead>
                 <tr>
@@ -81,7 +209,7 @@ export function ProblemsView({ dumps, filter }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {problems.map((p, i) => (
+                {categoryProblems.map((p, i) => (
                   <tr
                     key={i}
                     class={classNames(

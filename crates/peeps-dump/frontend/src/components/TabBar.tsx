@@ -1,7 +1,7 @@
 import type { Tab } from "../App";
 import type { ProcessDump } from "../types";
 import { classNames } from "../util";
-import { detectProblems, hasDanger } from "../problems";
+import { detectProblems, detectRelationshipIssues, hasDanger } from "../problems";
 
 interface TabBarProps {
   tabs: readonly Tab[];
@@ -71,8 +71,9 @@ const TAB_LABELS: Record<Tab, string> = {
 
 export function TabBar({ tabs, active, onSelect, dumps }: TabBarProps) {
   const problems = detectProblems(dumps);
-  const problemCount = problems.length;
-  const danger = hasDanger(problems);
+  const relationIssues = detectRelationshipIssues(dumps);
+  const problemCount = problems.length + relationIssues.length;
+  const danger = hasDanger(problems) || relationIssues.some((i) => i.severity === "danger");
 
   return (
     <div class="tab-bar">

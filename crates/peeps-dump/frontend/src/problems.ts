@@ -1,5 +1,11 @@
 import type { ProcessDump } from "./types";
-import { fmtDuration, fmtAge } from "./util";
+import {
+  firstUsefulFrame,
+  fmtDuration,
+  fmtAge,
+  isLikelyIdleBacktrace,
+  isLikelyIdleFrameName,
+} from "./util";
 
 export type Severity = "danger" | "warn";
 export type ProblemCategory =
@@ -19,6 +25,29 @@ export interface Problem {
   timing: number;
   timingLabel: string;
   backtrace: string | null;
+}
+
+export interface RelationshipIssue {
+  severity: Severity;
+  category: "Locks" | "Channels" | "RPC";
+  process: string;
+  blocked: string;
+  waitsOn: string;
+  owner: string | null;
+  description: string;
+  timing: number;
+  timingLabel: string;
+  count: number;
+  backtrace: string | null;
+}
+
+export interface RootCauseSummary {
+  severity: Severity;
+  owner: string;
+  blockedCount: number;
+  edgeCount: number;
+  worstTiming: number;
+  worstTimingLabel: string;
 }
 
 export function hasDanger(problems: Problem[]): boolean {
@@ -105,6 +134,9 @@ function detectThreads(
   out: Problem[]
 ): void {
   for (const thread of dump.threads) {
+    const frame = thread.dominant_frame ?? firstUsefulFrame(thread.backtrace);
+    if (isLikelyIdleFrameName(frame) || isLikelyIdleBacktrace(thread.backtrace)) continue;
+
     if (thread.same_location_count >= 10) {
       out.push({
         severity: "danger",
@@ -129,6 +161,146 @@ function detectThreads(
       });
     }
   }
+}
+
+export function detectRelationshipIssues(dumps: ProcessDump[]): RelationshipIssue[] {
+  const byKey = new Map<string, RelationshipIssue>();
+
+  const upsert = (issue: Omit<RelationshipIssue, "count">) => {
+    const key = [
+      issue.severity,
+      issue.category,
+      issue.process,
+      issue.blocked,
+      issue.waitsOn,
+      issue.owner ?? "",
+    ].join("|");
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.count += 1;
+      if (issue.timing > existing.timing) {
+        existing.timing = issue.timing;
+        existing.timingLabel = issue.timingLabel;
+      }
+      if (!existing.backtrace && issue.backtrace) {
+        existing.backtrace = issue.backtrace;
+      }
+    } else {
+      byKey.set(key, { ...issue, count: 1 });
+    }
+  };
+
+  for (const dump of dumps) {
+    const proc = dump.process_name;
+
+    if (dump.locks) {
+      for (const lock of dump.locks.locks) {
+        const holderNames = lock.holders
+          .map((h) => h.task_name)
+          .filter((v): v is string => !!v && v.trim().length > 0);
+        const owner = holderNames.length > 0 ? holderNames[0] : null;
+
+        for (const waiter of lock.waiters) {
+          if (waiter.waiting_secs <= 1) continue;
+          upsert({
+            severity: waiter.waiting_secs > 5 ? "danger" : "warn",
+            category: "Locks",
+            process: proc,
+            blocked: waiter.task_name ?? `${proc}:${lock.name}:waiter`,
+            waitsOn: `lock:${lock.name}`,
+            owner,
+            description: `Lock waiter blocked for ${fmtDuration(waiter.waiting_secs)}`,
+            timing: waiter.waiting_secs,
+            timingLabel: fmtDuration(waiter.waiting_secs),
+            backtrace: waiter.backtrace,
+          });
+        }
+      }
+    }
+
+    if (dump.sync) {
+      for (const ch of dump.sync.mpsc_channels) {
+        if (ch.send_waiters <= 0) continue;
+        upsert({
+          severity: ch.send_waiters > 3 ? "danger" : "warn",
+          category: "Channels",
+          process: proc,
+          blocked: `${ch.send_waiters} sender(s)`,
+          waitsOn: `channel:${ch.name}`,
+          owner: ch.creator_task_name ?? null,
+          description: `Backpressure on channel (${ch.send_waiters} blocked sender(s))`,
+          timing: ch.age_secs,
+          timingLabel: fmtAge(ch.age_secs),
+          backtrace: null,
+        });
+      }
+    }
+
+    if (dump.roam) {
+      for (const conn of dump.roam.connections) {
+        for (const req of conn.in_flight) {
+          if (req.elapsed_secs <= 2) continue;
+          const method = req.method_name ?? `method#${req.method_id}`;
+          upsert({
+            severity: req.elapsed_secs > 10 ? "danger" : "warn",
+            category: "RPC",
+            process: proc,
+            blocked: `${conn.name} (${method})`,
+            waitsOn: `rpc:${conn.peer_name ?? "unknown-peer"}`,
+            owner: conn.peer_name ?? null,
+            description: `RPC in-flight for ${fmtDuration(req.elapsed_secs)}`,
+            timing: req.elapsed_secs,
+            timingLabel: fmtDuration(req.elapsed_secs),
+            backtrace: req.backtrace,
+          });
+        }
+      }
+    }
+  }
+
+  const out = [...byKey.values()];
+  out.sort((a, b) => {
+    if (a.severity !== b.severity) return a.severity === "danger" ? -1 : 1;
+    if (b.count !== a.count) return b.count - a.count;
+    return b.timing - a.timing;
+  });
+  return out;
+}
+
+export function summarizeRootCauses(issues: RelationshipIssue[]): RootCauseSummary[] {
+  const byOwner = new Map<string, RootCauseSummary>();
+
+  for (const issue of issues) {
+    const owner = issue.owner ?? issue.waitsOn;
+    const existing = byOwner.get(owner);
+    if (existing) {
+      existing.edgeCount += issue.count;
+      existing.blockedCount += 1;
+      if (issue.severity === "danger") existing.severity = "danger";
+      if (issue.timing > existing.worstTiming) {
+        existing.worstTiming = issue.timing;
+        existing.worstTimingLabel = issue.timingLabel;
+      }
+    } else {
+      byOwner.set(owner, {
+        severity: issue.severity,
+        owner,
+        blockedCount: 1,
+        edgeCount: issue.count,
+        worstTiming: issue.timing,
+        worstTimingLabel: issue.timingLabel,
+      });
+    }
+  }
+
+  const out = [...byOwner.values()];
+  out.sort((a, b) => {
+    if (a.severity !== b.severity) return a.severity === "danger" ? -1 : 1;
+    if (b.blockedCount !== a.blockedCount) return b.blockedCount - a.blockedCount;
+    if (b.edgeCount !== a.edgeCount) return b.edgeCount - a.edgeCount;
+    return b.worstTiming - a.worstTiming;
+  });
+  return out;
 }
 
 function detectLocks(

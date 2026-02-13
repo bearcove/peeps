@@ -28,6 +28,7 @@ mod imp {
     }
 
     #[inline(always)]
+    #[track_caller]
     pub fn spawn_tracked<F>(
         _name: impl Into<String>,
         future: F,
@@ -196,6 +197,17 @@ mod imp {
         *TASK_REGISTRY.lock().unwrap() = Some(Vec::new());
     }
 
+    #[inline]
+    fn decorate_task_name(name: String, caller: &'static std::panic::Location<'static>) -> String {
+        // Keep names concise but attributable: "<name> @ file.rs:line"
+        let file = std::path::Path::new(caller.file())
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or(caller.file());
+        format!("{name} @ {file}:{}", caller.line())
+    }
+
+    #[track_caller]
     pub fn spawn_tracked<F>(
         name: impl Into<String>,
         future: F,
@@ -204,7 +216,7 @@ mod imp {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        let name = name.into();
+        let name = decorate_task_name(name.into(), std::panic::Location::caller());
         let task_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
         let parent_id = current_task_id();
         let spawn_backtrace = format!("{:?}", Backtrace::new());
@@ -293,6 +305,7 @@ pub fn task_name(id: TaskId) -> Option<String> {
 ///
 /// With `diagnostics`: captures spawn backtrace and records poll events.
 /// Without `diagnostics`: zero-cost wrapper around `tokio::spawn`.
+#[track_caller]
 pub fn spawn_tracked<F>(name: impl Into<String>, future: F) -> tokio::task::JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
