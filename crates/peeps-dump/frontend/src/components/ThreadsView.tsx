@@ -1,10 +1,13 @@
 import type { ProcessDump, ThreadStackSnapshot } from "../types";
 import { firstUsefulFrame, classNames } from "../util";
 import { Expandable } from "./Expandable";
+import { ResourceLink } from "./ResourceLink";
+import { isActivePath, resourceHref } from "../routes";
 
 interface Props {
   dumps: ProcessDump[];
   filter: string;
+  selectedPath: string;
 }
 
 interface FlatThread extends ThreadStackSnapshot {
@@ -17,7 +20,7 @@ function rowSeverity(t: FlatThread): string {
   return "";
 }
 
-export function ThreadsView({ dumps, filter }: Props) {
+export function ThreadsView({ dumps, filter, selectedPath }: Props) {
   const threads: FlatThread[] = [];
   for (const d of dumps) {
     for (const t of d.threads) {
@@ -61,7 +64,14 @@ export function ThreadsView({ dumps, filter }: Props) {
           {filtered.map((t, i) => (
             <tr key={i} class={rowSeverity(t)}>
               <td class="mono">{t.process}</td>
-              <td class="mono">{t.name}</td>
+              <td class="mono">
+                <ResourceLink
+                  href={resourceHref({ kind: "thread", process: t.process, thread: t.name })}
+                  active={isActivePath(selectedPath, resourceHref({ kind: "thread", process: t.process, thread: t.name }))}
+                >
+                  {t.name}
+                </ResourceLink>
+              </td>
               <td class="num">{t.samples}</td>
               <td class="num">{t.responded}</td>
               <td class={classNames("num", t.same_location_count >= 5 && "text-red")}>

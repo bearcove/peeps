@@ -2,15 +2,25 @@ import { useState } from "preact/hooks";
 import type { ProcessDump, TaskSnapshot } from "../types";
 import { fmtAge, fmtDuration, classNames } from "../util";
 import { Expandable } from "./Expandable";
+import { ResourceLink } from "./ResourceLink";
+import { isActivePath, resourceHref } from "../routes";
 
 interface Props {
   dumps: ProcessDump[];
   filter: string;
+  selectedPath: string;
 }
 
 interface FlatTask extends TaskSnapshot {
   process: string;
   pid: number;
+  interactions: TaskInteraction[];
+}
+
+interface TaskInteraction {
+  key: string;
+  href: string;
+  label: string;
 }
 
 function stateClass(state: string): string {
@@ -47,13 +57,76 @@ function matchesFilter(t: FlatTask, q: string): boolean {
   );
 }
 
-export function TasksView({ dumps, filter }: Props) {
+export function TasksView({ dumps, filter, selectedPath }: Props) {
   const [view, setView] = useState<"table" | "tree">("table");
+  const interactionsByTask = new Map<string, TaskInteraction[]>();
+
+  const addInteraction = (process: string, taskId: number | null, interaction: TaskInteraction) => {
+    if (taskId == null) return;
+    const key = `${process}#${taskId}`;
+    const list = interactionsByTask.get(key) ?? [];
+    if (!list.some((i) => i.key === interaction.key)) {
+      list.push(interaction);
+      interactionsByTask.set(key, list);
+    }
+  };
+
+  for (const d of dumps) {
+    if (d.locks) {
+      for (const l of d.locks.locks) {
+        const lockHref = resourceHref({ kind: "lock", process: d.process_name, lock: l.name });
+        for (const h of l.holders) {
+          addInteraction(d.process_name, h.task_id, {
+            key: `lock:${l.name}:holder`,
+            href: lockHref,
+            label: `lock ${l.name} (holder)`,
+          });
+        }
+        for (const w of l.waiters) {
+          addInteraction(d.process_name, w.task_id, {
+            key: `lock:${l.name}:waiter`,
+            href: lockHref,
+            label: `lock ${l.name} (waiter)`,
+          });
+        }
+      }
+    }
+
+    if (d.sync) {
+      for (const ch of d.sync.mpsc_channels) {
+        addInteraction(d.process_name, ch.creator_task_id, {
+          key: `mpsc:${ch.name}`,
+          href: resourceHref({ kind: "mpsc", process: d.process_name, name: ch.name }),
+          label: `mpsc ${ch.name}`,
+        });
+      }
+      for (const ch of d.sync.oneshot_channels) {
+        addInteraction(d.process_name, ch.creator_task_id, {
+          key: `oneshot:${ch.name}`,
+          href: resourceHref({ kind: "oneshot", process: d.process_name, name: ch.name }),
+          label: `oneshot ${ch.name}`,
+        });
+      }
+      for (const ch of d.sync.watch_channels) {
+        addInteraction(d.process_name, ch.creator_task_id, {
+          key: `watch:${ch.name}`,
+          href: resourceHref({ kind: "watch", process: d.process_name, name: ch.name }),
+          label: `watch ${ch.name}`,
+        });
+      }
+    }
+  }
 
   const tasks: FlatTask[] = [];
   for (const d of dumps) {
     for (const t of d.tasks) {
-      tasks.push({ ...t, process: d.process_name, pid: d.pid });
+      const key = `${d.process_name}#${t.id}`;
+      tasks.push({
+        ...t,
+        process: d.process_name,
+        pid: d.pid,
+        interactions: interactionsByTask.get(key) ?? [],
+      });
     }
   }
 
@@ -88,15 +161,15 @@ export function TasksView({ dumps, filter }: Props) {
         </button>
       </div>
       {view === "table" ? (
-        <TaskTable tasks={filtered} />
+        <TaskTable tasks={filtered} selectedPath={selectedPath} />
       ) : (
-        <TaskTree tasks={filtered} />
+        <TaskTree tasks={filtered} selectedPath={selectedPath} />
       )}
     </div>
   );
 }
 
-function TaskTable({ tasks }: { tasks: FlatTask[] }) {
+function TaskTable({ tasks, selectedPath }: { tasks: FlatTask[]; selectedPath: string }) {
   return (
     <div class="card">
       <table>
@@ -108,6 +181,7 @@ function TaskTable({ tasks }: { tasks: FlatTask[] }) {
             <th>State</th>
             <th>Age</th>
             <th>Parent</th>
+            <th>Interactions</th>
             <th>Polls</th>
             <th>Last Poll</th>
             <th>Backtrace</th>
@@ -118,7 +192,14 @@ function TaskTable({ tasks }: { tasks: FlatTask[] }) {
             <tr key={`${t.pid}-${t.id}`} class={rowSeverity(t)}>
               <td class="mono">#{t.id}</td>
               <td class="mono">{t.process}</td>
-              <td class="mono">{t.name}</td>
+              <td class="mono">
+                <ResourceLink
+                  href={resourceHref({ kind: "task", process: t.process, taskId: t.id })}
+                  active={isActivePath(selectedPath, resourceHref({ kind: "task", process: t.process, taskId: t.id }))}
+                >
+                  {t.name}
+                </ResourceLink>
+              </td>
               <td>
                 <span class={classNames("state-badge", stateClass(t.state))}>
                   {t.state}
@@ -127,11 +208,27 @@ function TaskTable({ tasks }: { tasks: FlatTask[] }) {
               <td class="num">{fmtAge(t.age_secs)}</td>
               <td class="mono">
                 {t.parent_task_id != null ? (
-                  <span>
+                  <ResourceLink
+                    href={resourceHref({ kind: "task", process: t.process, taskId: t.parent_task_id })}
+                    active={isActivePath(selectedPath, resourceHref({ kind: "task", process: t.process, taskId: t.parent_task_id }))}
+                  >
                     {t.parent_task_name ?? ""} (#{t.parent_task_id})
-                  </span>
+                  </ResourceLink>
                 ) : (
                   <span class="muted">{"\u2014"}</span>
+                )}
+              </td>
+              <td>
+                {t.interactions.length === 0 ? (
+                  <span class="muted">{"\u2014"}</span>
+                ) : (
+                  <div class="resource-link-list">
+                    {t.interactions.map((i) => (
+                      <ResourceLink key={i.key} href={i.href} active={isActivePath(selectedPath, i.href)}>
+                        {i.label}
+                      </ResourceLink>
+                    ))}
+                  </div>
                 )}
               </td>
               <td class="num">{t.poll_events.length}</td>
@@ -153,7 +250,7 @@ function TaskTable({ tasks }: { tasks: FlatTask[] }) {
   );
 }
 
-function TaskTree({ tasks }: { tasks: FlatTask[] }) {
+function TaskTree({ tasks, selectedPath }: { tasks: FlatTask[]; selectedPath: string }) {
   const byId = new Map<number, FlatTask>();
   for (const t of tasks) byId.set(t.id, t);
 
@@ -170,7 +267,7 @@ function TaskTree({ tasks }: { tasks: FlatTask[] }) {
   return (
     <div>
       {roots.map((t) => (
-        <TreeNode key={t.id} task={t} children={children} depth={0} />
+        <TreeNode key={t.id} task={t} children={children} depth={0} selectedPath={selectedPath} />
       ))}
     </div>
   );
@@ -180,10 +277,12 @@ function TreeNode({
   task: t,
   children,
   depth,
+  selectedPath,
 }: {
   task: FlatTask;
   children: Map<number, FlatTask[]>;
   depth: number;
+  selectedPath: string;
 }) {
   const kids = children.get(t.id) ?? [];
   return (
@@ -193,14 +292,25 @@ function TreeNode({
           {t.state}
         </span>
         <span class="mono">
-          #{t.id} {t.name}
+          <ResourceLink
+            href={resourceHref({ kind: "task", process: t.process, taskId: t.id })}
+            active={isActivePath(selectedPath, resourceHref({ kind: "task", process: t.process, taskId: t.id }))}
+          >
+            #{t.id} {t.name}
+          </ResourceLink>
         </span>
         <span class="muted" style="margin-left: 8px">
           {t.process} &middot; {fmtAge(t.age_secs)}
         </span>
       </div>
       {kids.map((k) => (
-        <TreeNode key={k.id} task={k} children={children} depth={depth + 1} />
+        <TreeNode
+          key={k.id}
+          task={k}
+          children={children}
+          depth={depth + 1}
+          selectedPath={selectedPath}
+        />
       ))}
     </div>
   );

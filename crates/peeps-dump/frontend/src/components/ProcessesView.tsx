@@ -1,12 +1,15 @@
 import type { ProcessDump } from "../types";
 import { fmtBytes } from "../util";
+import { ResourceLink } from "./ResourceLink";
+import { isActivePath, resourceHref } from "../routes";
 
 interface Props {
   dumps: ProcessDump[];
   filter: string;
+  selectedPath: string;
 }
 
-export function ProcessesView({ dumps, filter }: Props) {
+export function ProcessesView({ dumps, filter, selectedPath }: Props) {
   const q = filter.toLowerCase();
   const filtered = dumps.filter(
     (d) => !q || d.process_name.toLowerCase().includes(q)
@@ -27,13 +30,13 @@ export function ProcessesView({ dumps, filter }: Props) {
   return (
     <div class="card-grid fade-in">
       {filtered.map((d) => (
-        <ProcessCard key={`${d.process_name}-${d.pid}`} dump={d} />
+        <ProcessCard key={`${d.process_name}-${d.pid}`} dump={d} selectedPath={selectedPath} />
       ))}
     </div>
   );
 }
 
-function ProcessCard({ dump: d }: { dump: ProcessDump }) {
+function ProcessCard({ dump: d, selectedPath }: { dump: ProcessDump; selectedPath: string }) {
   const connCount = d.roam?.connections.length ?? 0;
   const inFlight = d.roam?.connections.reduce(
     (s, c) => s + c.in_flight.length,
@@ -56,7 +59,14 @@ function ProcessCard({ dump: d }: { dump: ProcessDump }) {
     <div class="proc-card">
       <div class="proc-card-head">
         <div class="dot" style="background: var(--purple)" />
-        <div class="name">{d.process_name}</div>
+        <div class="name">
+          <ResourceLink
+            href={resourceHref({ kind: "process", process: d.process_name, pid: d.pid })}
+            active={isActivePath(selectedPath, resourceHref({ kind: "process", process: d.process_name, pid: d.pid }))}
+          >
+            {d.process_name}
+          </ResourceLink>
+        </div>
         <div class="pid">pid {d.pid}</div>
       </div>
       <div class="proc-card-body">

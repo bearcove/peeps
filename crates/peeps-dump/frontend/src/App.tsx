@@ -12,6 +12,7 @@ import { ConnectionsView } from "./components/ConnectionsView";
 import { RequestsView } from "./components/RequestsView";
 import { ShmView } from "./components/ShmView";
 import { ProblemsView } from "./components/ProblemsView";
+import { navigateTo, tabFromPath, tabPath } from "./routes";
 
 import "./styles.css";
 
@@ -33,7 +34,7 @@ const MAX_WS_FAILURES = 3;
 
 export function App() {
   const [dumps, setDumps] = useState<ProcessDump[]>([]);
-  const [tab, setTab] = useState<Tab>("problems");
+  const [path, setPath] = useState<string>(window.location.pathname || "/problems");
   const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -134,24 +135,44 @@ export function App() {
     return true;
   });
 
+  const tab = tabFromPath(path);
+
+  useEffect(() => {
+    const onPop = () => setPath(window.location.pathname || "/problems");
+    window.addEventListener("popstate", onPop);
+    onPop();
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  useEffect(() => {
+    if (window.location.pathname === "/") {
+      navigateTo("/problems");
+    }
+  }, []);
+
   return (
     <div class="app">
       <Header dumps={dumps} filter={filter} onFilter={setFilter} onRefresh={refresh} error={error} />
-      <TabBar tabs={visibleTabs} active={tab} onSelect={setTab} dumps={dumps} />
+      <TabBar
+        tabs={visibleTabs}
+        active={tab}
+        onSelect={(t) => navigateTo(tabPath(t))}
+        dumps={dumps}
+      />
       <div class="content">
         {tab === "problems" && <ProblemsView dumps={dumps} filter={filter} />}
-        {tab === "tasks" && <TasksView dumps={dumps} filter={filter} />}
-        {tab === "threads" && <ThreadsView dumps={dumps} filter={filter} />}
-        {tab === "locks" && <LocksView dumps={dumps} filter={filter} />}
-        {tab === "sync" && <SyncView dumps={dumps} filter={filter} />}
-        {tab === "requests" && <RequestsView dumps={dumps} filter={filter} />}
+        {tab === "tasks" && <TasksView dumps={dumps} filter={filter} selectedPath={path} />}
+        {tab === "threads" && <ThreadsView dumps={dumps} filter={filter} selectedPath={path} />}
+        {tab === "locks" && <LocksView dumps={dumps} filter={filter} selectedPath={path} />}
+        {tab === "sync" && <SyncView dumps={dumps} filter={filter} selectedPath={path} />}
+        {tab === "requests" && <RequestsView dumps={dumps} filter={filter} selectedPath={path} />}
         {tab === "connections" && (
-          <ConnectionsView dumps={dumps} filter={filter} />
+          <ConnectionsView dumps={dumps} filter={filter} selectedPath={path} />
         )}
         {tab === "processes" && (
-          <ProcessesView dumps={dumps} filter={filter} />
+          <ProcessesView dumps={dumps} filter={filter} selectedPath={path} />
         )}
-        {tab === "shm" && <ShmView dumps={dumps} filter={filter} />}
+        {tab === "shm" && <ShmView dumps={dumps} filter={filter} selectedPath={path} />}
       </div>
     </div>
   );

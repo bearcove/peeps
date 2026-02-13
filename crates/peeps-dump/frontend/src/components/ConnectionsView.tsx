@@ -1,16 +1,19 @@
 import type { ProcessDump, ConnectionSnapshot } from "../types";
 import { fmtAge, fmtBytes, fmtDuration } from "../util";
+import { ResourceLink } from "./ResourceLink";
+import { isActivePath, resourceHref } from "../routes";
 
 interface Props {
   dumps: ProcessDump[];
   filter: string;
+  selectedPath: string;
 }
 
 interface FlatConnection extends ConnectionSnapshot {
   process: string;
 }
 
-export function ConnectionsView({ dumps, filter }: Props) {
+export function ConnectionsView({ dumps, filter, selectedPath }: Props) {
   const conns: FlatConnection[] = [];
   for (const d of dumps) {
     if (!d.roam) continue;
@@ -58,7 +61,14 @@ export function ConnectionsView({ dumps, filter }: Props) {
           {filtered.map((c, i) => (
             <tr key={i}>
               <td class="mono">{c.process}</td>
-              <td class="mono">{c.name}</td>
+              <td class="mono">
+                <ResourceLink
+                  href={resourceHref({ kind: "connection", process: c.process, connection: c.name })}
+                  active={isActivePath(selectedPath, resourceHref({ kind: "connection", process: c.process, connection: c.name }))}
+                >
+                  {c.name}
+                </ResourceLink>
+              </td>
               <td class="mono">{c.peer_name ?? <span class="muted">?</span>}</td>
               <td class="num">{fmtAge(c.age_secs)}</td>
               <td class="num">{c.in_flight.length}</td>

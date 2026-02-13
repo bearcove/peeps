@@ -1,9 +1,12 @@
 import type { ProcessDump } from "../types";
 import { fmtAge, classNames } from "../util";
+import { ResourceLink } from "./ResourceLink";
+import { isActivePath, resourceHref } from "../routes";
 
 interface Props {
   dumps: ProcessDump[];
   filter: string;
+  selectedPath: string;
 }
 
 function stateClass(state: string): string {
@@ -26,16 +29,17 @@ function stateClass(state: string): string {
   }
 }
 
-function taskRef(id: number | null, name: string | null) {
+function taskRef(process: string, id: number | null, name: string | null, selectedPath: string) {
   if (id == null) return <span class="muted">{"\u2014"}</span>;
+  const href = resourceHref({ kind: "task", process, taskId: id });
   return (
-    <span class="mono">
+    <ResourceLink href={href} active={isActivePath(selectedPath, href)}>
       {name ?? ""} (#{id})
-    </span>
+    </ResourceLink>
   );
 }
 
-export function SyncView({ dumps, filter }: Props) {
+export function SyncView({ dumps, filter, selectedPath }: Props) {
   const q = filter.toLowerCase();
 
   const mpsc: { process: string; ch: (typeof dumps)[0]["sync"] extends infer S ? S extends { mpsc_channels: infer C } ? C extends (infer T)[] ? T : never : never : never }[] = [];
@@ -89,7 +93,14 @@ export function SyncView({ dumps, filter }: Props) {
                     )}
                   >
                     <td class="mono">{m.process}</td>
-                    <td class="mono">{m.ch.name}</td>
+                    <td class="mono">
+                      <ResourceLink
+                        href={resourceHref({ kind: "mpsc", process: m.process, name: m.ch.name })}
+                        active={isActivePath(selectedPath, resourceHref({ kind: "mpsc", process: m.process, name: m.ch.name }))}
+                      >
+                        {m.ch.name}
+                      </ResourceLink>
+                    </td>
                     <td class="mono">
                       {m.ch.bounded ? `bounded(${m.ch.capacity})` : "unbounded"}
                     </td>
@@ -100,7 +111,7 @@ export function SyncView({ dumps, filter }: Props) {
                       {m.ch.send_waiters}
                     </td>
                     <td class="num">{fmtAge(m.ch.age_secs)}</td>
-                    <td>{taskRef(m.ch.creator_task_id, m.ch.creator_task_name)}</td>
+                    <td>{taskRef(m.process, m.ch.creator_task_id, m.ch.creator_task_name, selectedPath)}</td>
                   </tr>
                 ))}
             </tbody>
@@ -127,14 +138,21 @@ export function SyncView({ dumps, filter }: Props) {
                 .map((o, i) => (
                   <tr key={i}>
                     <td class="mono">{o.process}</td>
-                    <td class="mono">{o.ch.name}</td>
+                    <td class="mono">
+                      <ResourceLink
+                        href={resourceHref({ kind: "oneshot", process: o.process, name: o.ch.name })}
+                        active={isActivePath(selectedPath, resourceHref({ kind: "oneshot", process: o.process, name: o.ch.name }))}
+                      >
+                        {o.ch.name}
+                      </ResourceLink>
+                    </td>
                     <td>
                       <span class={classNames("state-badge", stateClass(o.ch.state))}>
                         {o.ch.state}
                       </span>
                     </td>
                     <td class="num">{fmtAge(o.ch.age_secs)}</td>
-                    <td>{taskRef(o.ch.creator_task_id, o.ch.creator_task_name)}</td>
+                    <td>{taskRef(o.process, o.ch.creator_task_id, o.ch.creator_task_name, selectedPath)}</td>
                   </tr>
                 ))}
             </tbody>
@@ -162,11 +180,18 @@ export function SyncView({ dumps, filter }: Props) {
                 .map((w, i) => (
                   <tr key={i}>
                     <td class="mono">{w.process}</td>
-                    <td class="mono">{w.ch.name}</td>
+                    <td class="mono">
+                      <ResourceLink
+                        href={resourceHref({ kind: "watch", process: w.process, name: w.ch.name })}
+                        active={isActivePath(selectedPath, resourceHref({ kind: "watch", process: w.process, name: w.ch.name }))}
+                      >
+                        {w.ch.name}
+                      </ResourceLink>
+                    </td>
                     <td class="num">{w.ch.changes}</td>
                     <td class="num">{w.ch.receiver_count}</td>
                     <td class="num">{fmtAge(w.ch.age_secs)}</td>
-                    <td>{taskRef(w.ch.creator_task_id, w.ch.creator_task_name)}</td>
+                    <td>{taskRef(w.process, w.ch.creator_task_id, w.ch.creator_task_name, selectedPath)}</td>
                   </tr>
                 ))}
             </tbody>
@@ -193,7 +218,14 @@ export function SyncView({ dumps, filter }: Props) {
                 .map((o, i) => (
                   <tr key={i}>
                     <td class="mono">{o.process}</td>
-                    <td class="mono">{o.ch.name}</td>
+                    <td class="mono">
+                      <ResourceLink
+                        href={resourceHref({ kind: "once_cell", process: o.process, name: o.ch.name })}
+                        active={isActivePath(selectedPath, resourceHref({ kind: "once_cell", process: o.process, name: o.ch.name }))}
+                      >
+                        {o.ch.name}
+                      </ResourceLink>
+                    </td>
                     <td>
                       <span class={classNames("state-badge", stateClass(o.ch.state))}>
                         {o.ch.state}

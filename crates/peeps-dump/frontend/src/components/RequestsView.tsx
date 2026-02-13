@@ -1,10 +1,13 @@
 import type { ProcessDump, RequestSnapshot } from "../types";
 import { fmtDuration, classNames } from "../util";
 import { Expandable } from "./Expandable";
+import { ResourceLink } from "./ResourceLink";
+import { isActivePath, resourceHref } from "../routes";
 
 interface Props {
   dumps: ProcessDump[];
   filter: string;
+  selectedPath: string;
 }
 
 interface FlatRequest extends RequestSnapshot {
@@ -19,7 +22,7 @@ function rowSeverity(r: FlatRequest): string {
   return "";
 }
 
-export function RequestsView({ dumps, filter }: Props) {
+export function RequestsView({ dumps, filter, selectedPath }: Props) {
   const requests: FlatRequest[] = [];
   for (const d of dumps) {
     if (!d.roam) continue;
@@ -84,9 +87,36 @@ export function RequestsView({ dumps, filter }: Props) {
                 </span>
               </td>
               <td class="mono">{r.process}</td>
-              <td class="mono">{r.method_name ?? `method_${r.method_id}`}</td>
+              <td class="mono">
+                <ResourceLink
+                  href={resourceHref({
+                    kind: "request",
+                    process: r.process,
+                    connection: r.connection,
+                    requestId: r.request_id,
+                  })}
+                  active={isActivePath(
+                    selectedPath,
+                    resourceHref({
+                      kind: "request",
+                      process: r.process,
+                      connection: r.connection,
+                      requestId: r.request_id,
+                    }),
+                  )}
+                >
+                  {r.method_name ?? `method_${r.method_id}`}
+                </ResourceLink>
+              </td>
               <td class="num">{fmtDuration(r.elapsed_secs)}</td>
-              <td class="mono">{r.connection}</td>
+              <td class="mono">
+                <ResourceLink
+                  href={resourceHref({ kind: "connection", process: r.process, connection: r.connection })}
+                  active={isActivePath(selectedPath, resourceHref({ kind: "connection", process: r.process, connection: r.connection }))}
+                >
+                  {r.connection}
+                </ResourceLink>
+              </td>
               <td class="mono">{r.peer}</td>
               <td class="num">{r.request_id}</td>
               <td>

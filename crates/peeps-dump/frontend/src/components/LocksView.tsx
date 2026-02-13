@@ -1,17 +1,20 @@
 import type { ProcessDump, LockInfoSnapshot } from "../types";
 import { fmtDuration } from "../util";
 import { Expandable } from "./Expandable";
+import { ResourceLink } from "./ResourceLink";
+import { isActivePath, resourceHref } from "../routes";
 
 interface Props {
   dumps: ProcessDump[];
   filter: string;
+  selectedPath: string;
 }
 
 interface FlatLock extends LockInfoSnapshot {
   process: string;
 }
 
-export function LocksView({ dumps, filter }: Props) {
+export function LocksView({ dumps, filter, selectedPath }: Props) {
   const locks: FlatLock[] = [];
   for (const d of dumps) {
     if (!d.locks) continue;
@@ -44,7 +47,14 @@ export function LocksView({ dumps, filter }: Props) {
           <div class="card-head">
             <span class="mono">{l.process}</span>
             <span class="muted">/</span>
-            <span class="mono">{l.name}</span>
+            <span class="mono">
+              <ResourceLink
+                href={resourceHref({ kind: "lock", process: l.process, lock: l.name })}
+                active={isActivePath(selectedPath, resourceHref({ kind: "lock", process: l.process, lock: l.name }))}
+              >
+                {l.name}
+              </ResourceLink>
+            </span>
             <span class="muted" style="margin-left: auto">
               {l.acquires} acquires, {l.releases} releases
             </span>
@@ -68,9 +78,12 @@ export function LocksView({ dumps, filter }: Props) {
                     <td class="num">{fmtDuration(h.held_secs)}</td>
                     <td class="mono">
                       {h.task_id != null ? (
-                        <span>
+                        <ResourceLink
+                          href={resourceHref({ kind: "task", process: l.process, taskId: h.task_id })}
+                          active={isActivePath(selectedPath, resourceHref({ kind: "task", process: l.process, taskId: h.task_id }))}
+                        >
                           {h.task_name ?? ""} (#{h.task_id})
-                        </span>
+                        </ResourceLink>
                       ) : (
                         <span class="muted">{"\u2014"}</span>
                       )}
@@ -102,9 +115,12 @@ export function LocksView({ dumps, filter }: Props) {
                     <td class="num">{fmtDuration(w.waiting_secs)}</td>
                     <td class="mono">
                       {w.task_id != null ? (
-                        <span>
+                        <ResourceLink
+                          href={resourceHref({ kind: "task", process: l.process, taskId: w.task_id })}
+                          active={isActivePath(selectedPath, resourceHref({ kind: "task", process: l.process, taskId: w.task_id }))}
+                        >
                           {w.task_name ?? ""} (#{w.task_id})
-                        </span>
+                        </ResourceLink>
                       ) : (
                         <span class="muted">{"\u2014"}</span>
                       )}

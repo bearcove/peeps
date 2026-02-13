@@ -1,12 +1,15 @@
 import type { ProcessDump } from "../types";
 import { fmtBytes } from "../util";
+import { ResourceLink } from "./ResourceLink";
+import { isActivePath, resourceHref } from "../routes";
 
 interface Props {
   dumps: ProcessDump[];
   filter: string;
+  selectedPath: string;
 }
 
-export function ShmView({ dumps, filter }: Props) {
+export function ShmView({ dumps, filter, selectedPath }: Props) {
   const q = filter.toLowerCase();
 
   const segments: { process: string; seg: (typeof dumps)[0]["shm"] extends infer S ? S extends { segments: infer C } ? C extends (infer T)[] ? T : never : never : never }[] = [];
@@ -40,7 +43,25 @@ export function ShmView({ dumps, filter }: Props) {
           <div class="card-head">
             <span class="mono">{s.process}</span>
             <span class="muted">/</span>
-            <span class="mono">{s.seg.segment_path ?? "anonymous"}</span>
+            <span class="mono">
+              <ResourceLink
+                href={resourceHref({
+                  kind: "shm_segment",
+                  process: s.process,
+                  segment: s.seg.segment_path ?? "anonymous",
+                })}
+                active={isActivePath(
+                  selectedPath,
+                  resourceHref({
+                    kind: "shm_segment",
+                    process: s.process,
+                    segment: s.seg.segment_path ?? "anonymous",
+                  }),
+                )}
+              >
+                {s.seg.segment_path ?? "anonymous"}
+              </ResourceLink>
+            </span>
             <span class="muted" style="margin-left: auto">
               {fmtBytes(s.seg.current_size)} / {fmtBytes(s.seg.total_size)}
             </span>
@@ -62,7 +83,27 @@ export function ShmView({ dumps, filter }: Props) {
             <tbody>
               {s.seg.peers.map((p) => (
                 <tr key={p.peer_id}>
-                  <td class="num">{p.peer_id}</td>
+                  <td class="num">
+                    <ResourceLink
+                      href={resourceHref({
+                        kind: "shm_peer",
+                        process: s.process,
+                        segment: s.seg.segment_path ?? "anonymous",
+                        peerId: p.peer_id,
+                      })}
+                      active={isActivePath(
+                        selectedPath,
+                        resourceHref({
+                          kind: "shm_peer",
+                          process: s.process,
+                          segment: s.seg.segment_path ?? "anonymous",
+                          peerId: p.peer_id,
+                        }),
+                      )}
+                    >
+                      {p.peer_id}
+                    </ResourceLink>
+                  </td>
                   <td class="mono">{p.name ?? <span class="muted">{"\u2014"}</span>}</td>
                   <td class="mono">{p.state}</td>
                   <td class="num">{fmtBytes(p.bipbuf_capacity)}</td>
