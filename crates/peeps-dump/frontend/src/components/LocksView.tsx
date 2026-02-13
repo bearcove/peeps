@@ -34,6 +34,19 @@ function sortLocksByPriority(a: FlatLock, b: FlatLock): number {
   return contentionScore(b) - contentionScore(a);
 }
 
+function lockSeverity(lock: FlatLock): "danger" | "warn" | "idle" {
+  if (lock.waiters.some((w) => w.waiting_secs > 5)) return "danger";
+  if (lock.waiters.length > 0 || lock.holders.length > 1) return "warn";
+  return "idle";
+}
+
+function lockSeverityBadge(lock: FlatLock) {
+  const severity = lockSeverity(lock);
+  if (severity === "danger") return <span class="state-badge state-dropped">danger</span>;
+  if (severity === "warn") return <span class="state-badge state-pending">warn</span>;
+  return <span class="state-badge state-empty">idle</span>;
+}
+
 export function LocksView({ dumps, filter, selectedPath }: Props) {
   const locks: FlatLock[] = [];
   for (const d of dumps) {
@@ -113,6 +126,7 @@ function LockCard({ lock: l, selectedPath }: { lock: FlatLock; selectedPath: str
         <span class="muted" style="margin-left: auto">
           {l.waiters.length} waiter(s), {l.holders.length} holder(s), {l.acquires} acquires
         </span>
+        {lockSeverityBadge(l)}
       </div>
       {l.holders.length > 0 && (
         <table>
