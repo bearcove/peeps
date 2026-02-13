@@ -1,7 +1,7 @@
 import type { Tab } from "./App";
 
 export type ResourceRef =
-  | { kind: "process"; process: string; pid: number }
+  | { kind: "process"; process: string; pid?: number }
   | { kind: "task"; process: string; taskId: number }
   | { kind: "thread"; process: string; thread: string }
   | { kind: "lock"; process: string; lock: string }
@@ -43,7 +43,9 @@ export function tabFromPath(pathname: string): Tab {
 export function resourceHref(ref: ResourceRef): string {
   switch (ref.kind) {
     case "process":
-      return `/processes/${enc(ref.process)}/${ref.pid}`;
+      return ref.pid != null
+        ? `/processes/${enc(ref.process)}/${ref.pid}`
+        : `/processes/${enc(ref.process)}`;
     case "task":
       return `/tasks/${enc(ref.process)}/${ref.taskId}`;
     case "thread":

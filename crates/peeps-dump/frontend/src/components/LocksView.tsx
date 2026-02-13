@@ -45,12 +45,21 @@ export function LocksView({ dumps, filter, selectedPath }: Props) {
       {filtered.map((l, i) => (
         <div key={i} class="card">
           <div class="card-head">
-            <span class="mono">{l.process}</span>
+            <span class="mono">
+              <ResourceLink
+                href={resourceHref({ kind: "process", process: l.process })}
+                active={isActivePath(selectedPath, resourceHref({ kind: "process", process: l.process }))}
+                kind="process"
+              >
+                {l.process}
+              </ResourceLink>
+            </span>
             <span class="muted">/</span>
             <span class="mono">
               <ResourceLink
                 href={resourceHref({ kind: "lock", process: l.process, lock: l.name })}
                 active={isActivePath(selectedPath, resourceHref({ kind: "lock", process: l.process, lock: l.name }))}
+                kind="lock"
               >
                 {l.name}
               </ResourceLink>
@@ -81,6 +90,7 @@ export function LocksView({ dumps, filter, selectedPath }: Props) {
                         <ResourceLink
                           href={resourceHref({ kind: "task", process: l.process, taskId: h.task_id })}
                           active={isActivePath(selectedPath, resourceHref({ kind: "task", process: l.process, taskId: h.task_id }))}
+                          kind="task"
                         >
                           {h.task_name ?? ""} (#{h.task_id})
                         </ResourceLink>
@@ -118,6 +128,7 @@ export function LocksView({ dumps, filter, selectedPath }: Props) {
                         <ResourceLink
                           href={resourceHref({ kind: "task", process: l.process, taskId: w.task_id })}
                           active={isActivePath(selectedPath, resourceHref({ kind: "task", process: l.process, taskId: w.task_id }))}
+                          kind="task"
                         >
                           {w.task_name ?? ""} (#{w.task_id})
                         </ResourceLink>

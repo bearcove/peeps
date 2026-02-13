@@ -21,6 +21,7 @@ interface TaskInteraction {
   key: string;
   href: string;
   label: string;
+  kind: "lock" | "mpsc" | "oneshot" | "watch";
 }
 
 function stateClass(state: string): string {
@@ -80,6 +81,7 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
             key: `lock:${l.name}:holder`,
             href: lockHref,
             label: `lock ${l.name} (holder)`,
+            kind: "lock",
           });
         }
         for (const w of l.waiters) {
@@ -87,6 +89,7 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
             key: `lock:${l.name}:waiter`,
             href: lockHref,
             label: `lock ${l.name} (waiter)`,
+            kind: "lock",
           });
         }
       }
@@ -98,6 +101,7 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
           key: `mpsc:${ch.name}`,
           href: resourceHref({ kind: "mpsc", process: d.process_name, name: ch.name }),
           label: `mpsc ${ch.name}`,
+          kind: "mpsc",
         });
       }
       for (const ch of d.sync.oneshot_channels) {
@@ -105,6 +109,7 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
           key: `oneshot:${ch.name}`,
           href: resourceHref({ kind: "oneshot", process: d.process_name, name: ch.name }),
           label: `oneshot ${ch.name}`,
+          kind: "oneshot",
         });
       }
       for (const ch of d.sync.watch_channels) {
@@ -112,6 +117,7 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
           key: `watch:${ch.name}`,
           href: resourceHref({ kind: "watch", process: d.process_name, name: ch.name }),
           label: `watch ${ch.name}`,
+          kind: "watch",
         });
       }
     }
@@ -191,11 +197,20 @@ function TaskTable({ tasks, selectedPath }: { tasks: FlatTask[]; selectedPath: s
           {tasks.map((t) => (
             <tr key={`${t.pid}-${t.id}`} class={rowSeverity(t)}>
               <td class="mono">#{t.id}</td>
-              <td class="mono">{t.process}</td>
+              <td class="mono">
+                <ResourceLink
+                  href={resourceHref({ kind: "process", process: t.process, pid: t.pid })}
+                  active={isActivePath(selectedPath, resourceHref({ kind: "process", process: t.process, pid: t.pid }))}
+                  kind="process"
+                >
+                  {t.process}
+                </ResourceLink>
+              </td>
               <td class="mono">
                 <ResourceLink
                   href={resourceHref({ kind: "task", process: t.process, taskId: t.id })}
                   active={isActivePath(selectedPath, resourceHref({ kind: "task", process: t.process, taskId: t.id }))}
+                  kind="task"
                 >
                   {t.name}
                 </ResourceLink>
@@ -211,6 +226,7 @@ function TaskTable({ tasks, selectedPath }: { tasks: FlatTask[]; selectedPath: s
                   <ResourceLink
                     href={resourceHref({ kind: "task", process: t.process, taskId: t.parent_task_id })}
                     active={isActivePath(selectedPath, resourceHref({ kind: "task", process: t.process, taskId: t.parent_task_id }))}
+                    kind="task"
                   >
                     {t.parent_task_name ?? ""} (#{t.parent_task_id})
                   </ResourceLink>
@@ -224,7 +240,7 @@ function TaskTable({ tasks, selectedPath }: { tasks: FlatTask[]; selectedPath: s
                 ) : (
                   <div class="resource-link-list">
                     {t.interactions.map((i) => (
-                      <ResourceLink key={i.key} href={i.href} active={isActivePath(selectedPath, i.href)}>
+                      <ResourceLink key={i.key} href={i.href} active={isActivePath(selectedPath, i.href)} kind={i.kind}>
                         {i.label}
                       </ResourceLink>
                     ))}
@@ -295,6 +311,7 @@ function TreeNode({
           <ResourceLink
             href={resourceHref({ kind: "task", process: t.process, taskId: t.id })}
             active={isActivePath(selectedPath, resourceHref({ kind: "task", process: t.process, taskId: t.id }))}
+            kind="task"
           >
             #{t.id} {t.name}
           </ResourceLink>

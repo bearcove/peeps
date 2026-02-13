@@ -86,7 +86,15 @@ export function RequestsView({ dumps, filter, selectedPath }: Props) {
                   {r.direction === "Outgoing" ? "\u2192" : "\u2190"}
                 </span>
               </td>
-              <td class="mono">{r.process}</td>
+              <td class="mono">
+                <ResourceLink
+                  href={resourceHref({ kind: "process", process: r.process })}
+                  active={isActivePath(selectedPath, resourceHref({ kind: "process", process: r.process }))}
+                  kind="process"
+                >
+                  {r.process}
+                </ResourceLink>
+              </td>
               <td class="mono">
                 <ResourceLink
                   href={resourceHref({
@@ -104,6 +112,7 @@ export function RequestsView({ dumps, filter, selectedPath }: Props) {
                       requestId: r.request_id,
                     }),
                   )}
+                  kind="request"
                 >
                   {r.method_name ?? `method_${r.method_id}`}
                 </ResourceLink>
@@ -113,6 +122,7 @@ export function RequestsView({ dumps, filter, selectedPath }: Props) {
                 <ResourceLink
                   href={resourceHref({ kind: "connection", process: r.process, connection: r.connection })}
                   active={isActivePath(selectedPath, resourceHref({ kind: "connection", process: r.process, connection: r.connection }))}
+                  kind="connection"
                 >
                   {r.connection}
                 </ResourceLink>

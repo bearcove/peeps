@@ -60,11 +60,20 @@ export function ConnectionsView({ dumps, filter, selectedPath }: Props) {
         <tbody>
           {filtered.map((c, i) => (
             <tr key={i}>
-              <td class="mono">{c.process}</td>
+              <td class="mono">
+                <ResourceLink
+                  href={resourceHref({ kind: "process", process: c.process })}
+                  active={isActivePath(selectedPath, resourceHref({ kind: "process", process: c.process }))}
+                  kind="process"
+                >
+                  {c.process}
+                </ResourceLink>
+              </td>
               <td class="mono">
                 <ResourceLink
                   href={resourceHref({ kind: "connection", process: c.process, connection: c.name })}
                   active={isActivePath(selectedPath, resourceHref({ kind: "connection", process: c.process, connection: c.name }))}
+                  kind="connection"
                 >
                   {c.name}
                 </ResourceLink>

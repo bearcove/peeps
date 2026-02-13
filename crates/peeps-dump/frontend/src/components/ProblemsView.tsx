@@ -83,6 +83,34 @@ function issueWaitsOnHref(i: RelationshipIssue): string {
   }
 }
 
+function problemKind(p: Problem): "task" | "thread" | "lock" | "mpsc" | "request" | "shm_segment" {
+  switch (p.category) {
+    case "Tasks":
+      return "task";
+    case "Threads":
+      return "thread";
+    case "Locks":
+      return "lock";
+    case "Channels":
+      return "mpsc";
+    case "RPC":
+      return "request";
+    case "SHM":
+      return "shm_segment";
+  }
+}
+
+function waitsOnKind(i: RelationshipIssue): "lock" | "mpsc" | "request" {
+  switch (i.category) {
+    case "Locks":
+      return "lock";
+    case "Channels":
+      return "mpsc";
+    case "RPC":
+      return "request";
+  }
+}
+
 export function ProblemsView({ dumps, filter, selectedPath }: Props) {
   const allProblems = detectProblems(dumps);
   const allIssues = detectRelationshipIssues(dumps);
@@ -215,10 +243,22 @@ export function ProblemsView({ dumps, filter, selectedPath }: Props) {
                     </span>
                   </td>
                   <td class="mono">{i.category}</td>
-                  <td class="mono">{i.process}</td>
+                  <td class="mono">
+                    <ResourceLink
+                      href={resourceHref({ kind: "process", process: i.process })}
+                      active={isActivePath(selectedPath, resourceHref({ kind: "process", process: i.process }))}
+                      kind="process"
+                    >
+                      {i.process}
+                    </ResourceLink>
+                  </td>
                   <td class="mono">{i.blocked}</td>
                   <td class="mono">
-                    <ResourceLink href={issueWaitsOnHref(i)} active={isActivePath(selectedPath, issueWaitsOnHref(i))}>
+                    <ResourceLink
+                      href={issueWaitsOnHref(i)}
+                      active={isActivePath(selectedPath, issueWaitsOnHref(i))}
+                      kind={waitsOnKind(i)}
+                    >
                       {i.waitsOn}
                     </ResourceLink>
                   </td>
@@ -272,9 +312,21 @@ export function ProblemsView({ dumps, filter, selectedPath }: Props) {
                         {p.severity}
                       </span>
                     </td>
-                    <td class="mono">{p.process}</td>
                     <td class="mono">
-                      <ResourceLink href={problemHref(p)} active={isActivePath(selectedPath, problemHref(p))}>
+                      <ResourceLink
+                        href={resourceHref({ kind: "process", process: p.process })}
+                        active={isActivePath(selectedPath, resourceHref({ kind: "process", process: p.process }))}
+                        kind="process"
+                      >
+                        {p.process}
+                      </ResourceLink>
+                    </td>
+                    <td class="mono">
+                      <ResourceLink
+                        href={problemHref(p)}
+                        active={isActivePath(selectedPath, problemHref(p))}
+                        kind={problemKind(p)}
+                      >
                         {p.resource}
                       </ResourceLink>
                     </td>

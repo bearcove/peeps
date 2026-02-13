@@ -63,11 +63,20 @@ export function ThreadsView({ dumps, filter, selectedPath }: Props) {
         <tbody>
           {filtered.map((t, i) => (
             <tr key={i} class={rowSeverity(t)}>
-              <td class="mono">{t.process}</td>
+              <td class="mono">
+                <ResourceLink
+                  href={resourceHref({ kind: "process", process: t.process })}
+                  active={isActivePath(selectedPath, resourceHref({ kind: "process", process: t.process }))}
+                  kind="process"
+                >
+                  {t.process}
+                </ResourceLink>
+              </td>
               <td class="mono">
                 <ResourceLink
                   href={resourceHref({ kind: "thread", process: t.process, thread: t.name })}
                   active={isActivePath(selectedPath, resourceHref({ kind: "thread", process: t.process, thread: t.name }))}
+                  kind="thread"
                 >
                   {t.name}
                 </ResourceLink>

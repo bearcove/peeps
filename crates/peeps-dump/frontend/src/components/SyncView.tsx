@@ -33,7 +33,7 @@ function taskRef(process: string, id: number | null, name: string | null, select
   if (id == null) return <span class="muted">{"\u2014"}</span>;
   const href = resourceHref({ kind: "task", process, taskId: id });
   return (
-    <ResourceLink href={href} active={isActivePath(selectedPath, href)}>
+    <ResourceLink href={href} active={isActivePath(selectedPath, href)} kind="task">
       {name ?? ""} (#{id})
     </ResourceLink>
   );
@@ -92,11 +92,20 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
                       (m.ch.sender_closed || m.ch.receiver_closed) && "severity-danger"
                     )}
                   >
-                    <td class="mono">{m.process}</td>
+                    <td class="mono">
+                      <ResourceLink
+                        href={resourceHref({ kind: "process", process: m.process })}
+                        active={isActivePath(selectedPath, resourceHref({ kind: "process", process: m.process }))}
+                        kind="process"
+                      >
+                        {m.process}
+                      </ResourceLink>
+                    </td>
                     <td class="mono">
                       <ResourceLink
                         href={resourceHref({ kind: "mpsc", process: m.process, name: m.ch.name })}
                         active={isActivePath(selectedPath, resourceHref({ kind: "mpsc", process: m.process, name: m.ch.name }))}
+                        kind="mpsc"
                       >
                         {m.ch.name}
                       </ResourceLink>
@@ -137,11 +146,20 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
                 .filter((o) => filterMatch(o.process, o.ch.name))
                 .map((o, i) => (
                   <tr key={i}>
-                    <td class="mono">{o.process}</td>
+                    <td class="mono">
+                      <ResourceLink
+                        href={resourceHref({ kind: "process", process: o.process })}
+                        active={isActivePath(selectedPath, resourceHref({ kind: "process", process: o.process }))}
+                        kind="process"
+                      >
+                        {o.process}
+                      </ResourceLink>
+                    </td>
                     <td class="mono">
                       <ResourceLink
                         href={resourceHref({ kind: "oneshot", process: o.process, name: o.ch.name })}
                         active={isActivePath(selectedPath, resourceHref({ kind: "oneshot", process: o.process, name: o.ch.name }))}
+                        kind="oneshot"
                       >
                         {o.ch.name}
                       </ResourceLink>
@@ -179,11 +197,20 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
                 .filter((w) => filterMatch(w.process, w.ch.name))
                 .map((w, i) => (
                   <tr key={i}>
-                    <td class="mono">{w.process}</td>
+                    <td class="mono">
+                      <ResourceLink
+                        href={resourceHref({ kind: "process", process: w.process })}
+                        active={isActivePath(selectedPath, resourceHref({ kind: "process", process: w.process }))}
+                        kind="process"
+                      >
+                        {w.process}
+                      </ResourceLink>
+                    </td>
                     <td class="mono">
                       <ResourceLink
                         href={resourceHref({ kind: "watch", process: w.process, name: w.ch.name })}
                         active={isActivePath(selectedPath, resourceHref({ kind: "watch", process: w.process, name: w.ch.name }))}
+                        kind="watch"
                       >
                         {w.ch.name}
                       </ResourceLink>
@@ -217,11 +244,20 @@ export function SyncView({ dumps, filter, selectedPath }: Props) {
                 .filter((o) => filterMatch(o.process, o.ch.name))
                 .map((o, i) => (
                   <tr key={i}>
-                    <td class="mono">{o.process}</td>
+                    <td class="mono">
+                      <ResourceLink
+                        href={resourceHref({ kind: "process", process: o.process })}
+                        active={isActivePath(selectedPath, resourceHref({ kind: "process", process: o.process }))}
+                        kind="process"
+                      >
+                        {o.process}
+                      </ResourceLink>
+                    </td>
                     <td class="mono">
                       <ResourceLink
                         href={resourceHref({ kind: "once_cell", process: o.process, name: o.ch.name })}
                         active={isActivePath(selectedPath, resourceHref({ kind: "once_cell", process: o.process, name: o.ch.name }))}
+                        kind="once_cell"
                       >
                         {o.ch.name}
                       </ResourceLink>

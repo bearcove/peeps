@@ -41,7 +41,15 @@ export function ShmView({ dumps, filter, selectedPath }: Props) {
       {filtered.map((s, i) => (
         <div key={i} class="card" style="margin-bottom: 16px">
           <div class="card-head">
-            <span class="mono">{s.process}</span>
+            <span class="mono">
+              <ResourceLink
+                href={resourceHref({ kind: "process", process: s.process })}
+                active={isActivePath(selectedPath, resourceHref({ kind: "process", process: s.process }))}
+                kind="process"
+              >
+                {s.process}
+              </ResourceLink>
+            </span>
             <span class="muted">/</span>
             <span class="mono">
               <ResourceLink
@@ -58,6 +66,7 @@ export function ShmView({ dumps, filter, selectedPath }: Props) {
                     segment: s.seg.segment_path ?? "anonymous",
                   }),
                 )}
+                kind="shm_segment"
               >
                 {s.seg.segment_path ?? "anonymous"}
               </ResourceLink>
@@ -100,6 +109,7 @@ export function ShmView({ dumps, filter, selectedPath }: Props) {
                           peerId: p.peer_id,
                         }),
                       )}
+                      kind="shm_peer"
                     >
                       {p.peer_id}
                     </ResourceLink>

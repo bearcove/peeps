@@ -723,22 +723,40 @@ tbody tr.severity-warn:hover td {
   gap: 4px;
   color: var(--blue);
   text-decoration: none;
-  border-bottom: 1px dashed transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--blue-bg);
+  padding: 1px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  min-width: 0;
 }
 
 .resource-link:hover {
   color: var(--fg);
-  border-bottom-color: var(--blue);
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue-bg) 70%, transparent);
 }
 
 .resource-link.active {
   color: var(--purple);
-  border-bottom-color: var(--purple);
+  border-color: var(--purple);
+  background: var(--purple-bg);
+}
+
+.resource-link-label {
+  max-width: 52ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .resource-link-icon {
-  font-size: 10px;
+  width: 12px;
+  height: 12px;
   color: var(--fg-muted);
+  flex: 0 0 auto;
 }
 
 .resource-link-list {

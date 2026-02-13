@@ -63,6 +63,7 @@ function ProcessCard({ dump: d, selectedPath }: { dump: ProcessDump; selectedPat
           <ResourceLink
             href={resourceHref({ kind: "process", process: d.process_name, pid: d.pid })}
             active={isActivePath(selectedPath, resourceHref({ kind: "process", process: d.process_name, pid: d.pid }))}
+            kind="process"
           >
             {d.process_name}
           </ResourceLink>
