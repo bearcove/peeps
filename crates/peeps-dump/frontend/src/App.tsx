@@ -160,7 +160,7 @@ export function App() {
         dumps={dumps}
       />
       <div class="content">
-        {tab === "problems" && <ProblemsView dumps={dumps} filter={filter} />}
+        {tab === "problems" && <ProblemsView dumps={dumps} filter={filter} selectedPath={path} />}
         {tab === "tasks" && <TasksView dumps={dumps} filter={filter} selectedPath={path} />}
         {tab === "threads" && <ThreadsView dumps={dumps} filter={filter} selectedPath={path} />}
         {tab === "locks" && <LocksView dumps={dumps} filter={filter} selectedPath={path} />}

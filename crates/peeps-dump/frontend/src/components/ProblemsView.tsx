@@ -10,10 +10,13 @@ import {
 import { Expandable } from "./Expandable";
 import { CausalGraph } from "./CausalGraph";
 import { classNames } from "../util";
+import { isActivePath, resourceHref, tabPath } from "../routes";
+import { ResourceLink } from "./ResourceLink";
 
 interface Props {
   dumps: ProcessDump[];
   filter: string;
+  selectedPath: string;
 }
 
 const CATEGORY_ORDER: ProblemCategory[] = [
@@ -45,7 +48,42 @@ function matchesIssue(i: RelationshipIssue, lq: string): boolean {
   );
 }
 
-export function ProblemsView({ dumps, filter }: Props) {
+function problemHref(p: Problem): string {
+  switch (p.category) {
+    case "Threads":
+      return resourceHref({ kind: "thread", process: p.process, thread: p.resource });
+    case "Locks":
+      return resourceHref({ kind: "lock", process: p.process, lock: p.resource });
+    case "Channels":
+      return tabPath("sync");
+    case "RPC":
+      return tabPath("requests");
+    case "SHM":
+      return tabPath("shm");
+    case "Tasks":
+      return tabPath("tasks");
+  }
+}
+
+function issueWaitsOnHref(i: RelationshipIssue): string {
+  switch (i.category) {
+    case "Locks":
+      if (i.waitsOn.startsWith("lock:")) {
+        return resourceHref({
+          kind: "lock",
+          process: i.process,
+          lock: i.waitsOn.slice("lock:".length),
+        });
+      }
+      return tabPath("locks");
+    case "Channels":
+      return tabPath("sync");
+    case "RPC":
+      return tabPath("requests");
+  }
+}
+
+export function ProblemsView({ dumps, filter, selectedPath }: Props) {
   const allProblems = detectProblems(dumps);
   const allIssues = detectRelationshipIssues(dumps);
 
@@ -179,7 +217,11 @@ export function ProblemsView({ dumps, filter }: Props) {
                   <td class="mono">{i.category}</td>
                   <td class="mono">{i.process}</td>
                   <td class="mono">{i.blocked}</td>
-                  <td class="mono">{i.waitsOn}</td>
+                  <td class="mono">
+                    <ResourceLink href={issueWaitsOnHref(i)} active={isActivePath(selectedPath, issueWaitsOnHref(i))}>
+                      {i.waitsOn}
+                    </ResourceLink>
+                  </td>
                   <td class="mono">{i.owner ?? "—"}</td>
                   <td>
                     {i.description}
@@ -231,7 +273,11 @@ export function ProblemsView({ dumps, filter }: Props) {
                       </span>
                     </td>
                     <td class="mono">{p.process}</td>
-                    <td class="mono">{p.resource}</td>
+                    <td class="mono">
+                      <ResourceLink href={problemHref(p)} active={isActivePath(selectedPath, problemHref(p))}>
+                        {p.resource}
+                      </ResourceLink>
+                    </td>
                     <td>{p.description}</td>
                     <td class="num">{p.timingLabel}</td>
                     <td>
