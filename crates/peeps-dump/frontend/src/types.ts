@@ -168,6 +168,9 @@ export interface RequestSnapshot {
   method_id: number;
   direction: Direction;
   elapsed_secs: number;
+  task_id: number | null;
+  task_name: string | null;
+  metadata: Record<string, string> | null;
   args: Record<string, string> | null;
   backtrace: string | null;
 }

@@ -251,6 +251,9 @@ pub struct RequestSnapshot {
     pub method_id: u64,
     pub direction: Direction,
     pub elapsed_secs: f64,
+    pub task_id: Option<u64>,
+    pub task_name: Option<String>,
+    pub metadata: Option<HashMap<String, String>>,
     pub args: Option<HashMap<String, String>>,
     pub backtrace: Option<String>,
 }

@@ -66,6 +66,7 @@ export function RequestsView({ dumps, filter, selectedPath }: Props) {
             <th>Dir</th>
             <th>Process</th>
             <th>Method</th>
+            <th>Task</th>
             <th>Elapsed</th>
             <th>Connection</th>
             <th>Peer</th>
@@ -116,6 +117,19 @@ export function RequestsView({ dumps, filter, selectedPath }: Props) {
                 >
                   {r.method_name ?? `method_${r.method_id}`}
                 </ResourceLink>
+              </td>
+              <td class="mono">
+                {r.task_id != null ? (
+                  <ResourceLink
+                    href={resourceHref({ kind: "task", process: r.process, taskId: r.task_id })}
+                    active={isActivePath(selectedPath, resourceHref({ kind: "task", process: r.process, taskId: r.task_id }))}
+                    kind="task"
+                  >
+                    {r.task_name ?? "task"} (#{r.task_id})
+                  </ResourceLink>
+                ) : (
+                  <span class="muted">{"\u2014"}</span>
+                )}
               </td>
               <td class="num">{fmtDuration(r.elapsed_secs)}</td>
               <td class="mono">

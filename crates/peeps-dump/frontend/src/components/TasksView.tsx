@@ -33,6 +33,7 @@ interface TaskRpcInteraction {
   elapsedSecs: number;
   process: string;
   connection: string;
+  match: "task_id" | "backtrace";
 }
 
 function stateClass(state: string): string {
@@ -162,8 +163,25 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
       }
       for (const conn of d.roam.connections) {
         for (const req of conn.in_flight) {
-          if (!req.backtrace) continue;
           const method = req.method_name ?? `method_${req.method_id}`;
+          if (req.task_id != null) {
+            addRpc(d.process_name, req.task_id, {
+              key: `rpc:${conn.name}:${req.request_id}:${req.task_id}`,
+              href: resourceHref({
+                kind: "request",
+                process: d.process_name,
+                connection: conn.name,
+                requestId: req.request_id,
+              }),
+              method,
+              elapsedSecs: req.elapsed_secs,
+              process: d.process_name,
+              connection: conn.name,
+              match: "task_id",
+            });
+            continue;
+          }
+          if (!req.backtrace) continue;
           for (const [taskName, ids] of byName.entries()) {
             if (!req.backtrace.includes(taskName)) continue;
             for (const id of ids) {
@@ -179,6 +197,7 @@ export function TasksView({ dumps, filter, selectedPath }: Props) {
                 elapsedSecs: req.elapsed_secs,
                 process: d.process_name,
                 connection: conn.name,
+                match: "backtrace",
               });
             }
           }
@@ -350,13 +369,14 @@ function TaskDetailCard({
 
         {rpc.length > 0 && (
           <div class="proc-section">
-            <div class="muted" style="margin-bottom: 6px">Likely RPC interactions (backtrace match)</div>
+            <div class="muted" style="margin-bottom: 6px">RPC interactions</div>
             <table>
               <thead>
                 <tr>
                   <th>Method</th>
                   <th>Connection</th>
                   <th>Elapsed</th>
+                  <th>Match</th>
                 </tr>
               </thead>
               <tbody>
@@ -377,6 +397,9 @@ function TaskDetailCard({
                       </ResourceLink>
                     </td>
                     <td class="num">{fmtDuration(r.elapsedSecs)}</td>
+                    <td class="mono">
+                      {r.match === "task_id" ? "task_id" : "backtrace"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
