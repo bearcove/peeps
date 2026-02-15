@@ -52,7 +52,7 @@ fn update_max_wait(max_wait_nanos: &AtomicU64, observed: u64) {
 
 // ── DiagnosticSemaphore ─────────────────────────────────
 
-pub(crate) struct DiagnosticSemaphore {
+pub struct DiagnosticSemaphore {
     inner: Arc<tokio::sync::Semaphore>,
     info: Arc<SemaphoreInfo>,
 }
@@ -67,7 +67,7 @@ impl Clone for DiagnosticSemaphore {
 }
 
 impl DiagnosticSemaphore {
-    pub(crate) fn new(name: impl Into<String>, permits: usize) -> Self {
+    pub fn new(name: impl Into<String>, permits: usize) -> Self {
         let inner = Arc::new(tokio::sync::Semaphore::new(permits));
         let inner_for_snapshot = Arc::clone(&inner);
         let info = Arc::new(SemaphoreInfo {
@@ -87,23 +87,23 @@ impl DiagnosticSemaphore {
         Self { inner, info }
     }
 
-    pub(crate) fn available_permits(&self) -> usize {
+    pub fn available_permits(&self) -> usize {
         self.inner.available_permits()
     }
 
-    pub(crate) fn close(&self) {
+    pub fn close(&self) {
         self.inner.close();
     }
 
-    pub(crate) fn is_closed(&self) -> bool {
+    pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
     }
 
-    pub(crate) fn add_permits(&self, n: usize) {
+    pub fn add_permits(&self, n: usize) {
         self.inner.add_permits(n);
     }
 
-    pub(crate) async fn acquire(
+    pub async fn acquire(
         &self,
     ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
         let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
@@ -141,7 +141,7 @@ impl DiagnosticSemaphore {
         result
     }
 
-    pub(crate) async fn acquire_many(
+    pub async fn acquire_many(
         &self,
         n: u32,
     ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
@@ -180,7 +180,7 @@ impl DiagnosticSemaphore {
         result
     }
 
-    pub(crate) async fn acquire_owned(
+    pub async fn acquire_owned(
         &self,
     ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
         let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
@@ -218,7 +218,7 @@ impl DiagnosticSemaphore {
         result
     }
 
-    pub(crate) async fn acquire_many_owned(
+    pub async fn acquire_many_owned(
         &self,
         n: u32,
     ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
@@ -257,7 +257,7 @@ impl DiagnosticSemaphore {
         result
     }
 
-    pub(crate) fn try_acquire(
+    pub fn try_acquire(
         &self,
     ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
         let result = self.inner.try_acquire();
@@ -267,7 +267,7 @@ impl DiagnosticSemaphore {
         result
     }
 
-    pub(crate) fn try_acquire_many(
+    pub fn try_acquire_many(
         &self,
         n: u32,
     ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
@@ -278,7 +278,7 @@ impl DiagnosticSemaphore {
         result
     }
 
-    pub(crate) fn try_acquire_owned(
+    pub fn try_acquire_owned(
         &self,
     ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
         let result = Arc::clone(&self.inner).try_acquire_owned();
@@ -288,7 +288,7 @@ impl DiagnosticSemaphore {
         result
     }
 
-    pub(crate) fn try_acquire_many_owned(
+    pub fn try_acquire_many_owned(
         &self,
         n: u32,
     ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {

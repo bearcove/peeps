@@ -7,7 +7,7 @@ pub(crate) fn push(_node_id: &str) {}
 pub(crate) fn pop() {}
 
 #[inline(always)]
-pub(crate) fn with_top(_f: impl FnOnce(&str)) {}
+pub fn with_top(_f: impl FnOnce(&str)) {}
 
 #[inline(always)]
 pub(crate) async fn with_stack<F: Future>(future: F) -> F::Output {

@@ -10,7 +10,14 @@ mod disabled;
 #[cfg(feature = "diagnostics")]
 mod enabled;
 
+// Re-export public API items (with_top) for external crates
 #[cfg(not(feature = "diagnostics"))]
-pub(crate) use disabled::*;
+pub use disabled::with_top;
 #[cfg(feature = "diagnostics")]
-pub(crate) use enabled::*;
+pub use enabled::with_top;
+
+// Re-export crate-internal items (push, pop, with_stack)
+#[cfg(not(feature = "diagnostics"))]
+pub(crate) use disabled::{pop, push, with_stack};
+#[cfg(feature = "diagnostics")]
+pub(crate) use enabled::{pop, push, with_stack};

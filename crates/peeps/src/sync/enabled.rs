@@ -1,9 +1,9 @@
-pub(crate) use super::channels::{
+pub use super::channels::{
     channel, oneshot_channel, unbounded_channel, watch_channel, OneshotReceiver, OneshotSender,
     Receiver, Sender, UnboundedReceiver, UnboundedSender, WatchReceiver, WatchSender,
 };
-pub(crate) use super::oncecell::OnceCell;
-pub(crate) use super::semaphore::DiagnosticSemaphore;
+pub use super::oncecell::OnceCell;
+pub use super::semaphore::DiagnosticSemaphore;
 
 pub(crate) fn emit_into_graph(graph: &mut peeps_types::GraphSnapshot) {
     super::channels::emit_channel_nodes(graph);

@@ -101,7 +101,7 @@ fn prune_and_register_watch(info: &Arc<WatchInfo>) {
 
 // ── mpsc bounded ────────────────────────────────────────
 
-pub(crate) struct Sender<T> {
+pub struct Sender<T> {
     inner: tokio::sync::mpsc::Sender<T>,
     info: Arc<MpscInfo>,
 }
@@ -126,7 +126,7 @@ impl<T> Drop for Sender<T> {
 }
 
 impl<T> Sender<T> {
-    pub(crate) async fn send(
+    pub async fn send(
         &self,
         value: T,
     ) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
@@ -148,7 +148,7 @@ impl<T> Sender<T> {
         result
     }
 
-    pub(crate) fn try_send(
+    pub fn try_send(
         &self,
         value: T,
     ) -> Result<(), tokio::sync::mpsc::error::TrySendError<T>> {
@@ -160,20 +160,20 @@ impl<T> Sender<T> {
         result
     }
 
-    pub(crate) fn is_closed(&self) -> bool {
+    pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
     }
 
-    pub(crate) fn capacity(&self) -> usize {
+    pub fn capacity(&self) -> usize {
         self.inner.capacity()
     }
 
-    pub(crate) fn max_capacity(&self) -> usize {
+    pub fn max_capacity(&self) -> usize {
         self.inner.max_capacity()
     }
 }
 
-pub(crate) struct Receiver<T> {
+pub struct Receiver<T> {
     inner: tokio::sync::mpsc::Receiver<T>,
     info: Arc<MpscInfo>,
 }
@@ -185,7 +185,7 @@ impl<T> Drop for Receiver<T> {
 }
 
 impl<T> Receiver<T> {
-    pub(crate) async fn recv(&mut self) -> Option<T> {
+    pub async fn recv(&mut self) -> Option<T> {
         self.info.recv_waiters.fetch_add(1, Ordering::Relaxed);
         let mut edge_src: Option<String> = None;
         crate::stack::with_top(|src| {
@@ -203,7 +203,7 @@ impl<T> Receiver<T> {
         result
     }
 
-    pub(crate) fn try_recv(&mut self) -> Result<T, tokio::sync::mpsc::error::TryRecvError> {
+    pub fn try_recv(&mut self) -> Result<T, tokio::sync::mpsc::error::TryRecvError> {
         let result = self.inner.try_recv();
         if result.is_ok() {
             self.info.received.fetch_add(1, Ordering::Relaxed);
@@ -211,13 +211,13 @@ impl<T> Receiver<T> {
         result
     }
 
-    pub(crate) fn close(&mut self) {
+    pub fn close(&mut self) {
         self.inner.close();
         self.info.receiver_closed.store(1, Ordering::Relaxed);
     }
 }
 
-pub(crate) fn channel<T>(name: impl Into<String>, buffer: usize) -> (Sender<T>, Receiver<T>) {
+pub fn channel<T>(name: impl Into<String>, buffer: usize) -> (Sender<T>, Receiver<T>) {
     let (tx, rx) = tokio::sync::mpsc::channel(buffer);
     let name = name.into();
     let tx_node_id = peeps_types::new_node_id("mpsc_tx");
@@ -250,7 +250,7 @@ pub(crate) fn channel<T>(name: impl Into<String>, buffer: usize) -> (Sender<T>, 
 
 // ── mpsc unbounded ──────────────────────────────────────
 
-pub(crate) struct UnboundedSender<T> {
+pub struct UnboundedSender<T> {
     inner: tokio::sync::mpsc::UnboundedSender<T>,
     info: Arc<MpscInfo>,
 }
@@ -275,7 +275,7 @@ impl<T> Drop for UnboundedSender<T> {
 }
 
 impl<T> UnboundedSender<T> {
-    pub(crate) fn send(
+    pub fn send(
         &self,
         value: T,
     ) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
@@ -287,12 +287,12 @@ impl<T> UnboundedSender<T> {
         result
     }
 
-    pub(crate) fn is_closed(&self) -> bool {
+    pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
     }
 }
 
-pub(crate) struct UnboundedReceiver<T> {
+pub struct UnboundedReceiver<T> {
     inner: tokio::sync::mpsc::UnboundedReceiver<T>,
     info: Arc<MpscInfo>,
 }
@@ -304,7 +304,7 @@ impl<T> Drop for UnboundedReceiver<T> {
 }
 
 impl<T> UnboundedReceiver<T> {
-    pub(crate) async fn recv(&mut self) -> Option<T> {
+    pub async fn recv(&mut self) -> Option<T> {
         self.info.recv_waiters.fetch_add(1, Ordering::Relaxed);
         let mut edge_src: Option<String> = None;
         crate::stack::with_top(|src| {
@@ -322,7 +322,7 @@ impl<T> UnboundedReceiver<T> {
         result
     }
 
-    pub(crate) fn try_recv(&mut self) -> Result<T, tokio::sync::mpsc::error::TryRecvError> {
+    pub fn try_recv(&mut self) -> Result<T, tokio::sync::mpsc::error::TryRecvError> {
         let result = self.inner.try_recv();
         if result.is_ok() {
             self.info.received.fetch_add(1, Ordering::Relaxed);
@@ -330,13 +330,13 @@ impl<T> UnboundedReceiver<T> {
         result
     }
 
-    pub(crate) fn close(&mut self) {
+    pub fn close(&mut self) {
         self.inner.close();
         self.info.receiver_closed.store(1, Ordering::Relaxed);
     }
 }
 
-pub(crate) fn unbounded_channel<T>(
+pub fn unbounded_channel<T>(
     name: impl Into<String>,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -371,7 +371,7 @@ pub(crate) fn unbounded_channel<T>(
 
 // ── oneshot ─────────────────────────────────────────────
 
-pub(crate) struct OneshotSender<T> {
+pub struct OneshotSender<T> {
     inner: Option<tokio::sync::oneshot::Sender<T>>,
     info: Arc<OneshotInfo>,
 }
@@ -393,7 +393,7 @@ impl<T> Drop for OneshotSender<T> {
 }
 
 impl<T> OneshotSender<T> {
-    pub(crate) fn send(mut self, value: T) -> Result<(), T> {
+    pub fn send(mut self, value: T) -> Result<(), T> {
         let inner = self.inner.take().unwrap();
         let result = inner.send(value);
         if result.is_ok() {
@@ -402,12 +402,12 @@ impl<T> OneshotSender<T> {
         result
     }
 
-    pub(crate) fn is_closed(&self) -> bool {
+    pub fn is_closed(&self) -> bool {
         self.inner.as_ref().unwrap().is_closed()
     }
 }
 
-pub(crate) struct OneshotReceiver<T> {
+pub struct OneshotReceiver<T> {
     inner: tokio::sync::oneshot::Receiver<T>,
     info: Arc<OneshotInfo>,
 }
@@ -427,7 +427,7 @@ impl<T> Drop for OneshotReceiver<T> {
 }
 
 impl<T> OneshotReceiver<T> {
-    pub(crate) async fn recv(
+    pub async fn recv(
         mut self,
     ) -> Result<T, tokio::sync::oneshot::error::RecvError> {
         let mut edge_src: Option<String> = None;
@@ -445,7 +445,7 @@ impl<T> OneshotReceiver<T> {
         result
     }
 
-    pub(crate) fn try_recv(
+    pub fn try_recv(
         &mut self,
     ) -> Result<T, tokio::sync::oneshot::error::TryRecvError> {
         let result = self.inner.try_recv();
@@ -456,7 +456,7 @@ impl<T> OneshotReceiver<T> {
     }
 }
 
-pub(crate) fn oneshot_channel<T>(
+pub fn oneshot_channel<T>(
     name: impl Into<String>,
 ) -> (OneshotSender<T>, OneshotReceiver<T>) {
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -482,13 +482,13 @@ pub(crate) fn oneshot_channel<T>(
 
 // ── watch ───────────────────────────────────────────────
 
-pub(crate) struct WatchSender<T> {
+pub struct WatchSender<T> {
     inner: tokio::sync::watch::Sender<T>,
     info: Arc<WatchInfo>,
 }
 
 impl<T> WatchSender<T> {
-    pub(crate) fn send(
+    pub fn send(
         &self,
         value: T,
     ) -> Result<(), tokio::sync::watch::error::SendError<T>> {
@@ -499,12 +499,12 @@ impl<T> WatchSender<T> {
         result
     }
 
-    pub(crate) fn send_modify<F: FnOnce(&mut T)>(&self, modify: F) {
+    pub fn send_modify<F: FnOnce(&mut T)>(&self, modify: F) {
         self.inner.send_modify(modify);
         self.info.changes.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub(crate) fn send_if_modified<F: FnOnce(&mut T) -> bool>(&self, modify: F) -> bool {
+    pub fn send_if_modified<F: FnOnce(&mut T) -> bool>(&self, modify: F) -> bool {
         let modified = self.inner.send_if_modified(modify);
         if modified {
             self.info.changes.fetch_add(1, Ordering::Relaxed);
@@ -512,27 +512,27 @@ impl<T> WatchSender<T> {
         modified
     }
 
-    pub(crate) fn borrow(&self) -> tokio::sync::watch::Ref<'_, T> {
+    pub fn borrow(&self) -> tokio::sync::watch::Ref<'_, T> {
         self.inner.borrow()
     }
 
-    pub(crate) fn receiver_count(&self) -> usize {
+    pub fn receiver_count(&self) -> usize {
         self.inner.receiver_count()
     }
 
-    pub(crate) fn subscribe(&self) -> WatchReceiver<T> {
+    pub fn subscribe(&self) -> WatchReceiver<T> {
         WatchReceiver {
             inner: self.inner.subscribe(),
             _info: Arc::clone(&self.info),
         }
     }
 
-    pub(crate) fn is_closed(&self) -> bool {
+    pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
     }
 }
 
-pub(crate) struct WatchReceiver<T> {
+pub struct WatchReceiver<T> {
     inner: tokio::sync::watch::Receiver<T>,
     _info: Arc<WatchInfo>,
 }
@@ -547,7 +547,7 @@ impl<T> Clone for WatchReceiver<T> {
 }
 
 impl<T> WatchReceiver<T> {
-    pub(crate) async fn changed(
+    pub async fn changed(
         &mut self,
     ) -> Result<(), tokio::sync::watch::error::RecvError> {
         let mut edge_src: Option<String> = None;
@@ -562,20 +562,20 @@ impl<T> WatchReceiver<T> {
         result
     }
 
-    pub(crate) fn borrow(&self) -> tokio::sync::watch::Ref<'_, T> {
+    pub fn borrow(&self) -> tokio::sync::watch::Ref<'_, T> {
         self.inner.borrow()
     }
 
-    pub(crate) fn borrow_and_update(&mut self) -> tokio::sync::watch::Ref<'_, T> {
+    pub fn borrow_and_update(&mut self) -> tokio::sync::watch::Ref<'_, T> {
         self.inner.borrow_and_update()
     }
 
-    pub(crate) fn has_changed(&self) -> Result<bool, tokio::sync::watch::error::RecvError> {
+    pub fn has_changed(&self) -> Result<bool, tokio::sync::watch::error::RecvError> {
         self.inner.has_changed()
     }
 }
 
-pub(crate) fn watch_channel<T: Send + Sync + 'static>(
+pub fn watch_channel<T: Send + Sync + 'static>(
     name: impl Into<String>,
     init: T,
 ) -> (WatchSender<T>, WatchReceiver<T>) {

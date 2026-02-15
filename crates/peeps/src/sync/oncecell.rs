@@ -33,13 +33,13 @@ fn prune_and_register_once_cell(info: &Arc<OnceCellInfo>) {
 
 // ── OnceCell ────────────────────────────────────────────
 
-pub(crate) struct OnceCell<T> {
+pub struct OnceCell<T> {
     inner: tokio::sync::OnceCell<T>,
     info: Arc<OnceCellInfo>,
 }
 
 impl<T> OnceCell<T> {
-    pub(crate) fn new(name: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         let info = Arc::new(OnceCellInfo {
             name: name.into(),
             node_id: peeps_types::new_node_id("oncecell"),
@@ -54,15 +54,15 @@ impl<T> OnceCell<T> {
         }
     }
 
-    pub(crate) fn get(&self) -> Option<&T> {
+    pub fn get(&self) -> Option<&T> {
         self.inner.get()
     }
 
-    pub(crate) fn initialized(&self) -> bool {
+    pub fn initialized(&self) -> bool {
         self.inner.initialized()
     }
 
-    pub(crate) async fn get_or_init<F, Fut>(&self, f: F) -> &T
+    pub async fn get_or_init<F, Fut>(&self, f: F) -> &T
     where
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = T>,
@@ -111,7 +111,7 @@ impl<T> OnceCell<T> {
         result
     }
 
-    pub(crate) async fn get_or_try_init<F, Fut, E>(&self, f: F) -> Result<&T, E>
+    pub async fn get_or_try_init<F, Fut, E>(&self, f: F) -> Result<&T, E>
     where
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Result<T, E>>,
@@ -173,7 +173,7 @@ impl<T> OnceCell<T> {
         result
     }
 
-    pub(crate) fn set(&self, value: T) -> Result<(), T> {
+    pub fn set(&self, value: T) -> Result<(), T> {
         let start = Instant::now();
         self.info
             .state

@@ -13,6 +13,12 @@ mod enabled;
 mod disabled;
 
 #[cfg(feature = "diagnostics")]
-pub(crate) use enabled::*;
+pub use enabled::*;
 #[cfg(not(feature = "diagnostics"))]
-pub(crate) use disabled::*;
+pub use disabled::*;
+
+// emit_into_graph is crate-internal only
+#[cfg(feature = "diagnostics")]
+pub(crate) use enabled::emit_into_graph;
+#[cfg(not(feature = "diagnostics"))]
+pub(crate) use disabled::emit_into_graph;

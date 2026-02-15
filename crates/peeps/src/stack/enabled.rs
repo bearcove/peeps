@@ -31,7 +31,7 @@ pub(crate) fn pop() {
 /// `stack::with_top(|src| registry::edge(src, resource_endpoint_id))`
 ///
 /// No-op if the stack is empty or if called outside a tracked task.
-pub(crate) fn with_top(f: impl FnOnce(&str)) {
+pub fn with_top(f: impl FnOnce(&str)) {
     let _ = STACK.try_with(|stack| {
         let s = stack.borrow();
         if let Some(top) = s.last() {
