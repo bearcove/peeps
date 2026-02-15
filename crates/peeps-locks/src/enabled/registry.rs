@@ -63,7 +63,7 @@ impl LockInfo {
             kind,
             since: Instant::now(),
             backtrace: Backtrace::force_capture(),
-            peeps_task_id: peeps_tasks::current_task_id(),
+            peeps_task_id: peeps_futures::current_task_id(),
         });
         id
     }
@@ -89,7 +89,7 @@ impl LockInfo {
             kind,
             since: Instant::now(),
             backtrace: Backtrace::force_capture(),
-            peeps_task_id: peeps_tasks::current_task_id(),
+            peeps_task_id: peeps_futures::current_task_id(),
         });
 
         self.total_acquires.fetch_add(1, Ordering::Relaxed);

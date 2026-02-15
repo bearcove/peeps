@@ -1,4 +1,3 @@
-
 // ── Diagnostics-enabled implementation ───────────────────
 
 #[cfg(feature = "diagnostics")]
@@ -53,11 +52,10 @@ mod diag {
                 waiters: self.waiters.load(Ordering::Relaxed),
                 acquires,
                 avg_wait_secs,
-                max_wait_secs: self.max_wait_nanos.load(Ordering::Relaxed) as f64
-                    / 1_000_000_000.0,
+                max_wait_secs: self.max_wait_nanos.load(Ordering::Relaxed) as f64 / 1_000_000_000.0,
                 age_secs: now.duration_since(self.created_at).as_secs_f64(),
                 creator_task_id: self.creator_task_id,
-                creator_task_name: self.creator_task_id.and_then(peeps_tasks::task_name),
+                creator_task_name: self.creator_task_id.and_then(peeps_futures::task_name),
                 top_waiter_task_ids,
                 oldest_wait_secs,
             }
@@ -106,7 +104,7 @@ mod diag {
                 max_wait_nanos: AtomicU64::new(0),
                 high_waiters_watermark: AtomicU64::new(0),
                 created_at: Instant::now(),
-                creator_task_id: peeps_tasks::current_task_id(),
+                creator_task_id: peeps_futures::current_task_id(),
                 available_permits: Box::new(move || inner_for_snapshot.available_permits()),
                 active_waiters: Mutex::new(Vec::new()),
             });
@@ -133,18 +131,14 @@ mod diag {
         pub async fn acquire(
             &self,
         ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
-            let task_id = peeps_tasks::current_task_id().unwrap_or(0);
+            let task_id = peeps_futures::current_task_id().unwrap_or(0);
             let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
             update_max_wait(&self.info.high_waiters_watermark, new_waiters);
             let start = Instant::now();
-            self.info
-                .active_waiters
-                .lock()
-                .unwrap()
-                .push(WaiterEntry {
-                    task_id,
-                    started_at: start,
-                });
+            self.info.active_waiters.lock().unwrap().push(WaiterEntry {
+                task_id,
+                started_at: start,
+            });
             let result = self.inner.acquire().await;
             self.info.waiters.fetch_sub(1, Ordering::Relaxed);
             {
@@ -171,18 +165,14 @@ mod diag {
             &self,
             n: u32,
         ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
-            let task_id = peeps_tasks::current_task_id().unwrap_or(0);
+            let task_id = peeps_futures::current_task_id().unwrap_or(0);
             let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
             update_max_wait(&self.info.high_waiters_watermark, new_waiters);
             let start = Instant::now();
-            self.info
-                .active_waiters
-                .lock()
-                .unwrap()
-                .push(WaiterEntry {
-                    task_id,
-                    started_at: start,
-                });
+            self.info.active_waiters.lock().unwrap().push(WaiterEntry {
+                task_id,
+                started_at: start,
+            });
             let result = self.inner.acquire_many(n).await;
             self.info.waiters.fetch_sub(1, Ordering::Relaxed);
             {
@@ -208,18 +198,14 @@ mod diag {
         pub async fn acquire_owned(
             &self,
         ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
-            let task_id = peeps_tasks::current_task_id().unwrap_or(0);
+            let task_id = peeps_futures::current_task_id().unwrap_or(0);
             let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
             update_max_wait(&self.info.high_waiters_watermark, new_waiters);
             let start = Instant::now();
-            self.info
-                .active_waiters
-                .lock()
-                .unwrap()
-                .push(WaiterEntry {
-                    task_id,
-                    started_at: start,
-                });
+            self.info.active_waiters.lock().unwrap().push(WaiterEntry {
+                task_id,
+                started_at: start,
+            });
             let result = Arc::clone(&self.inner).acquire_owned().await;
             self.info.waiters.fetch_sub(1, Ordering::Relaxed);
             {
@@ -246,18 +232,14 @@ mod diag {
             &self,
             n: u32,
         ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
-            let task_id = peeps_tasks::current_task_id().unwrap_or(0);
+            let task_id = peeps_futures::current_task_id().unwrap_or(0);
             let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
             update_max_wait(&self.info.high_waiters_watermark, new_waiters);
             let start = Instant::now();
-            self.info
-                .active_waiters
-                .lock()
-                .unwrap()
-                .push(WaiterEntry {
-                    task_id,
-                    started_at: start,
-                });
+            self.info.active_waiters.lock().unwrap().push(WaiterEntry {
+                task_id,
+                started_at: start,
+            });
             let result = Arc::clone(&self.inner).acquire_many_owned(n).await;
             self.info.waiters.fetch_sub(1, Ordering::Relaxed);
             {

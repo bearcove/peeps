@@ -204,7 +204,7 @@ impl<T> DiagnosticAsyncRwLock<T> {
                         kind: AcquireKind::Read,
                         since: Instant::now(),
                         backtrace: std::backtrace::Backtrace::force_capture(),
-                        peeps_task_id: peeps_tasks::current_task_id(),
+                        peeps_task_id: peeps_futures::current_task_id(),
                     });
                     self.info.total_acquires.fetch_add(1, Ordering::Relaxed);
                     id
@@ -232,7 +232,7 @@ impl<T> DiagnosticAsyncRwLock<T> {
                         kind: AcquireKind::Write,
                         since: Instant::now(),
                         backtrace: std::backtrace::Backtrace::force_capture(),
-                        peeps_task_id: peeps_tasks::current_task_id(),
+                        peeps_task_id: peeps_futures::current_task_id(),
                     });
                     self.info.total_acquires.fetch_add(1, Ordering::Relaxed);
                     id
@@ -323,9 +323,7 @@ impl<T> DiagnosticAsyncMutex<T> {
         }
     }
 
-    pub fn try_lock(
-        &self,
-    ) -> Result<DiagnosticAsyncMutexGuard<'_, T>, tokio::sync::TryLockError> {
+    pub fn try_lock(&self) -> Result<DiagnosticAsyncMutexGuard<'_, T>, tokio::sync::TryLockError> {
         match self.inner.try_lock() {
             Ok(guard) => {
                 let holder_id = {
@@ -336,7 +334,7 @@ impl<T> DiagnosticAsyncMutex<T> {
                         kind: AcquireKind::Mutex,
                         since: Instant::now(),
                         backtrace: std::backtrace::Backtrace::force_capture(),
-                        peeps_task_id: peeps_tasks::current_task_id(),
+                        peeps_task_id: peeps_futures::current_task_id(),
                     });
                     self.info.total_acquires.fetch_add(1, Ordering::Relaxed);
                     id

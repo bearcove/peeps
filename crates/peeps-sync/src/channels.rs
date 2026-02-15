@@ -1,4 +1,3 @@
-
 // ══════════════════════════════════════════════════════════
 // Diagnostics-enabled implementation
 // ══════════════════════════════════════════════════════════
@@ -60,7 +59,7 @@ mod diag {
                 receiver_closed: self.receiver_closed.load(Ordering::Relaxed) != 0,
                 age_secs: now.duration_since(self.created_at).as_secs_f64(),
                 creator_task_id: self.creator_task_id,
-                creator_task_name: self.creator_task_id.and_then(peeps_tasks::task_name),
+                creator_task_name: self.creator_task_id.and_then(peeps_futures::task_name),
             }
         }
 
@@ -99,10 +98,7 @@ mod diag {
     }
 
     impl<T> Sender<T> {
-        pub async fn send(
-            &self,
-            value: T,
-        ) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
+        pub async fn send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
             self.info.send_waiters.fetch_add(1, Ordering::Relaxed);
             let result = self.inner.send(value).await;
             self.info.send_waiters.fetch_sub(1, Ordering::Relaxed);
@@ -113,10 +109,7 @@ mod diag {
             result
         }
 
-        pub fn try_send(
-            &self,
-            value: T,
-        ) -> Result<(), tokio::sync::mpsc::error::TrySendError<T>> {
+        pub fn try_send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::TrySendError<T>> {
             let result = self.inner.try_send(value);
             if result.is_ok() {
                 self.info.sent.fetch_add(1, Ordering::Relaxed);
@@ -189,7 +182,7 @@ mod diag {
             receiver_closed: AtomicU8::new(0),
             high_watermark: AtomicU64::new(0),
             created_at: Instant::now(),
-            creator_task_id: peeps_tasks::current_task_id(),
+            creator_task_id: peeps_futures::current_task_id(),
         });
         crate::registry::prune_and_register_mpsc(&info);
         (
@@ -295,7 +288,7 @@ mod diag {
             receiver_closed: AtomicU8::new(0),
             high_watermark: AtomicU64::new(0),
             created_at: Instant::now(),
-            creator_task_id: peeps_tasks::current_task_id(),
+            creator_task_id: peeps_futures::current_task_id(),
         });
         crate::registry::prune_and_register_mpsc(&info);
         (
@@ -336,7 +329,7 @@ mod diag {
                 state,
                 age_secs: now.duration_since(self.created_at).as_secs_f64(),
                 creator_task_id: self.creator_task_id,
-                creator_task_name: self.creator_task_id.and_then(peeps_tasks::task_name),
+                creator_task_name: self.creator_task_id.and_then(peeps_futures::task_name),
             }
         }
     }
@@ -414,15 +407,13 @@ mod diag {
         }
     }
 
-    pub fn oneshot_channel<T>(
-        name: impl Into<String>,
-    ) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let info = Arc::new(OneshotInfo {
             name: name.into(),
             state: AtomicU8::new(ONESHOT_PENDING),
             created_at: Instant::now(),
-            creator_task_id: peeps_tasks::current_task_id(),
+            creator_task_id: peeps_futures::current_task_id(),
         });
         crate::registry::prune_and_register_oneshot(&info);
         (
@@ -452,7 +443,7 @@ mod diag {
                 receiver_count: (self.receiver_count)() as u64,
                 age_secs: now.duration_since(self.created_at).as_secs_f64(),
                 creator_task_id: self.creator_task_id,
-                creator_task_name: self.creator_task_id.and_then(peeps_tasks::task_name),
+                creator_task_name: self.creator_task_id.and_then(peeps_futures::task_name),
             }
         }
     }
@@ -463,10 +454,7 @@ mod diag {
     }
 
     impl<T> WatchSender<T> {
-        pub fn send(
-            &self,
-            value: T,
-        ) -> Result<(), tokio::sync::watch::error::SendError<T>> {
+        pub fn send(&self, value: T) -> Result<(), tokio::sync::watch::error::SendError<T>> {
             let result = self.inner.send(value);
             if result.is_ok() {
                 self.info.changes.fetch_add(1, Ordering::Relaxed);
@@ -522,9 +510,7 @@ mod diag {
     }
 
     impl<T> WatchReceiver<T> {
-        pub async fn changed(
-            &mut self,
-        ) -> Result<(), tokio::sync::watch::error::RecvError> {
+        pub async fn changed(&mut self) -> Result<(), tokio::sync::watch::error::RecvError> {
             self.inner.changed().await
         }
 
@@ -551,7 +537,7 @@ mod diag {
             name: name.into(),
             changes: AtomicU64::new(0),
             created_at: Instant::now(),
-            creator_task_id: peeps_tasks::current_task_id(),
+            creator_task_id: peeps_futures::current_task_id(),
             receiver_count: Box::new(move || tx_clone.receiver_count()),
         });
         crate::registry::prune_and_register_watch(&info);
@@ -585,18 +571,12 @@ mod stub {
 
     impl<T> Sender<T> {
         #[inline]
-        pub async fn send(
-            &self,
-            value: T,
-        ) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
+        pub async fn send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
             self.0.send(value).await
         }
 
         #[inline]
-        pub fn try_send(
-            &self,
-            value: T,
-        ) -> Result<(), tokio::sync::mpsc::error::TrySendError<T>> {
+        pub fn try_send(&self, value: T) -> Result<(), tokio::sync::mpsc::error::TrySendError<T>> {
             self.0.try_send(value)
         }
 
@@ -722,9 +702,7 @@ mod stub {
     }
 
     #[inline]
-    pub fn oneshot_channel<T>(
-        _name: impl Into<String>,
-    ) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    pub fn oneshot_channel<T>(_name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
         let (tx, rx) = tokio::sync::oneshot::channel();
         (OneshotSender(tx), OneshotReceiver(rx))
     }
@@ -735,10 +713,7 @@ mod stub {
 
     impl<T> WatchSender<T> {
         #[inline]
-        pub fn send(
-            &self,
-            value: T,
-        ) -> Result<(), tokio::sync::watch::error::SendError<T>> {
+        pub fn send(&self, value: T) -> Result<(), tokio::sync::watch::error::SendError<T>> {
             self.0.send(value)
         }
 
@@ -784,9 +759,7 @@ mod stub {
 
     impl<T> WatchReceiver<T> {
         #[inline]
-        pub async fn changed(
-            &mut self,
-        ) -> Result<(), tokio::sync::watch::error::RecvError> {
+        pub async fn changed(&mut self) -> Result<(), tokio::sync::watch::error::RecvError> {
             self.0.changed().await
         }
 

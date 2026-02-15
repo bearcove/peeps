@@ -9,7 +9,7 @@ pub fn collect_graph(process_name: &str) -> Option<peeps_types::GraphSnapshot> {
     let pid = std::process::id();
     let proc_key = peeps_types::make_proc_key(process_name, pid);
 
-    let mut graph = peeps_tasks::emit_graph(process_name, &proc_key);
+    let mut graph = peeps_futures::emit_graph(process_name, &proc_key);
     let roam = peeps_types::collect_roam_session();
     emit_roam_graph(process_name, &proc_key, &roam, &mut graph);
 

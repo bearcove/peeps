@@ -10,7 +10,7 @@ mod collect;
 mod dashboard_client;
 
 pub use peeps_sync as sync;
-pub use peeps_tasks as tasks;
+pub use peeps_futures as futures;
 pub use peeps_types::{self as types, Diagnostics};
 
 #[cfg(feature = "locks")]
@@ -23,7 +23,7 @@ pub use collect::collect_graph;
 /// Call this once at the start of your program, before spawning any tasks.
 /// This sets up task tracking.
 pub fn init() {
-    peeps_tasks::init_task_tracking();
+    peeps_futures::init_task_tracking();
 }
 
 /// Initialize peeps and start pushing snapshots to a dashboard server.

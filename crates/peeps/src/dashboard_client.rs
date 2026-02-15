@@ -11,7 +11,7 @@ use tracing::{debug, info, warn};
 
 /// Start the background pull loop. Spawns a tracked task that reconnects on failure.
 pub fn start_pull_loop(process_name: String, addr: String) {
-    peeps_tasks::spawn_tracked("peeps_dashboard_pull", async move {
+    peeps_futures::spawn_tracked("peeps_dashboard_pull", async move {
         loop {
             match TcpStream::connect(&addr).await {
                 Ok(stream) => {
