@@ -1,11 +1,11 @@
-//! HTTP API endpoints: POST /api/jump-now, POST /api/sql
+//! HTTP API endpoints: POST /api/jump-now, POST /api/sql, GET /api/validate/:snapshot_id
 //!
 //! SQL enforcement: authorizer, progress handler, hard caps.
 
 use std::path::PathBuf;
 use std::time::Instant;
 
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 use rusqlite::types::Value;
@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use crate::AppState;
+use crate::correctness;
 
 // ── Constants ────────────────────────────────────────────────────
 
@@ -432,4 +433,20 @@ fn sqlite_value_to_json(row: &rusqlite::Row<'_>, idx: usize) -> JsonValue {
         Ok(ValueRef::Blob(_)) => JsonValue::Null,
         Err(_) => JsonValue::Null,
     }
+}
+
+// ── GET /api/validate/:snapshot_id ──────────────────────────────
+
+pub async fn api_validate(
+    State(state): State<AppState>,
+    Path(snapshot_id): Path<i64>,
+) -> Result<Json<correctness::ValidationResult>, (StatusCode, Json<ApiError>)> {
+    let db_path = state.db_path.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = Connection::open(&*db_path)
+            .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("db open: {e}")))?;
+        Ok(Json(correctness::validate_snapshot(&conn, snapshot_id)))
+    })
+    .await
+    .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("join: {e}")))?
 }

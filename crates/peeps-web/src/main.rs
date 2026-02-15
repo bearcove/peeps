@@ -1,4 +1,5 @@
 mod api;
+pub(crate) mod correctness;
 mod projection;
 
 use std::collections::{BTreeSet, HashMap};
@@ -122,6 +123,7 @@ async fn main() {
         .route("/health", get(health))
         .route("/api/jump-now", post(api::api_jump_now))
         .route("/api/sql", post(api::api_sql))
+        .route("/api/validate/{snapshot_id}", get(api::api_validate))
         .with_state(state.clone());
 
     tokio::select! {
