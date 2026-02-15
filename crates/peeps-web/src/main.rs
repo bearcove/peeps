@@ -51,7 +51,7 @@ pub(crate) struct InFlightSnapshot {
 
 use peeps_types::GraphSnapshot;
 
-pub(crate) const DEFAULT_TIMEOUT_MS: i64 = 1500;
+pub(crate) const DEFAULT_TIMEOUT_MS: i64 = 5000;
 const MAX_SNAPSHOTS: i64 = 500;
 const INGEST_EVENTS_RETENTION_DAYS: i64 = 7;
 

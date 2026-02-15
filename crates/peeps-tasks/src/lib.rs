@@ -441,35 +441,42 @@ mod tests {
             .build()
             .unwrap();
         rt.block_on(async {
+            let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+            let notify2 = notify.clone();
             let meta = peep_meta!(
                 "request.id" => MetaValue::U64(42),
                 "request.method" => MetaValue::Static("get_page"),
             );
-            let fut = peepable_with_meta(async { "done" }, "test.resource", meta);
-            let _ = spawn_tracked("meta-task", async move {
+            let handle = spawn_tracked("meta-task", async move {
+                let fut = peepable_with_meta(notify2.notified(), "test.resource", meta);
                 fut.await
-            })
-            .await;
+            });
+
+            // Yield so the task gets polled (future becomes pending)
+            tokio::task::yield_now().await;
+
+            let graph = emit_graph("test-proc-2");
+            let future_node = graph
+                .nodes
+                .iter()
+                .find(|n| n.kind == "future")
+                .expect("should have a future node");
+
+            assert!(future_node.id.starts_with("future:test-proc-2:"));
+
+            let attrs = &future_node.attrs_json;
+            assert!(attrs.contains("\"future_id\":"));
+            assert!(attrs.contains("\"label\":\"test.resource\""));
+            assert!(attrs.contains("\"pending_count\":"));
+            assert!(attrs.contains("\"ready_count\":"));
+            assert!(attrs.contains("\"meta\":{"));
+            assert!(attrs.contains("\"request.id\":\"42\""));
+            assert!(attrs.contains("\"request.method\":\"get_page\""));
+
+            // Unblock the future so the task completes
+            notify.notify_one();
+            let _ = handle.await;
         });
-
-        let graph = emit_graph("test-proc-2");
-        let future_node = graph
-            .nodes
-            .iter()
-            .find(|n| n.kind == "future")
-            .expect("should have a future node");
-
-        assert!(future_node.id.starts_with("future:test-proc-2:"));
-
-        let attrs = &future_node.attrs_json;
-        assert!(attrs.contains("\"future_id\":"));
-        assert!(attrs.contains("\"label\":\"test.resource\""));
-        assert!(attrs.contains("\"pending_count\":"));
-        assert!(attrs.contains("\"ready_count\":"));
-        // meta should contain the metadata we passed
-        assert!(attrs.contains("\"meta\":{"));
-        assert!(attrs.contains("\"request.id\":\"42\""));
-        assert!(attrs.contains("\"request.method\":\"get_page\""));
     }
 
     #[cfg(feature = "diagnostics")]
@@ -482,22 +489,27 @@ mod tests {
             .build()
             .unwrap();
         rt.block_on(async {
-            let fut = peepable(async { "bare" }, "bare.resource");
-            let _ = spawn_tracked("bare-task", async move {
+            let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+            let notify2 = notify.clone();
+            let handle = spawn_tracked("bare-task", async move {
+                let fut = peepable(notify2.notified(), "bare.resource");
                 fut.await
-            })
-            .await;
+            });
+
+            tokio::task::yield_now().await;
+
+            let graph = emit_graph("test-proc-3");
+            let future_node = graph
+                .nodes
+                .iter()
+                .find(|n| n.kind == "future" && n.attrs_json.contains("\"label\":\"bare.resource\""))
+                .expect("should have a future node for bare.resource");
+
+            assert!(future_node.attrs_json.contains("\"meta\":{}"));
+
+            notify.notify_one();
+            let _ = handle.await;
         });
-
-        let graph = emit_graph("test-proc-3");
-        let future_node = graph
-            .nodes
-            .iter()
-            .find(|n| n.kind == "future" && n.attrs_json.contains("\"label\":\"bare.resource\""))
-            .expect("should have a future node for bare.resource");
-
-        // Empty meta should serialize as {}
-        assert!(future_node.attrs_json.contains("\"meta\":{}"));
     }
 
     #[cfg(feature = "diagnostics")]
@@ -510,24 +522,56 @@ mod tests {
             .build()
             .unwrap();
         rt.block_on(async {
-            let fut = peepable(async { 1 }, "edge.test");
-            let _ = spawn_tracked("edge-task", async move {
+            let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+            let notify2 = notify.clone();
+            let handle = spawn_tracked("edge-task", async move {
+                let fut = peepable(notify2.notified(), "edge.test");
+                fut.await
+            });
+
+            tokio::task::yield_now().await;
+
+            let graph = emit_graph("test-proc-4");
+            let edge = graph
+                .edges
+                .iter()
+                .find(|e| e.src_id.starts_with("task:") && e.dst_id.starts_with("future:"))
+                .expect("should have a task→future edge");
+
+            assert_eq!(edge.kind, "needs");
+            assert_eq!(
+                edge.origin,
+                peeps_types::GraphEdgeOrigin::Explicit
+            );
+
+            notify.notify_one();
+            let _ = handle.await;
+        });
+    }
+
+    #[cfg(feature = "diagnostics")]
+    #[test]
+    fn dropped_future_removed_from_graph() {
+        init_task_tracking();
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let fut = peepable(async { "done" }, "ephemeral.resource");
+            let _ = spawn_tracked("ephemeral-task", async move {
                 fut.await
             })
             .await;
+
+            let graph = emit_graph("test-proc-drop");
+            let future_node = graph
+                .nodes
+                .iter()
+                .find(|n| n.kind == "future" && n.attrs_json.contains("\"label\":\"ephemeral.resource\""));
+
+            assert!(future_node.is_none(), "dropped future should not appear in graph");
         });
-
-        let graph = emit_graph("test-proc-4");
-        let edge = graph
-            .edges
-            .iter()
-            .find(|e| e.src_id.starts_with("task:") && e.dst_id.starts_with("future:"))
-            .expect("should have a task→future edge");
-
-        assert_eq!(edge.kind, "needs");
-        assert_eq!(
-            edge.origin,
-            peeps_types::GraphEdgeOrigin::Explicit
-        );
     }
 }
