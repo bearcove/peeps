@@ -674,6 +674,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 let mut attrs = String::with_capacity(384);
                 attrs.push('{');
                 json_kv_str(&mut attrs, "name", name, true);
+                json_kv_str(&mut attrs, "channel_kind", "mpsc", false);
                 json_kv_u64(&mut attrs, "created_at_ns", created_at_ns, false);
                 json_kv_bool(&mut attrs, "closed", sender_closed, false);
                 json_kv_bool(&mut attrs, "bounded", info.bounded, false);
@@ -717,6 +718,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 let mut attrs = String::with_capacity(384);
                 attrs.push('{');
                 json_kv_str(&mut attrs, "name", name, true);
+                json_kv_str(&mut attrs, "channel_kind", "mpsc", false);
                 json_kv_u64(&mut attrs, "created_at_ns", created_at_ns, false);
                 json_kv_bool(&mut attrs, "closed", receiver_closed, false);
                 json_kv_u64(&mut attrs, "recv_waiters", recv_waiters, false);
@@ -772,6 +774,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 let mut attrs = String::with_capacity(256);
                 attrs.push('{');
                 json_kv_str(&mut attrs, "name", name, true);
+                json_kv_str(&mut attrs, "channel_kind", "oneshot", false);
                 json_kv_u64(&mut attrs, "created_at_ns", age_ns, false);
                 json_kv_bool(&mut attrs, "closed", sender_closed, false);
                 json_kv_str(&mut attrs, "state", state_str, false);
@@ -799,6 +802,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 let mut attrs = String::with_capacity(256);
                 attrs.push('{');
                 json_kv_str(&mut attrs, "name", name, true);
+                json_kv_str(&mut attrs, "channel_kind", "oneshot", false);
                 json_kv_u64(&mut attrs, "created_at_ns", age_ns, false);
                 json_kv_bool(&mut attrs, "closed", receiver_closed, false);
                 json_kv_str(&mut attrs, "state", state_str, false);
@@ -844,6 +848,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 let mut attrs = String::with_capacity(256);
                 attrs.push('{');
                 json_kv_str(&mut attrs, "name", name, true);
+                json_kv_str(&mut attrs, "channel_kind", "watch", false);
                 json_kv_u64(&mut attrs, "created_at_ns", age_ns, false);
                 json_kv_u64(&mut attrs, "changes", changes, false);
                 json_kv_u64(&mut attrs, "receiver_count", receiver_count, false);
@@ -871,6 +876,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 let mut attrs = String::with_capacity(256);
                 attrs.push('{');
                 json_kv_str(&mut attrs, "name", name, true);
+                json_kv_str(&mut attrs, "channel_kind", "watch", false);
                 json_kv_u64(&mut attrs, "created_at_ns", age_ns, false);
                 json_kv_u64(&mut attrs, "changes", changes, false);
                 json_kv_u64(&mut attrs, "receiver_count", receiver_count, false);

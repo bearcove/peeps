@@ -188,7 +188,26 @@ function NodeDetail({
   filteredNodeId: string | null;
   onFocusNode: (nodeId: string | null) => void;
 }) {
-  const icon = kindIcons[node.kind];
+  const channelKind =
+    node.kind === "tx" || node.kind === "rx" || node.kind.endsWith("_tx") || node.kind.endsWith("_rx")
+      ? firstAttr(node.attrs, ["channel_kind", "channel.kind", "channel_type", "channel.type"])
+      : undefined;
+  const icon =
+    (node.kind === "tx" || node.kind.endsWith("_tx")) && channelKind === "watch" ? (
+      <Eye size={16} weight="bold" />
+    ) : (node.kind === "rx" || node.kind.endsWith("_rx")) && channelKind === "watch" ? (
+      <Eye size={16} weight="bold" />
+    ) : (node.kind === "tx" || node.kind.endsWith("_tx")) && channelKind === "oneshot" ? (
+      <ToggleRight size={16} weight="bold" />
+    ) : (node.kind === "rx" || node.kind.endsWith("_rx")) && channelKind === "oneshot" ? (
+      <ToggleRight size={16} weight="bold" />
+    ) : (node.kind === "tx" || node.kind.endsWith("_tx")) ? (
+      <ArrowLineUp size={16} weight="bold" />
+    ) : (node.kind === "rx" || node.kind.endsWith("_rx")) ? (
+      <ArrowLineDown size={16} weight="bold" />
+    ) : (
+      kindIcons[node.kind]
+    );
   const DetailComponent = kindDetailMap[node.kind];
   const isFocused = filteredNodeId === node.id;
   const method =

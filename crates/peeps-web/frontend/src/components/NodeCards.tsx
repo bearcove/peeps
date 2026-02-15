@@ -279,17 +279,32 @@ function RwLockCard({ data }: NodeProps<Node<NodeData>>) {
 
 function ChannelTxCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, process, attrs } = data;
+  const channelKind = firstAttr(attrs, [
+    "channel_kind",
+    "channel.kind",
+    "channel_type",
+    "channel.type",
+  ]);
   const buffered = numAttr(attrs, "buffered") ?? 0;
   const capacity = numAttr(attrs, "capacity") ?? 0;
   const senderCount = numAttr(attrs, "sender_count");
   const isFull = capacity > 0 && buffered >= capacity;
+
+  const icon =
+    channelKind === "watch" ? (
+      <Eye size={14} weight="bold" />
+    ) : channelKind === "oneshot" ? (
+      <ToggleRight size={14} weight="bold" />
+    ) : (
+      <ArrowLineUp size={14} weight="bold" />
+    );
 
   return (
     <CardShell
       kind="channel-tx"
       process={process}
       label={label}
-      icon={<ArrowLineUp size={14} weight="bold" />}
+      icon={icon}
       stateClass={isFull ? "card--danger-border" : undefined}
     >
       {capacity > 0 && (
@@ -307,6 +322,12 @@ function ChannelTxCard({ data }: NodeProps<Node<NodeData>>) {
 
 function ChannelRxCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, process, attrs } = data;
+  const channelKind = firstAttr(attrs, [
+    "channel_kind",
+    "channel.kind",
+    "channel_type",
+    "channel.type",
+  ]);
   const state = attr(attrs, "state") ?? "idle";
   const receiverAlive = attr(attrs, "receiver_alive");
   const pending = numAttr(attrs, "pending");
@@ -315,12 +336,21 @@ function ChannelRxCard({ data }: NodeProps<Node<NodeData>>) {
   const stateVariant: "ok" | "warn" | "crit" | "neutral" =
     state === "draining" ? "ok" : state === "starved" ? "warn" : "neutral";
 
+  const icon =
+    channelKind === "watch" ? (
+      <Eye size={14} weight="bold" />
+    ) : channelKind === "oneshot" ? (
+      <ToggleRight size={14} weight="bold" />
+    ) : (
+      <ArrowLineDown size={14} weight="bold" />
+    );
+
   return (
     <CardShell
       kind="channel-rx"
       process={process}
       label={label}
-      icon={<ArrowLineDown size={14} weight="bold" />}
+      icon={icon}
     >
       <div className="card-row">
         <StatePill state={state} variant={stateVariant} />
