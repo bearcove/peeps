@@ -203,8 +203,9 @@ All resource modules must register themselves into this registry, never maintain
 - Remove any roam “session snapshot → projection” style collection. RPC/channel wrappers must emit canonical nodes/edges directly into the registry.
 
 ### 6) Update `peeps` Public API
-- Re-export types directly from the moved modules so `use peeps::Mutex;` works.
-- Keep `peeps::futures` module for futures-specific helpers and macros, but also re-export macros at crate root.
+- All internal modules (`futures`, `locks`, `sync`, `registry`, `stack`) are `pub(crate)` only.
+- Re-export all public types at the crate root so consumers use `peeps::Mutex`, `peeps::channel`, `peeps::Semaphore`, etc.
+- Flat API surface similar to tokio — no public submodule paths.
 
 ### 7) Remove old crates
 - Delete `crates/peeps-futures`, `crates/peeps-locks`, `crates/peeps-sync`.

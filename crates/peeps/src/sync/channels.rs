@@ -1,8 +1,73 @@
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, Weak};
+use std::task::{Context, Poll};
 use std::time::Instant;
 
 use peeps_types::{Edge, Node, NodeKind};
+
+// ── WaitEdge ───────────────────────────────────────────
+//
+// A future wrapper that only emits a registry edge after the inner
+// future returns `Poll::Pending` at least once. This ensures edges
+// represent actual blockage, not just "about to await".
+
+struct WaitEdge<'a, F> {
+    inner: F,
+    dst: &'a str,
+    edge_src: Option<String>,
+    pending: bool,
+}
+
+impl<'a, F> WaitEdge<'a, F> {
+    fn new(dst: &'a str, inner: F) -> Self {
+        Self {
+            inner,
+            dst,
+            edge_src: None,
+            pending: false,
+        }
+    }
+}
+
+impl<F: Future> Future for WaitEdge<'_, F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // SAFETY: `inner` is structurally pinned. Other fields (`dst`, `edge_src`,
+        // `pending`) are `Unpin` and are not moved through the pin.
+        let this = unsafe { self.get_unchecked_mut() };
+        let inner = unsafe { Pin::new_unchecked(&mut this.inner) };
+
+        match inner.poll(cx) {
+            Poll::Ready(val) => {
+                if let Some(src) = this.edge_src.take() {
+                    crate::registry::remove_edge(&src, this.dst);
+                }
+                Poll::Ready(val)
+            }
+            Poll::Pending => {
+                if !this.pending {
+                    this.pending = true;
+                    crate::stack::with_top(|top| {
+                        crate::registry::edge(top, this.dst);
+                        this.edge_src = Some(top.to_string());
+                    });
+                }
+                Poll::Pending
+            }
+        }
+    }
+}
+
+impl<F> Drop for WaitEdge<'_, F> {
+    fn drop(&mut self) {
+        if let Some(ref src) = self.edge_src {
+            crate::registry::remove_edge(src, self.dst);
+        }
+    }
+}
 
 // ── Info types ──────────────────────────────────────────
 
@@ -131,15 +196,7 @@ impl<T> Sender<T> {
         value: T,
     ) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
         self.info.send_waiters.fetch_add(1, Ordering::Relaxed);
-        let mut edge_src: Option<String> = None;
-        crate::stack::with_top(|src| {
-            edge_src = Some(src.to_string());
-            crate::registry::edge(src, &self.info.tx_node_id);
-        });
-        let result = self.inner.send(value).await;
-        if let Some(ref src) = edge_src {
-            crate::registry::remove_edge(src, &self.info.tx_node_id);
-        }
+        let result = WaitEdge::new(&self.info.tx_node_id, self.inner.send(value)).await;
         self.info.send_waiters.fetch_sub(1, Ordering::Relaxed);
         if result.is_ok() {
             self.info.sent.fetch_add(1, Ordering::Relaxed);
@@ -187,15 +244,7 @@ impl<T> Drop for Receiver<T> {
 impl<T> Receiver<T> {
     pub async fn recv(&mut self) -> Option<T> {
         self.info.recv_waiters.fetch_add(1, Ordering::Relaxed);
-        let mut edge_src: Option<String> = None;
-        crate::stack::with_top(|src| {
-            edge_src = Some(src.to_string());
-            crate::registry::edge(src, &self.info.rx_node_id);
-        });
-        let result = self.inner.recv().await;
-        if let Some(ref src) = edge_src {
-            crate::registry::remove_edge(src, &self.info.rx_node_id);
-        }
+        let result = WaitEdge::new(&self.info.rx_node_id, self.inner.recv()).await;
         self.info.recv_waiters.fetch_sub(1, Ordering::Relaxed);
         if result.is_some() {
             self.info.received.fetch_add(1, Ordering::Relaxed);
@@ -306,15 +355,7 @@ impl<T> Drop for UnboundedReceiver<T> {
 impl<T> UnboundedReceiver<T> {
     pub async fn recv(&mut self) -> Option<T> {
         self.info.recv_waiters.fetch_add(1, Ordering::Relaxed);
-        let mut edge_src: Option<String> = None;
-        crate::stack::with_top(|src| {
-            edge_src = Some(src.to_string());
-            crate::registry::edge(src, &self.info.rx_node_id);
-        });
-        let result = self.inner.recv().await;
-        if let Some(ref src) = edge_src {
-            crate::registry::remove_edge(src, &self.info.rx_node_id);
-        }
+        let result = WaitEdge::new(&self.info.rx_node_id, self.inner.recv()).await;
         self.info.recv_waiters.fetch_sub(1, Ordering::Relaxed);
         if result.is_some() {
             self.info.received.fetch_add(1, Ordering::Relaxed);
@@ -430,15 +471,7 @@ impl<T> OneshotReceiver<T> {
     pub async fn recv(
         mut self,
     ) -> Result<T, tokio::sync::oneshot::error::RecvError> {
-        let mut edge_src: Option<String> = None;
-        crate::stack::with_top(|src| {
-            edge_src = Some(src.to_string());
-            crate::registry::edge(src, &self.info.rx_node_id);
-        });
-        let result = (&mut self.inner).await;
-        if let Some(ref src) = edge_src {
-            crate::registry::remove_edge(src, &self.info.rx_node_id);
-        }
+        let result = WaitEdge::new(&self.info.rx_node_id, &mut self.inner).await;
         if result.is_ok() {
             self.info.state.store(ONESHOT_RECEIVED, Ordering::Relaxed);
         }
@@ -550,16 +583,7 @@ impl<T> WatchReceiver<T> {
     pub async fn changed(
         &mut self,
     ) -> Result<(), tokio::sync::watch::error::RecvError> {
-        let mut edge_src: Option<String> = None;
-        crate::stack::with_top(|src| {
-            edge_src = Some(src.to_string());
-            crate::registry::edge(src, &self._info.rx_node_id);
-        });
-        let result = self.inner.changed().await;
-        if let Some(ref src) = edge_src {
-            crate::registry::remove_edge(src, &self._info.rx_node_id);
-        }
-        result
+        WaitEdge::new(&self._info.rx_node_id, self.inner.changed()).await
     }
 
     pub fn borrow(&self) -> tokio::sync::watch::Ref<'_, T> {

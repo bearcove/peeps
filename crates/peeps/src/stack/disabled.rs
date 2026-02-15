@@ -10,6 +10,6 @@ pub(crate) fn pop() {}
 pub fn with_top(_f: impl FnOnce(&str)) {}
 
 #[inline(always)]
-pub(crate) async fn with_stack<F: Future>(future: F) -> F::Output {
+pub async fn with_stack<F: Future>(future: F) -> F::Output {
     future.await
 }

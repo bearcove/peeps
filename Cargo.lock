@@ -702,41 +702,10 @@ version = "0.1.0"
 dependencies = [
  "facet",
  "facet-json",
- "peeps-futures",
- "peeps-locks",
- "peeps-sync",
+ "parking_lot",
  "peeps-types",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "peeps-futures"
-version = "0.1.0"
-dependencies = [
- "facet",
- "peeps-types",
- "tokio",
-]
-
-[[package]]
-name = "peeps-locks"
-version = "0.1.0"
-dependencies = [
- "facet",
- "parking_lot",
- "peeps-futures",
- "peeps-types",
- "tokio",
-]
-
-[[package]]
-name = "peeps-sync"
-version = "0.1.0"
-dependencies = [
- "peeps-futures",
- "peeps-types",
- "tokio",
 ]
 
 [[package]]

@@ -68,7 +68,7 @@ async function layoutElements(
     layoutOptions: elkOptions,
     children: nodes.map((n) => ({
       id: n.id,
-      width: 200,
+      width: 250,
       height: estimateNodeHeight(n.data.kind),
     })),
     edges: edges.map((e) => ({
@@ -123,7 +123,7 @@ function GraphFlow({
       setEdges(le);
       window.requestAnimationFrame(() => fitView({ padding: 0.15 }));
     });
-  }, [graph]);
+  }, [graph, setNodes, setEdges, fitView]);
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {

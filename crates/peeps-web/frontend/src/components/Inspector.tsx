@@ -133,8 +133,8 @@ function RequestDetail({ req }: { req: StuckRequest }) {
       <dd>{req.process}</dd>
       <dt>Elapsed</dt>
       <dd>{formatElapsedFull(req.elapsed_ns)}</dd>
-      <dt>Task ID</dt>
-      <dd>{req.task_id ?? "—"}</dd>
+      <dt>Connection</dt>
+      <dd>{req.connection ?? "—"}</dd>
       <dt>Correlation Key</dt>
       <dd>{req.correlation_key ?? "—"}</dd>
     </dl>

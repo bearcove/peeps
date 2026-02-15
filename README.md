@@ -57,7 +57,6 @@ PEEPS_DASHBOARD=127.0.0.1:9119 <your-binary>
 
 ## Architecture
 
-- `peeps`: Main API, live snapshot collection, optional dashboard push client
-- `peeps-futures`: Future instrumentation
-- `peeps-locks`: Lock contention tracking
+- `peeps`: Main API — futures, locks, sync, live snapshot collection, optional dashboard push client
+- `peeps-types`: Shared types (graph nodes, snapshot requests/replies)
 - `peeps-web`: SQLite-backed ingest + query server and investigation UI

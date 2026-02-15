@@ -103,7 +103,7 @@ export function RequestsTable({ requests, selectedId, onSelect, collapsed, onTog
               <th>method</th>
               <th>elapsed</th>
               <th>process</th>
-              <th>task</th>
+              <th>connection</th>
             </tr>
           </thead>
           <tbody ref={tbodyRef}>
@@ -112,7 +112,7 @@ export function RequestsTable({ requests, selectedId, onSelect, collapsed, onTog
                 <td>{req.method ?? "—"}</td>
                 <td className={elapsedClass(req.elapsed_ns)}>{formatElapsed(req.elapsed_ns)}</td>
                 <td>{req.process}</td>
-                <td style={{ fontSize: "11px", opacity: 0.7 }}>{req.task_id ?? "—"}</td>
+                <td style={{ fontSize: "11px", opacity: 0.7 }}>{req.connection ?? "—"}</td>
               </tr>
             ))}
           </tbody>

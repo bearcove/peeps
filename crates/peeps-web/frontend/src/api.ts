@@ -46,7 +46,7 @@ const STUCK_REQUEST_SQL = `SELECT
   json_extract(r.attrs_json, '$.method') AS method,
   r.process,
   CAST(json_extract(r.attrs_json, '$.elapsed_ns') AS INTEGER) AS elapsed_ns,
-  json_extract(r.attrs_json, '$.task_id') AS task_id,
+  json_extract(r.attrs_json, '$.connection') AS connection,
   json_extract(r.attrs_json, '$.correlation_key') AS correlation_key
 FROM nodes r
 LEFT JOIN nodes resp
@@ -68,7 +68,7 @@ export async function fetchStuckRequests(
     method: row[1] as string | null,
     process: row[2] as string,
     elapsed_ns: row[3] as number,
-    task_id: row[4] as string | null,
+    connection: row[4] as string | null,
     correlation_key: row[5] as string | null,
   }));
 }

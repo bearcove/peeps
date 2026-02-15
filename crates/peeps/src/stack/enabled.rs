@@ -43,6 +43,6 @@ pub fn with_top(f: impl FnOnce(&str)) {
 /// Run `future` with a fresh task-local stack.
 ///
 /// Called by `spawn_tracked` to initialize the stack for each spawned task.
-pub(crate) async fn with_stack<F: Future>(future: F) -> F::Output {
+pub async fn with_stack<F: Future>(future: F) -> F::Output {
     STACK.scope(RefCell::new(Vec::new()), future).await
 }

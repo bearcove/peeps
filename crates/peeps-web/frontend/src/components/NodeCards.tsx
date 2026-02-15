@@ -570,17 +570,27 @@ export const PeepsNode = memo((props: NodeProps<Node<NodeData>>) => {
 /** Estimate node height for ELK layout based on kind */
 export function estimateNodeHeight(kind: string): number {
   switch (kind) {
-    case "mutex":
-    case "rwlock":
-      return 90;
-    case "channel_tx":
-    case "mpsc_tx":
-    case "semaphore":
-      return 85;
     case "request":
     case "response":
-      return 80;
+      return 120;
+    case "channel_tx":
+    case "mpsc_tx":
+      return 120;
+    case "mutex":
+    case "rwlock":
+      return 110;
+    case "semaphore":
+      return 110;
+    case "future":
+    case "task":
+      return 100;
+    case "channel_rx":
+    case "mpsc_rx":
+      return 100;
+    case "oncecell":
+    case "once_cell":
+      return 90;
     default:
-      return 78;
+      return 100;
   }
 }

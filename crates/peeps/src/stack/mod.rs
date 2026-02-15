@@ -16,8 +16,14 @@ pub use disabled::with_top;
 #[cfg(feature = "diagnostics")]
 pub use enabled::with_top;
 
-// Re-export crate-internal items (push, pop, with_stack)
+// Re-export crate-internal items (push, pop)
 #[cfg(not(feature = "diagnostics"))]
-pub(crate) use disabled::{pop, push, with_stack};
+pub(crate) use disabled::{pop, push};
 #[cfg(feature = "diagnostics")]
-pub(crate) use enabled::{pop, push, with_stack};
+pub(crate) use enabled::{pop, push};
+
+// Re-export public API items (with_stack) for entrypoint initialization
+#[cfg(not(feature = "diagnostics"))]
+pub use disabled::with_stack;
+#[cfg(feature = "diagnostics")]
+pub use enabled::with_stack;

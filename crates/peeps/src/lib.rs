@@ -38,6 +38,10 @@ pub use peeps_types::{canonical_id, meta_key};
 
 pub use collect::collect_graph;
 
+// ── stack ───────────────────────────────────────────────
+
+pub use stack::with_stack;
+
 // ── futures ─────────────────────────────────────────────
 
 pub use futures::{peepable, peepable_with_meta, spawn_tracked, PeepableFuture};

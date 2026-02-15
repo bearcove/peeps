@@ -95,7 +95,7 @@ export function App() {
 
   useEffect(() => {
     handleJumpNow();
-  }, []);
+  }, [handleJumpNow]);
 
   const handleSelectRequest = useCallback((req: StuckRequest) => {
     setSelectedRequest(req);
