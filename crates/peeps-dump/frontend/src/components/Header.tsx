@@ -1,17 +1,28 @@
-import type { ProcessDump } from "../types";
+import type { SummaryData } from "../api";
 
 interface HeaderProps {
-  dumps: ProcessDump[];
+  summary: SummaryData | null;
   filter: string;
   onFilter: (v: string) => void;
   onRefresh: () => void;
   error: string | null;
+  stale: boolean;
+  latestSeq: number;
+  currentSeq: number;
+  refreshing: boolean;
 }
 
-export function Header({ dumps, filter, onFilter, onRefresh, error }: HeaderProps) {
-  const totalTasks = dumps.reduce((s, d) => s + d.tasks.length, 0);
-  const totalThreads = dumps.reduce((s, d) => s + d.threads.length, 0);
-
+export function Header({
+  summary,
+  filter,
+  onFilter,
+  onRefresh,
+  error,
+  stale,
+  latestSeq,
+  currentSeq,
+  refreshing,
+}: HeaderProps) {
   return (
     <div class="header">
       <div class="header-brand">
@@ -20,16 +31,22 @@ export function Header({ dumps, filter, onFilter, onRefresh, error }: HeaderProp
       <div class="header-sep" />
       <div class="header-stats">
         <span>
-          <span class="val">{dumps.length}</span> processes
+          <span class="val">{summary?.process_count ?? "\u2014"}</span> processes
         </span>
         <span>
-          <span class="val">{totalTasks}</span> tasks
+          <span class="val">{summary?.task_count ?? "\u2014"}</span> tasks
         </span>
         <span>
-          <span class="val">{totalThreads}</span> threads
+          <span class="val">{summary?.thread_count ?? "\u2014"}</span> threads
         </span>
       </div>
       <div class="header-spacer" />
+      {stale && (
+        <span class="header-stale">New diagnostics available (seq {latestSeq})</span>
+      )}
+      {currentSeq > 0 && (
+        <span class="header-seq">seq {currentSeq}</span>
+      )}
       {error && <span class="header-error">{error}</span>}
       <input
         class="search-box"
@@ -41,11 +58,12 @@ export function Header({ dumps, filter, onFilter, onRefresh, error }: HeaderProp
         onInput={(e) => onFilter((e.target as HTMLInputElement).value)}
       />
       <button
-        class="expand-trigger"
+        class={`expand-trigger${stale ? " header-refresh-stale" : ""}`}
         style="padding: 5px 12px; font-size: 12px"
         onClick={onRefresh}
+        disabled={refreshing}
       >
-        Refresh
+        {refreshing ? "Refreshing\u2026" : stale ? "Refresh (new data)" : "Refresh"}
       </button>
     </div>
   );

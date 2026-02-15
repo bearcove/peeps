@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ProcessDump, DeadlockCandidate } from "./types";
-import { connectWebSocket, fetchDumps } from "./api";
+import {
+  connectWebSocket,
+  fetchSummary,
+  fetchTasks,
+  fetchThreads,
+  fetchDeadlocks,
+  fetchConnections,
+  fetchShm,
+  fetchFullDump,
+  type SummaryData,
+} from "./api";
 import { Header } from "./components/Header";
 import { TabBar } from "./components/TabBar";
 import { TasksView } from "./components/TasksView";
@@ -32,76 +42,124 @@ const TABS = [
 export type Tab = (typeof TABS)[number];
 
 const RECONNECT_DELAY_MS = 2000;
-const MAX_WS_FAILURES = 3;
+
+// Tabs that share data from /api/dumps
+const FULL_DUMP_TABS: readonly Tab[] = ["problems", "locks", "sync", "requests", "processes"];
 
 export function App() {
-  const [dumps, setDumps] = useState<ProcessDump[]>([]);
+  const [tabData, setTabData] = useState<Partial<Record<Tab, ProcessDump[]>>>({});
   const [deadlockCandidates, setDeadlockCandidates] = useState<DeadlockCandidate[]>([]);
+  const [summary, setSummary] = useState<SummaryData | null>(null);
+  const [currentSeq, setCurrentSeq] = useState(0);
+  const [latestServerSeq, setLatestServerSeq] = useState(0);
+  const [stale, setStale] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [path, setPath] = useState<string>(window.location.pathname || "/problems");
   const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
 
+  const tab = tabFromPath(path);
+
+  // Refs so WS callbacks and effects always see latest values
+  const tabDataRef = useRef(tabData);
+  tabDataRef.current = tabData;
+  const deadlockCandidatesRef = useRef(deadlockCandidates);
+  deadlockCandidatesRef.current = deadlockCandidates;
+
+  async function doFetchTab(activeTab: Tab): Promise<number> {
+    if (FULL_DUMP_TABS.includes(activeTab)) {
+      const result = await fetchFullDump();
+      const dumps = result.data.dumps ?? [];
+      const deadlocks = result.data.deadlock_candidates ?? [];
+      setTabData((prev) => {
+        const next = { ...prev };
+        for (const ft of FULL_DUMP_TABS) next[ft] = dumps;
+        return next;
+      });
+      setDeadlockCandidates(deadlocks);
+      return result.seq;
+    }
+    if (activeTab === "deadlocks") {
+      const result = await fetchDeadlocks();
+      setDeadlockCandidates(result.data);
+      return result.seq;
+    }
+    if (activeTab === "tasks") {
+      const result = await fetchTasks();
+      setTabData((prev) => ({ ...prev, tasks: result.data }));
+      return result.seq;
+    }
+    if (activeTab === "threads") {
+      const result = await fetchThreads();
+      setTabData((prev) => ({ ...prev, threads: result.data }));
+      return result.seq;
+    }
+    if (activeTab === "connections") {
+      const result = await fetchConnections();
+      setTabData((prev) => ({ ...prev, connections: result.data }));
+      return result.seq;
+    }
+    if (activeTab === "shm") {
+      const result = await fetchShm();
+      setTabData((prev) => ({ ...prev, shm: result.data }));
+      return result.seq;
+    }
+    return 0;
+  }
+
+  async function doRefresh(targetTab?: Tab) {
+    const activeTab = targetTab ?? tab;
+    setRefreshing(true);
+    try {
+      const [summaryResult, seq] = await Promise.all([
+        fetchSummary(),
+        doFetchTab(activeTab),
+      ]);
+      setSummary(summaryResult.data);
+      setCurrentSeq(seq);
+      setStale(false);
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  const doRefreshRef = useRef(doRefresh);
+  doRefreshRef.current = doRefresh;
+
+  // WebSocket connection
   useEffect(() => {
     let cancelled = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let wsFailures = 0;
-    let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-    function startPolling() {
-      if (pollInterval) return;
-      const poll = async () => {
-        try {
-          const data = await fetchDumps();
-          if (!cancelled) {
-            setDumps(data.dumps);
-            setDeadlockCandidates(data.deadlockCandidates);
-            setError(null);
-          }
-        } catch (e) {
-          if (!cancelled) setError(String(e));
-        }
-      };
-      poll();
-      pollInterval = setInterval(poll, 2000);
-    }
-
-    function stopPolling() {
-      if (pollInterval) {
-        clearInterval(pollInterval);
-        pollInterval = null;
-      }
-    }
+    // Initial HTTP fetch
+    doRefreshRef.current();
 
     function connect() {
       if (cancelled) return;
-
       const close = connectWebSocket({
-        onData: (data) => {
-          if (!cancelled) {
-            wsFailures = 0;
-            setDumps(data.dumps);
-            setDeadlockCandidates(data.deadlockCandidates);
-            setError(null);
-            stopPolling();
-          }
+        onHello: (seq) => {
+          if (cancelled) return;
+          setLatestServerSeq(seq);
+          doRefreshRef.current();
+        },
+        onUpdated: (seq) => {
+          if (cancelled) return;
+          setLatestServerSeq(seq);
+          setStale(true);
         },
         onError: (err) => {
-          if (!cancelled) {
-            console.error("[peeps/app] websocket error:", err);
-            setError(err);
-          }
+          if (cancelled) return;
+          setError(err);
         },
         onClose: () => {
           if (cancelled) return;
-          wsFailures++;
-          if (wsFailures >= MAX_WS_FAILURES) {
-            startPolling();
-          }
           reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS);
         },
       });
-
       cleanupRef.current = close;
     }
 
@@ -110,7 +168,6 @@ export function App() {
     return () => {
       cancelled = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      stopPolling();
       if (cleanupRef.current) {
         cleanupRef.current();
         cleanupRef.current = null;
@@ -118,40 +175,17 @@ export function App() {
     };
   }, []);
 
-  const refresh = async () => {
-    try {
-      const data = await fetchDumps();
-      setDumps(data.dumps);
-      setDeadlockCandidates(data.deadlockCandidates);
-      setError(null);
-    } catch (e) {
-      setError(String(e));
+  // Fetch data when navigating to a tab without cached data
+  useEffect(() => {
+    const currentTab = tabFromPath(path);
+    const hasCachedData =
+      currentTab === "deadlocks"
+        ? deadlockCandidatesRef.current.length > 0
+        : !!tabDataRef.current[currentTab];
+    if (!hasCachedData) {
+      doRefreshRef.current(currentTab);
     }
-  };
-
-  const hasRoam = dumps.some((d) => d.roam != null);
-  const hasShm = dumps.some((d) => d.shm != null);
-  const hasLockPrimitives = dumps.some((d) => (d.locks?.locks.length ?? 0) > 0)
-    || dumps.some((d) => (d.sync?.semaphores.length ?? 0) > 0);
-  const hasChannelPrimitives = dumps.some((d) =>
-    (d.sync?.mpsc_channels.length ?? 0) > 0
-    || (d.sync?.oneshot_channels.length ?? 0) > 0
-    || (d.sync?.watch_channels.length ?? 0) > 0
-    || (d.sync?.once_cells.length ?? 0) > 0
-    || ((d.roam?.channel_details?.length ?? 0) > 0)
-  );
-
-  const visibleTabs = TABS.filter((t) => {
-    if (t === "problems") return true;
-    if (t === "sync" && !hasLockPrimitives) return false;
-    if (t === "locks" && !hasChannelPrimitives) return false;
-    if (t === "requests" && !hasRoam) return false;
-    if (t === "connections" && !hasRoam) return false;
-    if (t === "shm" && !hasShm) return false;
-    return true;
-  });
-
-  const tab = tabFromPath(path);
+  }, [path]);
 
   useEffect(() => {
     const onPop = () => setPath(window.location.pathname || "/problems");
@@ -166,15 +200,28 @@ export function App() {
     }
   }, []);
 
+  const dumps = tabData[tab] ?? [];
+
   return (
     <div class="app">
-      <Header dumps={dumps} filter={filter} onFilter={setFilter} onRefresh={refresh} error={error} />
+      <Header
+        summary={summary}
+        filter={filter}
+        onFilter={setFilter}
+        onRefresh={() => doRefresh()}
+        error={error}
+        stale={stale}
+        latestSeq={latestServerSeq}
+        currentSeq={currentSeq}
+        refreshing={refreshing}
+      />
       <TabBar
-        tabs={visibleTabs}
+        tabs={TABS}
         active={tab}
         onSelect={(t) => navigateTo(tabPath(t))}
-        dumps={dumps}
+        summary={summary}
         deadlockCandidates={deadlockCandidates}
+        problemsDumps={tabData.problems ?? []}
       />
       <div class="content">
         {tab === "problems" && <ProblemsView dumps={dumps} filter={filter} selectedPath={path} />}

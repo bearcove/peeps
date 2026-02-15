@@ -24,6 +24,19 @@ interface FlatRequest extends RequestSnapshot {
   parent_span_id: string | null;
 }
 
+interface RequestTaskInteraction {
+  key: string;
+  href: string;
+  label: string;
+  kind: "lock" | "mpsc" | "oneshot" | "watch" | "once_cell" | "semaphore" | "roam_channel" | "future_wait";
+  ageSecs?: number;
+  note?: string;
+}
+
+function taskKey(process: string, taskId: number): string {
+  return `${process}#${taskId}`;
+}
+
 function rowSeverity(r: FlatRequest): string {
   if (r.elapsed_secs > 10) return "severity-danger";
   if (r.elapsed_secs > 2) return "severity-warn";
@@ -58,15 +71,79 @@ function RequestLink({
   );
 }
 
+function RequestContextTree({
+  r,
+  interactionsByTask,
+  selectedPath,
+}: {
+  r: FlatRequest;
+  interactionsByTask: Map<string, RequestTaskInteraction[]>;
+  selectedPath: string;
+}) {
+  if (r.task_id == null) return <span class="muted">—</span>;
+  const key = taskKey(r.process, r.task_id);
+  const interactions = [...(interactionsByTask.get(key) ?? [])].sort(
+    (a, b) => (b.ageSecs ?? 0) - (a.ageSecs ?? 0),
+  );
+  const taskHref = resourceHref({ kind: "task", process: r.process, taskId: r.task_id });
+
+  return (
+    <details>
+      <summary class="mono" style="cursor: pointer">
+        {interactions.length} resource interaction(s)
+      </summary>
+      <div style="padding-top: 6px">
+        <div style="margin-bottom: 6px">
+          <ResourceLink href={taskHref} active={isActivePath(selectedPath, taskHref)} kind="task">
+            {r.task_name ?? "task"} (#{r.task_id})
+          </ResourceLink>
+        </div>
+        {interactions.length > 0 ? (
+          <div class="resource-link-list">
+            {interactions.map((i) => (
+              <ResourceLink key={i.key} href={i.href} active={isActivePath(selectedPath, i.href)} kind={i.kind}>
+                {i.label}
+              </ResourceLink>
+            ))}
+          </div>
+        ) : (
+          <span class="muted">no tracked locks/channels/futures for this task yet</span>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function RequestContextMini({
+  node,
+  interactionsByTask,
+  selectedPath,
+}: {
+  node: FlatRequest;
+  interactionsByTask: Map<string, RequestTaskInteraction[]>;
+  selectedPath: string;
+}) {
+  if (node.task_id == null) return null;
+  const interactions = interactionsByTask.get(taskKey(node.process, node.task_id)) ?? [];
+  if (interactions.length === 0) return null;
+  return (
+    <div style="margin: 4px 0 0 20px">
+      <RequestContextTree r={node} interactionsByTask={interactionsByTask} selectedPath={selectedPath} />
+    </div>
+  );
+}
+
 function RequestTreeNode({
   node,
   childrenByParent,
+  interactionsByTask,
   selectedPath,
   depth,
   seen,
 }: {
   node: FlatRequest;
   childrenByParent: Map<string, FlatRequest[]>;
+  interactionsByTask: Map<string, RequestTaskInteraction[]>;
   selectedPath: string;
   depth: number;
   seen: Set<string>;
@@ -109,11 +186,13 @@ function RequestTreeNode({
           </span>
         )}
       </div>
+      <RequestContextMini node={node} interactionsByTask={interactionsByTask} selectedPath={selectedPath} />
       {kids.map((child) => (
         <RequestTreeNode
           key={requestNodeKey(child)}
           node={child}
           childrenByParent={childrenByParent}
+          interactionsByTask={interactionsByTask}
           selectedPath={selectedPath}
           depth={depth + 1}
           seen={nextSeen}
@@ -125,6 +204,110 @@ function RequestTreeNode({
 
 export function RequestsView({ dumps, filter, selectedPath }: Props) {
   const [view, setView] = useState<"table" | "tree">("table");
+  const interactionsByTask = new Map<string, RequestTaskInteraction[]>();
+  const addInteraction = (process: string, taskId: number | null, interaction: RequestTaskInteraction) => {
+    if (taskId == null) return;
+    const key = taskKey(process, taskId);
+    const list = interactionsByTask.get(key) ?? [];
+    if (!list.some((i) => i.key === interaction.key)) {
+      list.push(interaction);
+      interactionsByTask.set(key, list);
+    }
+  };
+
+  for (const d of dumps) {
+    for (const w of d.future_waits) {
+      addInteraction(d.process_name, w.task_id, {
+        key: `future:${w.future_id}:${w.task_id}`,
+        href: resourceHref({
+          kind: "future_wait",
+          process: d.process_name,
+          taskId: w.task_id,
+          resource: w.resource,
+        }),
+        label: `future ${w.resource}`,
+        kind: "future_wait",
+        ageSecs: w.total_pending_secs,
+        note: `pending ${fmtDuration(w.total_pending_secs)}`,
+      });
+    }
+
+    if (d.locks) {
+      for (const l of d.locks.locks) {
+        const lockHref = resourceHref({ kind: "lock", process: d.process_name, lock: l.name });
+        for (const h of l.holders) {
+          addInteraction(d.process_name, h.task_id, {
+            key: `lock:${l.name}:holder:${h.task_id ?? "?"}`,
+            href: lockHref,
+            label: `lock ${l.name} (holder)`,
+            kind: "lock",
+            ageSecs: h.held_secs,
+          });
+        }
+        for (const w of l.waiters) {
+          addInteraction(d.process_name, w.task_id, {
+            key: `lock:${l.name}:waiter:${w.task_id ?? "?"}`,
+            href: lockHref,
+            label: `lock ${l.name} (waiter)`,
+            kind: "lock",
+            ageSecs: w.waiting_secs,
+          });
+        }
+      }
+    }
+
+    if (d.sync) {
+      for (const ch of d.sync.mpsc_channels) {
+        addInteraction(d.process_name, ch.creator_task_id, {
+          key: `mpsc:${ch.name}`,
+          href: resourceHref({ kind: "mpsc", process: d.process_name, name: ch.name }),
+          label: `mpsc ${ch.name}`,
+          kind: "mpsc",
+          ageSecs: ch.age_secs,
+        });
+      }
+      for (const ch of d.sync.oneshot_channels) {
+        addInteraction(d.process_name, ch.creator_task_id, {
+          key: `oneshot:${ch.name}`,
+          href: resourceHref({ kind: "oneshot", process: d.process_name, name: ch.name }),
+          label: `oneshot ${ch.name}`,
+          kind: "oneshot",
+          ageSecs: ch.age_secs,
+        });
+      }
+      for (const ch of d.sync.watch_channels) {
+        addInteraction(d.process_name, ch.creator_task_id, {
+          key: `watch:${ch.name}`,
+          href: resourceHref({ kind: "watch", process: d.process_name, name: ch.name }),
+          label: `watch ${ch.name}`,
+          kind: "watch",
+          ageSecs: ch.age_secs,
+        });
+      }
+      for (const sem of d.sync.semaphores) {
+        addInteraction(d.process_name, sem.creator_task_id, {
+          key: `sem:${sem.name}`,
+          href: resourceHref({ kind: "semaphore", process: d.process_name, name: sem.name }),
+          label: `semaphore ${sem.name}`,
+          kind: "semaphore",
+          ageSecs: sem.oldest_wait_secs,
+        });
+      }
+    }
+
+    if (d.roam) {
+      for (const ch of d.roam.channel_details ?? []) {
+        addInteraction(d.process_name, ch.task_id, {
+          key: `roam:${ch.channel_id}`,
+          href: resourceHref({ kind: "roam_channel", process: d.process_name, channelId: ch.channel_id }),
+          label: `roam ${ch.name}`,
+          kind: "roam_channel",
+          ageSecs: ch.age_secs,
+        });
+      }
+    }
+  }
+
   const requests: FlatRequest[] = [];
   for (const d of dumps) {
     if (!d.roam) continue;
@@ -212,6 +395,7 @@ export function RequestsView({ dumps, filter, selectedPath }: Props) {
                 <th>Span</th>
                 <th>Peer</th>
                 <th>Request ID</th>
+                <th>Context</th>
                 <th>Backtrace</th>
               </tr>
             </thead>
@@ -265,6 +449,13 @@ export function RequestsView({ dumps, filter, selectedPath }: Props) {
                   <td class="mono">{r.peer}</td>
                   <td class="num">{r.request_id}</td>
                   <td>
+                    <RequestContextTree
+                      r={r}
+                      interactionsByTask={interactionsByTask}
+                      selectedPath={selectedPath}
+                    />
+                  </td>
+                  <td>
                     <Expandable content={r.backtrace} />
                   </td>
                 </tr>
@@ -315,6 +506,7 @@ export function RequestsView({ dumps, filter, selectedPath }: Props) {
                       key={requestNodeKey(root)}
                       node={root}
                       childrenByParent={childrenByParent}
+                      interactionsByTask={interactionsByTask}
                       selectedPath={selectedPath}
                       depth={0}
                       seen={new Set<string>()}

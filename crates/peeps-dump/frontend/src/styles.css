@@ -121,6 +121,26 @@ body {
     font-family: var(--font-mono);
 }
 
+.header-stale {
+    font-size: 11px;
+    color: var(--amber);
+    font-family: var(--font-mono);
+    white-space: nowrap;
+}
+
+.header-seq {
+    font-size: 11px;
+    color: var(--fg-dim);
+    font-family: var(--font-mono);
+    white-space: nowrap;
+}
+
+.header-refresh-stale {
+    background: var(--amber) !important;
+    color: var(--bg) !important;
+    border-color: var(--amber) !important;
+}
+
 .search-box {
     width: 240px;
     padding: 5px 10px 5px 30px;

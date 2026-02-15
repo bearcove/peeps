@@ -1,4 +1,5 @@
 import type { Tab } from "../App";
+import type { SummaryData } from "../api";
 import type { ProcessDump, DeadlockCandidate } from "../types";
 import { classNames } from "../util";
 import { detectProblems, detectRelationshipIssues, hasDanger } from "../problems";
@@ -7,56 +8,21 @@ interface TabBarProps {
   tabs: readonly Tab[];
   active: Tab;
   onSelect: (t: Tab) => void;
-  dumps: ProcessDump[];
+  summary: SummaryData | null;
   deadlockCandidates: DeadlockCandidate[];
+  problemsDumps: ProcessDump[];
 }
 
-function badgeCount(tab: Tab, dumps: ProcessDump[], deadlockCandidates: DeadlockCandidate[]): number | null {
+function badgeCount(tab: Tab, summary: SummaryData | null): number | null {
+  if (!summary) return null;
   switch (tab) {
-    case "problems":
-      return null;
-    case "deadlocks":
-      return deadlockCandidates.length || null;
     case "tasks":
-      return dumps.reduce((s, d) => s + d.tasks.length, 0);
+      return summary.task_count;
     case "threads":
-      return dumps.reduce((s, d) => s + d.threads.length, 0);
-    case "locks":
-      return dumps.reduce((s, d) => {
-        let n = s;
-        if (d.sync) {
-          n +=
-            d.sync.mpsc_channels.length +
-            d.sync.oneshot_channels.length +
-            d.sync.watch_channels.length +
-            d.sync.once_cells.length;
-        }
-        n += d.roam?.channel_details.length ?? 0;
-        return n;
-      }, 0);
-    case "sync":
-      return dumps.reduce(
-        (s, d) => s + (d.locks?.locks.length ?? 0) + (d.sync?.semaphores.length ?? 0),
-        0
-      );
-    case "requests":
-      return dumps.reduce(
-        (s, d) =>
-          s +
-          (d.roam?.connections.reduce(
-            (s2, c) => s2 + c.in_flight.length,
-            0
-          ) ?? 0),
-        0
-      );
-    case "connections":
-      return dumps.reduce(
-        (s, d) => s + (d.roam?.connections.length ?? 0),
-        0
-      );
+      return summary.thread_count;
     case "processes":
-      return dumps.length;
-    case "shm":
+      return summary.process_count;
+    default:
       return null;
   }
 }
@@ -74,9 +40,9 @@ const TAB_LABELS: Record<Tab, string> = {
   shm: "SHM",
 };
 
-export function TabBar({ tabs, active, onSelect, dumps, deadlockCandidates }: TabBarProps) {
-  const problems = detectProblems(dumps);
-  const relationIssues = detectRelationshipIssues(dumps);
+export function TabBar({ tabs, active, onSelect, summary, deadlockCandidates, problemsDumps }: TabBarProps) {
+  const problems = detectProblems(problemsDumps);
+  const relationIssues = detectRelationshipIssues(problemsDumps);
   const problemCount = problems.length + relationIssues.length;
   const danger = hasDanger(problems) || relationIssues.some((i) => i.severity === "danger");
 
@@ -129,7 +95,7 @@ export function TabBar({ tabs, active, onSelect, dumps, deadlockCandidates }: Ta
           );
         }
 
-        const count = badgeCount(t, dumps, deadlockCandidates);
+        const count = badgeCount(t, summary);
         return (
           <div
             key={t}
