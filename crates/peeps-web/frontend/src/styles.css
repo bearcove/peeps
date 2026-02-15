@@ -752,6 +752,16 @@ body {
     word-break: break-all;
 }
 
+.inspect-link {
+    color: light-dark(#0066cc, #7db7ff);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.inspect-link:hover {
+    color: light-dark(#004999, #b3d6ff);
+}
+
 .inspect-meta-extras summary {
     cursor: pointer;
     font-size: 11px;
