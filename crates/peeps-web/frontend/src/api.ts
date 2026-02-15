@@ -56,7 +56,7 @@ WHERE r.kind = 'request'
   AND CAST(json_extract(r.attrs_json, '$.elapsed_ns') AS INTEGER) >= ?1
   AND (resp.id IS NULL OR json_extract(resp.attrs_json, '$.status') = 'in_flight')
 ORDER BY CAST(json_extract(r.attrs_json, '$.elapsed_ns') AS INTEGER) DESC
-LIMIT 500;`;
+LIMIT 10;`;
 
 export async function fetchStuckRequests(
   snapshotId: number,

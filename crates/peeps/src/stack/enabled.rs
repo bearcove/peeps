@@ -1,26 +1,24 @@
 use std::cell::RefCell;
 use std::future::Future;
 
-tokio::task_local! {
-    static STACK: RefCell<Vec<String>>;
+thread_local! {
+    static STACK: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Push a node onto the task-local stack.
+/// Push a node onto the thread-local stack.
 ///
 /// Called by `PeepableFuture::poll` before polling the inner future.
-/// No-op if called outside a tracked task.
 pub(crate) fn push(node_id: &str) {
-    let _ = STACK.try_with(|stack| {
+    STACK.with(|stack| {
         stack.borrow_mut().push(node_id.to_string());
     });
 }
 
-/// Pop the top node from the task-local stack.
+/// Pop the top node from the thread-local stack.
 ///
 /// Called by `PeepableFuture::poll` after polling the inner future.
-/// No-op if called outside a tracked task.
 pub(crate) fn pop() {
-    let _ = STACK.try_with(|stack| {
+    STACK.with(|stack| {
         stack.borrow_mut().pop();
     });
 }
@@ -30,9 +28,9 @@ pub(crate) fn pop() {
 /// Used by wrappers to emit canonical edges:
 /// `stack::with_top(|src| registry::edge(src, resource_endpoint_id))`
 ///
-/// No-op if the stack is empty or if called outside a tracked task.
+/// No-op if the stack is empty.
 pub fn with_top(f: impl FnOnce(&str)) {
-    let _ = STACK.try_with(|stack| {
+    STACK.with(|stack| {
         let s = stack.borrow();
         if let Some(top) = s.last() {
             f(top);
@@ -40,9 +38,10 @@ pub fn with_top(f: impl FnOnce(&str)) {
     });
 }
 
-/// Run `future` with a fresh task-local stack.
+/// Run `future` with the thread-local stack.
 ///
-/// Called by `spawn_tracked` to initialize the stack for each spawned task.
+/// Kept for API compatibility. The stack is always available via thread-local
+/// storage, so this just awaits the future directly.
 pub async fn with_stack<F: Future>(future: F) -> F::Output {
-    STACK.scope(RefCell::new(Vec::new()), future).await
+    future.await
 }
