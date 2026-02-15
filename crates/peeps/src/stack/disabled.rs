@@ -15,6 +15,11 @@ pub fn is_active() -> bool {
 }
 
 #[inline(always)]
+pub fn capture_top() -> Option<String> {
+    None
+}
+
+#[inline(always)]
 pub async fn with_stack<F: Future>(future: F) -> F::Output {
     future.await
 }

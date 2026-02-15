@@ -12,6 +12,14 @@ pub fn is_active() -> bool {
     STACK.try_with(|_| ()).is_ok()
 }
 
+/// Returns the current top-of-stack node id, if any.
+pub fn capture_top() -> Option<String> {
+    STACK
+        .try_with(|stack| stack.borrow().last().cloned())
+        .ok()
+        .flatten()
+}
+
 /// Push a node onto the task-local stack.
 ///
 /// Called by `PeepableFuture::poll` before polling the inner future.
@@ -88,4 +96,3 @@ impl<F: Future> Future for Scoped<F> {
         out
     }
 }
-

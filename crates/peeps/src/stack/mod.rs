@@ -30,6 +30,6 @@ pub use enabled::with_stack;
 
 // Re-export request-scope helpers.
 #[cfg(not(feature = "diagnostics"))]
-pub use disabled::{is_active, scope};
+pub use disabled::{capture_top, is_active, scope};
 #[cfg(feature = "diagnostics")]
-pub use enabled::{is_active, scope};
+pub use enabled::{capture_top, is_active, scope};

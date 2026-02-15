@@ -25,6 +25,7 @@ pub(crate) mod locks;
 pub mod registry;
 pub mod stack;
 pub(crate) mod sync;
+mod joinset;
 
 #[cfg(feature = "dashboard")]
 mod dashboard_client;
@@ -45,6 +46,7 @@ pub use stack::with_stack;
 // ── futures ─────────────────────────────────────────────
 
 pub use futures::{peepable, peepable_with_meta, spawn_tracked, PeepableFuture};
+pub use joinset::JoinSetExt;
 
 // ── locks ───────────────────────────────────────────────
 

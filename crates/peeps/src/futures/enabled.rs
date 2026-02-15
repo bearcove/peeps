@@ -241,7 +241,17 @@ where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
-    tokio::spawn(crate::stack::with_stack(future))
+    // Propagate the current top-of-stack into the spawned task, so work that
+    // is logically a continuation of a request/response keeps a causal parent.
+    let parent = crate::stack::capture_top();
+    tokio::spawn(async move {
+        if let Some(parent) = parent {
+            let fut = crate::stack::scope(&parent, future);
+            crate::stack::with_stack(fut).await
+        } else {
+            crate::stack::with_stack(future).await
+        }
+    })
 }
 
 // ── Graph emission ───────────────────────────────────────
@@ -263,10 +273,10 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
         if total_pending_ns > 0 {
             write_json_kv_u64(&mut attrs, "total_pending_ns", total_pending_ns, false);
         }
+        attrs.push_str(",\"meta\":");
         if info.meta_json.is_empty() {
-            attrs.push_str(",\"meta\":{}");
+            attrs.push_str("{}");
         } else {
-            attrs.push_str(",\"meta\":");
             attrs.push_str(&info.meta_json);
         }
         attrs.push('}');
