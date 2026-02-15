@@ -192,59 +192,89 @@ body {
     pointer-events: none;
 }
 
-/* ── Graph ────────────────────────────────────────────────── */
+/* ── Graph panel ──────────────────────────────────────────── */
 
-.graph-container {
-    position: relative;
-    width: 100%;
-    height: 100%;
+.panel--graph {
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
-    background: light-dark(#fafafa, #111113);
 }
 
-.graph-canvas {
-    position: absolute;
-    inset: 0;
+.panel--graph .react-flow-wrapper {
+    flex: 1;
+    min-height: 0;
 }
 
-.graph-node {
-    position: absolute;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    cursor: pointer;
+/* ── Custom graph nodes ───────────────────────────────────── */
+
+.graph-node-custom {
+    padding: 6px 10px;
+    border-radius: 6px;
     border: 1px solid light-dark(#d2d2d7, #3a3a3e);
     background: light-dark(#ffffff, #222226);
-    white-space: nowrap;
+    font-size: 11px;
+    min-width: 160px;
+    max-width: 220px;
+}
+
+.graph-node-custom .node-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+.graph-node-custom .node-icon {
+    flex-shrink: 0;
+}
+
+.graph-node-custom .node-label {
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 180px;
+    white-space: nowrap;
 }
 
-.graph-node:hover {
-    border-color: light-dark(#0071e3, #5ac8fa);
-    z-index: 10;
+.graph-node-custom .node-attrs {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid light-dark(#ebebf0, #2a2a2e);
+    font-size: 10px;
+    color: light-dark(#6e6e73, #98989d);
+    font-family: var(--font-mono);
 }
 
-.graph-node[data-selected="true"] {
-    border-color: light-dark(#0071e3, #0a84ff);
-    box-shadow: 0 0 0 1px light-dark(#0071e3, #0a84ff);
+.graph-node-custom .node-attr {
+    display: flex;
+    gap: 4px;
+    line-height: 1.5;
 }
 
-.graph-node--request {
+.graph-node-custom .node-attr-key {
+    color: light-dark(#8e8e93, #636366);
+    flex-shrink: 0;
+}
+
+.graph-node-custom .node-attr-val {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.graph-node-custom.kind-request {
     border-left: 3px solid light-dark(#0071e3, #5ac8fa);
 }
-.graph-node--response {
+.graph-node-custom.kind-response {
     border-left: 3px solid light-dark(#34c759, #30d158);
 }
-.graph-node--task {
+.graph-node-custom.kind-task {
     border-left: 3px solid light-dark(#ff9500, #ff9f0a);
 }
-.graph-node--future {
+.graph-node-custom.kind-future {
     border-left: 3px solid light-dark(#af52de, #bf5af2);
 }
-.graph-node--lock {
+.graph-node-custom.kind-lock {
     border-left: 3px solid light-dark(#ff3b30, #ff453a);
 }
 
