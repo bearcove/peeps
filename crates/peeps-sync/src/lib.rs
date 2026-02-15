@@ -1,12 +1,12 @@
-//! Diagnostic wrappers for tokio channels and `OnceCell`.
+//! Diagnostic wrappers for tokio channels, semaphores, and `OnceCell`.
 //!
 //! When the `diagnostics` feature is enabled, wraps tokio sync primitives
-//! to track message counts, channel state, send waiters, and OnceCell
+//! to track message counts, channel state, semaphore contention, and OnceCell
 //! initialization timing. When disabled, all wrappers are zero-cost.
 
 pub use peeps_types::{
     MpscChannelSnapshot, OnceCellSnapshot, OnceCellState, OneshotChannelSnapshot, OneshotState,
-    SyncSnapshot, WatchChannelSnapshot,
+    SemaphoreSnapshot, SyncSnapshot, WatchChannelSnapshot,
 };
 
 // ── Diagnostics-enabled implementation ──────────────────────────
@@ -28,6 +28,7 @@ mod diag {
         mpsc: Vec<Weak<MpscInfo>>,
         oneshot: Vec<Weak<OneshotInfo>>,
         watch: Vec<Weak<WatchInfo>>,
+        semaphore: Vec<Weak<SemaphoreInfo>>,
         once_cell: Vec<Weak<OnceCellInfo>>,
     }
 
@@ -50,6 +51,12 @@ mod diag {
                 .collect(),
             watch_channels: reg
                 .watch
+                .iter()
+                .filter_map(|w| w.upgrade())
+                .map(|info| info.snapshot(now))
+                .collect(),
+            semaphores: reg
+                .semaphore
                 .iter()
                 .filter_map(|w| w.upgrade())
                 .map(|info| info.snapshot(now))
@@ -79,6 +86,12 @@ mod diag {
         let mut reg = REGISTRY.lock().unwrap();
         reg.watch.retain(|w| w.strong_count() > 0);
         reg.watch.push(Arc::downgrade(info));
+    }
+
+    fn prune_and_register_semaphore(info: &Arc<SemaphoreInfo>) {
+        let mut reg = REGISTRY.lock().unwrap();
+        reg.semaphore.retain(|w| w.strong_count() > 0);
+        reg.semaphore.push(Arc::downgrade(info));
     }
 
     fn prune_and_register_once_cell(info: &Arc<OnceCellInfo>) {
@@ -597,6 +610,225 @@ mod diag {
         )
     }
 
+    // ── Semaphore ───────────────────────────────────────────────
+
+    struct SemaphoreInfo {
+        name: String,
+        permits_total: u64,
+        waiters: AtomicU64,
+        acquires: AtomicU64,
+        total_wait_nanos: AtomicU64,
+        max_wait_nanos: AtomicU64,
+        created_at: Instant,
+        creator_task_id: Option<u64>,
+        available_permits: Box<dyn Fn() -> usize + Send + Sync>,
+    }
+
+    impl SemaphoreInfo {
+        fn snapshot(&self, now: Instant) -> SemaphoreSnapshot {
+            let acquires = self.acquires.load(Ordering::Relaxed);
+            let total_wait_nanos = self.total_wait_nanos.load(Ordering::Relaxed);
+            let avg_wait_secs = if acquires == 0 {
+                0.0
+            } else {
+                (total_wait_nanos as f64 / acquires as f64) / 1_000_000_000.0
+            };
+            SemaphoreSnapshot {
+                name: self.name.clone(),
+                permits_total: self.permits_total,
+                permits_available: (self.available_permits)() as u64,
+                waiters: self.waiters.load(Ordering::Relaxed),
+                acquires,
+                avg_wait_secs,
+                max_wait_secs: self.max_wait_nanos.load(Ordering::Relaxed) as f64 / 1_000_000_000.0,
+                age_secs: now.duration_since(self.created_at).as_secs_f64(),
+                creator_task_id: self.creator_task_id,
+                creator_task_name: self.creator_task_id.and_then(peeps_tasks::task_name),
+            }
+        }
+    }
+
+    fn update_max_wait(max_wait_nanos: &AtomicU64, observed: u64) {
+        let mut current = max_wait_nanos.load(Ordering::Relaxed);
+        while observed > current {
+            match max_wait_nanos.compare_exchange_weak(
+                current,
+                observed,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(next) => current = next,
+            }
+        }
+    }
+
+    pub struct DiagnosticSemaphore {
+        inner: Arc<tokio::sync::Semaphore>,
+        info: Arc<SemaphoreInfo>,
+    }
+
+    impl Clone for DiagnosticSemaphore {
+        fn clone(&self) -> Self {
+            Self {
+                inner: Arc::clone(&self.inner),
+                info: Arc::clone(&self.info),
+            }
+        }
+    }
+
+    impl DiagnosticSemaphore {
+        pub fn new(name: impl Into<String>, permits: usize) -> Self {
+            let inner = Arc::new(tokio::sync::Semaphore::new(permits));
+            let inner_for_snapshot = Arc::clone(&inner);
+            let info = Arc::new(SemaphoreInfo {
+                name: name.into(),
+                permits_total: permits as u64,
+                waiters: AtomicU64::new(0),
+                acquires: AtomicU64::new(0),
+                total_wait_nanos: AtomicU64::new(0),
+                max_wait_nanos: AtomicU64::new(0),
+                created_at: Instant::now(),
+                creator_task_id: peeps_tasks::current_task_id(),
+                available_permits: Box::new(move || inner_for_snapshot.available_permits()),
+            });
+            prune_and_register_semaphore(&info);
+            Self { inner, info }
+        }
+
+        pub fn available_permits(&self) -> usize {
+            self.inner.available_permits()
+        }
+
+        pub fn close(&self) {
+            self.inner.close();
+        }
+
+        pub fn is_closed(&self) -> bool {
+            self.inner.is_closed()
+        }
+
+        pub fn add_permits(&self, n: usize) {
+            self.inner.add_permits(n);
+        }
+
+        pub async fn acquire(
+            &self,
+        ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
+            self.info.waiters.fetch_add(1, Ordering::Relaxed);
+            let start = Instant::now();
+            let result = self.inner.acquire().await;
+            self.info.waiters.fetch_sub(1, Ordering::Relaxed);
+            if result.is_ok() {
+                self.info.acquires.fetch_add(1, Ordering::Relaxed);
+                let waited_nanos = start.elapsed().as_nanos() as u64;
+                self.info
+                    .total_wait_nanos
+                    .fetch_add(waited_nanos, Ordering::Relaxed);
+                update_max_wait(&self.info.max_wait_nanos, waited_nanos);
+            }
+            result
+        }
+
+        pub async fn acquire_many(
+            &self,
+            n: u32,
+        ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
+            self.info.waiters.fetch_add(1, Ordering::Relaxed);
+            let start = Instant::now();
+            let result = self.inner.acquire_many(n).await;
+            self.info.waiters.fetch_sub(1, Ordering::Relaxed);
+            if result.is_ok() {
+                self.info.acquires.fetch_add(1, Ordering::Relaxed);
+                let waited_nanos = start.elapsed().as_nanos() as u64;
+                self.info
+                    .total_wait_nanos
+                    .fetch_add(waited_nanos, Ordering::Relaxed);
+                update_max_wait(&self.info.max_wait_nanos, waited_nanos);
+            }
+            result
+        }
+
+        pub async fn acquire_owned(
+            &self,
+        ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
+            self.info.waiters.fetch_add(1, Ordering::Relaxed);
+            let start = Instant::now();
+            let result = Arc::clone(&self.inner).acquire_owned().await;
+            self.info.waiters.fetch_sub(1, Ordering::Relaxed);
+            if result.is_ok() {
+                self.info.acquires.fetch_add(1, Ordering::Relaxed);
+                let waited_nanos = start.elapsed().as_nanos() as u64;
+                self.info
+                    .total_wait_nanos
+                    .fetch_add(waited_nanos, Ordering::Relaxed);
+                update_max_wait(&self.info.max_wait_nanos, waited_nanos);
+            }
+            result
+        }
+
+        pub async fn acquire_many_owned(
+            &self,
+            n: u32,
+        ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
+            self.info.waiters.fetch_add(1, Ordering::Relaxed);
+            let start = Instant::now();
+            let result = Arc::clone(&self.inner).acquire_many_owned(n).await;
+            self.info.waiters.fetch_sub(1, Ordering::Relaxed);
+            if result.is_ok() {
+                self.info.acquires.fetch_add(1, Ordering::Relaxed);
+                let waited_nanos = start.elapsed().as_nanos() as u64;
+                self.info
+                    .total_wait_nanos
+                    .fetch_add(waited_nanos, Ordering::Relaxed);
+                update_max_wait(&self.info.max_wait_nanos, waited_nanos);
+            }
+            result
+        }
+
+        pub fn try_acquire(
+            &self,
+        ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
+            let result = self.inner.try_acquire();
+            if result.is_ok() {
+                self.info.acquires.fetch_add(1, Ordering::Relaxed);
+            }
+            result
+        }
+
+        pub fn try_acquire_many(
+            &self,
+            n: u32,
+        ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
+            let result = self.inner.try_acquire_many(n);
+            if result.is_ok() {
+                self.info.acquires.fetch_add(1, Ordering::Relaxed);
+            }
+            result
+        }
+
+        pub fn try_acquire_owned(
+            &self,
+        ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+            let result = Arc::clone(&self.inner).try_acquire_owned();
+            if result.is_ok() {
+                self.info.acquires.fetch_add(1, Ordering::Relaxed);
+            }
+            result
+        }
+
+        pub fn try_acquire_many_owned(
+            &self,
+            n: u32,
+        ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+            let result = Arc::clone(&self.inner).try_acquire_many_owned(n);
+            if result.is_ok() {
+                self.info.acquires.fetch_add(1, Ordering::Relaxed);
+            }
+            result
+        }
+    }
+
     // ── OnceCell ────────────────────────────────────────────────
 
     const ONCE_EMPTY: u8 = 0;
@@ -778,6 +1010,7 @@ mod diag {
             mpsc_channels: Vec::new(),
             oneshot_channels: Vec::new(),
             watch_channels: Vec::new(),
+            semaphores: Vec::new(),
             once_cells: Vec::new(),
         }
     }
@@ -1036,6 +1269,104 @@ mod diag {
         (WatchSender(tx), WatchReceiver(rx))
     }
 
+    // ── Semaphore ───────────────────────────────────────────────
+
+    pub struct DiagnosticSemaphore(std::sync::Arc<tokio::sync::Semaphore>);
+
+    impl Clone for DiagnosticSemaphore {
+        #[inline]
+        fn clone(&self) -> Self {
+            Self(self.0.clone())
+        }
+    }
+
+    impl DiagnosticSemaphore {
+        #[inline]
+        pub fn new(_name: impl Into<String>, permits: usize) -> Self {
+            Self(std::sync::Arc::new(tokio::sync::Semaphore::new(permits)))
+        }
+
+        #[inline]
+        pub fn available_permits(&self) -> usize {
+            self.0.available_permits()
+        }
+
+        #[inline]
+        pub fn close(&self) {
+            self.0.close()
+        }
+
+        #[inline]
+        pub fn is_closed(&self) -> bool {
+            self.0.is_closed()
+        }
+
+        #[inline]
+        pub fn add_permits(&self, n: usize) {
+            self.0.add_permits(n)
+        }
+
+        #[inline]
+        pub async fn acquire(
+            &self,
+        ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
+            self.0.acquire().await
+        }
+
+        #[inline]
+        pub async fn acquire_many(
+            &self,
+            n: u32,
+        ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
+            self.0.acquire_many(n).await
+        }
+
+        #[inline]
+        pub async fn acquire_owned(
+            &self,
+        ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
+            self.0.clone().acquire_owned().await
+        }
+
+        #[inline]
+        pub async fn acquire_many_owned(
+            &self,
+            n: u32,
+        ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
+            self.0.clone().acquire_many_owned(n).await
+        }
+
+        #[inline]
+        pub fn try_acquire(
+            &self,
+        ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
+            self.0.try_acquire()
+        }
+
+        #[inline]
+        pub fn try_acquire_many(
+            &self,
+            n: u32,
+        ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
+            self.0.try_acquire_many(n)
+        }
+
+        #[inline]
+        pub fn try_acquire_owned(
+            &self,
+        ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+            self.0.clone().try_acquire_owned()
+        }
+
+        #[inline]
+        pub fn try_acquire_many_owned(
+            &self,
+            n: u32,
+        ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+            self.0.clone().try_acquire_many_owned(n)
+        }
+    }
+
     // ── OnceCell ────────────────────────────────────────────────
 
     pub struct OnceCell<T>(tokio::sync::OnceCell<T>);
@@ -1095,6 +1426,8 @@ pub use diag::{
     oneshot_channel, OneshotReceiver, OneshotSender,
     // watch
     watch_channel, WatchReceiver, WatchSender,
+    // semaphore
+    DiagnosticSemaphore,
     // OnceCell
     OnceCell,
     // snapshot

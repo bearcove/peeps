@@ -166,6 +166,7 @@ export interface SyncSnapshot {
   mpsc_channels: MpscChannelSnapshot[];
   oneshot_channels: OneshotChannelSnapshot[];
   watch_channels: WatchChannelSnapshot[];
+  semaphores: SemaphoreSnapshot[];
   once_cells: OnceCellSnapshot[];
 }
 
@@ -203,6 +204,19 @@ export interface WatchChannelSnapshot {
   name: string;
   changes: number;
   receiver_count: number;
+  age_secs: number;
+  creator_task_id: number | null;
+  creator_task_name: string | null;
+}
+
+export interface SemaphoreSnapshot {
+  name: string;
+  permits_total: number;
+  permits_available: number;
+  waiters: number;
+  acquires: number;
+  avg_wait_secs: number;
+  max_wait_secs: number;
   age_secs: number;
   creator_task_id: number | null;
   creator_task_name: string | null;

@@ -178,6 +178,7 @@ pub struct SyncSnapshot {
     pub mpsc_channels: Vec<MpscChannelSnapshot>,
     pub oneshot_channels: Vec<OneshotChannelSnapshot>,
     pub watch_channels: Vec<WatchChannelSnapshot>,
+    pub semaphores: Vec<SemaphoreSnapshot>,
     pub once_cells: Vec<OnceCellSnapshot>,
 }
 
@@ -231,6 +232,22 @@ pub struct WatchChannelSnapshot {
     pub receiver_count: u64,
     pub age_secs: f64,
     /// Which task created this channel.
+    pub creator_task_id: Option<u64>,
+    pub creator_task_name: Option<String>,
+}
+
+/// Snapshot of a tracked semaphore.
+#[derive(Debug, Clone, Facet)]
+pub struct SemaphoreSnapshot {
+    pub name: String,
+    pub permits_total: u64,
+    pub permits_available: u64,
+    pub waiters: u64,
+    pub acquires: u64,
+    pub avg_wait_secs: f64,
+    pub max_wait_secs: f64,
+    pub age_secs: f64,
+    /// Which task created this semaphore.
     pub creator_task_id: Option<u64>,
     pub creator_task_name: Option<String>,
 }
