@@ -553,7 +553,7 @@ function RpcRequestDetail({ attrs }: DetailProps) {
   const elapsedNs = numAttr(attrs, "elapsed_ns");
   const status = attr(attrs, "status") ?? "in_flight";
   const process = attr(attrs, "process");
-  const taskId = attr(attrs, "task_id");
+  const connection = attr(attrs, "connection");
   const correlationKey = attr(attrs, "correlation_key");
 
   return (
@@ -584,10 +584,10 @@ function RpcRequestDetail({ attrs }: DetailProps) {
           <span className="inspect-val">{process}</span>
         </div>
       )}
-      {taskId && (
+      {connection && (
         <div className="inspect-row">
-          <span className="inspect-key">Task ID</span>
-          <span className="inspect-val inspect-val--mono">{taskId}</span>
+          <span className="inspect-key">Connection</span>
+          <span className="inspect-val inspect-val--mono">{connection}</span>
         </div>
       )}
       {correlationKey && (

@@ -8,18 +8,16 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MiniMap,
   MarkerType,
   type Node,
   type Edge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import ELK from "elkjs/lib/elk.bundled.js";
+import ELK from "elkjs/lib/elk-api.js";
+import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
 import { Graph as GraphIcon, X } from "@phosphor-icons/react";
 import type { SnapshotGraph } from "../types";
 import { PeepsNode, processColor, estimateNodeHeight, type NodeData } from "./NodeCards";
-
-const elk = new ELK();
 
 const elkOptions = {
   "elk.algorithm": "layered",
@@ -30,6 +28,9 @@ const elkOptions = {
 };
 
 const nodeTypes = { peeps: PeepsNode };
+
+// Use ELK's worker-based API (off main thread). Avoid nesting ELK inside our own Worker.
+const elk = new ELK({ workerUrl: elkWorkerUrl });
 
 function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; edges: Edge[] } {
   const nodes: Node<NodeData>[] = graph.nodes.map((n) => ({
@@ -63,7 +64,7 @@ async function layoutElements(
   nodes: Node<NodeData>[],
   edges: Edge[],
 ): Promise<{ nodes: Node<NodeData>[]; edges: Edge[] }> {
-  const graph = {
+  const result = await elk.layout({
     id: "root",
     layoutOptions: elkOptions,
     children: nodes.map((n) => ({
@@ -76,17 +77,15 @@ async function layoutElements(
       sources: [e.source],
       targets: [e.target],
     })),
-  };
-
-  const result = await elk.layout(graph);
-  const layoutedNodes = nodes.map((node) => {
-    const elkNode = result.children?.find((c) => c.id === node.id);
-    return {
-      ...node,
-      position: { x: elkNode?.x ?? 0, y: elkNode?.y ?? 0 },
-    };
   });
 
+  const posMap = new Map(
+    (result.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]),
+  );
+  const layoutedNodes = nodes.map((node) => ({
+    ...node,
+    position: posMap.get(node.id) ?? { x: 0, y: 0 },
+  }));
   return { nodes: layoutedNodes, edges };
 }
 
@@ -147,10 +146,6 @@ function GraphFlow({
     >
       <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
       <Controls showInteractive={false} />
-      <MiniMap
-        nodeColor={(n) => processColor((n.data as NodeData)?.process ?? "")}
-        maskColor="light-dark(rgba(245,245,247,0.7), rgba(12,12,14,0.7))"
-      />
     </ReactFlow>
   );
 }

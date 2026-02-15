@@ -24,7 +24,7 @@ export interface StuckRequest {
   method: string | null;
   process: string;
   elapsed_ns: number;
-  connection: string | null;
+  task_id: string | null;
   correlation_key: string | null;
 }
 

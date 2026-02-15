@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
 use rusqlite::types::Value;
@@ -13,7 +13,6 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
-use crate::correctness;
 use crate::AppState;
 
 // ── Constants ────────────────────────────────────────────────────

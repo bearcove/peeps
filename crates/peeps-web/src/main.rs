@@ -1,5 +1,4 @@
 mod api;
-pub(crate) mod correctness;
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -9,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
-use peeps_types::GraphReply;
+use peeps_types::{GraphReply, SnapshotRequest};
 use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -513,9 +512,9 @@ fn persist_reply(
                 params![
                     snapshot_id,
                     node.id,
-                    node.kind,
-                    node.process,
-                    node.proc_key,
+                    node.kind.as_str(),
+                    process,
+                    proc_key,
                     node.attrs_json
                 ],
             )
@@ -523,29 +522,29 @@ fn persist_reply(
         }
 
         for edge in &graph.edges {
-            let src_exists = local_node_ids.contains(edge.src_id.as_str())
-                || node_exists_in_snapshot(&tx, snapshot_id, &edge.src_id);
-            let dst_exists = local_node_ids.contains(edge.dst_id.as_str())
-                || node_exists_in_snapshot(&tx, snapshot_id, &edge.dst_id);
+            let src_exists = local_node_ids.contains(edge.src.as_str())
+                || node_exists_in_snapshot(&tx, snapshot_id, &edge.src);
+            let dst_exists = local_node_ids.contains(edge.dst.as_str())
+                || node_exists_in_snapshot(&tx, snapshot_id, &edge.dst);
 
             if src_exists && dst_exists {
                 tx.execute(
                     "INSERT OR REPLACE INTO edges (snapshot_id, src_id, dst_id, kind, attrs_json)
                      VALUES (?1, ?2, ?3, 'needs', ?4)",
-                    params![snapshot_id, edge.src_id, edge.dst_id, edge.attrs_json],
+                    params![snapshot_id, edge.src, edge.dst, edge.attrs_json],
                 )
                 .map_err(|e| e.to_string())?;
             } else {
                 let (missing_side, referenced_proc_key) = if !src_exists && !dst_exists {
-                    let src_pk = extract_proc_key(&edge.src_id);
-                    let dst_pk = extract_proc_key(&edge.dst_id);
+                    let src_pk = extract_proc_key(&edge.src);
+                    let dst_pk = extract_proc_key(&edge.dst);
                     let rpk = resolve_referenced_proc_key_both(&tx, snapshot_id, src_pk, dst_pk);
                     ("both", rpk)
                 } else if !src_exists {
-                    let pk = extract_proc_key(&edge.src_id);
+                    let pk = extract_proc_key(&edge.src);
                     ("src", pk.map(|s| s.to_string()))
                 } else {
-                    let pk = extract_proc_key(&edge.dst_id);
+                    let pk = extract_proc_key(&edge.dst);
                     ("dst", pk.map(|s| s.to_string()))
                 };
 
@@ -556,8 +555,8 @@ fn persist_reply(
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                     params![
                         snapshot_id,
-                        edge.src_id,
-                        edge.dst_id,
+                        edge.src,
+                        edge.dst,
                         missing_side,
                         reason,
                         referenced_proc_key,

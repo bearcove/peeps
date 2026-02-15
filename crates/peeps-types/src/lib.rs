@@ -123,6 +123,24 @@ pub enum NodeKind {
     OnceCell,
 }
 
+impl NodeKind {
+    /// Return a string representation suitable for storage.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            NodeKind::Future => "future",
+            NodeKind::Lock => "lock",
+            NodeKind::Tx => "tx",
+            NodeKind::Rx => "rx",
+            NodeKind::RemoteTx => "remote_tx",
+            NodeKind::RemoteRx => "remote_rx",
+            NodeKind::Request => "request",
+            NodeKind::Response => "response",
+            NodeKind::Semaphore => "semaphore",
+            NodeKind::OnceCell => "oncecell",
+        }
+    }
+}
+
 /// Canonical edge row emitted by instrumentation wrappers.
 ///
 /// All edges use kind `"needs"`. No inferred/derived/heuristic edges.
@@ -510,6 +528,14 @@ pub mod meta_key {
 }
 
 // ── Snapshot protocol types ──────────────────────────────────────
+
+/// Server-to-client: request a snapshot from a connected process.
+#[derive(Debug, Clone, Facet)]
+pub struct SnapshotRequest {
+    pub r#type: String,
+    pub snapshot_id: i64,
+    pub timeout_ms: i64,
+}
 
 /// Client-to-server: lightweight reply carrying only the canonical graph.
 #[derive(Debug, Clone, Facet)]
