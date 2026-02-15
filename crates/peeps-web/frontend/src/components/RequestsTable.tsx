@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "preact/hooks";
+import { useCallback, useEffect, useRef } from "react";
 import { ListBullets } from "@phosphor-icons/react";
 import type { StuckRequest } from "../types";
 
@@ -27,7 +27,7 @@ export function RequestsTable({ requests, selectedId, onSelect }: RequestsTableP
   const selectedIndex = requests.findIndex((r) => r.id === selectedId);
 
   const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
+    (e: React.KeyboardEvent) => {
       if (requests.length === 0) return;
       const idx = selectedIndex >= 0 ? selectedIndex : 0;
 
@@ -53,11 +53,6 @@ export function RequestsTable({ requests, selectedId, onSelect }: RequestsTableP
           }
           break;
         }
-        case "Escape": {
-          e.preventDefault();
-          // Deselect by selecting nothing — parent handles this
-          break;
-        }
       }
     },
     [requests, selectedIndex, onSelect],
@@ -75,8 +70,8 @@ export function RequestsTable({ requests, selectedId, onSelect }: RequestsTableP
   }, [selectedId]);
 
   return (
-    <div class="panel" tabIndex={0} onKeyDown={handleKeyDown}>
-      <div class="panel-header">
+    <div className="panel" tabIndex={0} onKeyDown={handleKeyDown}>
+      <div className="panel-header">
         <ListBullets size={14} weight="bold" /> Stuck requests ({requests.length})
       </div>
       {requests.length === 0 ? (
@@ -86,7 +81,7 @@ export function RequestsTable({ requests, selectedId, onSelect }: RequestsTableP
           No stuck requests found.
         </div>
       ) : (
-        <table class="requests-table">
+        <table className="requests-table">
           <thead>
             <tr>
               <th>method</th>
@@ -99,7 +94,7 @@ export function RequestsTable({ requests, selectedId, onSelect }: RequestsTableP
             {requests.map((req) => (
               <tr key={req.id} data-selected={req.id === selectedId} onClick={() => onSelect(req)}>
                 <td>{req.method ?? "—"}</td>
-                <td class={elapsedClass(req.elapsed_ns)}>{formatElapsed(req.elapsed_ns)}</td>
+                <td className={elapsedClass(req.elapsed_ns)}>{formatElapsed(req.elapsed_ns)}</td>
                 <td>{req.process}</td>
                 <td style={{ fontSize: "11px", opacity: 0.7 }}>{req.task_id ?? "—"}</td>
               </tr>

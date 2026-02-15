@@ -19,17 +19,17 @@ function formatElapsedFull(ns: number): string {
 
 export function Inspector({ selectedRequest, selectedGraphNode }: InspectorProps) {
   return (
-    <div class="panel">
-      <div class="panel-header">
+    <div className="panel">
+      <div className="panel-header">
         <MagnifyingGlass size={14} weight="bold" /> Inspector
       </div>
-      <div class="inspector">
+      <div className="inspector">
         {selectedRequest ? (
           <RequestDetail req={selectedRequest} />
         ) : selectedGraphNode ? (
           <GraphNodeDetail node={selectedGraphNode} />
         ) : (
-          <div class="inspector-empty">
+          <div className="inspector-empty">
             Select a request or graph node to inspect.
             <br />
             <br />

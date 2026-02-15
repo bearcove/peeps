@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "preact/hooks";
+import { useCallback, useEffect, useState } from "react";
 import { WarningCircle } from "@phosphor-icons/react";
 import { jumpNow, fetchStuckRequests } from "./api";
 import { Header } from "./components/Header";
@@ -58,19 +58,19 @@ export function App() {
   );
 
   return (
-    <div class="app">
+    <div className="app">
       <Header snapshot={snapshot} loading={loading} onJumpNow={handleJumpNow} />
       {error && (
-        <div class="status-bar">
+        <div className="status-bar">
           <WarningCircle
             size={14}
             weight="bold"
             style={{ color: "light-dark(#d30000, #ff6b6b)", flexShrink: 0 }}
           />
-          <span class="error-text">{error}</span>
+          <span className="error-text">{error}</span>
         </div>
       )}
-      <div class="main-content">
+      <div className="main-content">
         <RequestsTable
           requests={requests}
           selectedId={selectedRequest?.id ?? null}

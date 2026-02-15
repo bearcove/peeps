@@ -9,10 +9,10 @@ interface HeaderProps {
 
 export function Header({ snapshot, loading, onJumpNow }: HeaderProps) {
   return (
-    <div class="header">
+    <div className="header">
       <Aperture size={18} weight="bold" />
-      <span class="header-title">peeps</span>
-      <span class={`snapshot-badge ${snapshot ? "snapshot-badge--active" : ""}`}>
+      <span className="header-title">peeps</span>
+      <span className={`snapshot-badge ${snapshot ? "snapshot-badge--active" : ""}`}>
         {snapshot ? (
           <>
             <CheckCircle size={12} weight="bold" />
@@ -26,7 +26,7 @@ export function Header({ snapshot, loading, onJumpNow }: HeaderProps) {
         )}
       </span>
       {snapshot && (
-        <span class="snapshot-badge">
+        <span className="snapshot-badge">
           {snapshot.responded}/{snapshot.requested} responded
           {snapshot.timed_out > 0 && (
             <>
@@ -36,9 +36,9 @@ export function Header({ snapshot, loading, onJumpNow }: HeaderProps) {
           )}
         </span>
       )}
-      <span class="header-spacer" />
+      <span className="header-spacer" />
       <button
-        class={`btn btn--primary ${loading ? "btn--loading" : ""}`}
+        className={`btn btn--primary ${loading ? "btn--loading" : ""}`}
         onClick={onJumpNow}
         disabled={loading}
       >
