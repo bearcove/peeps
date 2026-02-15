@@ -1,9 +1,9 @@
 import { MagnifyingGlass } from "@phosphor-icons/react";
-import type { StuckRequest, GraphNode } from "../types";
+import type { StuckRequest, SnapshotNode } from "../types";
 
 interface InspectorProps {
   selectedRequest: StuckRequest | null;
-  selectedGraphNode: GraphNode | null;
+  selectedNode: SnapshotNode | null;
 }
 
 function formatElapsedFull(ns: number): string {
@@ -17,7 +17,7 @@ function formatElapsedFull(ns: number): string {
   return `${secs.toFixed(3)}s (${ms.toLocaleString()}ms)`;
 }
 
-export function Inspector({ selectedRequest, selectedGraphNode }: InspectorProps) {
+export function Inspector({ selectedRequest, selectedNode }: InspectorProps) {
   return (
     <div className="panel">
       <div className="panel-header">
@@ -26,8 +26,8 @@ export function Inspector({ selectedRequest, selectedGraphNode }: InspectorProps
       <div className="inspector">
         {selectedRequest ? (
           <RequestDetail req={selectedRequest} />
-        ) : selectedGraphNode ? (
-          <GraphNodeDetail node={selectedGraphNode} />
+        ) : selectedNode ? (
+          <NodeDetail node={selectedNode} />
         ) : (
           <div className="inspector-empty">
             Select a request or graph node to inspect.
@@ -60,23 +60,25 @@ function RequestDetail({ req }: { req: StuckRequest }) {
   );
 }
 
-function GraphNodeDetail({ node }: { node: GraphNode }) {
+function NodeDetail({ node }: { node: SnapshotNode }) {
+  const attrEntries = Object.entries(node.attrs).filter(([, v]) => v != null);
+
   return (
     <dl>
-      <dt>Node ID</dt>
+      <dt>ID</dt>
       <dd>{node.id}</dd>
       <dt>Kind</dt>
       <dd>{node.kind}</dd>
-      <dt>Label</dt>
-      <dd>{node.label}</dd>
-      <dt>Position</dt>
-      <dd>
-        x={node.x.toFixed(0)}, y={node.y.toFixed(0)}
-      </dd>
-      <dt>Size</dt>
-      <dd>
-        {node.width} x {node.height}
-      </dd>
+      <dt>Process</dt>
+      <dd>{node.process}</dd>
+      <dt>Proc Key</dt>
+      <dd>{node.proc_key}</dd>
+      {attrEntries.map(([key, val]) => (
+        <div key={key}>
+          <dt>{key}</dt>
+          <dd>{typeof val === "object" ? JSON.stringify(val) : String(val)}</dd>
+        </div>
+      ))}
     </dl>
   );
 }

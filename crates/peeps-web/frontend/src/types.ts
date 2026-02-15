@@ -28,45 +28,23 @@ export interface StuckRequest {
   correlation_key: string | null;
 }
 
-export interface GraphNode {
+// Raw graph data from the snapshot SQLite tables
+export interface SnapshotNode {
   id: string;
   kind: string;
-  label: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+  process: string;
+  proc_key: string;
+  attrs: Record<string, unknown>;
 }
 
-export interface GraphEdge {
-  source: string;
-  target: string;
+export interface SnapshotEdge {
+  src_id: string;
+  dst_id: string;
   kind: string;
+  attrs: Record<string, unknown>;
 }
 
-export interface ElkInputNode {
-  id: string;
-  kind: string;
-  label: string;
-  width: number;
-  height: number;
-}
-
-export interface ElkInputEdge {
-  id: string;
-  source: string;
-  target: string;
-  kind: string;
-}
-
-export interface ElkLayoutRequest {
-  nodes: ElkInputNode[];
-  edges: ElkInputEdge[];
-}
-
-export interface ElkLayoutResult {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-  width: number;
-  height: number;
+export interface SnapshotGraph {
+  nodes: SnapshotNode[];
+  edges: SnapshotEdge[];
 }
