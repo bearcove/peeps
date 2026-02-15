@@ -85,7 +85,7 @@ pub struct Node {
     pub id: String,
 
     /// Node kind (e.g. `task`, `future`, `lock`, `mpsc_tx`, `request`).
-    pub kind: GraphNodeKind,
+    pub kind: NodeKind,
 
     /// Opaque process key: `{process_slug}-{pid}`, charset `[a-z0-9._-]+`, no `:`.
     pub proc_key: String,
@@ -103,14 +103,22 @@ pub struct Node {
 /// Corresponds to the `kind` field in [`GraphNodeSnapshot`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Facet)]
 #[repr(u8)]
-pub enum GraphNodeKind {
+pub enum NodeKind {
+    /// Canonical ID format: `future:{ulid}`
     Future,
+    /// Canonical ID format: `lock:{ulid}`
     Lock,
+    /// Canonical ID format: `tx:{ulid}`
     Tx,
+    /// Canonical ID format: `rx:{ulid}`
     Rx,
+    /// Canonical ID format: `remote_tx:{mother_request_ulid}:{channel_idx}:{dir}`
     RemoteTx,
+    /// Canonical ID format: `remote_rx:{mother_request_ulid}:{channel_idx}:{dir}`
     RemoteRx,
+    /// Canonical ID format: `request:{span_id}`
     Request,
+    /// Canonical ID format: `response:{span_id}`
     Response,
 }
 
@@ -478,24 +486,6 @@ pub mod meta_key {
 }
 
 // ── Snapshot protocol types ──────────────────────────────────────
-
-/// Server-to-client: request a snapshot.
-#[derive(Debug, Clone, Facet)]
-pub struct SnapshotRequest {
-    pub r#type: String,
-    pub snapshot_id: i64,
-    pub timeout_ms: i64,
-}
-
-/// Client-to-server: snapshot reply envelope.
-#[derive(Debug, Clone, Facet)]
-pub struct SnapshotReply {
-    pub r#type: String,
-    pub snapshot_id: i64,
-    pub process: String,
-    pub pid: u32,
-    pub dump: ProcessDump,
-}
 
 /// Client-to-server: lightweight reply carrying only the canonical graph.
 #[derive(Debug, Clone, Facet)]

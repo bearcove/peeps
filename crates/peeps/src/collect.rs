@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
 use peeps_types::{
-    canonical_id, meta_key, Direction, Edge, GraphEdgeOrigin, MetaBuilder, MetaValue, Node,
-    SessionSnapshot,
+    canonical_id, meta_key, Direction, Edge, MetaBuilder, MetaValue, Node, SessionSnapshot,
 };
 
 /// Collect only the canonical graph (tasks + roam), skipping all other diagnostics.
@@ -57,6 +56,11 @@ fn emit_roam_graph(
                 .as_ref()
                 .and_then(|m| m.get(peeps_types::PEEPS_SPAN_ID_KEY))
                 .cloned();
+            let parent_span_id = req
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get(peeps_types::PEEPS_PARENT_SPAN_ID_KEY))
+                .cloned();
 
             if let Some(ref sid) = span_id {
                 request_span_ids.insert((conn_name.clone(), req.request_id), sid.clone());
@@ -110,14 +114,23 @@ fn emit_roam_graph(
                         caller_request_id.clone(),
                     );
                     graph.edges.push(Edge {
-                        src_id: caller_request_id,
-                        dst_id: response_id,
-                        kind: "needs".to_string(),
-                        observed_at_ns: None,
+                        src: caller_request_id,
+                        dst: response_id,
                         attrs_json: "{}".to_string(),
-                        origin: GraphEdgeOrigin::Explicit,
                     });
                 }
+            }
+
+            if let (Some(child_span_id), Some(parent_span_id)) =
+                (span_id.as_deref(), parent_span_id.as_deref())
+            {
+                let parent_id = canonical_id::request_from_span_id(parent_span_id);
+                let child_id = canonical_id::request_from_span_id(child_span_id);
+                graph.edges.push(Edge {
+                    src: parent_id,
+                    dst: child_id,
+                    attrs_json: "{}".to_string(),
+                });
             }
         }
     }
@@ -167,12 +180,9 @@ fn emit_roam_graph(
                     request_node_ids.get(&(conn_name.to_string(), request_id))
                 {
                     graph.edges.push(Edge {
-                        src_id: req_node_id.clone(),
-                        dst_id: node_id.clone(),
-                        kind: "needs".to_string(),
-                        observed_at_ns: None,
+                        src: req_node_id.clone(),
+                        dst: node_id.clone(),
                         attrs_json: "{}".to_string(),
-                        origin: GraphEdgeOrigin::Explicit,
                     });
                 }
             }
@@ -192,12 +202,9 @@ fn emit_roam_graph(
     for (channel_id, tx_node_id) in &tx_ids {
         if let Some(rx_node_id) = rx_ids.get(channel_id) {
             graph.edges.push(Edge {
-                src_id: tx_node_id.clone(),
-                dst_id: rx_node_id.clone(),
-                kind: "needs".to_string(),
-                observed_at_ns: None,
+                src: tx_node_id.clone(),
+                dst: rx_node_id.clone(),
                 attrs_json: "{}".to_string(),
-                origin: GraphEdgeOrigin::Explicit,
             });
         }
     }
