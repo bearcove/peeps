@@ -6,7 +6,6 @@ license.workspace = true
 
 [dependencies]
 axum.workspace = true
-facet-json.workspace = true
 peeps-types.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

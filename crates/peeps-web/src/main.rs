@@ -1,60 +1,92 @@
 mod api;
 mod projection;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
-use axum::{Json, Router};
-use peeps_types::{Direction, ProcessDump};
+use axum::Router;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{Mutex, oneshot};
+
+// ── Types ────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 pub(crate) struct AppState {
     pub(crate) db_path: Arc<PathBuf>,
-    pub(crate) seq: Arc<AtomicU64>,
+    pub(crate) snapshot_ctl: Arc<SnapshotController>,
 }
 
-#[derive(Debug, Serialize)]
-struct SnapshotMeta {
-    seq: u64,
+pub(crate) struct SnapshotController {
+    pub(crate) inner: Mutex<SnapshotControllerInner>,
 }
 
-#[derive(Debug, Serialize)]
-struct NodeRow {
+pub(crate) struct SnapshotControllerInner {
+    pub(crate) connections: HashMap<u64, ConnectedProcess>,
+    next_conn_id: u64,
+    pub(crate) in_flight: Option<InFlightSnapshot>,
+}
+
+pub(crate) struct ConnectedProcess {
+    pub(crate) proc_key: String,
+    pub(crate) process_name: String,
+    tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+}
+
+pub(crate) struct InFlightSnapshot {
+    pub(crate) snapshot_id: i64,
+    pub(crate) requested_at_ns: i64,
+    pub(crate) timeout_ms: i64,
+    pub(crate) pending: BTreeSet<String>,
+    completion_tx: Option<oneshot::Sender<()>>,
+}
+
+#[derive(Serialize)]
+struct SnapshotRequest {
+    r#type: &'static str,
+    snapshot_id: i64,
+    timeout_ms: i64,
+}
+
+#[derive(Deserialize)]
+struct SnapshotReply {
+    r#type: String,
+    snapshot_id: i64,
+    process: String,
+    pid: u32,
+    dump: serde_json::Value,
+}
+
+struct ProcessGraph {
+    nodes: Vec<GraphNode>,
+    edges: Vec<GraphEdge>,
+}
+
+struct GraphNode {
     id: String,
     kind: String,
     process: String,
+    proc_key: String,
     attrs_json: String,
 }
 
-#[derive(Debug, Serialize)]
-struct EdgeRow {
+struct GraphEdge {
     src_id: String,
     dst_id: String,
-    kind: String,
     attrs_json: String,
 }
 
-#[derive(Debug, Serialize)]
-struct GraphResponse {
-    seq: u64,
-    nodes: Vec<NodeRow>,
-    edges: Vec<EdgeRow>,
-}
+pub(crate) const DEFAULT_TIMEOUT_MS: i64 = 1500;
+const MAX_SNAPSHOTS: i64 = 500;
+const INGEST_EVENTS_RETENTION_DAYS: i64 = 7;
 
-#[derive(Debug, Deserialize)]
-struct StuckQuery {
-    min_secs: Option<f64>,
-}
+// ── Main ─────────────────────────────────────────────────────────
 
 #[tokio::main]
 async fn main() {
@@ -66,13 +98,19 @@ async fn main() {
 
     let state = AppState {
         db_path: Arc::new(PathBuf::from(&db_path)),
-        seq: Arc::new(AtomicU64::new(0)),
+        snapshot_ctl: Arc::new(SnapshotController {
+            inner: Mutex::new(SnapshotControllerInner {
+                connections: HashMap::new(),
+                next_conn_id: 1,
+                in_flight: None,
+            }),
+        }),
     };
 
     let tcp_listener = TcpListener::bind(&tcp_addr)
         .await
         .unwrap_or_else(|e| panic!("[peeps-web] failed to bind TCP on {tcp_addr}: {e}"));
-    eprintln!("[peeps-web] TCP listener on {tcp_addr} (ProcessDump ingest)");
+    eprintln!("[peeps-web] TCP listener on {tcp_addr} (pull-based ingest)");
 
     let http_listener = TcpListener::bind(&http_addr)
         .await
@@ -84,11 +122,6 @@ async fn main() {
         .route("/health", get(health))
         .route("/api/jump-now", post(api::api_jump_now))
         .route("/api/sql", post(api::api_sql))
-        // Legacy endpoints (to be removed once frontend migrates)
-        .route("/api/snapshots", get(api_snapshots))
-        .route("/api/snapshot/latest", get(api_snapshot_latest))
-        .route("/api/snapshot/:seq/graph", get(api_snapshot_graph))
-        .route("/api/snapshot/:seq/stuck-requests", get(api_snapshot_stuck_requests))
         .with_state(state.clone());
 
     tokio::select! {
@@ -105,135 +138,126 @@ async fn health() -> impl IntoResponse {
     "ok"
 }
 
-async fn api_snapshots(State(state): State<AppState>) -> Json<Vec<SnapshotMeta>> {
-    let conn = open_db(&state.db_path);
-    let mut stmt = conn
-        .prepare("SELECT DISTINCT seq FROM nodes ORDER BY seq DESC LIMIT 200")
-        .unwrap();
-    let rows = stmt
-        .query_map([], |row| Ok(SnapshotMeta { seq: row.get(0)? }))
-        .unwrap();
-    let out = rows.filter_map(Result::ok).collect::<Vec<_>>();
-    Json(out)
+// ── Snapshot orchestration (used by api module) ──────────────────
+
+pub(crate) fn allocate_snapshot_id(
+    db_path: &PathBuf,
+    now_ns: i64,
+    timeout_ms: i64,
+) -> Result<i64, String> {
+    let conn = open_db(db_path);
+    conn.execute(
+        "INSERT INTO snapshots (requested_at_ns, timeout_ms) VALUES (?1, ?2)",
+        params![now_ns, timeout_ms],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(conn.last_insert_rowid())
 }
 
-async fn api_snapshot_latest(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let conn = open_db(&state.db_path);
-    let seq: Option<u64> = conn
-        .query_row("SELECT MAX(seq) FROM nodes", [], |row| row.get(0))
-        .ok();
-    Json(json!({ "seq": seq.unwrap_or(0) }))
+pub(crate) async fn trigger_snapshot(state: &AppState) -> Result<(i64, usize), String> {
+    let (snapshot_id, completion_rx, processes_requested) = {
+        let mut ctl = state.snapshot_ctl.inner.lock().await;
+
+        if ctl.in_flight.is_some() {
+            return Err("snapshot already in flight".into());
+        }
+
+        if ctl.connections.is_empty() {
+            return Err("no connected processes".into());
+        }
+
+        let now_ns = now_nanos();
+        let snapshot_id = allocate_snapshot_id(&state.db_path, now_ns, DEFAULT_TIMEOUT_MS)?;
+
+        let pending: BTreeSet<String> = ctl
+            .connections
+            .values()
+            .map(|c| c.proc_key.clone())
+            .collect();
+        let processes_requested = pending.len();
+
+        let (completion_tx, completion_rx) = oneshot::channel();
+
+        ctl.in_flight = Some(InFlightSnapshot {
+            snapshot_id,
+            requested_at_ns: now_ns,
+            timeout_ms: DEFAULT_TIMEOUT_MS,
+            pending: pending.clone(),
+            completion_tx: Some(completion_tx),
+        });
+
+        let req = SnapshotRequest {
+            r#type: "snapshot_request",
+            snapshot_id,
+            timeout_ms: DEFAULT_TIMEOUT_MS,
+        };
+        let req_json = serde_json::to_vec(&req).map_err(|e| e.to_string())?;
+
+        for conn in ctl.connections.values() {
+            let _ = conn.tx.try_send(req_json.clone());
+        }
+
+        (snapshot_id, completion_rx, processes_requested)
+    };
+
+    let timeout = tokio::time::Duration::from_millis(DEFAULT_TIMEOUT_MS as u64 + 500);
+    let _ = tokio::time::timeout(timeout, completion_rx).await;
+
+    finalize_snapshot(&state.db_path, &state.snapshot_ctl, snapshot_id).await?;
+
+    if let Err(e) = run_retention(&state.db_path) {
+        eprintln!("[peeps-web] retention error: {e}");
+    }
+
+    Ok((snapshot_id, processes_requested))
 }
 
-async fn api_snapshot_graph(
-    State(state): State<AppState>,
-    Path(seq): Path<u64>,
-) -> Json<GraphResponse> {
-    let conn = open_db(&state.db_path);
+async fn finalize_snapshot(
+    db_path: &PathBuf,
+    ctl: &SnapshotController,
+    snapshot_id: i64,
+) -> Result<(), String> {
+    let mut guard = ctl.inner.lock().await;
+    let in_flight = match guard.in_flight.take() {
+        Some(f) if f.snapshot_id == snapshot_id => f,
+        other => {
+            guard.in_flight = other;
+            return Err("snapshot_id mismatch during finalize".into());
+        }
+    };
 
-    let mut ns = conn
-        .prepare("SELECT id, kind, process, attrs_json FROM nodes WHERE seq = ?1")
-        .unwrap();
-    let nodes = ns
-        .query_map([seq], |row| {
-            Ok(NodeRow {
-                id: row.get(0)?,
-                kind: row.get(1)?,
-                process: row.get(2)?,
-                attrs_json: row.get(3)?,
-            })
-        })
-        .unwrap()
-        .filter_map(Result::ok)
-        .collect::<Vec<_>>();
+    let conn = open_db(db_path);
+    let now_ns = now_nanos();
 
-    let mut es = conn
-        .prepare("SELECT src_id, dst_id, kind, attrs_json FROM edges WHERE seq = ?1")
-        .unwrap();
-    let edges = es
-        .query_map([seq], |row| {
-            Ok(EdgeRow {
-                src_id: row.get(0)?,
-                dst_id: row.get(1)?,
-                kind: row.get(2)?,
-                attrs_json: row.get(3)?,
-            })
-        })
-        .unwrap()
-        .filter_map(Result::ok)
-        .collect::<Vec<_>>();
+    for proc_key in &in_flight.pending {
+        let still_connected = guard
+            .connections
+            .values()
+            .any(|c| &c.proc_key == proc_key);
+        let status = if still_connected {
+            "timeout"
+        } else {
+            "disconnected"
+        };
 
-    Json(GraphResponse { seq, nodes, edges })
-}
-
-async fn api_snapshot_stuck_requests(
-    State(state): State<AppState>,
-    Path(seq): Path<u64>,
-    Query(q): Query<StuckQuery>,
-) -> Json<Vec<NodeRow>> {
-    let min_secs = q.min_secs.unwrap_or(5.0);
-    let conn = open_db(&state.db_path);
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, kind, process, attrs_json
-             FROM nodes
-             WHERE seq = ?1
-               AND kind = 'request'
-               AND CAST(json_extract(attrs_json, '$.elapsed_secs') AS REAL) >= ?2
-             ORDER BY CAST(json_extract(attrs_json, '$.elapsed_secs') AS REAL) DESC",
+        conn.execute(
+            "INSERT OR IGNORE INTO snapshot_processes (snapshot_id, process, pid, proc_key, status, error_text)
+             VALUES (?1, '', NULL, ?2, ?3, NULL)",
+            params![snapshot_id, proc_key, status],
         )
-        .unwrap();
-    let rows = stmt
-        .query_map(params![seq, min_secs], |row| {
-            Ok(NodeRow {
-                id: row.get(0)?,
-                kind: row.get(1)?,
-                process: row.get(2)?,
-                attrs_json: row.get(3)?,
-            })
-        })
-        .unwrap();
-    Json(rows.filter_map(Result::ok).collect())
-}
+        .map_err(|e| e.to_string())?;
+    }
 
-fn init_db(path: &str) -> rusqlite::Result<()> {
-    let conn = Connection::open(path)?;
-    conn.execute_batch(
-        "
-        PRAGMA journal_mode=WAL;
-        PRAGMA synchronous=NORMAL;
+    conn.execute(
+        "UPDATE snapshots SET completed_at_ns = ?1 WHERE snapshot_id = ?2",
+        params![now_ns, snapshot_id],
+    )
+    .map_err(|e| e.to_string())?;
 
-        CREATE TABLE IF NOT EXISTS nodes (
-            seq        INTEGER NOT NULL,
-            id         TEXT    NOT NULL,
-            kind       TEXT    NOT NULL,
-            process    TEXT    NOT NULL,
-            attrs_json TEXT    NOT NULL,
-            PRIMARY KEY (seq, id)
-        );
-
-        CREATE TABLE IF NOT EXISTS edges (
-            seq        INTEGER NOT NULL,
-            src_id     TEXT    NOT NULL,
-            dst_id     TEXT    NOT NULL,
-            kind       TEXT    NOT NULL,
-            attrs_json TEXT    NOT NULL,
-            PRIMARY KEY (seq, src_id, dst_id, kind)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_nodes_seq_kind ON nodes(seq, kind);
-        CREATE INDEX IF NOT EXISTS idx_nodes_seq_process ON nodes(seq, process);
-        CREATE INDEX IF NOT EXISTS idx_edges_seq_src ON edges(seq, src_id);
-        CREATE INDEX IF NOT EXISTS idx_edges_seq_dst ON edges(seq, dst_id);
-        CREATE INDEX IF NOT EXISTS idx_edges_seq_kind ON edges(seq, kind);
-        ",
-    )?;
     Ok(())
 }
 
-fn open_db(path: &PathBuf) -> Connection {
-    Connection::open(path).expect("open sqlite")
-}
+// ── TCP acceptor + connection handler ────────────────────────────
 
 async fn run_tcp_acceptor(listener: TcpListener, state: AppState) {
     loop {
@@ -243,7 +267,7 @@ async fn run_tcp_acceptor(listener: TcpListener, state: AppState) {
                 let st = state.clone();
                 tokio::spawn(async move {
                     if let Err(e) = handle_conn(stream, st).await {
-                        eprintln!("[peeps-web] connection error: {e}");
+                        eprintln!("[peeps-web] connection error from {addr}: {e}");
                     }
                 });
             }
@@ -254,180 +278,554 @@ async fn run_tcp_acceptor(listener: TcpListener, state: AppState) {
     }
 }
 
-// Ingest wire format (v1):
-// [u32 big-endian frame_len][UTF-8 JSON ProcessDump]
-async fn handle_conn(mut stream: TcpStream, state: AppState) -> Result<(), String> {
+async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
+    let (mut reader, mut writer) = stream.into_split();
+
+    let (msg_tx, mut msg_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(32);
+    let conn_id = {
+        let mut ctl = state.snapshot_ctl.inner.lock().await;
+        let id = ctl.next_conn_id;
+        ctl.next_conn_id += 1;
+        ctl.connections.insert(
+            id,
+            ConnectedProcess {
+                proc_key: format!("unknown-{id}"),
+                process_name: String::new(),
+                tx: msg_tx,
+            },
+        );
+        id
+    };
+
+    let writer_handle = tokio::spawn(async move {
+        while let Some(payload) = msg_rx.recv().await {
+            let len = (payload.len() as u32).to_be_bytes();
+            if writer.write_all(&len).await.is_err() {
+                break;
+            }
+            if writer.write_all(&payload).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    let result = read_replies(&mut reader, conn_id, &state).await;
+
+    {
+        let mut ctl = state.snapshot_ctl.inner.lock().await;
+        ctl.connections.remove(&conn_id);
+    }
+    writer_handle.abort();
+
+    result
+}
+
+async fn read_replies(
+    reader: &mut tokio::net::tcp::OwnedReadHalf,
+    conn_id: u64,
+    state: &AppState,
+) -> Result<(), String> {
     loop {
         let mut len_buf = [0u8; 4];
-        stream
-            .read_exact(&mut len_buf)
-            .await
-            .map_err(|e| format!("read frame len failed: {e}"))?;
+        if let Err(e) = reader.read_exact(&mut len_buf).await {
+            if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                return Ok(());
+            }
+            return Err(format!("read frame len: {e}"));
+        }
         let len = u32::from_be_bytes(len_buf) as usize;
         if len > 128 * 1024 * 1024 {
             return Err(format!("frame too large: {len} bytes"));
         }
         let mut frame = vec![0u8; len];
-        stream
+        reader
             .read_exact(&mut frame)
             .await
-            .map_err(|e| format!("read frame payload failed: {e}"))?;
+            .map_err(|e| format!("read frame payload: {e}"))?;
 
-        let json = std::str::from_utf8(&frame).map_err(|e| format!("utf8 decode failed: {e}"))?;
-        let dump = facet_json::from_str::<ProcessDump>(json)
-            .map_err(|e| format!("json decode ProcessDump failed: {e}"))?;
+        let json_str =
+            std::str::from_utf8(&frame).map_err(|e| format!("utf8 decode failed: {e}"))?;
 
-        let seq = state.seq.fetch_add(1, Ordering::Relaxed) + 1;
-        persist_dump(&state.db_path, seq, &dump)?;
+        let reply: SnapshotReply = match serde_json::from_str(json_str) {
+            Ok(r) => r,
+            Err(e) => {
+                record_ingest_event(
+                    &state.db_path,
+                    None,
+                    None,
+                    None,
+                    None,
+                    "decode_error",
+                    &format!("JSON decode failed: {e}"),
+                );
+                continue;
+            }
+        };
 
-        eprintln!(
-            "[peeps-web] dump from {} (pid {}): {} tasks, {} threads => seq {}",
-            dump.process_name,
-            dump.pid,
-            dump.tasks.len(),
-            dump.threads.len(),
-            seq
-        );
+        if reply.r#type != "snapshot_reply" {
+            record_ingest_event(
+                &state.db_path,
+                None,
+                Some(&reply.process),
+                Some(reply.pid),
+                None,
+                "other",
+                &format!("unexpected message type: {}", reply.r#type),
+            );
+            continue;
+        }
+
+        let proc_key = peeps_types::make_proc_key(&reply.process, reply.pid);
+
+        {
+            let mut ctl = state.snapshot_ctl.inner.lock().await;
+            if let Some(conn) = ctl.connections.get_mut(&conn_id) {
+                conn.proc_key = proc_key.clone();
+                conn.process_name = reply.process.clone();
+            }
+        }
+
+        process_reply(state, &reply, &proc_key).await;
     }
 }
 
-fn persist_dump(db_path: &PathBuf, seq: u64, dump: &ProcessDump) -> Result<(), String> {
-    let mut conn = open_db(db_path);
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
+async fn process_reply(state: &AppState, reply: &SnapshotReply, proc_key: &str) {
+    let now_ns = now_nanos();
 
-    let process_id = format!("process:{}:{}", dump.process_name, dump.pid);
-    tx.execute(
-        "INSERT OR REPLACE INTO nodes(seq,id,kind,process,attrs_json) VALUES (?1,?2,'process',?3,?4)",
-        params![
-            seq,
-            process_id,
-            dump.process_name,
-            json!({"pid": dump.pid, "timestamp": dump.timestamp}).to_string()
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-
-    let mut request_ids = BTreeSet::new();
-
-    for t in &dump.tasks {
-        let task_id = format!("task:{}:{}:{}", dump.process_name, dump.pid, t.id);
-        tx.execute(
-            "INSERT OR REPLACE INTO nodes(seq,id,kind,process,attrs_json) VALUES (?1,?2,'task',?3,?4)",
-            params![
-                seq,
-                task_id,
-                dump.process_name,
-                json!({
-                    "task_id": t.id,
-                    "name": t.name,
-                    "state": format!("{:?}", t.state),
-                    "age_secs": t.age_secs,
-                    "parent_task_id": t.parent_task_id,
-                })
-                .to_string()
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-
-        tx.execute(
-            "INSERT OR REPLACE INTO edges(seq,src_id,dst_id,kind,attrs_json) VALUES (?1,?2,?3,'task_in_process',?4)",
-            params![seq, task_id, process_id, "{}"],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    for w in &dump.future_waits {
-        let future_id = format!("future:{}:{}:{}", dump.process_name, dump.pid, w.future_id);
-        let task_id = format!("task:{}:{}:{}", dump.process_name, dump.pid, w.task_id);
-
-        tx.execute(
-            "INSERT OR REPLACE INTO nodes(seq,id,kind,process,attrs_json) VALUES (?1,?2,'future',?3,?4)",
-            params![
-                seq,
-                future_id,
-                dump.process_name,
-                json!({
-                    "future_id": w.future_id,
-                    "resource": w.resource,
-                    "total_pending_secs": w.total_pending_secs,
-                    "pending_count": w.pending_count,
-                    "ready_count": w.ready_count,
-                })
-                .to_string()
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-
-        tx.execute(
-            "INSERT OR REPLACE INTO edges(seq,src_id,dst_id,kind,attrs_json) VALUES (?1,?2,?3,'task_awaits_future',?4)",
-            params![
-                seq,
-                task_id,
-                future_id,
-                json!({"wait_secs": w.total_pending_secs}).to_string()
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    if let Some(roam) = &dump.roam {
-        for c in &roam.connections {
-            for r in &c.in_flight {
-                let request_id = format!(
-                    "request:{}:{}:{}:{}",
-                    dump.process_name, dump.pid, c.name, r.request_id
+    let snapshot_id = {
+        let ctl = state.snapshot_ctl.inner.lock().await;
+        match &ctl.in_flight {
+            Some(f) if f.snapshot_id == reply.snapshot_id => f.snapshot_id,
+            Some(f) => {
+                let expected = f.snapshot_id;
+                record_ingest_event(
+                    &state.db_path,
+                    Some(reply.snapshot_id),
+                    Some(&reply.process),
+                    Some(reply.pid),
+                    Some(proc_key),
+                    "snapshot_id_mismatch",
+                    &format!(
+                        "expected snapshot_id={expected}, got {}",
+                        reply.snapshot_id
+                    ),
                 );
-                request_ids.insert(request_id.clone());
+                return;
+            }
+            None => {
+                record_ingest_event(
+                    &state.db_path,
+                    Some(reply.snapshot_id),
+                    Some(&reply.process),
+                    Some(reply.pid),
+                    Some(proc_key),
+                    "late_reply",
+                    &format!(
+                        "no in-flight snapshot, reply for snapshot_id={}",
+                        reply.snapshot_id
+                    ),
+                );
+                return;
+            }
+        }
+    };
 
-                tx.execute(
-                    "INSERT OR REPLACE INTO nodes(seq,id,kind,process,attrs_json) VALUES (?1,?2,'request',?3,?4)",
-                    params![
-                        seq,
-                        request_id,
-                        dump.process_name,
-                        json!({
-                            "request_id": r.request_id,
-                            "connection": c.name,
-                            "method": r.method_name,
-                            "direction": match r.direction { Direction::Incoming => "incoming", Direction::Outgoing => "outgoing" },
-                            "elapsed_secs": r.elapsed_secs,
-                            "task_id": r.task_id,
-                            "task_name": r.task_name,
-                        })
-                        .to_string()
-                    ],
-                )
-                .map_err(|e| e.to_string())?;
+    let graph = extract_graph(&reply.dump);
 
-                if let Some(task_id_num) = r.task_id {
-                    let task_id = format!("task:{}:{}:{}", dump.process_name, dump.pid, task_id_num);
-                    tx.execute(
-                        "INSERT OR REPLACE INTO edges(seq,src_id,dst_id,kind,attrs_json) VALUES (?1,?2,?3,'request_handled_by_task',?4)",
-                        params![seq, request_id, task_id, "{}"],
-                    )
-                    .map_err(|e| e.to_string())?;
+    if let Err(e) = persist_reply(
+        &state.db_path,
+        snapshot_id,
+        &reply.process,
+        reply.pid,
+        proc_key,
+        now_ns,
+        &graph,
+    ) {
+        record_ingest_event(
+            &state.db_path,
+            Some(snapshot_id),
+            Some(&reply.process),
+            Some(reply.pid),
+            Some(proc_key),
+            "other",
+            &format!("persist failed: {e}"),
+        );
+        return;
+    }
+
+    eprintln!(
+        "[peeps-web] snapshot {snapshot_id}: reply from {} ({proc_key}): {} nodes, {} edges",
+        reply.process,
+        graph.nodes.len(),
+        graph.edges.len()
+    );
+
+    let mut ctl = state.snapshot_ctl.inner.lock().await;
+    if let Some(ref mut in_flight) = ctl.in_flight {
+        if in_flight.snapshot_id == snapshot_id {
+            in_flight.pending.remove(proc_key);
+            if in_flight.pending.is_empty() {
+                if let Some(tx) = in_flight.completion_tx.take() {
+                    let _ = tx.send(());
                 }
             }
         }
     }
+}
 
-    for p in &dump.request_parents {
-        let child = format!(
-            "request:{}:{}:{}:{}",
-            p.child_process, dump.pid, p.child_connection, p.child_request_id
-        );
-        let parent = format!(
-            "request:{}:{}:{}:{}",
-            p.parent_process, dump.pid, p.parent_connection, p.parent_request_id
-        );
-        if request_ids.contains(&child) {
+// ── Graph extraction from dump ───────────────────────────────────
+
+fn extract_graph(dump: &serde_json::Value) -> ProcessGraph {
+    if let Some(graph_val) = dump.get("graph") {
+        if let (Some(nodes_arr), Some(edges_arr)) =
+            (graph_val.get("nodes"), graph_val.get("edges"))
+        {
+            if let (Some(nodes), Some(edges)) = (nodes_arr.as_array(), edges_arr.as_array()) {
+                let mut graph_nodes = Vec::with_capacity(nodes.len());
+                for n in nodes {
+                    if let (Some(id), Some(kind), Some(proc), Some(pk), Some(attrs)) = (
+                        n.get("id").and_then(|v| v.as_str()),
+                        n.get("kind").and_then(|v| v.as_str()),
+                        n.get("process").and_then(|v| v.as_str()),
+                        n.get("proc_key").and_then(|v| v.as_str()),
+                        n.get("attrs_json").and_then(|v| v.as_str()),
+                    ) {
+                        graph_nodes.push(GraphNode {
+                            id: id.to_string(),
+                            kind: kind.to_string(),
+                            process: proc.to_string(),
+                            proc_key: pk.to_string(),
+                            attrs_json: attrs.to_string(),
+                        });
+                    }
+                }
+
+                let mut graph_edges = Vec::with_capacity(edges.len());
+                for e in edges {
+                    if let (Some(src), Some(dst), Some(attrs)) = (
+                        e.get("src_id").and_then(|v| v.as_str()),
+                        e.get("dst_id").and_then(|v| v.as_str()),
+                        e.get("attrs_json").and_then(|v| v.as_str()),
+                    ) {
+                        graph_edges.push(GraphEdge {
+                            src_id: src.to_string(),
+                            dst_id: dst.to_string(),
+                            attrs_json: attrs.to_string(),
+                        });
+                    }
+                }
+
+                return ProcessGraph {
+                    nodes: graph_nodes,
+                    edges: graph_edges,
+                };
+            }
+        }
+    }
+
+    ProcessGraph {
+        nodes: Vec::new(),
+        edges: Vec::new(),
+    }
+}
+
+// ── Reply persistence ────────────────────────────────────────────
+
+fn persist_reply(
+    db_path: &PathBuf,
+    snapshot_id: i64,
+    process: &str,
+    pid: u32,
+    proc_key: &str,
+    recv_at_ns: i64,
+    graph: &ProcessGraph,
+) -> Result<(), String> {
+    let mut conn = open_db(db_path);
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "INSERT OR REPLACE INTO snapshot_processes (snapshot_id, process, pid, proc_key, status, recv_at_ns)
+         VALUES (?1, ?2, ?3, ?4, 'responded', ?5)",
+        params![snapshot_id, process, pid, proc_key, recv_at_ns],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let local_node_ids: BTreeSet<&str> = graph.nodes.iter().map(|n| n.id.as_str()).collect();
+
+    for node in &graph.nodes {
+        tx.execute(
+            "INSERT OR REPLACE INTO nodes (snapshot_id, id, kind, process, proc_key, attrs_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                snapshot_id,
+                node.id,
+                node.kind,
+                node.process,
+                node.proc_key,
+                node.attrs_json
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    for edge in &graph.edges {
+        let src_exists = local_node_ids.contains(edge.src_id.as_str())
+            || node_exists_in_snapshot(&tx, snapshot_id, &edge.src_id);
+        let dst_exists = local_node_ids.contains(edge.dst_id.as_str())
+            || node_exists_in_snapshot(&tx, snapshot_id, &edge.dst_id);
+
+        if src_exists && dst_exists {
             tx.execute(
-                "INSERT OR REPLACE INTO edges(seq,src_id,dst_id,kind,attrs_json) VALUES (?1,?2,?3,'request_parent',?4)",
-                params![seq, child, parent, "{}"],
+                "INSERT OR REPLACE INTO edges (snapshot_id, src_id, dst_id, kind, attrs_json)
+                 VALUES (?1, ?2, ?3, 'needs', ?4)",
+                params![snapshot_id, edge.src_id, edge.dst_id, edge.attrs_json],
+            )
+            .map_err(|e| e.to_string())?;
+        } else {
+            let (missing_side, referenced_proc_key) = if !src_exists && !dst_exists {
+                let src_pk = extract_proc_key(&edge.src_id);
+                let dst_pk = extract_proc_key(&edge.dst_id);
+                let rpk = resolve_referenced_proc_key_both(&tx, snapshot_id, src_pk, dst_pk);
+                ("both", rpk)
+            } else if !src_exists {
+                let pk = extract_proc_key(&edge.src_id);
+                ("src", pk.map(|s| s.to_string()))
+            } else {
+                let pk = extract_proc_key(&edge.dst_id);
+                ("dst", pk.map(|s| s.to_string()))
+            };
+
+            let reason = determine_unresolved_reason(&tx, snapshot_id, &referenced_proc_key);
+
+            tx.execute(
+                "INSERT OR REPLACE INTO unresolved_edges (snapshot_id, src_id, dst_id, missing_side, reason, referenced_proc_key, attrs_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    snapshot_id,
+                    edge.src_id,
+                    edge.dst_id,
+                    missing_side,
+                    reason,
+                    referenced_proc_key,
+                    edge.attrs_json
+                ],
             )
             .map_err(|e| e.to_string())?;
         }
     }
 
     tx.commit().map_err(|e| e.to_string())
+}
+
+fn node_exists_in_snapshot(tx: &rusqlite::Transaction, snapshot_id: i64, node_id: &str) -> bool {
+    tx.query_row(
+        "SELECT 1 FROM nodes WHERE snapshot_id = ?1 AND id = ?2 LIMIT 1",
+        params![snapshot_id, node_id],
+        |_| Ok(()),
+    )
+    .is_ok()
+}
+
+fn extract_proc_key(node_id: &str) -> Option<&str> {
+    let mut parts = node_id.splitn(3, ':');
+    let _kind = parts.next()?;
+    let proc_key = parts.next()?;
+    if proc_key.is_empty() {
+        None
+    } else {
+        Some(proc_key)
+    }
+}
+
+fn resolve_referenced_proc_key_both(
+    tx: &rusqlite::Transaction,
+    snapshot_id: i64,
+    src_pk: Option<&str>,
+    dst_pk: Option<&str>,
+) -> Option<String> {
+    for pk in [src_pk, dst_pk].into_iter().flatten() {
+        let status: Option<String> = tx
+            .query_row(
+                "SELECT status FROM snapshot_processes WHERE snapshot_id = ?1 AND proc_key = ?2",
+                params![snapshot_id, pk],
+                |row| row.get(0),
+            )
+            .ok();
+        if status.as_deref() != Some("responded") {
+            return Some(pk.to_string());
+        }
+    }
+    None
+}
+
+fn determine_unresolved_reason(
+    tx: &rusqlite::Transaction,
+    snapshot_id: i64,
+    referenced_proc_key: &Option<String>,
+) -> String {
+    let Some(pk) = referenced_proc_key else {
+        return "referenced_proc_missing".to_string();
+    };
+
+    let status: Option<String> = tx
+        .query_row(
+            "SELECT status FROM snapshot_processes WHERE snapshot_id = ?1 AND proc_key = ?2",
+            params![snapshot_id, pk],
+            |row| row.get(0),
+        )
+        .ok();
+
+    match status.as_deref() {
+        Some("responded") => "referenced_proc_missing".to_string(),
+        Some("timeout") => "referenced_proc_timeout".to_string(),
+        Some("disconnected") => "referenced_proc_disconnected".to_string(),
+        _ => "referenced_proc_missing".to_string(),
+    }
+}
+
+// ── Ingest events ────────────────────────────────────────────────
+
+fn record_ingest_event(
+    db_path: &PathBuf,
+    snapshot_id: Option<i64>,
+    process: Option<&str>,
+    pid: Option<u32>,
+    proc_key: Option<&str>,
+    event_kind: &str,
+    detail: &str,
+) {
+    let conn = open_db(db_path);
+    let now_ns = now_nanos();
+    if let Err(e) = conn.execute(
+        "INSERT INTO ingest_events (event_at_ns, snapshot_id, process, pid, proc_key, event_kind, detail)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![now_ns, snapshot_id, process, pid, proc_key, event_kind, detail],
+    ) {
+        eprintln!("[peeps-web] failed to record ingest event: {e}");
+    }
+}
+
+// ── Retention ────────────────────────────────────────────────────
+
+pub(crate) fn run_retention(db_path: &PathBuf) -> Result<(), String> {
+    let conn = open_db(db_path);
+
+    let cutoff: Option<i64> = conn
+        .query_row(
+            "SELECT snapshot_id FROM snapshots ORDER BY snapshot_id DESC LIMIT 1 OFFSET ?1",
+            params![MAX_SNAPSHOTS],
+            |row| row.get(0),
+        )
+        .ok();
+
+    if let Some(cutoff_id) = cutoff {
+        conn.execute_batch(&format!(
+            "DELETE FROM unresolved_edges WHERE snapshot_id <= {cutoff_id};
+             DELETE FROM edges WHERE snapshot_id <= {cutoff_id};
+             DELETE FROM nodes WHERE snapshot_id <= {cutoff_id};
+             DELETE FROM snapshot_processes WHERE snapshot_id <= {cutoff_id};
+             DELETE FROM snapshots WHERE snapshot_id <= {cutoff_id};"
+        ))
+        .map_err(|e| e.to_string())?;
+    }
+
+    let cutoff_ns = now_nanos() - (INGEST_EVENTS_RETENTION_DAYS * 24 * 60 * 60 * 1_000_000_000);
+    conn.execute(
+        "DELETE FROM ingest_events WHERE event_at_ns < ?1",
+        params![cutoff_ns],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+// ── SQLite init / open ───────────────────────────────────────────
+
+fn init_db(path: &str) -> rusqlite::Result<()> {
+    let conn = Connection::open(path)?;
+    conn.execute_batch(
+        "
+        PRAGMA journal_mode=WAL;
+        PRAGMA synchronous=NORMAL;
+
+        CREATE TABLE IF NOT EXISTS snapshots (
+            snapshot_id INTEGER PRIMARY KEY,
+            requested_at_ns INTEGER NOT NULL,
+            completed_at_ns INTEGER,
+            timeout_ms INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS snapshot_processes (
+            snapshot_id INTEGER NOT NULL,
+            process TEXT NOT NULL,
+            pid INTEGER,
+            proc_key TEXT NOT NULL,
+            status TEXT NOT NULL,
+            recv_at_ns INTEGER,
+            error_text TEXT,
+            PRIMARY KEY (snapshot_id, proc_key)
+        );
+
+        CREATE TABLE IF NOT EXISTS nodes (
+            snapshot_id INTEGER NOT NULL,
+            id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            process TEXT NOT NULL,
+            proc_key TEXT NOT NULL,
+            attrs_json TEXT NOT NULL,
+            PRIMARY KEY (snapshot_id, id)
+        );
+
+        CREATE TABLE IF NOT EXISTS edges (
+            snapshot_id INTEGER NOT NULL,
+            src_id TEXT NOT NULL,
+            dst_id TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind = 'needs'),
+            attrs_json TEXT NOT NULL,
+            PRIMARY KEY (snapshot_id, src_id, dst_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS unresolved_edges (
+            snapshot_id INTEGER NOT NULL,
+            src_id TEXT NOT NULL,
+            dst_id TEXT NOT NULL,
+            missing_side TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            referenced_proc_key TEXT,
+            attrs_json TEXT NOT NULL,
+            PRIMARY KEY (snapshot_id, src_id, dst_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS ingest_events (
+            event_id INTEGER PRIMARY KEY,
+            event_at_ns INTEGER NOT NULL,
+            snapshot_id INTEGER,
+            process TEXT,
+            pid INTEGER,
+            proc_key TEXT,
+            event_kind TEXT NOT NULL,
+            detail TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_nodes_snapshot_kind ON nodes(snapshot_id, kind);
+        CREATE INDEX IF NOT EXISTS idx_nodes_snapshot_proc_key ON nodes(snapshot_id, proc_key);
+        CREATE INDEX IF NOT EXISTS idx_edges_snapshot_src ON edges(snapshot_id, src_id);
+        CREATE INDEX IF NOT EXISTS idx_edges_snapshot_dst ON edges(snapshot_id, dst_id);
+        CREATE INDEX IF NOT EXISTS idx_unresolved_edges_snapshot ON unresolved_edges(snapshot_id);
+        ",
+    )?;
+    Ok(())
+}
+
+pub(crate) fn open_db(path: &PathBuf) -> Connection {
+    Connection::open(path).expect("open sqlite")
+}
+
+// ── Helpers ──────────────────────────────────────────────────────
+
+pub(crate) fn now_nanos() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as i64
 }

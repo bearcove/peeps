@@ -74,88 +74,49 @@ fn api_error(status: StatusCode, msg: impl Into<String>) -> (StatusCode, Json<Ap
 pub async fn api_jump_now(
     State(state): State<AppState>,
 ) -> Result<Json<JumpNowResponse>, (StatusCode, Json<ApiError>)> {
-    let db_path = state.db_path.clone();
-    let result = tokio::task::spawn_blocking(move || jump_now_blocking(&db_path))
+    let (snapshot_id, processes_requested) = crate::trigger_snapshot(&state)
         .await
-        .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("join error: {e}")))?;
-    result
-}
+        .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-fn jump_now_blocking(
-    db_path: &PathBuf,
-) -> Result<Json<JumpNowResponse>, (StatusCode, Json<ApiError>)> {
-    let conn = Connection::open(db_path)
-        .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("db open: {e}")))?;
+    // Read back process statuses for the response
+    let db_path = state.db_path.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = Connection::open(&*db_path)
+            .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("db open: {e}")))?;
 
-    let snapshot_id: i64 = conn
-        .query_row(
-            "SELECT COALESCE(MAX(snapshot_id), 0) FROM snapshots",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|e| {
-            api_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("query snapshot: {e}"),
-            )
-        })?;
+        let mut responded = 0usize;
+        let mut timed_out = 0usize;
 
-    if snapshot_id == 0 {
-        return Ok(Json(JumpNowResponse {
-            snapshot_id: 0,
-            requested: 0,
-            responded: 0,
-            timed_out: 0,
-        }));
-    }
+        let mut stmt = conn
+            .prepare("SELECT status, COUNT(*) FROM snapshot_processes WHERE snapshot_id = ?1 GROUP BY status")
+            .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("prepare: {e}")))?;
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT status, COUNT(*) FROM snapshot_processes WHERE snapshot_id = ?1 GROUP BY status",
-        )
-        .map_err(|e| {
-            api_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("prepare counts: {e}"),
-            )
-        })?;
+        let rows = stmt
+            .query_map(params![snapshot_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, usize>(1)?))
+            })
+            .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("query: {e}")))?;
 
-    let mut requested = 0usize;
-    let mut responded = 0usize;
-    let mut timed_out = 0usize;
-
-    let rows = stmt
-        .query_map(params![snapshot_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, usize>(1)?))
-        })
-        .map_err(|e| {
-            api_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("query counts: {e}"),
-            )
-        })?;
-
-    for row in rows {
-        let (status, count) = row.map_err(|e| {
-            api_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("read count row: {e}"),
-            )
-        })?;
-        requested += count;
-        match status.as_str() {
-            "responded" => responded += count,
-            "timeout" => timed_out += count,
-            _ => {}
+        for row in rows {
+            let (status, count) = row.map_err(|e| {
+                api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("row: {e}"))
+            })?;
+            match status.as_str() {
+                "responded" => responded += count,
+                "timeout" => timed_out += count,
+                _ => {}
+            }
         }
-    }
 
-    Ok(Json(JumpNowResponse {
-        snapshot_id,
-        requested,
-        responded,
-        timed_out,
-    }))
+        Ok(Json(JumpNowResponse {
+            snapshot_id,
+            requested: processes_requested,
+            responded,
+            timed_out,
+        }))
+    })
+    .await
+    .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("join: {e}")))?
 }
 
 // ── POST /api/sql ────────────────────────────────────────────────
