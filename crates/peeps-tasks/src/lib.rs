@@ -7,8 +7,8 @@
 use std::future::Future;
 
 pub use peeps_types::{
-    FutureId, FutureWaitSnapshot, PollEvent, PollResult, TaskId, TaskSnapshot, TaskState,
-    WakeEdgeSnapshot,
+    FutureId, FutureWaitSnapshot, FutureWakeEdgeSnapshot, PollEvent, PollResult, TaskId,
+    TaskSnapshot, TaskState, WakeEdgeSnapshot,
 };
 
 // ── Zero-cost stubs (no diagnostics) ─────────────────────────────
@@ -50,6 +50,11 @@ mod imp {
 
     #[inline(always)]
     pub fn snapshot_wake_edges() -> Vec<WakeEdgeSnapshot> {
+        Vec::new()
+    }
+
+    #[inline(always)]
+    pub fn snapshot_future_wake_edges() -> Vec<FutureWakeEdgeSnapshot> {
         Vec::new()
     }
 
@@ -125,6 +130,9 @@ mod imp {
     static WAKE_REGISTRY: Mutex<
         Option<std::collections::HashMap<(Option<TaskId>, TaskId), WakeEdgeInfo>>,
     > = Mutex::new(None);
+    static FUTURE_WAKE_EDGE_REGISTRY: Mutex<
+        Option<std::collections::HashMap<(Option<TaskId>, FutureId), FutureWakeEdgeInfo>>,
+    > = Mutex::new(None);
     static NEXT_FUTURE_ID: AtomicU64 = AtomicU64::new(1);
     static FUTURE_WAIT_REGISTRY: Mutex<Option<std::collections::HashMap<FutureId, FutureWaitInfo>>> =
         Mutex::new(None);
@@ -155,6 +163,11 @@ mod imp {
         last_wake_at: Instant,
     }
 
+    struct FutureWakeEdgeInfo {
+        wake_count: u64,
+        last_wake_at: Instant,
+    }
+
     struct FutureWaitInfo {
         resource: String,
         created_at: Instant,
@@ -174,6 +187,21 @@ mod imp {
         let entry = edges
             .entry((source_task_id, target_task_id))
             .or_insert(WakeEdgeInfo {
+                wake_count: 0,
+                last_wake_at: Instant::now(),
+            });
+        entry.wake_count += 1;
+        entry.last_wake_at = Instant::now();
+    }
+
+    fn record_future_wake_edge(source_task_id: Option<TaskId>, future_id: FutureId) {
+        let mut registry = FUTURE_WAKE_EDGE_REGISTRY.lock().unwrap();
+        let Some(edges) = registry.as_mut() else {
+            return;
+        };
+        let entry = edges
+            .entry((source_task_id, future_id))
+            .or_insert(FutureWakeEdgeInfo {
                 wake_count: 0,
                 last_wake_at: Instant::now(),
             });
@@ -248,6 +276,25 @@ mod imp {
         }
     }
 
+    struct PeepableWake {
+        inner: std::task::Waker,
+        future_id: FutureId,
+    }
+
+    impl Wake for PeepableWake {
+        fn wake(self: Arc<Self>) {
+            let source_task_id = current_task_id();
+            record_future_wake_edge(source_task_id, self.future_id);
+            self.inner.wake_by_ref();
+        }
+
+        fn wake_by_ref(self: &Arc<Self>) {
+            let source_task_id = current_task_id();
+            record_future_wake_edge(source_task_id, self.future_id);
+            self.inner.wake_by_ref();
+        }
+    }
+
     pub struct PeepableFuture<F> {
         future_id: FutureId,
         inner: F,
@@ -268,7 +315,12 @@ mod imp {
             #[allow(unsafe_code)]
             let inner = unsafe { Pin::new_unchecked(&mut this.inner) };
             let task_id = current_task_id();
-            match inner.poll(cx) {
+            let peepable_waker = std::task::Waker::from(Arc::new(PeepableWake {
+                inner: cx.waker().clone(),
+                future_id: this.future_id,
+            }));
+            let mut peepable_cx = Context::from_waker(&peepable_waker);
+            match inner.poll(&mut peepable_cx) {
                 Poll::Pending => {
                     if this.pending_since.is_none() {
                         this.pending_since = Some(Instant::now());
@@ -407,6 +459,7 @@ mod imp {
     pub fn init_task_tracking() {
         *TASK_REGISTRY.lock().unwrap() = Some(Vec::new());
         *WAKE_REGISTRY.lock().unwrap() = Some(std::collections::HashMap::new());
+        *FUTURE_WAKE_EDGE_REGISTRY.lock().unwrap() = Some(std::collections::HashMap::new());
         *FUTURE_WAIT_REGISTRY.lock().unwrap() = Some(std::collections::HashMap::new());
     }
 
@@ -519,6 +572,64 @@ mod imp {
         out
     }
 
+    pub fn snapshot_future_wake_edges() -> Vec<FutureWakeEdgeSnapshot> {
+        let now = Instant::now();
+
+        let task_lookup: std::collections::HashMap<TaskId, String> = {
+            let registry = TASK_REGISTRY.lock().unwrap();
+            let Some(tasks) = registry.as_ref() else {
+                return Vec::new();
+            };
+            tasks
+                .iter()
+                .map(|task| (task.id, task.name.clone()))
+                .collect()
+        };
+
+        let future_meta: std::collections::HashMap<FutureId, (String, Option<TaskId>)> = {
+            let registry = FUTURE_WAIT_REGISTRY.lock().unwrap();
+            let Some(waits) = registry.as_ref() else {
+                return Vec::new();
+            };
+            waits
+                .iter()
+                .map(|(future_id, wait)| {
+                    (
+                        *future_id,
+                        (wait.resource.clone(), wait.last_polled_by_task_id.or(wait.created_by_task_id)),
+                    )
+                })
+                .collect()
+        };
+
+        let registry = FUTURE_WAKE_EDGE_REGISTRY.lock().unwrap();
+        let Some(edges) = registry.as_ref() else {
+            return Vec::new();
+        };
+
+        let mut out: Vec<FutureWakeEdgeSnapshot> = edges
+            .iter()
+            .map(|((source_task_id, future_id), edge)| {
+                let (future_resource, target_task_id) = future_meta
+                    .get(future_id)
+                    .cloned()
+                    .unwrap_or_else(|| ("future".to_string(), None));
+                FutureWakeEdgeSnapshot {
+                    source_task_id: *source_task_id,
+                    source_task_name: source_task_id.and_then(|id| task_lookup.get(&id).cloned()),
+                    future_id: *future_id,
+                    future_resource,
+                    target_task_id,
+                    target_task_name: target_task_id.and_then(|id| task_lookup.get(&id).cloned()),
+                    wake_count: edge.wake_count,
+                    last_wake_age_secs: now.duration_since(edge.last_wake_at).as_secs_f64(),
+                }
+            })
+            .collect();
+        out.sort_by(|a, b| b.wake_count.cmp(&a.wake_count));
+        out
+    }
+
     pub fn snapshot_future_waits() -> Vec<FutureWaitSnapshot> {
         let now = Instant::now();
         let task_lookup: std::collections::HashMap<TaskId, String> = {
@@ -591,6 +702,19 @@ mod imp {
                 live_ids.contains(target) || recent
             });
         }
+        let live_future_ids: std::collections::HashSet<FutureId> = {
+            let waits = FUTURE_WAIT_REGISTRY.lock().unwrap();
+            waits
+                .as_ref()
+                .map(|waits| waits.keys().copied().collect())
+                .unwrap_or_default()
+        };
+        if let Some(edges) = FUTURE_WAKE_EDGE_REGISTRY.lock().unwrap().as_mut() {
+            edges.retain(|(_, future_id), edge| {
+                let recent = edge.last_wake_at > cutoff;
+                recent || live_future_ids.contains(future_id)
+            });
+        }
         if let Some(waits) = FUTURE_WAIT_REGISTRY.lock().unwrap().as_mut() {
             waits.retain(|_, wait| {
                 let recent = wait.last_seen > cutoff;
@@ -645,6 +769,11 @@ pub fn snapshot_all_tasks() -> Vec<TaskSnapshot> {
 /// Collect snapshots of wake/dependency edges between tasks.
 pub fn snapshot_wake_edges() -> Vec<WakeEdgeSnapshot> {
     imp::snapshot_wake_edges()
+}
+
+/// Collect snapshots of wake/dependency edges from tasks to instrumented futures.
+pub fn snapshot_future_wake_edges() -> Vec<FutureWakeEdgeSnapshot> {
+    imp::snapshot_future_wake_edges()
 }
 
 /// Collect snapshots of annotated future wait states.

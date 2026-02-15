@@ -1,11 +1,52 @@
 // Mirrors peeps-types/src/lib.rs
 
+// ── Dashboard payload ──────────────────────────────────────────
+
+export interface DashboardPayload {
+  dumps: ProcessDump[];
+  deadlock_candidates: DeadlockCandidate[];
+}
+
+// ── Deadlock candidates ────────────────────────────────────────
+
+export type DeadlockSeverity = "Warn" | "Danger";
+
+export interface CycleNode {
+  label: string;
+  kind: string;
+  process: string;
+  task_id: number | null;
+}
+
+export interface CycleEdge {
+  from_node: number;
+  to_node: number;
+  explanation: string;
+  wait_secs: number;
+}
+
+export interface DeadlockCandidate {
+  id: number;
+  severity: DeadlockSeverity;
+  score: number;
+  title: string;
+  cycle_path: CycleNode[];
+  cycle_edges: CycleEdge[];
+  rationale: string[];
+  cross_process: boolean;
+  worst_wait_secs: number;
+  blocked_task_count: number;
+}
+
+// ── Process dump ───────────────────────────────────────────────
+
 export interface ProcessDump {
   process_name: string;
   pid: number;
   timestamp: string;
   tasks: TaskSnapshot[];
   wake_edges: WakeEdgeSnapshot[];
+  future_wake_edges: FutureWakeEdgeSnapshot[];
   future_waits: FutureWaitSnapshot[];
   threads: ThreadStackSnapshot[];
   locks: LockSnapshot | null;
@@ -44,6 +85,17 @@ export interface WakeEdgeSnapshot {
   source_task_id: number | null;
   source_task_name: string | null;
   target_task_id: number;
+  target_task_name: string | null;
+  wake_count: number;
+  last_wake_age_secs: number;
+}
+
+export interface FutureWakeEdgeSnapshot {
+  source_task_id: number | null;
+  source_task_name: string | null;
+  future_id: number;
+  future_resource: string;
+  target_task_id: number | null;
   target_task_name: string | null;
   wake_count: number;
   last_wake_age_secs: number;

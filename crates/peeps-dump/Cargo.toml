@@ -15,5 +15,6 @@ facet-json.workspace = true
 mime_guess.workspace = true
 peeps.workspace = true
 peeps-types.workspace = true
+peeps-waitgraph.workspace = true
 rust-embed.workspace = true
 tokio.workspace = true

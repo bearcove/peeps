@@ -23,8 +23,8 @@ pub fn router(state: Arc<DashboardState>) -> Router {
 }
 
 async fn api_dumps(State(state): State<Arc<DashboardState>>) -> Response {
-    let dumps = state.all_dumps().await;
-    match facet_json::to_string(&dumps) {
+    let payload = state.dashboard_payload().await;
+    match facet_json::to_string(&payload) {
         Ok(json) => (
             StatusCode::OK,
             [(header::CONTENT_TYPE, "application/json")],
@@ -79,8 +79,8 @@ async fn send_dumps(
     socket: &mut WebSocket,
     state: &DashboardState,
 ) -> Result<(), axum::Error> {
-    let dumps = state.all_dumps().await;
-    match facet_json::to_string(&dumps) {
+    let payload = state.dashboard_payload().await;
+    match facet_json::to_string(&payload) {
         Ok(json) => socket.send(Message::Text(json.into())).await,
         Err(e) => {
             eprintln!("[peeps] WebSocket serialization error: {e}");

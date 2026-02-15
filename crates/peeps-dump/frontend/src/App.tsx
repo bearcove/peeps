@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { ProcessDump } from "./types";
+import type { ProcessDump, DeadlockCandidate } from "./types";
 import { connectWebSocket, fetchDumps } from "./api";
 import { Header } from "./components/Header";
 import { TabBar } from "./components/TabBar";
@@ -12,12 +12,14 @@ import { ConnectionsView } from "./components/ConnectionsView";
 import { RequestsView } from "./components/RequestsView";
 import { ShmView } from "./components/ShmView";
 import { ProblemsView } from "./components/ProblemsView";
+import { DeadlocksView } from "./components/DeadlocksView";
 import { navigateTo, tabFromPath, tabPath } from "./routes";
 
 import "./styles.css";
 
 const TABS = [
   "problems",
+  "deadlocks",
   "tasks",
   "threads",
   "locks",
@@ -34,6 +36,7 @@ const MAX_WS_FAILURES = 3;
 
 export function App() {
   const [dumps, setDumps] = useState<ProcessDump[]>([]);
+  const [deadlockCandidates, setDeadlockCandidates] = useState<DeadlockCandidate[]>([]);
   const [path, setPath] = useState<string>(window.location.pathname || "/problems");
   const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +54,8 @@ export function App() {
         try {
           const data = await fetchDumps();
           if (!cancelled) {
-            setDumps(data);
+            setDumps(data.dumps);
+            setDeadlockCandidates(data.deadlockCandidates);
             setError(null);
           }
         } catch (e) {
@@ -73,10 +77,11 @@ export function App() {
       if (cancelled) return;
 
       const close = connectWebSocket({
-        onDumps: (data) => {
+        onData: (data) => {
           if (!cancelled) {
             wsFailures = 0;
-            setDumps(data);
+            setDumps(data.dumps);
+            setDeadlockCandidates(data.deadlockCandidates);
             setError(null);
             stopPolling();
           }
@@ -113,7 +118,8 @@ export function App() {
   const refresh = async () => {
     try {
       const data = await fetchDumps();
-      setDumps(data);
+      setDumps(data.dumps);
+      setDeadlockCandidates(data.deadlockCandidates);
       setError(null);
     } catch (e) {
       setError(String(e));
@@ -124,9 +130,11 @@ export function App() {
   const hasRoam = dumps.some((d) => d.roam != null);
   const hasShm = dumps.some((d) => d.shm != null);
   const hasLocks = dumps.some((d) => d.locks != null);
+  const hasDeadlocks = deadlockCandidates.length > 0;
 
   const visibleTabs = TABS.filter((t) => {
     if (t === "problems") return true;
+    if (t === "deadlocks" && !hasDeadlocks) return false;
     if (t === "sync" && !hasSync) return false;
     if (t === "requests" && !hasRoam) return false;
     if (t === "connections" && !hasRoam) return false;
@@ -158,9 +166,13 @@ export function App() {
         active={tab}
         onSelect={(t) => navigateTo(tabPath(t))}
         dumps={dumps}
+        deadlockCandidates={deadlockCandidates}
       />
       <div class="content">
         {tab === "problems" && <ProblemsView dumps={dumps} filter={filter} selectedPath={path} />}
+        {tab === "deadlocks" && (
+          <DeadlocksView candidates={deadlockCandidates} filter={filter} selectedPath={path} />
+        )}
         {tab === "tasks" && <TasksView dumps={dumps} filter={filter} selectedPath={path} />}
         {tab === "threads" && <ThreadsView dumps={dumps} filter={filter} selectedPath={path} />}
         {tab === "locks" && <LocksView dumps={dumps} filter={filter} selectedPath={path} />}

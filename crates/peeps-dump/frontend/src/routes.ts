@@ -35,6 +35,7 @@ export function tabFromPath(pathname: string): Tab {
     case "processes":
     case "shm":
     case "problems":
+    case "deadlocks":
       return first;
     default:
       return "problems";

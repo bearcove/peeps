@@ -46,6 +46,24 @@ pub struct WakeEdgeSnapshot {
     pub last_wake_age_secs: f64,
 }
 
+/// Snapshot of a wake/dependency edge from a task to an instrumented future.
+#[derive(Debug, Clone, Facet)]
+pub struct FutureWakeEdgeSnapshot {
+    /// Task that triggered the wake, when known.
+    pub source_task_id: Option<TaskId>,
+    pub source_task_name: Option<String>,
+    /// Instrumented future that was woken.
+    pub future_id: FutureId,
+    pub future_resource: String,
+    /// Last known task polling this future.
+    pub target_task_id: Option<TaskId>,
+    pub target_task_name: Option<String>,
+    /// Number of observed wake calls for this edge.
+    pub wake_count: u64,
+    /// Age of the most recent wake event.
+    pub last_wake_age_secs: f64,
+}
+
 /// Snapshot of a task waiting on an annotated future/resource.
 #[derive(Debug, Clone, Facet)]
 pub struct FutureWaitSnapshot {
@@ -421,6 +439,76 @@ pub fn collect_all_diagnostics() -> Vec<Diagnostics> {
         .collect()
 }
 
+// ── Deadlock candidate types ─────────────────────────────────────
+
+/// Severity level for a deadlock candidate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Facet)]
+#[repr(u8)]
+pub enum DeadlockSeverity {
+    Warn,
+    Danger,
+}
+
+/// A node in a deadlock cycle path.
+#[derive(Debug, Clone, Facet)]
+pub struct CycleNode {
+    /// Display label for this node (task name, lock name, etc.).
+    pub label: String,
+    /// The kind of resource ("task", "lock", "channel", "rpc", "thread").
+    pub kind: String,
+    /// Process that owns this node.
+    pub process: String,
+    /// Task ID if this node is a task.
+    pub task_id: Option<TaskId>,
+}
+
+/// An edge in a deadlock cycle path.
+#[derive(Debug, Clone, Facet)]
+pub struct CycleEdge {
+    /// Index into the candidate's `cycle_path` for the source node.
+    pub from_node: u32,
+    /// Index into the candidate's `cycle_path` for the target node.
+    pub to_node: u32,
+    /// Human-readable explanation ("task A waits on lock L held by task B").
+    pub explanation: String,
+    /// How long this edge has been waiting.
+    pub wait_secs: f64,
+}
+
+/// A deadlock candidate: a cycle or near-cycle in the wait graph.
+#[derive(Debug, Clone, Facet)]
+pub struct DeadlockCandidate {
+    /// Unique ID for this candidate within the snapshot.
+    pub id: u32,
+    /// Severity based on ranking signals.
+    pub severity: DeadlockSeverity,
+    /// Severity score (higher = worse).
+    pub score: f64,
+    /// Short title summarizing the deadlock.
+    pub title: String,
+    /// Nodes involved in the cycle.
+    pub cycle_path: Vec<CycleNode>,
+    /// Edges forming the cycle with per-edge explanations.
+    pub cycle_edges: Vec<CycleEdge>,
+    /// Human-readable rationale strings explaining why this was flagged.
+    pub rationale: Vec<String>,
+    /// Whether this cycle spans multiple processes.
+    pub cross_process: bool,
+    /// Worst wait duration among all edges.
+    pub worst_wait_secs: f64,
+    /// Number of tasks transitively blocked by this cycle.
+    pub blocked_task_count: u32,
+}
+
+// ── Dashboard payload ────────────────────────────────────────────
+
+/// Top-level payload sent to the dashboard.
+#[derive(Debug, Clone, Facet)]
+pub struct DashboardPayload {
+    pub dumps: Vec<ProcessDump>,
+    pub deadlock_candidates: Vec<DeadlockCandidate>,
+}
+
 // ── Process dump ─────────────────────────────────────────────────
 
 /// Per-process diagnostic dump.
@@ -431,6 +519,7 @@ pub struct ProcessDump {
     pub timestamp: String,
     pub tasks: Vec<TaskSnapshot>,
     pub wake_edges: Vec<WakeEdgeSnapshot>,
+    pub future_wake_edges: Vec<FutureWakeEdgeSnapshot>,
     pub future_waits: Vec<FutureWaitSnapshot>,
     pub threads: Vec<ThreadStackSnapshot>,
     pub locks: Option<LockSnapshot>,

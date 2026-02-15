@@ -674,6 +674,7 @@ dependencies = [
  "mime_guess",
  "peeps",
  "peeps-types",
+ "peeps-waitgraph",
  "rust-embed",
  "tokio",
 ]
@@ -723,6 +724,14 @@ version = "0.1.0"
 dependencies = [
  "facet",
  "inventory",
+]
+
+[[package]]
+name = "peeps-waitgraph"
+version = "0.1.0"
+dependencies = [
+ "facet",
+ "peeps-types",
 ]
 
 [[package]]

@@ -8,6 +8,7 @@ members = [
   "crates/peeps-types",
   "crates/peeps-sync",
   "crates/peeps-dump",
+  "crates/peeps-waitgraph",
 ]
 
 [workspace.package]
@@ -25,6 +26,7 @@ peeps-threads = { path = "crates/peeps-threads" }
 peeps-types = { path = "crates/peeps-types" }
 peeps-sync = { path = "crates/peeps-sync" }
 peeps-dump = { path = "crates/peeps-dump" }
+peeps-waitgraph = { path = "crates/peeps-waitgraph" }
 
 # External
 backtrace = "0.3"

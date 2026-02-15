@@ -1,13 +1,31 @@
-import type { ProcessDump } from "./types";
+import type { DashboardPayload, DeadlockCandidate, ProcessDump } from "./types";
 
-export async function fetchDumps(): Promise<ProcessDump[]> {
+export interface DashboardData {
+  dumps: ProcessDump[];
+  deadlockCandidates: DeadlockCandidate[];
+}
+
+function parseDashboardData(raw: unknown): DashboardData {
+  // Handle both new DashboardPayload shape and legacy Vec<ProcessDump>
+  if (Array.isArray(raw)) {
+    return { dumps: raw, deadlockCandidates: [] };
+  }
+  const payload = raw as DashboardPayload;
+  return {
+    dumps: payload.dumps ?? [],
+    deadlockCandidates: payload.deadlock_candidates ?? [],
+  };
+}
+
+export async function fetchDumps(): Promise<DashboardData> {
   const resp = await fetch("/api/dumps");
   if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
-  return resp.json();
+  const raw = await resp.json();
+  return parseDashboardData(raw);
 }
 
 export interface WebSocketCallbacks {
-  onDumps: (dumps: ProcessDump[]) => void;
+  onData: (data: DashboardData) => void;
   onError: (err: string) => void;
   onClose: () => void;
 }
@@ -19,8 +37,8 @@ export function connectWebSocket(callbacks: WebSocketCallbacks): () => void {
 
   ws.onmessage = (event) => {
     try {
-      const dumps: ProcessDump[] = JSON.parse(event.data);
-      callbacks.onDumps(dumps);
+      const raw = JSON.parse(event.data);
+      callbacks.onData(parseDashboardData(raw));
     } catch (e) {
       callbacks.onError(`WebSocket parse error: ${e}`);
     }

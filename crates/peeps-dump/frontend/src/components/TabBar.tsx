@@ -1,5 +1,5 @@
 import type { Tab } from "../App";
-import type { ProcessDump } from "../types";
+import type { ProcessDump, DeadlockCandidate } from "../types";
 import { classNames } from "../util";
 import { detectProblems, detectRelationshipIssues, hasDanger } from "../problems";
 
@@ -8,12 +8,15 @@ interface TabBarProps {
   active: Tab;
   onSelect: (t: Tab) => void;
   dumps: ProcessDump[];
+  deadlockCandidates: DeadlockCandidate[];
 }
 
-function badgeCount(tab: Tab, dumps: ProcessDump[]): number | null {
+function badgeCount(tab: Tab, dumps: ProcessDump[], deadlockCandidates: DeadlockCandidate[]): number | null {
   switch (tab) {
     case "problems":
       return null;
+    case "deadlocks":
+      return deadlockCandidates.length || null;
     case "tasks":
       return dumps.reduce((s, d) => s + d.tasks.length, 0);
     case "threads":
@@ -59,6 +62,7 @@ function badgeCount(tab: Tab, dumps: ProcessDump[]): number | null {
 
 const TAB_LABELS: Record<Tab, string> = {
   problems: "Problems",
+  deadlocks: "Deadlocks",
   tasks: "Tasks",
   threads: "Threads",
   locks: "Locks",
@@ -69,11 +73,13 @@ const TAB_LABELS: Record<Tab, string> = {
   shm: "SHM",
 };
 
-export function TabBar({ tabs, active, onSelect, dumps }: TabBarProps) {
+export function TabBar({ tabs, active, onSelect, dumps, deadlockCandidates }: TabBarProps) {
   const problems = detectProblems(dumps);
   const relationIssues = detectRelationshipIssues(dumps);
   const problemCount = problems.length + relationIssues.length;
   const danger = hasDanger(problems) || relationIssues.some((i) => i.severity === "danger");
+
+  const hasDeadlockDanger = deadlockCandidates.some((c) => c.severity === "Danger");
 
   return (
     <div class="tab-bar">
@@ -100,7 +106,29 @@ export function TabBar({ tabs, active, onSelect, dumps }: TabBarProps) {
           );
         }
 
-        const count = badgeCount(t, dumps);
+        if (t === "deadlocks") {
+          return (
+            <div
+              key={t}
+              class={classNames("tab", t === active && "active")}
+              onClick={() => onSelect(t)}
+            >
+              {TAB_LABELS[t]}
+              {deadlockCandidates.length > 0 && (
+                <span
+                  class={classNames(
+                    "tab-badge",
+                    hasDeadlockDanger ? "tab-badge-danger" : "tab-badge-warn"
+                  )}
+                >
+                  {deadlockCandidates.length}
+                </span>
+              )}
+            </div>
+          );
+        }
+
+        const count = badgeCount(t, dumps, deadlockCandidates);
         return (
           <div
             key={t}
