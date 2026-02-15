@@ -462,6 +462,32 @@ tbody tr.severity-warn:hover td {
     display: block;
     animation: fadeIn 0.15s ease;
 }
+.trace-line {
+    font-family: var(--font-mono);
+    line-height: 1.6;
+}
+.trace-frame-idx {
+    color: var(--amber);
+}
+.trace-at {
+    color: var(--fg-dim);
+}
+.trace-text {
+    color: var(--fg-muted);
+}
+.trace-file-link {
+    text-decoration: none;
+    border-bottom: 1px dashed transparent;
+}
+.trace-file-link:hover {
+    border-bottom-color: var(--cyan);
+}
+.trace-file-path {
+    color: var(--blue);
+}
+.trace-file-pos {
+    color: var(--cyan);
+}
 
 .expand-trigger {
     display: inline-flex;

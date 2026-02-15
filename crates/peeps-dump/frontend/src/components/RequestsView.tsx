@@ -381,47 +381,59 @@ export function RequestsView({ dumps, filter, selectedPath }: Props) {
       </div>
 
       {view === "table" ? (
-        <div class="card">
-          <table>
-            <thead>
-              <tr>
-                <th>Dir</th>
-                <th>Process</th>
-                <th>Method</th>
-                <th>Task</th>
-                <th>Elapsed</th>
-                <th>Connection</th>
-                <th>Chain</th>
-                <th>Span</th>
-                <th>Peer</th>
-                <th>Request ID</th>
-                <th>Context</th>
-                <th>Backtrace</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r) => (
-                <tr key={requestNodeKey(r)} class={rowSeverity(r)}>
-                  <td>
-                    <span
-                      class={classNames("dir", r.direction === "Outgoing" ? "dir-out" : "dir-in")}
-                    >
-                      {r.direction === "Outgoing" ? "\u2192" : "\u2190"}
-                    </span>
-                  </td>
-                  <td class="mono">
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          {filtered.map((r) => (
+            <div
+              key={requestNodeKey(r)}
+              class="sync-instance-card"
+              style={
+                rowSeverity(r) === "severity-danger"
+                  ? "border-color: var(--red)"
+                  : rowSeverity(r) === "severity-warn"
+                    ? "border-color: var(--amber)"
+                    : undefined
+              }
+            >
+              <div class="sync-instance-head">
+                <div class="sync-instance-title mono">
+                  <RequestLink r={r} selectedPath={selectedPath} />
+                  <span class="muted">{"\u2022"}</span>
+                  <ResourceLink
+                    href={resourceHref({ kind: "process", process: r.process })}
+                    active={isActivePath(selectedPath, resourceHref({ kind: "process", process: r.process }))}
+                    kind="process"
+                  >
+                    {r.process}
+                  </ResourceLink>
+                  <span class="muted">{"\u2192"}</span>
+                  <span>{r.peer}</span>
+                </div>
+                <div class="mono">{fmtDuration(r.elapsed_secs)}</div>
+              </div>
+
+              <div class="sync-instance-body" style="margin-top: 10px">
+                <div class="sync-kv">
+                  <span class="k">Direction</span>
+                  <span class="v">{r.direction}</span>
+                </div>
+                <div class="sync-kv">
+                  <span class="k">Connection</span>
+                  <span class="v">
                     <ResourceLink
-                      href={resourceHref({ kind: "process", process: r.process })}
-                      active={isActivePath(selectedPath, resourceHref({ kind: "process", process: r.process }))}
-                      kind="process"
+                      href={resourceHref({ kind: "connection", process: r.process, connection: r.connection })}
+                      active={isActivePath(selectedPath, resourceHref({ kind: "connection", process: r.process, connection: r.connection }))}
+                      kind="connection"
                     >
-                      {r.process}
+                      {r.connection}
                     </ResourceLink>
-                  </td>
-                  <td class="mono">
-                    <RequestLink r={r} selectedPath={selectedPath} />
-                  </td>
-                  <td class="mono">
+                  </span>
+                </div>
+              </div>
+
+              <div class="sync-instance-foot" style="display: block">
+                <div class="sync-kv" style="margin-bottom: 8px">
+                  <span class="k">Task</span>
+                  <span class="v">
                     {r.task_id != null ? (
                       <ResourceLink
                         href={resourceHref({ kind: "task", process: r.process, taskId: r.task_id })}
@@ -433,35 +445,23 @@ export function RequestsView({ dumps, filter, selectedPath }: Props) {
                     ) : (
                       <span class="muted">{"\u2014"}</span>
                     )}
-                  </td>
-                  <td class="num">{fmtDuration(r.elapsed_secs)}</td>
-                  <td class="mono">
-                    <ResourceLink
-                      href={resourceHref({ kind: "connection", process: r.process, connection: r.connection })}
-                      active={isActivePath(selectedPath, resourceHref({ kind: "connection", process: r.process, connection: r.connection }))}
-                      kind="connection"
-                    >
-                      {r.connection}
-                    </ResourceLink>
-                  </td>
-                  <td class="mono">{r.chain_id ?? "—"}</td>
-                  <td class="mono">{r.span_id ?? "—"}</td>
-                  <td class="mono">{r.peer}</td>
-                  <td class="num">{r.request_id}</td>
-                  <td>
-                    <RequestContextTree
-                      r={r}
-                      interactionsByTask={interactionsByTask}
-                      selectedPath={selectedPath}
-                    />
-                  </td>
-                  <td>
-                    <Expandable content={r.backtrace} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </span>
+                </div>
+                <div style="margin-bottom: 8px">
+                  <div class="k muted" style="font-size: 11px; margin-bottom: 4px">Context</div>
+                  <RequestContextTree
+                    r={r}
+                    interactionsByTask={interactionsByTask}
+                    selectedPath={selectedPath}
+                  />
+                </div>
+                <div>
+                  <div class="k muted" style="font-size: 11px; margin-bottom: 4px">Backtrace</div>
+                  <Expandable content={r.backtrace} />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div>
