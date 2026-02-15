@@ -32,17 +32,22 @@ Defined in `peeps-types`:
 
 ## Canonical IDs (v1)
 
-- task: `task:{process}:{pid}:{task_id}`
-- future: `future:{process}:{pid}:{future_id}`
-- request: `request:{process}:{pid}:{connection}:{request_id}`
-- response: `response:{process}:{pid}:{connection}:{request_id}`
-- lock: `lock:{process}:{name}`
-- semaphore: `semaphore:{process}:{name}`
-- mpsc endpoints: `mpsc:{process}:{name}:tx|rx`
-- oneshot endpoints: `oneshot:{process}:{name}:tx|rx`
-- watch endpoints: `watch:{process}:{name}:tx|rx`
-- roam channel endpoints: `roam-channel:{process}:{channel_id}:tx|rx`
-- oncecell: `oncecell:{process}:{name}`
+Define:
+- `proc_key = {process}:{pid}` (or stable runtime instance id when pid reuse is a concern)
+- `connection` must be a sanitized stable token: `conn_{u64}` (not raw socket string)
+
+IDs:
+- task: `task:{proc_key}:{task_id}`
+- future: `future:{proc_key}:{future_id}`
+- request: `request:{proc_key}:{connection}:{request_id}`
+- response: `response:{proc_key}:{connection}:{request_id}`
+- lock: `lock:{proc_key}:{name}`
+- semaphore: `semaphore:{proc_key}:{name}`
+- mpsc endpoints: `mpsc:{proc_key}:{name}:tx|rx`
+- oneshot endpoints: `oneshot:{proc_key}:{name}:tx|rx`
+- watch endpoints: `watch:{proc_key}:{name}:tx|rx`
+- roam channel endpoints: `roam-channel:{proc_key}:{channel_id}:tx|rx`
+- oncecell: `oncecell:{proc_key}:{name}`
 
 ## Edge model
 

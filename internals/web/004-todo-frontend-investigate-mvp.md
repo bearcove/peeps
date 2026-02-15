@@ -8,12 +8,19 @@ Scope: `crates/peeps-web/frontend`
 
 Build a Requests-first interface for local debugging without kitchen-sink scope.
 
+## Stack
+
+- Vite
+- Preact
+- TypeScript
+
 ## Core UX
 
 - one top-level tab only: `Requests`
 - one primary action: `Jump to now`
 - one default view: stuck requests table (`elapsed >= 5s`)
 - ELK graph prototype allowed (mock data first)
+- requests table must be powered by canonical query from `003-todo-api-contract.md`
 
 ## Visual direction
 
@@ -45,6 +52,7 @@ Mobile:
 In scope:
 - Requests tab only
 - ELK prototype with icons/hover cards/inspector
+- ELK layout execution off main thread (web worker)
 
 Out of scope:
 - additional tabs

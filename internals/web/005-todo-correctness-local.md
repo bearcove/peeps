@@ -23,6 +23,7 @@ No perf benchmarking. No rollout planning.
 3. Node/edge integrity
 - every edge source and destination exists as a node in same snapshot.
 - node IDs follow conventions.
+ - exception: explicitly unresolved cross-process references may be represented via query-time left joins (must not crash analysis).
 
 4. Edge model integrity
 - all persisted edges have `kind = 'needs'`.

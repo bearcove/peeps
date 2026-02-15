@@ -35,9 +35,10 @@ Snapshots are synchronized pulls (`Jump to now`), not free-running per-process p
 
 - run `000` first
 - run `001/002/003` in parallel
-- run `004` in parallel as prototype surface
+- run `004` after `003` endpoint signatures are stubbed (mock data allowed meanwhile)
 - run `005` continuously as correctness gate
-- run `006/007` tracks in parallel by resource area
+- run `006` first to freeze canonical IDs/types/contracts
+- then run `007` tracks in parallel by resource area
 
 ## Definition of done
 

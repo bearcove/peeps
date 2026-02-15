@@ -21,6 +21,32 @@ Frame format:
 - header: 4-byte big-endian length
 - body: UTF-8 JSON `ProcessDump`
 
+Control-plane message contract:
+- server -> process request:
+```json
+{
+  "type": "snapshot_request",
+  "snapshot_id": 1234,
+  "timeout_ms": 1500
+}
+```
+- process -> server response envelope:
+```json
+{
+  "type": "snapshot_reply",
+  "snapshot_id": 1234,
+  "process": "vx-vfsd",
+  "pid": 51859,
+  "dump": { "...": "ProcessDump" }
+}
+```
+
+Lifecycle rules:
+- connected processes are discovered/tracked via active ingest connections.
+- only one in-flight snapshot is allowed in v1.
+- reply with unknown/mismatched `snapshot_id` is rejected and recorded as `error` in `snapshot_processes`.
+- late replies after snapshot completion are dropped and logged.
+
 ## SQLite schema (v1)
 
 ```sql
@@ -35,10 +61,11 @@ CREATE TABLE snapshot_processes (
   snapshot_id INTEGER NOT NULL,
   process TEXT NOT NULL,
   pid INTEGER,
+  process_key TEXT NOT NULL, -- e.g. "{process}:{pid}" (or stable runtime instance id)
   status TEXT NOT NULL, -- responded|timeout|disconnected|error
   recv_at_ns INTEGER,
   error_text TEXT,
-  PRIMARY KEY (snapshot_id, process)
+  PRIMARY KEY (snapshot_id, process_key)
 );
 
 CREATE TABLE nodes (
@@ -46,6 +73,7 @@ CREATE TABLE nodes (
   id TEXT NOT NULL,
   kind TEXT NOT NULL,
   process TEXT NOT NULL,
+  process_key TEXT NOT NULL,
   attrs_json TEXT NOT NULL,
   PRIMARY KEY (snapshot_id, id)
 );
@@ -60,7 +88,7 @@ CREATE TABLE edges (
 );
 
 CREATE INDEX idx_nodes_snapshot_kind ON nodes(snapshot_id, kind);
-CREATE INDEX idx_nodes_snapshot_process ON nodes(snapshot_id, process);
+CREATE INDEX idx_nodes_snapshot_process_key ON nodes(snapshot_id, process_key);
 CREATE INDEX idx_edges_snapshot_src ON edges(snapshot_id, src_id);
 CREATE INDEX idx_edges_snapshot_dst ON edges(snapshot_id, dst_id);
 ```
@@ -70,6 +98,8 @@ CREATE INDEX idx_edges_snapshot_dst ON edges(snapshot_id, dst_id);
 - `snapshot_id` is global and monotonic.
 - Process replies are written transactionally per reply.
 - Missing responders are represented in `snapshot_processes`.
+- reply skew is stored (`recv_at_ns`) and surfaced for debugging.
+- dangling cross-process references are allowed in v1 and represented as unresolved edges during query-time joins.
 
 ## Retention
 

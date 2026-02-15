@@ -25,6 +25,11 @@ Each resource/runtime entity is a node with:
 - shared optional fields (label/source location/etc.)
 - `attrs_json` for type-specific fields
 
+Identity convention:
+- use `proc_key = {process}:{pid}` (or stable runtime instance id)
+- resource IDs must include `proc_key` to avoid cross-process collisions
+- connection IDs must be sanitized stable tokens (`conn_{u64}`)
+
 Examples of node kinds:
 - `task`
 - `future`
