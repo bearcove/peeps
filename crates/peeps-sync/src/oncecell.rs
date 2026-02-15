@@ -7,7 +7,7 @@ mod diag {
     use std::sync::{Arc, Mutex};
     use std::time::Instant;
 
-    use super::*;
+    use peeps_types::{OnceCellSnapshot, OnceCellState};
 
     const ONCE_EMPTY: u8 = 0;
     const ONCE_INITIALIZING: u8 = 1;

@@ -9,7 +9,9 @@ mod diag {
     use std::sync::Arc;
     use std::time::Instant;
 
-    use super::*;
+    use peeps_types::{
+        MpscChannelSnapshot, OneshotChannelSnapshot, OneshotState, WatchChannelSnapshot,
+    };
 
     // ── mpsc info ───────────────────────────────────────
 
@@ -20,11 +22,28 @@ mod diag {
         pub(crate) sent: AtomicU64,
         pub(crate) received: AtomicU64,
         pub(crate) send_waiters: AtomicU64,
+        pub(crate) recv_waiters: AtomicU64,
         pub(crate) sender_count: AtomicU64,
         pub(crate) sender_closed: AtomicU8,
         pub(crate) receiver_closed: AtomicU8,
+        pub(crate) high_watermark: AtomicU64,
         pub(crate) created_at: Instant,
         pub(crate) creator_task_id: Option<u64>,
+    }
+
+    fn update_atomic_max(target: &AtomicU64, observed: u64) {
+        let mut current = target.load(Ordering::Relaxed);
+        while observed > current {
+            match target.compare_exchange_weak(
+                current,
+                observed,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(next) => current = next,
+            }
+        }
     }
 
     impl MpscInfo {
@@ -43,6 +62,13 @@ mod diag {
                 creator_task_id: self.creator_task_id,
                 creator_task_name: self.creator_task_id.and_then(peeps_tasks::task_name),
             }
+        }
+
+        fn track_send_watermark(&self) {
+            let sent = self.sent.load(Ordering::Relaxed);
+            let received = self.received.load(Ordering::Relaxed);
+            let queue_len = sent.saturating_sub(received);
+            update_atomic_max(&self.high_watermark, queue_len);
         }
     }
 
@@ -82,6 +108,7 @@ mod diag {
             self.info.send_waiters.fetch_sub(1, Ordering::Relaxed);
             if result.is_ok() {
                 self.info.sent.fetch_add(1, Ordering::Relaxed);
+                self.info.track_send_watermark();
             }
             result
         }
@@ -93,6 +120,7 @@ mod diag {
             let result = self.inner.try_send(value);
             if result.is_ok() {
                 self.info.sent.fetch_add(1, Ordering::Relaxed);
+                self.info.track_send_watermark();
             }
             result
         }
@@ -123,7 +151,9 @@ mod diag {
 
     impl<T> Receiver<T> {
         pub async fn recv(&mut self) -> Option<T> {
+            self.info.recv_waiters.fetch_add(1, Ordering::Relaxed);
             let result = self.inner.recv().await;
+            self.info.recv_waiters.fetch_sub(1, Ordering::Relaxed);
             if result.is_some() {
                 self.info.received.fetch_add(1, Ordering::Relaxed);
             }
@@ -153,9 +183,11 @@ mod diag {
             sent: AtomicU64::new(0),
             received: AtomicU64::new(0),
             send_waiters: AtomicU64::new(0),
+            recv_waiters: AtomicU64::new(0),
             sender_count: AtomicU64::new(1),
             sender_closed: AtomicU8::new(0),
             receiver_closed: AtomicU8::new(0),
+            high_watermark: AtomicU64::new(0),
             created_at: Instant::now(),
             creator_task_id: peeps_tasks::current_task_id(),
         });
@@ -200,6 +232,7 @@ mod diag {
             let result = self.inner.send(value);
             if result.is_ok() {
                 self.info.sent.fetch_add(1, Ordering::Relaxed);
+                self.info.track_send_watermark();
             }
             result
         }
@@ -222,7 +255,9 @@ mod diag {
 
     impl<T> UnboundedReceiver<T> {
         pub async fn recv(&mut self) -> Option<T> {
+            self.info.recv_waiters.fetch_add(1, Ordering::Relaxed);
             let result = self.inner.recv().await;
+            self.info.recv_waiters.fetch_sub(1, Ordering::Relaxed);
             if result.is_some() {
                 self.info.received.fetch_add(1, Ordering::Relaxed);
             }
@@ -254,9 +289,11 @@ mod diag {
             sent: AtomicU64::new(0),
             received: AtomicU64::new(0),
             send_waiters: AtomicU64::new(0),
+            recv_waiters: AtomicU64::new(0),
             sender_count: AtomicU64::new(1),
             sender_closed: AtomicU8::new(0),
             receiver_closed: AtomicU8::new(0),
+            high_watermark: AtomicU64::new(0),
             created_at: Instant::now(),
             creator_task_id: peeps_tasks::current_task_id(),
         });

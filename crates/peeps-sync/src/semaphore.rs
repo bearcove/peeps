@@ -7,11 +7,11 @@ mod diag {
     use std::sync::{Arc, Mutex};
     use std::time::Instant;
 
-    use super::*;
+    use peeps_types::SemaphoreSnapshot;
 
-    struct WaiterEntry {
-        task_id: u64,
-        started_at: Instant,
+    pub(crate) struct WaiterEntry {
+        pub(crate) task_id: u64,
+        pub(crate) started_at: Instant,
     }
 
     pub(crate) struct SemaphoreInfo {
@@ -21,6 +21,7 @@ mod diag {
         pub(crate) acquires: AtomicU64,
         pub(crate) total_wait_nanos: AtomicU64,
         pub(crate) max_wait_nanos: AtomicU64,
+        pub(crate) high_waiters_watermark: AtomicU64,
         pub(crate) created_at: Instant,
         pub(crate) creator_task_id: Option<u64>,
         pub(crate) available_permits: Box<dyn Fn() -> usize + Send + Sync>,
@@ -103,6 +104,7 @@ mod diag {
                 acquires: AtomicU64::new(0),
                 total_wait_nanos: AtomicU64::new(0),
                 max_wait_nanos: AtomicU64::new(0),
+                high_waiters_watermark: AtomicU64::new(0),
                 created_at: Instant::now(),
                 creator_task_id: peeps_tasks::current_task_id(),
                 available_permits: Box::new(move || inner_for_snapshot.available_permits()),
@@ -132,7 +134,8 @@ mod diag {
             &self,
         ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
             let task_id = peeps_tasks::current_task_id().unwrap_or(0);
-            self.info.waiters.fetch_add(1, Ordering::Relaxed);
+            let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
+            update_max_wait(&self.info.high_waiters_watermark, new_waiters);
             let start = Instant::now();
             self.info
                 .active_waiters
@@ -169,7 +172,8 @@ mod diag {
             n: u32,
         ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
             let task_id = peeps_tasks::current_task_id().unwrap_or(0);
-            self.info.waiters.fetch_add(1, Ordering::Relaxed);
+            let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
+            update_max_wait(&self.info.high_waiters_watermark, new_waiters);
             let start = Instant::now();
             self.info
                 .active_waiters
@@ -205,7 +209,8 @@ mod diag {
             &self,
         ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
             let task_id = peeps_tasks::current_task_id().unwrap_or(0);
-            self.info.waiters.fetch_add(1, Ordering::Relaxed);
+            let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
+            update_max_wait(&self.info.high_waiters_watermark, new_waiters);
             let start = Instant::now();
             self.info
                 .active_waiters
@@ -242,7 +247,8 @@ mod diag {
             n: u32,
         ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
             let task_id = peeps_tasks::current_task_id().unwrap_or(0);
-            self.info.waiters.fetch_add(1, Ordering::Relaxed);
+            let new_waiters = self.info.waiters.fetch_add(1, Ordering::Relaxed) + 1;
+            update_max_wait(&self.info.high_waiters_watermark, new_waiters);
             let start = Instant::now();
             self.info
                 .active_waiters

@@ -24,4 +24,4 @@ pub use channels::{
 };
 pub use oncecell::OnceCell;
 pub use semaphore::DiagnosticSemaphore;
-pub use snapshot::snapshot_all;
+pub use snapshot::{emit_graph, snapshot_all};
