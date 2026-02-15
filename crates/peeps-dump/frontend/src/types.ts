@@ -50,9 +50,15 @@ export interface WakeEdgeSnapshot {
 }
 
 export interface FutureWaitSnapshot {
+  future_id: number;
   task_id: number;
   task_name: string | null;
   resource: string;
+  created_by_task_id: number | null;
+  created_by_task_name: string | null;
+  created_age_secs: number;
+  last_polled_by_task_id: number | null;
+  last_polled_by_task_name: string | null;
   pending_count: number;
   ready_count: number;
   total_pending_secs: number;

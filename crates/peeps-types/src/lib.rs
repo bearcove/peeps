@@ -12,6 +12,8 @@ use facet::Facet;
 
 /// Unique task ID.
 pub type TaskId = u64;
+/// Unique instrumented future ID.
+pub type FutureId = u64;
 
 /// Snapshot of a tracked task for diagnostics.
 #[derive(Debug, Clone, Facet)]
@@ -47,9 +49,15 @@ pub struct WakeEdgeSnapshot {
 /// Snapshot of a task waiting on an annotated future/resource.
 #[derive(Debug, Clone, Facet)]
 pub struct FutureWaitSnapshot {
+    pub future_id: FutureId,
     pub task_id: TaskId,
     pub task_name: Option<String>,
     pub resource: String,
+    pub created_by_task_id: Option<TaskId>,
+    pub created_by_task_name: Option<String>,
+    pub created_age_secs: f64,
+    pub last_polled_by_task_id: Option<TaskId>,
+    pub last_polled_by_task_name: Option<String>,
     pub pending_count: u64,
     pub ready_count: u64,
     pub total_pending_secs: f64,

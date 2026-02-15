@@ -7,7 +7,8 @@
 use std::future::Future;
 
 pub use peeps_types::{
-    FutureWaitSnapshot, PollEvent, PollResult, TaskId, TaskSnapshot, TaskState, WakeEdgeSnapshot,
+    FutureId, FutureWaitSnapshot, PollEvent, PollResult, TaskId, TaskSnapshot, TaskState,
+    WakeEdgeSnapshot,
 };
 
 // ── Zero-cost stubs (no diagnostics) ─────────────────────────────
@@ -124,9 +125,9 @@ mod imp {
     static WAKE_REGISTRY: Mutex<
         Option<std::collections::HashMap<(Option<TaskId>, TaskId), WakeEdgeInfo>>,
     > = Mutex::new(None);
-    static FUTURE_WAIT_REGISTRY: Mutex<
-        Option<std::collections::HashMap<(TaskId, String), FutureWaitInfo>>,
-    > = Mutex::new(None);
+    static NEXT_FUTURE_ID: AtomicU64 = AtomicU64::new(1);
+    static FUTURE_WAIT_REGISTRY: Mutex<Option<std::collections::HashMap<FutureId, FutureWaitInfo>>> =
+        Mutex::new(None);
 
     struct TaskInfo {
         id: TaskId,
@@ -155,6 +156,10 @@ mod imp {
     }
 
     struct FutureWaitInfo {
+        resource: String,
+        created_at: Instant,
+        created_by_task_id: Option<TaskId>,
+        last_polled_by_task_id: Option<TaskId>,
         pending_count: u64,
         ready_count: u64,
         total_pending: std::time::Duration,
@@ -176,36 +181,49 @@ mod imp {
         entry.last_wake_at = Instant::now();
     }
 
-    fn record_future_pending(task_id: TaskId, resource: &str) {
+    fn register_future(future_id: FutureId, resource: String, created_by_task_id: Option<TaskId>) {
         let mut registry = FUTURE_WAIT_REGISTRY.lock().unwrap();
         let Some(waits) = registry.as_mut() else {
             return;
         };
-        let entry =
-            waits.entry((task_id, resource.to_string()))
-                .or_insert(FutureWaitInfo {
-                    pending_count: 0,
-                    ready_count: 0,
-                    total_pending: std::time::Duration::from_secs(0),
-                    last_seen: Instant::now(),
-                });
+        waits.entry(future_id).or_insert(FutureWaitInfo {
+            resource,
+            created_at: Instant::now(),
+            created_by_task_id,
+            last_polled_by_task_id: created_by_task_id,
+            pending_count: 0,
+            ready_count: 0,
+            total_pending: std::time::Duration::from_secs(0),
+            last_seen: Instant::now(),
+        });
+    }
+
+    fn record_future_pending(future_id: FutureId, task_id: Option<TaskId>) {
+        let mut registry = FUTURE_WAIT_REGISTRY.lock().unwrap();
+        let Some(waits) = registry.as_mut() else {
+            return;
+        };
+        let Some(entry) = waits.get_mut(&future_id) else {
+            return;
+        };
+        entry.last_polled_by_task_id = task_id.or(entry.last_polled_by_task_id);
         entry.pending_count += 1;
         entry.last_seen = Instant::now();
     }
 
-    fn record_future_ready(task_id: TaskId, resource: &str, pending_duration: std::time::Duration) {
+    fn record_future_ready(
+        future_id: FutureId,
+        task_id: Option<TaskId>,
+        pending_duration: std::time::Duration,
+    ) {
         let mut registry = FUTURE_WAIT_REGISTRY.lock().unwrap();
         let Some(waits) = registry.as_mut() else {
             return;
         };
-        let entry =
-            waits.entry((task_id, resource.to_string()))
-                .or_insert(FutureWaitInfo {
-                    pending_count: 0,
-                    ready_count: 0,
-                    total_pending: std::time::Duration::from_secs(0),
-                    last_seen: Instant::now(),
-                });
+        let Some(entry) = waits.get_mut(&future_id) else {
+            return;
+        };
+        entry.last_polled_by_task_id = task_id.or(entry.last_polled_by_task_id);
         entry.ready_count += 1;
         entry.total_pending += pending_duration;
         entry.last_seen = Instant::now();
@@ -231,8 +249,8 @@ mod imp {
     }
 
     pub struct PeepableFuture<F> {
+        future_id: FutureId,
         inner: F,
-        resource: String,
         pending_since: Option<Instant>,
     }
 
@@ -242,30 +260,29 @@ mod imp {
     {
         type Output = F::Output;
 
-        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            // SAFETY: projecting through PeepableFuture to inner future.
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            // SAFETY: we never move fields out of `self` after pinning.
             #[allow(unsafe_code)]
-            let inner = unsafe { Pin::new_unchecked(&mut self.inner) };
+            let this = unsafe { self.get_unchecked_mut() };
+            // SAFETY: `inner` is pinned together with `self`.
+            #[allow(unsafe_code)]
+            let inner = unsafe { Pin::new_unchecked(&mut this.inner) };
             let task_id = current_task_id();
             match inner.poll(cx) {
                 Poll::Pending => {
-                    if self.pending_since.is_none() {
-                        self.pending_since = Some(Instant::now());
+                    if this.pending_since.is_none() {
+                        this.pending_since = Some(Instant::now());
                     }
-                    if let Some(task_id) = task_id {
-                        record_future_pending(task_id, &self.resource);
-                    }
+                    record_future_pending(this.future_id, task_id);
                     Poll::Pending
                 }
                 Poll::Ready(value) => {
-                    if let Some(task_id) = task_id {
-                        let pending_duration = self
-                            .pending_since
-                            .take()
-                            .map(|t| t.elapsed())
-                            .unwrap_or_default();
-                        record_future_ready(task_id, &self.resource, pending_duration);
-                    }
+                    let pending_duration = this
+                        .pending_since
+                        .take()
+                        .map(|t| t.elapsed())
+                        .unwrap_or_default();
+                    record_future_ready(this.future_id, task_id, pending_duration);
                     Poll::Ready(value)
                 }
             }
@@ -276,9 +293,12 @@ mod imp {
     where
         F: Future,
     {
+        let future_id = NEXT_FUTURE_ID.fetch_add(1, Ordering::Relaxed);
+        let resource = resource.into();
+        register_future(future_id, resource.clone(), current_task_id());
         PeepableFuture {
+            future_id,
             inner: future,
-            resource: resource.into(),
             pending_since: None,
         }
     }
@@ -516,10 +536,23 @@ mod imp {
 
         let mut out: Vec<FutureWaitSnapshot> = waits
             .iter()
-            .map(|((task_id, resource), wait)| FutureWaitSnapshot {
-                task_id: *task_id,
-                task_name: task_lookup.get(task_id).cloned(),
-                resource: resource.clone(),
+            .map(|(future_id, wait)| FutureWaitSnapshot {
+                future_id: *future_id,
+                task_id: wait.last_polled_by_task_id.or(wait.created_by_task_id).unwrap_or(0),
+                task_name: wait
+                    .last_polled_by_task_id
+                    .or(wait.created_by_task_id)
+                    .and_then(|id| task_lookup.get(&id).cloned()),
+                resource: wait.resource.clone(),
+                created_by_task_id: wait.created_by_task_id,
+                created_by_task_name: wait
+                    .created_by_task_id
+                    .and_then(|id| task_lookup.get(&id).cloned()),
+                created_age_secs: now.duration_since(wait.created_at).as_secs_f64(),
+                last_polled_by_task_id: wait.last_polled_by_task_id,
+                last_polled_by_task_name: wait
+                    .last_polled_by_task_id
+                    .and_then(|id| task_lookup.get(&id).cloned()),
                 pending_count: wait.pending_count,
                 ready_count: wait.ready_count,
                 total_pending_secs: wait.total_pending.as_secs_f64(),
@@ -559,9 +592,15 @@ mod imp {
             });
         }
         if let Some(waits) = FUTURE_WAIT_REGISTRY.lock().unwrap().as_mut() {
-            waits.retain(|(task_id, _), wait| {
+            waits.retain(|_, wait| {
                 let recent = wait.last_seen > cutoff;
-                live_ids.contains(task_id) || recent
+                let creator_live = wait
+                    .created_by_task_id
+                    .is_some_and(|task_id| live_ids.contains(&task_id));
+                let last_polled_live = wait
+                    .last_polled_by_task_id
+                    .is_some_and(|task_id| live_ids.contains(&task_id));
+                creator_live || last_polled_live || recent
             });
         }
     }
