@@ -41,14 +41,6 @@ export async function querySql(
   return post<SqlResponse>("/api/sql", req);
 }
 
-export async function openInEditor(
-  path: string,
-  line?: number,
-  column?: number,
-): Promise<void> {
-  await post<unknown>("/api/open", { path, line, column });
-}
-
 const STUCK_REQUEST_SQL = `SELECT
   r.id,
   json_extract(r.attrs_json, '$.method') AS method,

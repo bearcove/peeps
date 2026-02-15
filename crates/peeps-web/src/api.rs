@@ -8,7 +8,6 @@ use std::time::Instant;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
-use tokio::process::Command;
 use rusqlite::types::Value;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
@@ -66,18 +65,6 @@ pub struct SqlResponse {
     pub rows: Vec<Vec<JsonValue>>,
     pub row_count: usize,
     pub truncated: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct OpenInEditorRequest {
-    pub path: String,
-    pub line: Option<u32>,
-    pub column: Option<u32>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct OpenInEditorResponse {
-    pub ok: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -155,67 +142,6 @@ pub async fn api_sql(
             )
         })?;
     result
-}
-
-// ── POST /api/open ───────────────────────────────────────────────
-
-pub async fn api_open(
-    State(state): State<AppState>,
-    Json(req): Json<OpenInEditorRequest>,
-) -> Result<Json<OpenInEditorResponse>, (StatusCode, Json<ApiError>)> {
-    let root = state.workspace_root.clone();
-    let path = req.path.clone();
-    let line = req.line;
-    let column = req.column;
-
-    let result = tokio::task::spawn_blocking(move || {
-        let root = root
-            .canonicalize()
-            .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("root: {e}")))?;
-
-        let mut p = PathBuf::from(path);
-        if p.is_relative() {
-            p = root.join(p);
-        }
-        let p = p
-            .canonicalize()
-            .map_err(|e| api_error(StatusCode::BAD_REQUEST, format!("path: {e}")))?;
-
-        if !p.starts_with(&root) {
-            return Err(api_error(StatusCode::FORBIDDEN, "path outside workspace"));
-        }
-
-        let mut pos = p.to_string_lossy().to_string();
-        if let Some(line) = line {
-            pos.push(':');
-            pos.push_str(&line.to_string());
-            if let Some(column) = column {
-                pos.push(':');
-                pos.push_str(&column.to_string());
-            }
-        }
-
-        Ok(pos)
-    })
-    .await
-    .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("join: {e}")))?;
-
-    let pos = match result {
-        Ok(p) => p,
-        Err(e) => return Err(e),
-    };
-
-    // Fire-and-forget: best-effort open in Zed.
-    let mut cmd = Command::new("zed");
-    cmd.arg("--add").arg(pos);
-    if let Err(e) = cmd.spawn() {
-        return Err(api_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("spawn zed: {e}"),
-        ));
-    }
-
-    Ok(Json(OpenInEditorResponse { ok: true }))
 }
 
 fn sql_blocking(

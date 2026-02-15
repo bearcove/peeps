@@ -324,22 +324,9 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
   }
 
   function metaLocation(meta: Record<string, unknown>): string | null {
-    const callsite = meta["ctx.callsite"] != null ? String(meta["ctx.callsite"]) : undefined;
-    const file = meta["ctx.file"] != null ? String(meta["ctx.file"]) : undefined;
-    const line = meta["ctx.line"] != null ? String(meta["ctx.line"]) : undefined;
-
     let loc: string | null = null;
-    if (callsite) {
-      const at = callsite.indexOf("@");
-      if (at >= 0) loc = callsite.slice(at + 1);
-    }
-    if (!loc && file) loc = `${file}${line ? `:${line}` : ""}`;
+    if (meta["ctx.location"] != null) loc = String(meta["ctx.location"]);
     if (!loc) return null;
-
-    // Peeps callsites often append the module after `::` (e.g. `path.rs:123::crate_mod`).
-    // The module is usually noise: keep only the file:line portion.
-    const moduleSep = loc.lastIndexOf("::");
-    if (moduleSep !== -1) loc = loc.slice(0, moduleSep);
 
     return loc;
   }
@@ -347,11 +334,19 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
   function MetaView({ meta }: { meta: Record<string, unknown> }) {
     const loc = metaLocation(meta);
     if (!loc) return <span className="inspect-val inspect-val--mono">—</span>;
+    // Render as a Zed deep link using absolute `path:line(:col)` syntax.
+    const href = `zed://file/${encodeURIComponent(loc)}`;
     return (
       <div className="inspect-meta">
         <div className="inspect-meta-row">
           <span className="inspect-meta-key">Location</span>
-          <span className="inspect-meta-val inspect-val--mono">{loc}</span>
+          <a
+            className="inspect-meta-val inspect-val--mono inspect-link"
+            href={href}
+            title="Open in Zed"
+          >
+            {loc}
+          </a>
         </div>
       </div>
     );

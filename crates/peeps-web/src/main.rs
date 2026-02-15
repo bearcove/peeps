@@ -21,7 +21,6 @@ use tracing::{debug, error, info, warn};
 pub(crate) struct AppState {
     pub(crate) db_path: Arc<PathBuf>,
     pub(crate) snapshot_ctl: Arc<SnapshotController>,
-    pub(crate) workspace_root: Arc<PathBuf>,
 }
 
 pub(crate) struct SnapshotController {
@@ -80,7 +79,6 @@ async fn main() {
                 in_flight: None,
             }),
         }),
-        workspace_root: Arc::new(std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))),
     };
 
     let tcp_listener = TcpListener::bind(&tcp_addr)
@@ -98,7 +96,6 @@ async fn main() {
         .route("/health", get(health))
         .route("/api/jump-now", post(api::api_jump_now))
         .route("/api/sql", post(api::api_sql))
-        .route("/api/open", post(api::api_open))
         .with_state(state.clone());
 
     tokio::select! {
