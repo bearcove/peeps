@@ -15,6 +15,7 @@ use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{oneshot, Mutex};
+use tracing::{debug, error, info, warn};
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -58,6 +59,13 @@ const INGEST_EVENTS_RETENTION_DAYS: i64 = 7;
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+
     let tcp_addr = std::env::var("PEEPS_LISTEN").unwrap_or_else(|_| "127.0.0.1:9119".into());
     let http_addr = std::env::var("PEEPS_HTTP").unwrap_or_else(|_| "127.0.0.1:9130".into());
     let db_path = std::env::var("PEEPS_DB").unwrap_or_else(|_| "./peeps-web.sqlite".into());
@@ -78,13 +86,13 @@ async fn main() {
     let tcp_listener = TcpListener::bind(&tcp_addr)
         .await
         .unwrap_or_else(|e| panic!("[peeps-web] failed to bind TCP on {tcp_addr}: {e}"));
-    eprintln!("[peeps-web] TCP listener on {tcp_addr} (pull-based ingest)");
+    info!(%tcp_addr, "TCP listener ready (pull-based ingest)");
 
     let http_listener = TcpListener::bind(&http_addr)
         .await
         .unwrap_or_else(|e| panic!("[peeps-web] failed to bind HTTP on {http_addr}: {e}"));
-    eprintln!("[peeps-web] HTTP server on http://{http_addr}/");
-    eprintln!("[peeps-web] sqlite DB: {db_path}");
+    info!(%http_addr, "HTTP server ready");
+    info!(%db_path, "sqlite DB");
 
     let app = Router::new()
         .route("/health", get(health))
@@ -97,7 +105,7 @@ async fn main() {
         _ = run_tcp_acceptor(tcp_listener, state.clone()) => {}
         result = axum::serve(http_listener, app) => {
             if let Err(e) = result {
-                eprintln!("[peeps-web] HTTP server error: {e}");
+                error!(%e, "HTTP server error");
             }
         }
     }
@@ -155,6 +163,13 @@ pub(crate) async fn trigger_snapshot(state: &AppState) -> Result<(i64, usize), S
             completion_tx: Some(completion_tx),
         });
 
+        info!(
+            snapshot_id,
+            ?pending,
+            "triggering snapshot for {} processes",
+            pending.len()
+        );
+
         let req = SnapshotRequest {
             r#type: "snapshot_request".to_string(),
             snapshot_id,
@@ -163,7 +178,9 @@ pub(crate) async fn trigger_snapshot(state: &AppState) -> Result<(i64, usize), S
         let req_json = facet_json::to_vec(&req).map_err(|e| e.to_string())?;
 
         for conn in ctl.connections.values() {
-            let _ = conn.tx.try_send(req_json.clone());
+            if let Err(e) = conn.tx.try_send(req_json.clone()) {
+                error!(proc_key = %conn.proc_key, %e, "failed to send snapshot request");
+            }
         }
 
         (snapshot_id, completion_rx, processes_requested)
@@ -175,7 +192,7 @@ pub(crate) async fn trigger_snapshot(state: &AppState) -> Result<(i64, usize), S
     finalize_snapshot(&state.db_path, &state.snapshot_ctl, snapshot_id).await?;
 
     if let Err(e) = run_retention(&state.db_path) {
-        eprintln!("[peeps-web] retention error: {e}");
+        warn!(%e, "retention error");
     }
 
     Ok((snapshot_id, processes_requested))
@@ -198,6 +215,10 @@ async fn finalize_snapshot(
     let conn = open_db(db_path);
     let now_ns = now_nanos();
 
+    if !in_flight.pending.is_empty() {
+        warn!(snapshot_id, pending = ?in_flight.pending, "finalizing with {} unresponsive processes", in_flight.pending.len());
+    }
+
     for proc_key in &in_flight.pending {
         let still_connected = guard.connections.values().any(|c| &c.proc_key == proc_key);
         let status = if still_connected {
@@ -205,6 +226,7 @@ async fn finalize_snapshot(
         } else {
             "disconnected"
         };
+        warn!(snapshot_id, %proc_key, %status, "process did not respond");
 
         conn.execute(
             "INSERT OR IGNORE INTO snapshot_processes (snapshot_id, process, pid, proc_key, status, error_text)
@@ -229,16 +251,16 @@ async fn run_tcp_acceptor(listener: TcpListener, state: AppState) {
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
-                eprintln!("[peeps-web] TCP connection from {addr}");
+                info!(%addr, "TCP connection accepted");
                 let st = state.clone();
                 tokio::spawn(async move {
                     if let Err(e) = handle_conn(stream, st).await {
-                        eprintln!("[peeps-web] connection error from {addr}: {e}");
+                        error!(%addr, %e, "connection error");
                     }
                 });
             }
             Err(e) => {
-                eprintln!("[peeps-web] accept failed: {e}");
+                error!(%e, "TCP accept failed");
             }
         }
     }
@@ -291,15 +313,18 @@ async fn read_replies(
     conn_id: u64,
     state: &AppState,
 ) -> Result<(), String> {
+    debug!(conn_id, "waiting for replies");
     loop {
         let mut len_buf = [0u8; 4];
         if let Err(e) = reader.read_exact(&mut len_buf).await {
             if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                debug!(conn_id, "connection closed (EOF)");
                 return Ok(());
             }
             return Err(format!("read frame len: {e}"));
         }
         let len = u32::from_be_bytes(len_buf) as usize;
+        debug!(conn_id, frame_len = len, "received frame header");
         if len > 128 * 1024 * 1024 {
             return Err(format!("frame too large: {len} bytes"));
         }
@@ -309,9 +334,18 @@ async fn read_replies(
             .await
             .map_err(|e| format!("read frame payload: {e}"))?;
 
+        debug!(
+            conn_id,
+            frame_len = len,
+            "received full frame, deserializing"
+        );
         let reply: SnapshotReply = match facet_json::from_slice(&frame) {
-            Ok(r) => r,
+            Ok(r) => {
+                debug!(conn_id, "deserialized snapshot reply OK");
+                r
+            }
             Err(e) => {
+                warn!(conn_id, %e, "failed to deserialize snapshot reply");
                 record_ingest_event(
                     &state.db_path,
                     None,
@@ -326,6 +360,7 @@ async fn read_replies(
         };
 
         if reply.r#type != "snapshot_reply" {
+            warn!(conn_id, msg_type = %reply.r#type, "unexpected message type");
             record_ingest_event(
                 &state.db_path,
                 None,
@@ -361,6 +396,12 @@ async fn process_reply(state: &AppState, reply: &SnapshotReply, proc_key: &str) 
             Some(f) if f.snapshot_id == reply.snapshot_id => f.snapshot_id,
             Some(f) => {
                 let expected = f.snapshot_id;
+                warn!(
+                    %proc_key,
+                    expected_snapshot_id = expected,
+                    got_snapshot_id = reply.snapshot_id,
+                    "snapshot_id mismatch"
+                );
                 record_ingest_event(
                     &state.db_path,
                     Some(reply.snapshot_id),
@@ -373,6 +414,11 @@ async fn process_reply(state: &AppState, reply: &SnapshotReply, proc_key: &str) 
                 return;
             }
             None => {
+                warn!(
+                    %proc_key,
+                    snapshot_id = reply.snapshot_id,
+                    "late reply, no in-flight snapshot"
+                );
                 record_ingest_event(
                     &state.db_path,
                     Some(reply.snapshot_id),
@@ -416,9 +462,13 @@ async fn process_reply(state: &AppState, reply: &SnapshotReply, proc_key: &str) 
     let (node_count, edge_count) = graph
         .map(|g| (g.nodes.len(), g.edges.len()))
         .unwrap_or((0, 0));
-    eprintln!(
-        "[peeps-web] snapshot {snapshot_id}: reply from {} ({proc_key}): {node_count} nodes, {edge_count} edges",
-        reply.process,
+    info!(
+        snapshot_id,
+        process = %reply.process,
+        %proc_key,
+        node_count,
+        edge_count,
+        "snapshot reply persisted"
     );
 
     let mut ctl = state.snapshot_ctl.inner.lock().await;
@@ -608,7 +658,7 @@ fn record_ingest_event(
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![now_ns, snapshot_id, process, pid, proc_key, event_kind, detail],
     ) {
-        eprintln!("[peeps-web] failed to record ingest event: {e}");
+        error!(%e, %event_kind, "failed to record ingest event");
     }
 }
 

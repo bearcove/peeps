@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use peeps_types::{SnapshotReply, SnapshotRequest};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tracing::{debug, error, info, warn};
 
 /// Start the background pull loop. Spawns a tracked task that reconnects on failure.
 pub fn start_pull_loop(process_name: String, addr: String) {
@@ -16,13 +17,13 @@ pub fn start_pull_loop(process_name: String, addr: String) {
         loop {
             match TcpStream::connect(&addr).await {
                 Ok(stream) => {
-                    eprintln!("[peeps] connected to dashboard at {addr}");
+                    info!(%addr, "connected to dashboard");
                     if let Err(e) = pull_loop(stream, &process_name).await {
-                        eprintln!("[peeps] dashboard connection lost: {e}");
+                        warn!(%addr, %e, "dashboard connection lost");
                     }
                 }
                 Err(e) => {
-                    eprintln!("[peeps] failed to connect to dashboard at {addr}: {e}");
+                    warn!(%addr, %e, "failed to connect to dashboard");
                 }
             }
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -40,6 +41,8 @@ async fn pull_loop(stream: TcpStream, process_name: &str) -> std::io::Result<()>
         reader.read_exact(&mut len_buf).await?;
         let len = u32::from_be_bytes(len_buf) as usize;
 
+        debug!(frame_len = len, "received frame header from dashboard");
+
         if len > 128 * 1024 * 1024 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -53,16 +56,17 @@ async fn pull_loop(stream: TcpStream, process_name: &str) -> std::io::Result<()>
         let req: SnapshotRequest = match facet_json::from_slice(&frame) {
             Ok(r) => r,
             Err(e) => {
-                eprintln!("[peeps] failed to parse snapshot request: {e}");
+                warn!(%e, "failed to deserialize snapshot request");
                 continue;
             }
         };
 
         if req.r#type != "snapshot_request" {
-            eprintln!("[peeps] ignoring unknown message type: {}", req.r#type);
+            warn!(msg_type = %req.r#type, "ignoring unknown message type");
             continue;
         }
 
+        debug!(snapshot_id = req.snapshot_id, "collecting dump");
         let dump = crate::collect_dump(process_name, HashMap::new());
 
         let reply = SnapshotReply {
@@ -88,10 +92,10 @@ async fn pull_loop(stream: TcpStream, process_name: &str) -> std::io::Result<()>
         writer.write_all(&reply_bytes).await?;
         writer.flush().await?;
 
-        eprintln!(
-            "[peeps] sent snapshot reply for snapshot_id={} ({} bytes)",
-            req.snapshot_id,
-            reply_bytes.len()
+        info!(
+            snapshot_id = req.snapshot_id,
+            reply_bytes = reply_bytes.len(),
+            "sent snapshot reply"
         );
     }
 }

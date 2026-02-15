@@ -35,6 +35,8 @@ libc = "0.2"
 parking_lot = "0.12"
 roam-session = { path = "../roam/rust/roam-session", features = ["diagnostics"] }
 roam-shm = { path = "../roam/rust/roam-shm", features = ["diagnostics"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1.49", features = ["full"] }
 axum = { version = "0.8", features = ["ws"] }
 rust-embed = "8"
