@@ -8,31 +8,42 @@ Priority: P0
 
 Make request causality across tasks/processes explicit and queryable.
 
+## Prerequisites
+
+- Complete `/Users/amos/bearcove/peeps/internals/web/000-todo-crate-split-for-parallelization.md`.
+- Use contracts from `/Users/amos/bearcove/peeps/internals/web/006-todo-wrapper-emission-api.md`.
+
 ## Current context
 
-- Roam session diagnostics surfaces in-flight requests and metadata.
+- Roam session diagnostics surface in-flight requests and metadata.
 - `peeps` currently extracts some request-parent data from metadata.
 - Cross-process causality quality depends on robust metadata propagation.
+
+Implementation areas:
+- `/Users/amos/bearcove/roam/rust/roam-session/src/diagnostic.rs`
+- `/Users/amos/bearcove/peeps/crates/peeps/src/collect.rs`
 
 ## Node + edge model
 
 Node ID:
-- `request:{process}:{pid}:{connection}:{request_id}`
-- `response:{process}:{pid}:{connection}:{request_id}`
+- `request:{proc_key}:{connection}:{request_id}`
+- `response:{proc_key}:{connection}:{request_id}`
 
 Node kinds:
 - `request`
 - `response`
 
-Required attrs_json:
+Required attrs_json (request):
 - `request_id`
 - `method`
 - `method_id`
 - `direction` (`incoming|outgoing`)
 - `elapsed_ns`
-- `connection`
+- `connection` (`conn_{u64}`)
 - `peer`
+- `task_id` (nullable)
 - `metadata_json`
+- `correlation_key` (`{connection}:{request_id}`)
 - `args_preview` (Roam-formatted argument rendering)
 
 `args_preview` requirement:
@@ -44,11 +55,12 @@ Required attrs_json:
 Required attrs_json (response):
 - `request_id`
 - `method`
-- `status` (ok|error|cancelled|timeout|in_flight)
+- `status` (`ok|error|cancelled|timeout|in_flight`)
 - `elapsed_ns`
-- `connection`
+- `connection` (`conn_{u64}`)
 - `peer`
 - `server_task_id`
+- `correlation_key` (`{connection}:{request_id}`)
 
 Required `needs` edges:
 - `request -> response` (request depends on response completion)
@@ -79,4 +91,16 @@ WHERE snapshot_id = ?1
   AND src_id LIKE 'request:%'
   AND dst_id LIKE 'response:%'
 LIMIT 200;
+```
+
+```sql
+SELECT COUNT(*)
+FROM nodes r
+LEFT JOIN nodes s
+  ON s.snapshot_id = r.snapshot_id
+ AND s.kind = 'response'
+ AND json_extract(s.attrs_json, '$.correlation_key') = json_extract(r.attrs_json, '$.correlation_key')
+WHERE r.snapshot_id = ?1
+  AND r.kind = 'request'
+  AND s.id IS NULL;
 ```

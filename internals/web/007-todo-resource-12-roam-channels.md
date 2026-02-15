@@ -8,17 +8,26 @@ Priority: P1
 
 Expose roam channel usage as first-class resources tied to tasks and requests.
 
+## Prerequisites
+
+- Complete `/Users/amos/bearcove/peeps/internals/web/000-todo-crate-split-for-parallelization.md`.
+- Use contracts from `/Users/amos/bearcove/peeps/internals/web/006-todo-wrapper-emission-api.md`.
+
 ## Current context
 
 - Roam diagnostics include channel details (`channel_id`, `direction`, `queue_depth`, task/request ids when present).
 - Channel objects do not carry independent metadata, but channel creation is request-scoped.
 - Canonical node/edge mapping is not yet guaranteed for all channel events.
 
+Implementation areas:
+- `/Users/amos/bearcove/roam/rust/roam-session/src/diagnostic.rs`
+- `/Users/amos/bearcove/peeps/crates/peeps/src/collect.rs`
+
 ## Node + edge model
 
 Node IDs:
-- `roam-channel:{process}:{channel_id}:tx`
-- `roam-channel:{process}:{channel_id}:rx`
+- `roam-channel:{proc_key}:{channel_id}:tx`
+- `roam-channel:{proc_key}:{channel_id}:rx`
 
 Node kinds:
 - `roam_channel_tx`

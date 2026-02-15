@@ -14,23 +14,28 @@ Handle lock primitives as one coherent track because lock semantics are the same
 This track covers sync lock wrappers in `peeps-locks` only.
 Async mutex/rwlock wrappers are out of scope (banned).
 
+## Prerequisites
+
+- Complete `/Users/amos/bearcove/peeps/internals/web/000-todo-crate-split-for-parallelization.md`.
+- Use contracts from `/Users/amos/bearcove/peeps/internals/web/006-todo-wrapper-emission-api.md`.
+
 ## Current context
 
-- Lock wrappers are in `/Users/amos/bearcove/peeps/crates/peeps-locks/src/lib.rs`.
+- Lock wrappers are in `/Users/amos/bearcove/peeps/crates/peeps-locks/src/sync_locks.rs` and `/Users/amos/bearcove/peeps/crates/peeps-locks/src/snapshot.rs`.
 - Existing diagnostics track holders/waiters with `peeps_task_id`.
-- Internal `holder_id`/waiter token ids are local bookkeeping only and must not become graph identities.
+- Internal `holder_id`/waiter token IDs are local bookkeeping only and must not become graph identities.
 
 ## Node + edge model
 
 Node ID:
-- `lock:{process}:{name}`
+- `lock:{proc_key}:{name}`
 
 Node kind:
 - `lock`
 
 Required attrs_json:
 - `name`
-- `kind` (`mutex|rwlock_read|rwlock_write`)
+- `lock_kind` (`mutex|rwlock_read|rwlock_write`)
 - `acquires`
 - `releases`
 - `holder_count`
@@ -38,7 +43,7 @@ Required attrs_json:
 
 Required `needs` edges:
 - `task -> lock` when task is waiting
-- `lock -> task` when lock is currently held (holder dependency anchor)
+- `lock -> task` when lock is currently held (dependency anchor)
 
 ## Implementation steps
 
@@ -46,7 +51,7 @@ Required `needs` edges:
 2. Emit wait edges from explicit waiter records only.
 3. Emit holder edges from explicit holder records only.
 4. Use `peeps_task_id` namespace for task endpoint identity.
-5. Never use internal `holder_id`/waiter token ids outside wrapper bookkeeping.
+5. Never use internal `holder_id`/waiter token IDs outside wrapper bookkeeping.
 
 ## Consumer changes
 
@@ -56,10 +61,10 @@ Required `needs` edges:
 ## Validation SQL
 
 ```sql
-SELECT kind, COUNT(*)
+SELECT json_extract(attrs_json, '$.lock_kind') AS lock_kind, COUNT(*)
 FROM nodes
 WHERE snapshot_id = ?1 AND kind = 'lock'
-GROUP BY kind;
+GROUP BY json_extract(attrs_json, '$.lock_kind');
 ```
 
 ```sql
@@ -67,6 +72,8 @@ SELECT COUNT(*)
 FROM edges
 WHERE snapshot_id = ?1
   AND kind = 'needs'
-  AND (src_id LIKE 'task:%' AND dst_id LIKE 'lock:%'
-       OR src_id LIKE 'lock:%' AND dst_id LIKE 'task:%');
+  AND (
+    (src_id LIKE 'task:%' AND dst_id LIKE 'lock:%')
+    OR (src_id LIKE 'lock:%' AND dst_id LIKE 'task:%')
+  );
 ```

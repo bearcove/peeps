@@ -8,15 +8,20 @@ Priority: P0
 
 Represent instrumented futures as first-class nodes with explicit `needs` dependencies.
 
+## Prerequisites
+
+- Complete `/Users/amos/bearcove/peeps/internals/web/000-todo-crate-split-for-parallelization.md`.
+- Use contracts from `/Users/amos/bearcove/peeps/internals/web/006-todo-wrapper-emission-api.md`.
+
 ## Current context
 
-- Future instrumentation is in `/Users/amos/bearcove/peeps/crates/peeps-tasks/src/lib.rs` (`peepable`, future waits, future poll/resume/wake edges).
-- Current `peepable` API is label-only; metadata needs to be added.
+- Future instrumentation is in `/Users/amos/bearcove/peeps/crates/peeps-tasks/src/futures.rs` and `/Users/amos/bearcove/peeps/crates/peeps-tasks/src/snapshot.rs`.
+- Current `peepable` API is label-only; metadata-capable API must be added.
 
 ## Node + edge model
 
 Node ID:
-- `future:{process}:{pid}:{future_id}`
+- `future:{proc_key}:{future_id}`
 
 Node kind:
 - `future`
@@ -24,17 +29,21 @@ Node kind:
 Required attrs_json:
 - `future_id`
 - `label`
-- `created_by_task_id`
-- `last_polled_by_task_id`
 - `pending_count`
 - `ready_count`
-- `total_pending_ns`
 - `metadata_json` (arbitrary key/value metadata)
 
+Optional attrs_json:
+- `created_by_task_id`
+- `last_polled_by_task_id`
+- `total_pending_ns`
+
 Required `needs` edges:
-- `task -> future` (task progress depends on future progress)
-- `future -> task` only when explicitly measured as a wake/resume dependency
+- `task -> future` (from explicit poll/wait records)
 - `future -> resource` only when explicitly measured
+
+Optional `needs` edges:
+- `future -> task` only when explicitly measured as dependency
 
 ## Implementation steps
 
@@ -43,7 +52,7 @@ Required `needs` edges:
 - keep `peepable(label)` as convenience wrapper.
 2. Persist metadata on future node attrs.
 3. Emit only explicitly recorded `needs` dependencies.
-4. Do not require duration/count semantics on edges.
+4. Do not invent edge semantics beyond `needs`.
 
 ## Consumer changes
 
@@ -52,7 +61,6 @@ Required:
   - request_id
   - method
   - channel_id
-  - fd
   - path/resource key
 
 ## Validation SQL
@@ -70,6 +78,11 @@ WHERE snapshot_id = ?1
   AND kind = 'needs'
   AND (
     (src_id LIKE 'task:%' AND dst_id LIKE 'future:%')
-    OR (src_id LIKE 'future:%' AND dst_id LIKE 'task:%')
+    OR (src_id LIKE 'future:%' AND dst_id LIKE 'lock:%')
+    OR (src_id LIKE 'future:%' AND dst_id LIKE 'mpsc:%')
+    OR (src_id LIKE 'future:%' AND dst_id LIKE 'oneshot:%')
+    OR (src_id LIKE 'future:%' AND dst_id LIKE 'watch:%')
+    OR (src_id LIKE 'future:%' AND dst_id LIKE 'semaphore:%')
+    OR (src_id LIKE 'future:%' AND dst_id LIKE 'oncecell:%')
   );
 ```

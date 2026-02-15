@@ -21,6 +21,7 @@ Defined in `peeps-types`:
 - `GraphSnapshotBuilder`
 
 `ProcessDump.graph` is the migration bridge; `graph` becomes source-of-truth for `peeps-web`.
+Current `ProcessDump` lives in `/Users/amos/bearcove/peeps/crates/peeps-types/src/lib.rs`.
 
 ## Required contract
 
@@ -48,6 +49,9 @@ IDs:
 - watch endpoints: `watch:{proc_key}:{name}:tx|rx`
 - roam channel endpoints: `roam-channel:{proc_key}:{channel_id}:tx|rx`
 - oncecell: `oncecell:{proc_key}:{name}`
+
+RPC correlation key requirement:
+- request + response attrs must carry `correlation_key = "{connection}:{request_id}"`.
 
 ## Edge model
 
@@ -130,10 +134,11 @@ Request attrs requirement:
 
 ## Hard validation rules
 
-At ingest, reject/quarantine rows when:
-- edge kind != `needs`
-- `src_id` or `dst_id` missing in same snapshot
-- empty/unknown node kind
+At ingest:
+- reject row when edge kind != `needs`.
+- reject row when node kind is empty/unknown.
+- if `src_id`/`dst_id` is missing and referenced process did not respond, move edge to `unresolved_edges`.
+- if `src_id`/`dst_id` is missing but referenced process did respond, reject as ingest error.
 
 ## Acceptance criteria
 

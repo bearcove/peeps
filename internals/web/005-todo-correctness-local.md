@@ -23,7 +23,7 @@ No perf benchmarking. No rollout planning.
 3. Node/edge integrity
 - every edge source and destination exists as a node in same snapshot.
 - node IDs follow conventions.
- - exception: explicitly unresolved cross-process references may be represented via query-time left joins (must not crash analysis).
+- unresolved cross-process references are represented in `unresolved_edges`, not in `edges`.
 
 4. Edge model integrity
 - all persisted edges have `kind = 'needs'`.
@@ -37,7 +37,7 @@ No perf benchmarking. No rollout planning.
 ## Quick validation SQL
 
 ```sql
--- Missing endpoints
+-- Missing endpoints in canonical edges must be zero
 SELECT e.src_id, e.dst_id
 FROM edges e
 LEFT JOIN nodes ns ON ns.snapshot_id = e.snapshot_id AND ns.id = e.src_id
@@ -53,6 +53,18 @@ FROM edges
 WHERE snapshot_id = ?1
 GROUP BY kind
 HAVING kind <> 'needs';
+```
+
+```sql
+-- Unresolved edges should map to non-responded processes only
+SELECT ue.src_id, ue.dst_id, ue.reason, sp.status
+FROM unresolved_edges ue
+LEFT JOIN snapshot_processes sp
+  ON sp.snapshot_id = ue.snapshot_id
+ AND sp.proc_key = ue.referenced_proc_key
+WHERE ue.snapshot_id = ?1
+  AND (sp.proc_key IS NULL OR sp.status = 'responded')
+LIMIT 50;
 ```
 
 ```sql

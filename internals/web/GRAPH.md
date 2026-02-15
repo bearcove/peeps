@@ -19,7 +19,7 @@ Capture the current graph design decisions before updating the rest of the specs
 
 Each resource/runtime entity is a node with:
 
-- `id` (stable, globally unique within process namespace)
+- `id` (stable, globally unique within a snapshot)
 - `kind`
 - `process`
 - shared optional fields (label/source location/etc.)
@@ -41,7 +41,6 @@ Examples of node kinds:
 - `oneshot_tx`, `oneshot_rx`
 - `watch_tx`, `watch_rx`
 - `roam_channel_tx`, `roam_channel_rx` (if direction is meaningful)
-- `socket`
 - `oncecell`
 
 ## Edges
@@ -52,7 +51,8 @@ Only one edge kind:
 
 Meaning:
 
-- source node progress currently depends on destination node/resource.
+- source node needs destination node/resource to make forward progress.
+- this includes currently-blocked dependencies and explicit structural/causal topology.
 - edges encode dependency topology only.
 
 No special structural edge kind for now.
@@ -109,7 +109,7 @@ Important constraint:
 Safe modeling:
 
 - tasks need futures (`task -> future`)
-- futures need resources (`future -> lock/channel/socket/...`) when explicitly measured
+- futures need resources (`future -> lock/channel/...`) when explicitly measured
 
 ## Locks: ID namespace clarification
 
@@ -152,6 +152,11 @@ Emission convention:
 - receiver emits response node
 - receiver also emits `request -> response` edge
 
+Pairing convention:
+
+- both nodes must carry `attrs_json.correlation_key = "{connection}:{request_id}"`
+- request/response matching is done by `correlation_key`, not by node ID prefix rewrite
+
 This keeps request completion ownership on the side that can authoritatively report response state.
 
 ## Health/state lives on nodes
@@ -170,7 +175,7 @@ Edges do not carry severity. Edges are traversal only.
 1. Start from a node you recognize (stuck request/task/future).
 2. Traverse outgoing `needs` edges.
 3. Stop at nodes whose attrs indicate unhealthy state.
-4. Run SCC over `needs` graph for deadlock cycles.
+4. Run SCC over filtered subgraph (only nodes in unhealthy states) for deadlock cycles.
 
 ## UI scope (for now)
 

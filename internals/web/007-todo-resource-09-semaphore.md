@@ -8,15 +8,20 @@ Priority: P1
 
 Make semaphore contention explicit in node state + `needs` dependencies.
 
+## Prerequisites
+
+- Complete `/Users/amos/bearcove/peeps/internals/web/000-todo-crate-split-for-parallelization.md`.
+- Use contracts from `/Users/amos/bearcove/peeps/internals/web/006-todo-wrapper-emission-api.md`.
+
 ## Current context
 
-- Wrapper is `/Users/amos/bearcove/peeps/crates/peeps-sync/src/lib.rs` (`DiagnosticSemaphore`, `SemaphoreInfo`).
+- Wrapper is `/Users/amos/bearcove/peeps/crates/peeps-sync/src/semaphore.rs` and `/Users/amos/bearcove/peeps/crates/peeps-sync/src/snapshot.rs`.
 - Current snapshot has waiters/acquires/avg/max but edge-level task waits must be explicit.
 
 ## Node + edge model
 
 Node ID:
-- `semaphore:{process}:{name}`
+- `semaphore:{proc_key}:{name}`
 
 Node kind:
 - `semaphore`

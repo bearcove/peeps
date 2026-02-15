@@ -13,25 +13,30 @@ This track covers:
 - oneshot
 - watch
 
+## Prerequisites
+
+- Complete `/Users/amos/bearcove/peeps/internals/web/000-todo-crate-split-for-parallelization.md`.
+- Use contracts from `/Users/amos/bearcove/peeps/internals/web/006-todo-wrapper-emission-api.md`.
+
 ## Current context
 
-- Channel wrappers are in `/Users/amos/bearcove/peeps/crates/peeps-sync/src/lib.rs`.
+- Channel wrappers are in `/Users/amos/bearcove/peeps/crates/peeps-sync/src/channels.rs` and `/Users/amos/bearcove/peeps/crates/peeps-sync/src/snapshot.rs`.
 - Existing per-type snapshots exist, but canonical endpoint-node modeling is not unified yet.
 
 ## Node + edge model
 
 Use endpoint nodes for all channel types:
 
-- `mpsc:{process}:{name}:tx`, `mpsc:{process}:{name}:rx`
-- `oneshot:{process}:{name}:tx`, `oneshot:{process}:{name}:rx`
-- `watch:{process}:{name}:tx`, `watch:{process}:{name}:rx`
+- `mpsc:{proc_key}:{name}:tx`, `mpsc:{proc_key}:{name}:rx`
+- `oneshot:{proc_key}:{name}:tx`, `oneshot:{proc_key}:{name}:rx`
+- `watch:{proc_key}:{name}:tx`, `watch:{proc_key}:{name}:rx`
 
 Node kinds:
 - `mpsc_tx`, `mpsc_rx`, `oneshot_tx`, `oneshot_rx`, `watch_tx`, `watch_rx`
 
 Required attrs_json (per endpoint, type-specific):
 - common: `name`, `created_at_ns`, `creator_task_id`, closed flags
-- mpsc: `bounded`, `capacity`, `queue_len`, `high_watermark`, `utilization`, `sender_count`, `send_waiters`, `sent_total`, `recv_total`
+- mpsc: `bounded`, `capacity`, `queue_len`, `high_watermark`, `utilization`, `sender_count`, `send_waiters`, `recv_waiters`, `sent_total`, `recv_total`
 - oneshot: `state`, `age_ns`
 - watch: `changes`, `receiver_count`, `age_ns`
 
@@ -68,7 +73,9 @@ SELECT COUNT(*)
 FROM edges
 WHERE snapshot_id = ?1
   AND kind = 'needs'
-  AND (src_id LIKE 'mpsc:%:tx' AND dst_id LIKE 'mpsc:%:rx'
-       OR src_id LIKE 'oneshot:%:tx' AND dst_id LIKE 'oneshot:%:rx'
-       OR src_id LIKE 'watch:%:tx' AND dst_id LIKE 'watch:%:rx');
+  AND (
+    (src_id LIKE 'mpsc:%:tx' AND dst_id LIKE 'mpsc:%:rx')
+    OR (src_id LIKE 'oneshot:%:tx' AND dst_id LIKE 'oneshot:%:rx')
+    OR (src_id LIKE 'watch:%:tx' AND dst_id LIKE 'watch:%:rx')
+  );
 ```

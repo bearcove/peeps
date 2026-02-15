@@ -10,8 +10,9 @@ Scope: wrapper crates (`peeps-tasks`, `peeps-locks`, `peeps-sync`) + producers (
 
 This directory splits work by resource type so multiple agents can work in parallel without stepping on each other.
 
-Prerequisite:
+Prerequisites:
 - complete `/Users/amos/bearcove/peeps/internals/web/000-todo-crate-split-for-parallelization.md` first.
+- complete `/Users/amos/bearcove/peeps/internals/web/006-todo-wrapper-emission-api.md` contract freeze before parallel `007-*` implementation.
 
 ## Hard invariants (apply to every track)
 

@@ -44,8 +44,8 @@ Control-plane message contract:
 Lifecycle rules:
 - connected processes are discovered/tracked via active ingest connections.
 - only one in-flight snapshot is allowed in v1.
-- reply with unknown/mismatched `snapshot_id` is rejected and recorded as `error` in `snapshot_processes`.
-- late replies after snapshot completion are dropped and logged.
+- reply with unknown/mismatched `snapshot_id` is rejected from snapshot writes and recorded in `ingest_events`.
+- late replies after snapshot completion are dropped and logged to `ingest_events`.
 
 ## SQLite schema (v1)
 
@@ -61,11 +61,11 @@ CREATE TABLE snapshot_processes (
   snapshot_id INTEGER NOT NULL,
   process TEXT NOT NULL,
   pid INTEGER,
-  process_key TEXT NOT NULL, -- e.g. "{process}:{pid}" (or stable runtime instance id)
+  proc_key TEXT NOT NULL, -- e.g. "{process}:{pid}" (or stable runtime instance id)
   status TEXT NOT NULL, -- responded|timeout|disconnected|error
   recv_at_ns INTEGER,
   error_text TEXT,
-  PRIMARY KEY (snapshot_id, process_key)
+  PRIMARY KEY (snapshot_id, proc_key)
 );
 
 CREATE TABLE nodes (
@@ -73,7 +73,7 @@ CREATE TABLE nodes (
   id TEXT NOT NULL,
   kind TEXT NOT NULL,
   process TEXT NOT NULL,
-  process_key TEXT NOT NULL,
+  proc_key TEXT NOT NULL,
   attrs_json TEXT NOT NULL,
   PRIMARY KEY (snapshot_id, id)
 );
@@ -84,13 +84,36 @@ CREATE TABLE edges (
   dst_id TEXT NOT NULL,
   kind TEXT NOT NULL, -- always 'needs'
   attrs_json TEXT NOT NULL,
-  PRIMARY KEY (snapshot_id, src_id, dst_id, kind)
+  PRIMARY KEY (snapshot_id, src_id, dst_id)
+);
+
+CREATE TABLE unresolved_edges (
+  snapshot_id INTEGER NOT NULL,
+  src_id TEXT NOT NULL,
+  dst_id TEXT NOT NULL,
+  missing_side TEXT NOT NULL, -- src|dst|both
+  reason TEXT NOT NULL, -- referenced_proc_missing|referenced_proc_timeout|referenced_proc_disconnected
+  referenced_proc_key TEXT,
+  attrs_json TEXT NOT NULL,
+  PRIMARY KEY (snapshot_id, src_id, dst_id)
+);
+
+CREATE TABLE ingest_events (
+  event_id INTEGER PRIMARY KEY,
+  event_at_ns INTEGER NOT NULL,
+  snapshot_id INTEGER,
+  process TEXT,
+  pid INTEGER,
+  proc_key TEXT,
+  event_kind TEXT NOT NULL, -- snapshot_id_mismatch|late_reply|decode_error|other
+  detail TEXT NOT NULL
 );
 
 CREATE INDEX idx_nodes_snapshot_kind ON nodes(snapshot_id, kind);
-CREATE INDEX idx_nodes_snapshot_process_key ON nodes(snapshot_id, process_key);
+CREATE INDEX idx_nodes_snapshot_proc_key ON nodes(snapshot_id, proc_key);
 CREATE INDEX idx_edges_snapshot_src ON edges(snapshot_id, src_id);
 CREATE INDEX idx_edges_snapshot_dst ON edges(snapshot_id, dst_id);
+CREATE INDEX idx_unresolved_edges_snapshot ON unresolved_edges(snapshot_id);
 ```
 
 ## Write semantics
@@ -99,15 +122,18 @@ CREATE INDEX idx_edges_snapshot_dst ON edges(snapshot_id, dst_id);
 - Process replies are written transactionally per reply.
 - Missing responders are represented in `snapshot_processes`.
 - reply skew is stored (`recv_at_ns`) and surfaced for debugging.
-- dangling cross-process references are allowed in v1 and represented as unresolved edges during query-time joins.
+- if edge endpoints are missing because referenced process did not respond, write into `unresolved_edges` (not `edges`).
+- if referenced process responded but endpoint is still missing, treat as ingest error.
 
 ## Retention
 
 - Keep latest N snapshots (default 500).
-- Delete old rows from `edges`, `nodes`, `snapshot_processes`, `snapshots` by `snapshot_id` cutoff.
+- Delete old rows from `unresolved_edges`, `edges`, `nodes`, `snapshot_processes`, `snapshots` by `snapshot_id` cutoff.
+- Keep `ingest_events` for latest 7 days.
 
 ## Acceptance criteria
 
 1. `jump-now` yields one coherent `snapshot_id` across processes.
 2. Missing process responses are explicit in status table.
 3. No partial write for an individual process reply transaction.
+4. Unresolved cross-process references are preserved in `unresolved_edges`.

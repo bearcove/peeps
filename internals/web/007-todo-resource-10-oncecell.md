@@ -8,15 +8,20 @@ Priority: P2
 
 Capture once-cell initialization and waiting behavior explicitly.
 
+## Prerequisites
+
+- Complete `/Users/amos/bearcove/peeps/internals/web/000-todo-crate-split-for-parallelization.md`.
+- Use contracts from `/Users/amos/bearcove/peeps/internals/web/006-todo-wrapper-emission-api.md`.
+
 ## Current context
 
-- Wrapper is `/Users/amos/bearcove/peeps/crates/peeps-sync/src/lib.rs` (`OnceCellInfo`, wrapper around `tokio::sync::OnceCell`).
+- Wrapper is `/Users/amos/bearcove/peeps/crates/peeps-sync/src/oncecell.rs` and `/Users/amos/bearcove/peeps/crates/peeps-sync/src/snapshot.rs`.
 - Existing snapshot has state/init duration, but edge-level wait/init actor linkage needs canonical emission.
 
 ## Node + edge model
 
 Node ID:
-- `oncecell:{process}:{name}`
+- `oncecell:{proc_key}:{name}`
 
 Node kind:
 - `oncecell`

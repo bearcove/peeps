@@ -18,6 +18,7 @@ Every runtime/resource entity is a node with:
 - `id`
 - `kind`
 - `process` (context/grouping attribute)
+- `proc_key`
 - `attrs_json`
 
 Not a node:
@@ -30,8 +31,8 @@ Only edge kind:
 - `needs`
 
 Meaning:
-- source depends on destination for progress.
- - this includes currently-blocked, causal, and structural dependency topology (used for traversal/SCC with node-state filtering).
+- source needs destination for forward progress.
+- this includes currently-blocked dependencies and explicit structural/causal dependency topology.
 
 Required edge fields:
 - `src_id`
@@ -66,6 +67,9 @@ IDs:
 - watch endpoints: `watch:{proc_key}:{name}:tx|rx`
 - roam channel endpoints: `roam-channel:{proc_key}:{channel_id}:tx|rx`
 - oncecell: `oncecell:{proc_key}:{name}`
+
+RPC request/response pairing:
+- request + response must both carry `attrs_json.correlation_key = "{connection}:{request_id}"`.
 
 ## Mandatory dependency patterns
 

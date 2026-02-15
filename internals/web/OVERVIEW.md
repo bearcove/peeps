@@ -6,8 +6,9 @@ Owner: wg-peeps-web
 ## Objective
 
 Build `peeps-web` around a canonical local graph model in SQLite:
-- `nodes(snapshot_id, id, kind, process, attrs_json)`
+- `nodes(snapshot_id, id, kind, process, proc_key, attrs_json)`
 - `edges(snapshot_id, src_id, dst_id, kind, attrs_json)` where `kind = needs`
+- `unresolved_edges(snapshot_id, src_id, dst_id, missing_side, reason, referenced_proc_key, attrs_json)`
 
 Snapshots are synchronized pulls (`Jump to now`), not free-running per-process pushes.
 
@@ -34,10 +35,10 @@ Snapshots are synchronized pulls (`Jump to now`), not free-running per-process p
 ## Execution order
 
 - run `000` first
-- run `001/002/003` in parallel
+- run `006` type/ID/contracts freeze first
+- run `001/002/003` in parallel after `006` contracts are frozen
 - run `004` after `003` endpoint signatures are stubbed (mock data allowed meanwhile)
 - run `005` continuously as correctness gate
-- run `006` first to freeze canonical IDs/types/contracts
 - then run `007` tracks in parallel by resource area
 
 ## Definition of done
@@ -53,3 +54,9 @@ Snapshots are synchronized pulls (`Jump to now`), not free-running per-process p
 2. Stuck request table first.
 3. ELK graph prototype allowed (mock-first).
 4. Side inspector + hover cards.
+
+## Tracked follow-ups (post-v1)
+
+1. `POST /api/analysis/scc` for server-side SCC/deadlock extraction on scoped snapshots.
+2. Surface unresolved-edge counts and ingest skew prominently in Requests inspector.
+3. Add timer/notify resource tracks once core locks/channels/requests are stable.
