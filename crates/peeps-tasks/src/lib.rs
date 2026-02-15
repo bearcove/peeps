@@ -161,7 +161,7 @@ mod imp {
     > = Mutex::new(None);
 
     std::thread_local! {
-        static CURRENT_POLLING_FUTURE: std::cell::Cell<Option<(FutureId, &'static str)>> = const { std::cell::Cell::new(None) };
+        static CURRENT_POLLING_FUTURE: std::cell::Cell<Option<FutureId>> = const { std::cell::Cell::new(None) };
     }
 
     struct TaskInfo {
@@ -339,6 +339,12 @@ mod imp {
         });
     }
 
+    fn future_resource_by_id(future_id: FutureId) -> Option<String> {
+        let registry = FUTURE_WAIT_REGISTRY.lock().unwrap();
+        let waits = registry.as_ref()?;
+        waits.get(&future_id).map(|w| w.resource.clone())
+    }
+
     fn record_future_pending(future_id: FutureId, task_id: Option<TaskId>) {
         let mut registry = FUTURE_WAIT_REGISTRY.lock().unwrap();
         let Some(waits) = registry.as_mut() else {
@@ -437,10 +443,7 @@ mod imp {
             // Set thread-local so child peepable() calls can record spawn edges.
             let prev = CURRENT_POLLING_FUTURE.with(|c| {
                 let prev = c.get();
-                // Leak the resource string for the thread-local lifetime — bounded by
-                // the number of distinct PeepableFuture types which is small.
-                let leaked: &'static str = Box::leak(this.resource.clone().into_boxed_str());
-                c.set(Some((this.future_id, leaked)));
+                c.set(Some(this.future_id));
                 prev
             });
 
@@ -495,8 +498,10 @@ mod imp {
 
         // If created during another PeepableFuture's poll, record spawn edge.
         CURRENT_POLLING_FUTURE.with(|c| {
-            if let Some((parent_id, parent_resource)) = c.get() {
-                record_future_spawn_edge(parent_id, parent_resource, future_id, &resource, task_id);
+            if let Some(parent_id) = c.get() {
+                let parent_resource =
+                    future_resource_by_id(parent_id).unwrap_or_else(|| "unknown".to_string());
+                record_future_spawn_edge(parent_id, &parent_resource, future_id, &resource, task_id);
             }
         });
 

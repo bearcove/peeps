@@ -93,6 +93,7 @@ pub fn collect_dump(process_name: &str, custom: HashMap<String, String>) -> Proc
 
     // Extract cross-process request parent edges from incoming request metadata.
     let request_parents = extract_request_parents(process_name, &roam);
+    let future_resource_edges = collect_future_resource_edges(process_name, &future_waits);
 
     ProcessDump {
         process_name: process_name.to_string(),
@@ -110,10 +111,42 @@ pub fn collect_dump(process_name: &str, custom: HashMap<String, String>) -> Proc
         future_spawn_edges,
         future_poll_edges,
         future_resume_edges,
-        future_resource_edges: vec![],
+        future_resource_edges,
         request_parents,
         custom,
     }
+}
+
+fn collect_future_resource_edges(
+    process_name: &str,
+    waits: &[peeps_types::FutureWaitSnapshot],
+) -> Vec<peeps_types::FutureResourceEdgeSnapshot> {
+    waits
+        .iter()
+        .map(|w| {
+            let resource = if let Some(label) = w.resource.strip_prefix("socket:") {
+                let fd = label.parse::<u64>().unwrap_or(0);
+                peeps_types::ResourceRefSnapshot::Socket {
+                    process: process_name.to_string(),
+                    fd,
+                    label: Some(w.resource.clone()),
+                    direction: None,
+                    peer: None,
+                }
+            } else {
+                peeps_types::ResourceRefSnapshot::Unknown {
+                    label: w.resource.clone(),
+                }
+            };
+            peeps_types::FutureResourceEdgeSnapshot {
+                future_id: w.future_id,
+                resource,
+                wait_count: w.pending_count,
+                total_wait_secs: w.total_pending_secs,
+                last_wait_age_secs: w.last_seen_age_secs,
+            }
+        })
+        .collect()
 }
 
 /// Extract `RequestParentSnapshot` entries from incoming requests that carry

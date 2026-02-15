@@ -571,41 +571,6 @@ pub enum ResourceRefSnapshot {
     Unknown { label: String },
 }
 
-impl ResourceRefSnapshot {
-    /// Stable dashboard URL path for this resource.
-    pub fn dashboard_url(&self) -> String {
-        match self {
-            ResourceRefSnapshot::Lock { process, name } => {
-                format!("/locks?process={process}&name={name}")
-            }
-            ResourceRefSnapshot::Mpsc { process, name } => {
-                format!("/sync?process={process}&tab=mpsc&name={name}")
-            }
-            ResourceRefSnapshot::Oneshot { process, name } => {
-                format!("/sync?process={process}&tab=oneshot&name={name}")
-            }
-            ResourceRefSnapshot::Watch { process, name } => {
-                format!("/sync?process={process}&tab=watch&name={name}")
-            }
-            ResourceRefSnapshot::Semaphore { process, name } => {
-                format!("/sync?process={process}&tab=semaphore&name={name}")
-            }
-            ResourceRefSnapshot::OnceCell { process, name } => {
-                format!("/sync?process={process}&tab=oncecell&name={name}")
-            }
-            ResourceRefSnapshot::RoamChannel { process, channel_id } => {
-                format!("/connections?process={process}&channel={channel_id}")
-            }
-            ResourceRefSnapshot::Socket { process, fd, .. } => {
-                format!("/sockets?process={process}&fd={fd}")
-            }
-            ResourceRefSnapshot::Unknown { label } => {
-                format!("/resources?label={label}")
-            }
-        }
-    }
-}
-
 /// Future waiting on a structured resource.
 #[derive(Debug, Clone, Facet)]
 pub struct FutureResourceEdgeSnapshot {
