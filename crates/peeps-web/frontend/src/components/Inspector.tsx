@@ -1,3 +1,4 @@
+import { MagnifyingGlass } from "@phosphor-icons/react";
 import type { StuckRequest, GraphNode } from "../types";
 
 interface InspectorProps {
@@ -19,7 +20,9 @@ function formatElapsedFull(ns: number): string {
 export function Inspector({ selectedRequest, selectedGraphNode }: InspectorProps) {
   return (
     <div class="panel">
-      <div class="panel-header">Inspector</div>
+      <div class="panel-header">
+        <MagnifyingGlass size={14} weight="bold" /> Inspector
+      </div>
       <div class="inspector">
         {selectedRequest ? (
           <RequestDetail req={selectedRequest} />
@@ -28,7 +31,8 @@ export function Inspector({ selectedRequest, selectedGraphNode }: InspectorProps
         ) : (
           <div class="inspector-empty">
             Select a request or graph node to inspect.
-            <br /><br />
+            <br />
+            <br />
             Keyboard: arrows to navigate, enter to select, esc to deselect.
           </div>
         )}
@@ -66,9 +70,13 @@ function GraphNodeDetail({ node }: { node: GraphNode }) {
       <dt>Label</dt>
       <dd>{node.label}</dd>
       <dt>Position</dt>
-      <dd>x={node.x.toFixed(0)}, y={node.y.toFixed(0)}</dd>
+      <dd>
+        x={node.x.toFixed(0)}, y={node.y.toFixed(0)}
+      </dd>
       <dt>Size</dt>
-      <dd>{node.width} x {node.height}</dd>
+      <dd>
+        {node.width} x {node.height}
+      </dd>
     </dl>
   );
 }

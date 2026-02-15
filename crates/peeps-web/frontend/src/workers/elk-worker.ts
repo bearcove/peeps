@@ -1,8 +1,6 @@
 import ELK from "elkjs/lib/elk.bundled.js";
 import type { ElkLayoutRequest, ElkLayoutResult, GraphNode } from "../types";
 
-const elk = new ELK();
-
 self.onmessage = async (e: MessageEvent<ElkLayoutRequest>) => {
   const { nodes, edges } = e.data;
 
@@ -29,6 +27,7 @@ self.onmessage = async (e: MessageEvent<ElkLayoutRequest>) => {
   };
 
   try {
+    const elk = new ELK();
     const result = await elk.layout(graph) as Record<string, unknown>;
     const children = (result.children ?? []) as Array<{ id: string; x?: number; y?: number; width?: number; height?: number }>;
     const laidOutNodes: GraphNode[] = children.map((child) => {

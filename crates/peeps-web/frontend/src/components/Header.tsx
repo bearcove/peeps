@@ -1,3 +1,4 @@
+import { Aperture, Camera, CheckCircle, Clock, Warning } from "@phosphor-icons/react";
 import type { JumpNowResponse } from "../types";
 
 interface HeaderProps {
@@ -9,14 +10,30 @@ interface HeaderProps {
 export function Header({ snapshot, loading, onJumpNow }: HeaderProps) {
   return (
     <div class="header">
+      <Aperture size={18} weight="bold" />
       <span class="header-title">peeps</span>
       <span class={`snapshot-badge ${snapshot ? "snapshot-badge--active" : ""}`}>
-        {snapshot ? `snapshot #${snapshot.snapshot_id}` : "no snapshot"}
+        {snapshot ? (
+          <>
+            <CheckCircle size={12} weight="bold" />
+            snapshot #{snapshot.snapshot_id}
+          </>
+        ) : (
+          <>
+            <Clock size={12} weight="bold" />
+            no snapshot
+          </>
+        )}
       </span>
       {snapshot && (
         <span class="snapshot-badge">
           {snapshot.responded}/{snapshot.requested} responded
-          {snapshot.timed_out > 0 && `, ${snapshot.timed_out} timed out`}
+          {snapshot.timed_out > 0 && (
+            <>
+              <Warning size={12} weight="bold" style={{ color: "light-dark(#bf5600, #ffa94d)" }} />
+              {snapshot.timed_out} timed out
+            </>
+          )}
         </span>
       )}
       <span class="header-spacer" />
@@ -25,6 +42,7 @@ export function Header({ snapshot, loading, onJumpNow }: HeaderProps) {
         onClick={onJumpNow}
         disabled={loading}
       >
+        <Camera size={14} weight="bold" />
         {loading ? "Jumping..." : "Jump to now"}
       </button>
     </div>

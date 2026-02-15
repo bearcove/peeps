@@ -1,4 +1,5 @@
-import { useCallback, useState } from "preact/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
+import { WarningCircle } from "@phosphor-icons/react";
 import { jumpNow, fetchStuckRequests } from "./api";
 import { Header } from "./components/Header";
 import { RequestsTable } from "./components/RequestsTable";
@@ -35,25 +36,37 @@ export function App() {
     }
   }, []);
 
+  useEffect(() => {
+    handleJumpNow();
+  }, []);
+
   const handleSelectRequest = useCallback((req: StuckRequest) => {
     setSelectedRequest(req);
     setSelectedGraphNode(null);
     setSelectedGraphNodeId(null);
   }, []);
 
-  const handleSelectGraphNode = useCallback((nodeId: string) => {
-    setSelectedGraphNodeId(nodeId);
-    setSelectedRequest(null);
-    if (hoveredGraphNode?.id === nodeId) {
-      setSelectedGraphNode(hoveredGraphNode);
-    }
-  }, [hoveredGraphNode]);
+  const handleSelectGraphNode = useCallback(
+    (nodeId: string) => {
+      setSelectedGraphNodeId(nodeId);
+      setSelectedRequest(null);
+      if (hoveredGraphNode?.id === nodeId) {
+        setSelectedGraphNode(hoveredGraphNode);
+      }
+    },
+    [hoveredGraphNode],
+  );
 
   return (
     <div class="app">
       <Header snapshot={snapshot} loading={loading} onJumpNow={handleJumpNow} />
       {error && (
         <div class="status-bar">
+          <WarningCircle
+            size={14}
+            weight="bold"
+            style={{ color: "light-dark(#d30000, #ff6b6b)", flexShrink: 0 }}
+          />
           <span class="error-text">{error}</span>
         </div>
       )}
@@ -69,10 +82,7 @@ export function App() {
           hoveredNode={hoveredGraphNode}
           onHoverNode={setHoveredGraphNode}
         />
-        <Inspector
-          selectedRequest={selectedRequest}
-          selectedGraphNode={selectedGraphNode}
-        />
+        <Inspector selectedRequest={selectedRequest} selectedGraphNode={selectedGraphNode} />
       </div>
     </div>
   );

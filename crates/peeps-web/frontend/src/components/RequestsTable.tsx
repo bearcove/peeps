@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "preact/hooks";
+import { ListBullets } from "@phosphor-icons/react";
 import type { StuckRequest } from "../types";
 
 interface RequestsTableProps {
@@ -59,7 +60,7 @@ export function RequestsTable({ requests, selectedId, onSelect }: RequestsTableP
         }
       }
     },
-    [requests, selectedIndex, onSelect]
+    [requests, selectedIndex, onSelect],
   );
 
   function scrollToRow(idx: number) {
@@ -76,10 +77,12 @@ export function RequestsTable({ requests, selectedId, onSelect }: RequestsTableP
   return (
     <div class="panel" tabIndex={0} onKeyDown={handleKeyDown}>
       <div class="panel-header">
-        Stuck Requests ({requests.length})
+        <ListBullets size={14} weight="bold" /> Stuck requests ({requests.length})
       </div>
       {requests.length === 0 ? (
-        <div style={{ padding: "16px 12px", color: "light-dark(#6e6e73, #98989d)", fontSize: "12px" }}>
+        <div
+          style={{ padding: "16px 12px", color: "light-dark(#6e6e73, #98989d)", fontSize: "12px" }}
+        >
           No stuck requests found.
         </div>
       ) : (
@@ -94,19 +97,11 @@ export function RequestsTable({ requests, selectedId, onSelect }: RequestsTableP
           </thead>
           <tbody ref={tbodyRef}>
             {requests.map((req) => (
-              <tr
-                key={req.id}
-                data-selected={req.id === selectedId}
-                onClick={() => onSelect(req)}
-              >
+              <tr key={req.id} data-selected={req.id === selectedId} onClick={() => onSelect(req)}>
                 <td>{req.method ?? "—"}</td>
-                <td class={elapsedClass(req.elapsed_ns)}>
-                  {formatElapsed(req.elapsed_ns)}
-                </td>
+                <td class={elapsedClass(req.elapsed_ns)}>{formatElapsed(req.elapsed_ns)}</td>
                 <td>{req.process}</td>
-                <td style={{ fontSize: "11px", opacity: 0.7 }}>
-                  {req.task_id ?? "—"}
-                </td>
+                <td style={{ fontSize: "11px", opacity: 0.7 }}>{req.task_id ?? "—"}</td>
               </tr>
             ))}
           </tbody>
