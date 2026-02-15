@@ -27,6 +27,8 @@ function ResourceIcon({ kind }: { kind: Props["kind"] }) {
     case "watch":
     case "once_cell":
       return <svg {...common}><path d="M2.5 8h11M9.5 5l4 3-4 3" /></svg>;
+    case "future_wait":
+      return <svg {...common}><circle cx="8" cy="8" r="5" /><path d="M8 5.2v3l2 1.4" /></svg>;
     case "connection":
       return <svg {...common}><path d="M5.8 9.8l-1.6 1.6a2 2 0 1 1-2.8-2.8l1.9-1.9a2 2 0 0 1 2.8 0" /><path d="M10.2 6.2l1.6-1.6a2 2 0 1 1 2.8 2.8l-1.9 1.9a2 2 0 0 1-2.8 0" /></svg>;
     case "request":

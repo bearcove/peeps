@@ -53,6 +53,7 @@ pub fn collect_dump(process_name: &str, custom: HashMap<String, String>) -> Proc
 
     let tasks = peeps_tasks::snapshot_all_tasks();
     let wake_edges = peeps_tasks::snapshot_wake_edges();
+    let future_waits = peeps_tasks::snapshot_future_waits();
     let threads = peeps_threads::collect_all_thread_stacks();
 
     #[cfg(feature = "locks")]
@@ -90,6 +91,7 @@ pub fn collect_dump(process_name: &str, custom: HashMap<String, String>) -> Proc
         timestamp,
         tasks,
         wake_edges,
+        future_waits,
         threads,
         locks,
         sync,

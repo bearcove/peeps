@@ -44,6 +44,18 @@ pub struct WakeEdgeSnapshot {
     pub last_wake_age_secs: f64,
 }
 
+/// Snapshot of a task waiting on an annotated future/resource.
+#[derive(Debug, Clone, Facet)]
+pub struct FutureWaitSnapshot {
+    pub task_id: TaskId,
+    pub task_name: Option<String>,
+    pub resource: String,
+    pub pending_count: u64,
+    pub ready_count: u64,
+    pub total_pending_secs: f64,
+    pub last_seen_age_secs: f64,
+}
+
 /// Task state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Facet)]
 #[repr(u8)]
@@ -411,6 +423,7 @@ pub struct ProcessDump {
     pub timestamp: String,
     pub tasks: Vec<TaskSnapshot>,
     pub wake_edges: Vec<WakeEdgeSnapshot>,
+    pub future_waits: Vec<FutureWaitSnapshot>,
     pub threads: Vec<ThreadStackSnapshot>,
     pub locks: Option<LockSnapshot>,
     pub sync: Option<SyncSnapshot>,

@@ -22,7 +22,7 @@ interface TaskInteraction {
   key: string;
   href: string;
   label: string;
-  kind: "lock" | "mpsc" | "oneshot" | "watch" | "task";
+  kind: "lock" | "mpsc" | "oneshot" | "watch" | "task" | "future_wait";
   ageSecs?: number;
   note?: string;
 }

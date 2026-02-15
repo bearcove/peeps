@@ -6,6 +6,7 @@ export interface ProcessDump {
   timestamp: string;
   tasks: TaskSnapshot[];
   wake_edges: WakeEdgeSnapshot[];
+  future_waits: FutureWaitSnapshot[];
   threads: ThreadStackSnapshot[];
   locks: LockSnapshot | null;
   sync: SyncSnapshot | null;
@@ -46,6 +47,16 @@ export interface WakeEdgeSnapshot {
   target_task_name: string | null;
   wake_count: number;
   last_wake_age_secs: number;
+}
+
+export interface FutureWaitSnapshot {
+  task_id: number;
+  task_name: string | null;
+  resource: string;
+  pending_count: number;
+  ready_count: number;
+  total_pending_secs: number;
+  last_seen_age_secs: number;
 }
 
 // Threads

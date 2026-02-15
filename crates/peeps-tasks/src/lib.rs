@@ -6,7 +6,9 @@
 
 use std::future::Future;
 
-pub use peeps_types::{PollEvent, PollResult, TaskId, TaskSnapshot, TaskState, WakeEdgeSnapshot};
+pub use peeps_types::{
+    FutureWaitSnapshot, PollEvent, PollResult, TaskId, TaskSnapshot, TaskState, WakeEdgeSnapshot,
+};
 
 // ── Zero-cost stubs (no diagnostics) ─────────────────────────────
 
@@ -51,6 +53,41 @@ mod imp {
     }
 
     #[inline(always)]
+    pub fn snapshot_future_waits() -> Vec<FutureWaitSnapshot> {
+        Vec::new()
+    }
+
+    pub struct PeepableFuture<F> {
+        inner: F,
+    }
+
+    impl<F> Future for PeepableFuture<F>
+    where
+        F: Future,
+    {
+        type Output = F::Output;
+
+        fn poll(
+            self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Self::Output> {
+            // SAFETY: we never move `inner` after pinning `Self`.
+            #[allow(unsafe_code)]
+            unsafe {
+                let this = self.get_unchecked_mut();
+                std::pin::Pin::new_unchecked(&mut this.inner).poll(cx)
+            }
+        }
+    }
+
+    pub fn peepable<F>(future: F, _resource: impl Into<String>) -> PeepableFuture<F>
+    where
+        F: Future,
+    {
+        PeepableFuture { inner: future }
+    }
+
+    #[inline(always)]
     pub fn cleanup_completed_tasks() {}
 }
 
@@ -87,6 +124,9 @@ mod imp {
     static WAKE_REGISTRY: Mutex<
         Option<std::collections::HashMap<(Option<TaskId>, TaskId), WakeEdgeInfo>>,
     > = Mutex::new(None);
+    static FUTURE_WAIT_REGISTRY: Mutex<
+        Option<std::collections::HashMap<(TaskId, String), FutureWaitInfo>>,
+    > = Mutex::new(None);
 
     struct TaskInfo {
         id: TaskId,
@@ -114,6 +154,13 @@ mod imp {
         last_wake_at: Instant,
     }
 
+    struct FutureWaitInfo {
+        pending_count: u64,
+        ready_count: u64,
+        total_pending: std::time::Duration,
+        last_seen: Instant,
+    }
+
     fn record_wake(source_task_id: Option<TaskId>, target_task_id: TaskId) {
         let mut registry = WAKE_REGISTRY.lock().unwrap();
         let Some(edges) = registry.as_mut() else {
@@ -127,6 +174,41 @@ mod imp {
             });
         entry.wake_count += 1;
         entry.last_wake_at = Instant::now();
+    }
+
+    fn record_future_pending(task_id: TaskId, resource: &str) {
+        let mut registry = FUTURE_WAIT_REGISTRY.lock().unwrap();
+        let Some(waits) = registry.as_mut() else {
+            return;
+        };
+        let entry =
+            waits.entry((task_id, resource.to_string()))
+                .or_insert(FutureWaitInfo {
+                    pending_count: 0,
+                    ready_count: 0,
+                    total_pending: std::time::Duration::from_secs(0),
+                    last_seen: Instant::now(),
+                });
+        entry.pending_count += 1;
+        entry.last_seen = Instant::now();
+    }
+
+    fn record_future_ready(task_id: TaskId, resource: &str, pending_duration: std::time::Duration) {
+        let mut registry = FUTURE_WAIT_REGISTRY.lock().unwrap();
+        let Some(waits) = registry.as_mut() else {
+            return;
+        };
+        let entry =
+            waits.entry((task_id, resource.to_string()))
+                .or_insert(FutureWaitInfo {
+                    pending_count: 0,
+                    ready_count: 0,
+                    total_pending: std::time::Duration::from_secs(0),
+                    last_seen: Instant::now(),
+                });
+        entry.ready_count += 1;
+        entry.total_pending += pending_duration;
+        entry.last_seen = Instant::now();
     }
 
     struct InstrumentedWake {
@@ -145,6 +227,59 @@ mod imp {
             let source_task_id = current_task_id();
             record_wake(source_task_id, self.target_task_id);
             self.inner.wake_by_ref();
+        }
+    }
+
+    pub struct PeepableFuture<F> {
+        inner: F,
+        resource: String,
+        pending_since: Option<Instant>,
+    }
+
+    impl<F> Future for PeepableFuture<F>
+    where
+        F: Future,
+    {
+        type Output = F::Output;
+
+        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            // SAFETY: projecting through PeepableFuture to inner future.
+            #[allow(unsafe_code)]
+            let inner = unsafe { Pin::new_unchecked(&mut self.inner) };
+            let task_id = current_task_id();
+            match inner.poll(cx) {
+                Poll::Pending => {
+                    if self.pending_since.is_none() {
+                        self.pending_since = Some(Instant::now());
+                    }
+                    if let Some(task_id) = task_id {
+                        record_future_pending(task_id, &self.resource);
+                    }
+                    Poll::Pending
+                }
+                Poll::Ready(value) => {
+                    if let Some(task_id) = task_id {
+                        let pending_duration = self
+                            .pending_since
+                            .take()
+                            .map(|t| t.elapsed())
+                            .unwrap_or_default();
+                        record_future_ready(task_id, &self.resource, pending_duration);
+                    }
+                    Poll::Ready(value)
+                }
+            }
+        }
+    }
+
+    pub fn peepable<F>(future: F, resource: impl Into<String>) -> PeepableFuture<F>
+    where
+        F: Future,
+    {
+        PeepableFuture {
+            inner: future,
+            resource: resource.into(),
+            pending_since: None,
         }
     }
 
@@ -252,6 +387,7 @@ mod imp {
     pub fn init_task_tracking() {
         *TASK_REGISTRY.lock().unwrap() = Some(Vec::new());
         *WAKE_REGISTRY.lock().unwrap() = Some(std::collections::HashMap::new());
+        *FUTURE_WAIT_REGISTRY.lock().unwrap() = Some(std::collections::HashMap::new());
     }
 
     #[inline]
@@ -363,6 +499,41 @@ mod imp {
         out
     }
 
+    pub fn snapshot_future_waits() -> Vec<FutureWaitSnapshot> {
+        let now = Instant::now();
+        let task_lookup: std::collections::HashMap<TaskId, String> = {
+            let registry = TASK_REGISTRY.lock().unwrap();
+            let Some(tasks) = registry.as_ref() else {
+                return Vec::new();
+            };
+            tasks.iter().map(|task| (task.id, task.name.clone())).collect()
+        };
+
+        let registry = FUTURE_WAIT_REGISTRY.lock().unwrap();
+        let Some(waits) = registry.as_ref() else {
+            return Vec::new();
+        };
+
+        let mut out: Vec<FutureWaitSnapshot> = waits
+            .iter()
+            .map(|((task_id, resource), wait)| FutureWaitSnapshot {
+                task_id: *task_id,
+                task_name: task_lookup.get(task_id).cloned(),
+                resource: resource.clone(),
+                pending_count: wait.pending_count,
+                ready_count: wait.ready_count,
+                total_pending_secs: wait.total_pending.as_secs_f64(),
+                last_seen_age_secs: now.duration_since(wait.last_seen).as_secs_f64(),
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            b.total_pending_secs
+                .partial_cmp(&a.total_pending_secs)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        out
+    }
+
     pub fn cleanup_completed_tasks() {
         let now = Instant::now();
         let cutoff = now - std::time::Duration::from_secs(30);
@@ -385,6 +556,12 @@ mod imp {
             edges.retain(|(_, target), edge| {
                 let recent = edge.last_wake_at > cutoff;
                 live_ids.contains(target) || recent
+            });
+        }
+        if let Some(waits) = FUTURE_WAIT_REGISTRY.lock().unwrap().as_mut() {
+            waits.retain(|(task_id, _), wait| {
+                let recent = wait.last_seen > cutoff;
+                live_ids.contains(task_id) || recent
             });
         }
     }
@@ -430,6 +607,52 @@ pub fn snapshot_all_tasks() -> Vec<TaskSnapshot> {
 pub fn snapshot_wake_edges() -> Vec<WakeEdgeSnapshot> {
     imp::snapshot_wake_edges()
 }
+
+/// Collect snapshots of annotated future wait states.
+pub fn snapshot_future_waits() -> Vec<FutureWaitSnapshot> {
+    imp::snapshot_future_waits()
+}
+
+/// Wrapper future produced by [`peepable`] or [`PeepableFutureExt::peepable`].
+pub struct PeepableFuture<F> {
+    inner: imp::PeepableFuture<F>,
+}
+
+impl<F> Future for PeepableFuture<F>
+where
+    F: Future,
+{
+    type Output = F::Output;
+
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        #[allow(unsafe_code)]
+        unsafe {
+            let this = self.get_unchecked_mut();
+            std::pin::Pin::new_unchecked(&mut this.inner).poll(cx)
+        }
+    }
+}
+
+/// Mark a future as an instrumented wait on a named resource.
+pub fn peepable<F>(future: F, resource: impl Into<String>) -> PeepableFuture<F>
+where
+    F: Future,
+{
+    PeepableFuture {
+        inner: imp::peepable(future, resource),
+    }
+}
+
+pub trait PeepableFutureExt: Future + Sized {
+    fn peepable(self, resource: impl Into<String>) -> PeepableFuture<Self> {
+        peepable(self, resource)
+    }
+}
+
+impl<F: Future> PeepableFutureExt for F {}
 
 /// Remove completed tasks from the registry. No-op without `diagnostics`.
 pub fn cleanup_completed_tasks() {

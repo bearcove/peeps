@@ -9,6 +9,7 @@ export type ResourceRef =
   | { kind: "oneshot"; process: string; name: string }
   | { kind: "watch"; process: string; name: string }
   | { kind: "once_cell"; process: string; name: string }
+  | { kind: "future_wait"; process: string; taskId: number; resource: string }
   | { kind: "connection"; process: string; connection: string }
   | { kind: "request"; process: string; connection: string; requestId: number }
   | { kind: "shm_segment"; process: string; segment: string }
@@ -60,6 +61,8 @@ export function resourceHref(ref: ResourceRef): string {
       return `/sync/watch/${enc(ref.process)}/${enc(ref.name)}`;
     case "once_cell":
       return `/sync/once-cell/${enc(ref.process)}/${enc(ref.name)}`;
+    case "future_wait":
+      return `/tasks/future/${enc(ref.process)}/${ref.taskId}/${enc(ref.resource)}`;
     case "connection":
       return `/connections/${enc(ref.process)}/${enc(ref.connection)}`;
     case "request":
