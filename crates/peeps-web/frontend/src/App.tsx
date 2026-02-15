@@ -67,8 +67,10 @@ export function App() {
   const [filteredNodeId, setFilteredNodeId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<SnapshotNode | null>(null);
 
-  const [leftCollapsed, toggleLeft] = useSessionState("peeps-left-collapsed", false);
-  const [rightCollapsed, toggleRight] = useSessionState("peeps-right-collapsed", false);
+  // Keep graph/inspector focus-first: left and right panels are collapsed by default,
+  // but users can expand them and the state is sticky for the current browser session.
+  const [leftCollapsed, toggleLeft] = useSessionState("peeps-left-collapsed", true);
+  const [rightCollapsed, toggleRight] = useSessionState("peeps-right-collapsed", true);
 
   const handleJumpNow = useCallback(async () => {
     setLoading(true);

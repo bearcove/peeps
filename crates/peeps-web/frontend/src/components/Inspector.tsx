@@ -2,6 +2,16 @@ import {
   MagnifyingGlass,
   CaretLeft,
   CaretRight,
+  Tag,
+  BracketsCurly,
+  Hash,
+  LinkSimple,
+  Key,
+  Hourglass,
+  Users,
+  CheckCircle,
+  XCircle,
+  CircleNotch,
   Timer,
   Lock,
   LockOpen,
@@ -187,18 +197,69 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
   const entries = Object.entries(attrs).filter(([, v]) => v != null);
   if (entries.length === 0) return null;
 
+  function iconForKey(key: string, val: unknown): React.ReactNode | null {
+    // Exact matches first.
+    switch (key) {
+      case "name":
+      case "label":
+        return <Tag size={12} weight="bold" />;
+      case "meta":
+        return <BracketsCurly size={12} weight="bold" />;
+    }
+
+    // Heuristic mapping by convention (keys are stable, values vary).
+    const k = key.toLowerCase();
+    if (k.endsWith(".id") || k === "request.id") return <Hash size={12} weight="bold" />;
+    if (k.includes("correlation_key")) return <Key size={12} weight="bold" />;
+    if (k.includes("connection")) return <LinkSimple size={12} weight="bold" />;
+
+    if (k.includes("created_at") || k.includes("age") || k.includes("duration"))
+      return <Timer size={12} weight="bold" />;
+
+    if (k.includes("lock_kind")) return <Lock size={12} weight="bold" />;
+    if (k.includes("waiter")) return <Hourglass size={12} weight="bold" />;
+    if (k.includes("holder") || k.includes("sender_count") || k.includes("receiver_count"))
+      return <Users size={12} weight="bold" />;
+
+    if (k.includes("sent") || k.includes("send")) return <ArrowLineUp size={12} weight="bold" />;
+    if (k.includes("recv") || k.includes("received")) return <ArrowLineDown size={12} weight="bold" />;
+
+    if (
+      k.includes("capacity") ||
+      k.includes("bounded") ||
+      k.includes("queue") ||
+      k.includes("high_watermark") ||
+      k.includes("utilization")
+    ) {
+      return <Gauge size={12} weight="bold" />;
+    }
+
+    if (k === "state" || k.includes(".state")) return <CircleNotch size={12} weight="bold" />;
+    if (k === "closed") return <XCircle size={12} weight="bold" />;
+    if (k === "ready_count") return <CheckCircle size={12} weight="bold" />;
+    if (k === "pending_count") return <CircleNotch size={12} weight="bold" />;
+
+    // Special-case value-dependent "closed" fields where the key isn't literally "closed".
+    if (k.includes("closed") && typeof val === "boolean") return <XCircle size={12} weight="bold" />;
+
+    return null;
+  }
+
   return (
-    <details className="inspect-raw">
-      <summary>All attributes ({entries.length})</summary>
+    <div className="inspect-raw">
+      <div className="inspect-raw-title">All attributes ({entries.length})</div>
       <dl>
         {entries.map(([key, val]) => (
           <div key={key}>
-            <dt>{key}</dt>
+            <dt>
+              <span className="inspect-raw-key-icon">{iconForKey(key, val)}</span>
+              <span className="inspect-raw-key-text">{key}</span>
+            </dt>
             <dd>{typeof val === "object" ? JSON.stringify(val) : String(val)}</dd>
           </div>
         ))}
       </dl>
-    </details>
+    </div>
   );
 }
 

@@ -541,13 +541,17 @@ function GenericCard({ data }: NodeProps<Node<NodeData>>) {
 
 const cardByKind: Record<string, (props: NodeProps<Node<NodeData>>) => React.ReactNode> = {
   future: FutureCard,
-  task: FutureCard, // tasks are essentially futures
+  lock: MutexCard,
   mutex: MutexCard,
   rwlock: RwLockCard,
+  tx: ChannelTxCard,
+  rx: ChannelRxCard,
   channel_tx: ChannelTxCard,
   channel_rx: ChannelRxCard,
   mpsc_tx: ChannelTxCard,
   mpsc_rx: ChannelRxCard,
+  remote_tx: ChannelTxCard,
+  remote_rx: ChannelRxCard,
   oneshot: OneshotCard,
   oneshot_tx: OneshotCard,
   oneshot_rx: OneshotCard,
@@ -573,19 +577,23 @@ export function estimateNodeHeight(kind: string): number {
     case "request":
     case "response":
       return 120;
+    case "tx":
     case "channel_tx":
     case "mpsc_tx":
+    case "remote_tx":
       return 120;
+    case "lock":
     case "mutex":
     case "rwlock":
       return 110;
     case "semaphore":
       return 110;
     case "future":
-    case "task":
       return 100;
+    case "rx":
     case "channel_rx":
     case "mpsc_rx":
+    case "remote_rx":
       return 100;
     case "oncecell":
     case "once_cell":

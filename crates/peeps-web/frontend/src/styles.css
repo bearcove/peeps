@@ -809,16 +809,11 @@ body {
     font-size: 11px;
 }
 
-.inspect-raw summary {
-    cursor: pointer;
+.inspect-raw-title {
     color: light-dark(#6e6e73, #98989d);
     font-weight: 600;
     font-size: 11px;
     padding: 4px 0;
-}
-
-.inspect-raw summary:hover {
-    color: light-dark(#1d1d1f, #e5e5e7);
 }
 
 .inspect-raw dl {
@@ -832,6 +827,29 @@ body {
     color: light-dark(#8e8e93, #636366);
     margin-top: 4px;
     font-size: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    line-height: 14px;
+    padding-top: 2px;
+}
+
+.inspect-raw-key-icon {
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.85;
+    flex-shrink: 0;
+}
+
+.inspect-raw-key-icon svg {
+    display: block;
+}
+
+.inspect-raw-key-text {
+    word-break: break-all;
 }
 
 .inspect-raw dd {
@@ -839,6 +857,8 @@ body {
     font-family: var(--font-mono);
     font-size: 11px;
     word-break: break-all;
+    /* Align values under the key text (not under the icon). */
+    padding-left: 22px; /* 14px icon + 8px gap */
 }
 
 /* ── Status ───────────────────────────────────────────────── */

@@ -143,6 +143,8 @@ function GraphFlow({
       proOptions={{ hideAttribution: true }}
       minZoom={0.1}
       maxZoom={4}
+      // Pan by dragging the empty canvas (helps when side panels are collapsed).
+      panOnDrag
     >
       <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
       <Controls showInteractive={false} />
