@@ -705,6 +705,52 @@ pub enum MetaValue<'a> {
     Bool(bool),
 }
 
+pub trait IntoMetaValue<'a> {
+    fn into_meta_value(self) -> MetaValue<'a>;
+}
+
+impl<'a> IntoMetaValue<'a> for &'a str {
+    fn into_meta_value(self) -> MetaValue<'a> {
+        MetaValue::Str(self)
+    }
+}
+
+impl IntoMetaValue<'_> for u64 {
+    fn into_meta_value(self) -> MetaValue<'static> {
+        MetaValue::U64(self)
+    }
+}
+
+impl IntoMetaValue<'_> for i64 {
+    fn into_meta_value(self) -> MetaValue<'static> {
+        MetaValue::I64(self)
+    }
+}
+
+impl IntoMetaValue<'_> for u32 {
+    fn into_meta_value(self) -> MetaValue<'static> {
+        MetaValue::U64(self as u64)
+    }
+}
+
+impl IntoMetaValue<'_> for usize {
+    fn into_meta_value(self) -> MetaValue<'static> {
+        MetaValue::U64(self as u64)
+    }
+}
+
+impl IntoMetaValue<'_> for bool {
+    fn into_meta_value(self) -> MetaValue<'static> {
+        MetaValue::Bool(self)
+    }
+}
+
+impl<'a> IntoMetaValue<'a> for MetaValue<'a> {
+    fn into_meta_value(self) -> MetaValue<'a> {
+        self
+    }
+}
+
 impl MetaValue<'_> {
     /// Write this value as a string into the provided buffer.
     /// Returns the number of bytes written, or None if the buffer is too small.
@@ -832,7 +878,7 @@ impl<'a, const N: usize> MetaBuilder<'a, N> {
 }
 
 /// Escape a string for JSON (handles `"`, `\`, and control chars).
-fn json_escape_into(out: &mut String, s: &str) {
+pub fn json_escape_into(out: &mut String, s: &str) {
     for c in s.chars() {
         match c {
             '"' => out.push_str("\\\""),
@@ -976,6 +1022,12 @@ pub mod meta_key {
     pub const FUTURE_ID: &str = "future.id";
     pub const CHANNEL_ID: &str = "channel.id";
     pub const RESOURCE_PATH: &str = "resource.path";
+    pub const CTX_MODULE_PATH: &str = "ctx.module_path";
+    pub const CTX_FILE: &str = "ctx.file";
+    pub const CTX_LINE: &str = "ctx.line";
+    pub const CTX_CRATE_NAME: &str = "ctx.crate_name";
+    pub const CTX_CRATE_VERSION: &str = "ctx.crate_version";
+    pub const CTX_CALLSITE: &str = "ctx.callsite";
 }
 
 // ── Deadlock candidate types ─────────────────────────────────────
@@ -1162,6 +1214,68 @@ mod tests {
         assert!(!is_valid_meta_key("has:colon"));
         assert!(!is_valid_meta_key(&"a".repeat(49)));
         assert!(is_valid_meta_key(&"a".repeat(48)));
+    }
+
+    #[test]
+    fn into_meta_value_str() {
+        let s = "hello";
+        let mv: MetaValue = s.into_meta_value();
+        let mut buf = [0u8; 256];
+        let n = mv.write_to(&mut buf).unwrap();
+        assert_eq!(&buf[..n], b"hello");
+    }
+
+    #[test]
+    fn into_meta_value_u64() {
+        let mv: MetaValue = 42u64.into_meta_value();
+        let mut buf = [0u8; 256];
+        let n = mv.write_to(&mut buf).unwrap();
+        assert_eq!(&buf[..n], b"42");
+    }
+
+    #[test]
+    fn into_meta_value_i64() {
+        let mv: MetaValue = (-10i64).into_meta_value();
+        let mut buf = [0u8; 256];
+        let n = mv.write_to(&mut buf).unwrap();
+        assert_eq!(&buf[..n], b"-10");
+    }
+
+    #[test]
+    fn into_meta_value_u32() {
+        let mv: MetaValue = 99u32.into_meta_value();
+        match mv {
+            MetaValue::U64(v) => assert_eq!(v, 99),
+            _ => panic!("expected U64"),
+        }
+    }
+
+    #[test]
+    fn into_meta_value_usize() {
+        let mv: MetaValue = 7usize.into_meta_value();
+        match mv {
+            MetaValue::U64(v) => assert_eq!(v, 7),
+            _ => panic!("expected U64"),
+        }
+    }
+
+    #[test]
+    fn into_meta_value_bool() {
+        let mv: MetaValue = true.into_meta_value();
+        match mv {
+            MetaValue::Bool(v) => assert!(v),
+            _ => panic!("expected Bool"),
+        }
+    }
+
+    #[test]
+    fn into_meta_value_passthrough() {
+        let original = MetaValue::Static("pass");
+        let mv = original.into_meta_value();
+        match mv {
+            MetaValue::Static(s) => assert_eq!(s, "pass"),
+            _ => panic!("expected Static"),
+        }
     }
 
     #[test]

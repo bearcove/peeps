@@ -27,7 +27,19 @@ const PROGRESS_HANDLER_OPS: i32 = 1000;
 // ── Scoped TEMP VIEW tables ──────────────────────────────────────
 
 /// Tables that get scoped TEMP VIEWs and are blocked from direct access.
-const SCOPED_TABLES: &[&str] = &["nodes", "edges", "unresolved_edges", "snapshot_processes"];
+/// Each entry is (table_name, columns_excluding_snapshot_id).
+const SCOPED_TABLES: &[(&str, &str)] = &[
+    ("nodes", "id, kind, process, proc_key, attrs_json"),
+    ("edges", "src_id, dst_id, kind, attrs_json"),
+    (
+        "unresolved_edges",
+        "src_id, dst_id, missing_side, reason, referenced_proc_key, attrs_json",
+    ),
+    (
+        "snapshot_processes",
+        "process, pid, proc_key, status, recv_at_ns, error_text",
+    ),
+];
 
 // ── Request/response types ───────────────────────────────────────
 
@@ -155,12 +167,13 @@ fn sql_blocking(
     let deadline = Instant::now() + std::time::Duration::from_millis(MAX_EXECUTION_MS);
     install_progress_handler(&conn, deadline);
 
-    // 4. Reject multiple statements
+    // 4. Reject multiple statements and direct main schema access
     let sql = req.sql.trim();
     if sql.is_empty() {
         return Err(api_error(StatusCode::BAD_REQUEST, "empty SQL"));
     }
     reject_multiple_statements(sql)?;
+    reject_main_schema_access(sql)?;
 
     // 5. Prepare the statement
     let mut stmt = conn.prepare(sql).map_err(|e| {
@@ -322,12 +335,29 @@ fn reject_multiple_statements(sql: &str) -> Result<(), (StatusCode, Json<ApiErro
     Ok(())
 }
 
+/// Reject queries that try to bypass scoped TEMP VIEWs by referencing `main.*` directly.
+fn reject_main_schema_access(sql: &str) -> Result<(), (StatusCode, Json<ApiError>)> {
+    // Case-insensitive check for `main.` prefix on scoped table names.
+    let lower = sql.to_ascii_lowercase();
+    for (table, _) in SCOPED_TABLES {
+        if lower.contains(&format!("main.{table}"))
+            || lower.contains(&format!("main.[{table}]"))
+        {
+            return Err(api_error(
+                StatusCode::BAD_REQUEST,
+                format!("direct access to main.{table} is not allowed; use {table} instead"),
+            ));
+        }
+    }
+    Ok(())
+}
+
 // ── Scoped TEMP VIEWs ───────────────────────────────────────────
 
 fn create_scoped_views(conn: &Connection, snapshot_id: i64) -> rusqlite::Result<()> {
-    for table in SCOPED_TABLES {
+    for (table, cols) in SCOPED_TABLES {
         conn.execute_batch(&format!(
-            "CREATE TEMP VIEW [{table}] AS SELECT * FROM main.[{table}] WHERE snapshot_id = {snapshot_id}"
+            "CREATE TEMP VIEW [{table}] AS SELECT {cols} FROM main.[{table}] WHERE snapshot_id = {snapshot_id}"
         ))?;
     }
     Ok(())
@@ -341,18 +371,14 @@ fn install_authorizer(conn: &Connection) {
 
         match ctx.action {
             AuthAction::Read { table_name, .. } => {
-                let db = ctx.database_name.unwrap_or("");
-
-                // Block direct reads of scoped main tables
-                if db == "main" && SCOPED_TABLES.contains(&table_name) {
-                    return Authorization::Deny;
-                }
-
                 // Block sqlite_master reads
                 if table_name == "sqlite_master" || table_name == "sqlite_temp_master" {
                     return Authorization::Deny;
                 }
 
+                // Allow all column reads — scoped TEMP VIEWs shadow the main
+                // table names so user queries go through the view. We block
+                // direct `main.*` access via reject_main_schema_access().
                 Authorization::Allow
             }
             AuthAction::Select => Authorization::Allow,

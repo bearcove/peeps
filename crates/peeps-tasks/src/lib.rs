@@ -12,9 +12,10 @@ mod tasks;
 mod wakes;
 
 pub use peeps_types::{
-    FutureId, FuturePollEdgeSnapshot, FutureResumeEdgeSnapshot, FutureSpawnEdgeSnapshot,
-    FutureWaitSnapshot, FutureWakeEdgeSnapshot, GraphSnapshot, MetaBuilder, MetaValue, PollEvent,
-    PollResult, TaskId, TaskSnapshot, TaskState, WakeEdgeSnapshot,
+    meta_key, FutureId, FuturePollEdgeSnapshot, FutureResumeEdgeSnapshot,
+    FutureSpawnEdgeSnapshot, FutureWaitSnapshot, FutureWakeEdgeSnapshot, GraphSnapshot,
+    IntoMetaValue, MetaBuilder, MetaValue, PollEvent, PollResult, TaskId, TaskSnapshot, TaskState,
+    WakeEdgeSnapshot,
 };
 
 // ── Public API (delegates to modules) ────────────────────
@@ -176,6 +177,106 @@ macro_rules! peepable_with_meta {
             $future
         }
     }};
+}
+
+/// Wrap a future with auto-injected callsite context and optional custom metadata.
+///
+/// When `diagnostics` is disabled, expands to the bare future (zero cost).
+///
+/// ```ignore
+/// // Label only (auto context injected):
+/// peep!(stream.flush(), "socket.flush").await?;
+///
+/// // Label + custom keys:
+/// peep!(stream.read(&mut buf), "socket.read", {
+///     "resource.path" => path.as_str(),
+///     "bytes" => buf.len(),
+/// }).await?;
+/// ```
+#[macro_export]
+macro_rules! peep {
+    // With custom metadata keys
+    ($future:expr, $label:literal, {$($k:literal => $v:expr),* $(,)?}) => {{
+        #[cfg(feature = "diagnostics")]
+        {
+            let mut mb = $crate::MetaBuilder::<{
+                // 6 auto context keys + user keys
+                6 $(+ $crate::peep!(@count $k))*
+            }>::new();
+            mb.push(
+                $crate::meta_key::CTX_MODULE_PATH,
+                $crate::MetaValue::Static(module_path!()),
+            );
+            mb.push(
+                $crate::meta_key::CTX_FILE,
+                $crate::MetaValue::Static(file!()),
+            );
+            mb.push(
+                $crate::meta_key::CTX_LINE,
+                $crate::MetaValue::U64(line!() as u64),
+            );
+            mb.push(
+                $crate::meta_key::CTX_CRATE_NAME,
+                $crate::MetaValue::Static(env!("CARGO_PKG_NAME")),
+            );
+            mb.push(
+                $crate::meta_key::CTX_CRATE_VERSION,
+                $crate::MetaValue::Static(env!("CARGO_PKG_VERSION")),
+            );
+            mb.push(
+                $crate::meta_key::CTX_CALLSITE,
+                $crate::MetaValue::Static(concat!(
+                    $label, "@", file!(), ":", line!(), "::", module_path!()
+                )),
+            );
+            $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
+            $crate::peepable_with_meta($future, $label, mb)
+        }
+        #[cfg(not(feature = "diagnostics"))]
+        {
+            $future
+        }
+    }};
+    // Label only (no custom keys)
+    ($future:expr, $label:literal) => {{
+        #[cfg(feature = "diagnostics")]
+        {
+            let mut mb = $crate::MetaBuilder::<6>::new();
+            mb.push(
+                $crate::meta_key::CTX_MODULE_PATH,
+                $crate::MetaValue::Static(module_path!()),
+            );
+            mb.push(
+                $crate::meta_key::CTX_FILE,
+                $crate::MetaValue::Static(file!()),
+            );
+            mb.push(
+                $crate::meta_key::CTX_LINE,
+                $crate::MetaValue::U64(line!() as u64),
+            );
+            mb.push(
+                $crate::meta_key::CTX_CRATE_NAME,
+                $crate::MetaValue::Static(env!("CARGO_PKG_NAME")),
+            );
+            mb.push(
+                $crate::meta_key::CTX_CRATE_VERSION,
+                $crate::MetaValue::Static(env!("CARGO_PKG_VERSION")),
+            );
+            mb.push(
+                $crate::meta_key::CTX_CALLSITE,
+                $crate::MetaValue::Static(concat!(
+                    $label, "@", file!(), ":", line!(), "::", module_path!()
+                )),
+            );
+            $crate::peepable_with_meta($future, $label, mb)
+        }
+        #[cfg(not(feature = "diagnostics"))]
+        {
+            $future
+        }
+    }};
+    // Internal: counting helper
+    (@count $x:literal) => { 1usize };
 }
 
 pub trait PeepableFutureExt: Future + Sized {
