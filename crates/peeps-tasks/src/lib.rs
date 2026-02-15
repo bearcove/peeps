@@ -13,8 +13,8 @@ mod wakes;
 
 pub use peeps_types::{
     FutureId, FuturePollEdgeSnapshot, FutureResumeEdgeSnapshot, FutureSpawnEdgeSnapshot,
-    FutureWaitSnapshot, FutureWakeEdgeSnapshot, PollEvent, PollResult, TaskId, TaskSnapshot,
-    TaskState, WakeEdgeSnapshot,
+    FutureWaitSnapshot, FutureWakeEdgeSnapshot, GraphSnapshot, MetaBuilder, MetaValue, PollEvent,
+    PollResult, TaskId, TaskSnapshot, TaskState, WakeEdgeSnapshot,
 };
 
 // ── Public API (delegates to modules) ────────────────────
@@ -85,6 +85,11 @@ pub fn snapshot_future_resume_edges() -> Vec<FutureResumeEdgeSnapshot> {
     snapshot::snapshot_future_resume_edges()
 }
 
+/// Emit canonical graph nodes and edges for tasks and futures.
+pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
+    snapshot::emit_graph(proc_key)
+}
+
 /// Wrapper future produced by [`peepable`] or [`PeepableFutureExt::peepable`].
 pub struct PeepableFuture<F> {
     inner: futures::PeepableFuture<F>,
@@ -118,9 +123,71 @@ where
     }
 }
 
+/// Mark a future as an instrumented wait with metadata.
+pub fn peepable_with_meta<F, const N: usize>(
+    future: F,
+    resource: impl Into<String>,
+    meta: MetaBuilder<'_, N>,
+) -> PeepableFuture<F>
+where
+    F: Future,
+{
+    PeepableFuture {
+        inner: futures::peepable_with_meta(future, resource, meta),
+    }
+}
+
+/// Build a `MetaBuilder` on the stack from key-value pairs.
+///
+/// ```ignore
+/// peep_meta!("request.id" => MetaValue::U64(42), "request.method" => MetaValue::Static("get"))
+/// ```
+#[macro_export]
+macro_rules! peep_meta {
+    ($($k:literal => $v:expr),* $(,)?) => {{
+        let mut mb = $crate::MetaBuilder::<16>::new();
+        $(mb.push($k, $v);)*
+        mb
+    }};
+}
+
+/// Wrap a future with metadata, compiling away to bare future when diagnostics are disabled.
+///
+/// ```ignore
+/// peepable_with_meta!(
+///     stream.read(&mut buf),
+///     "socket.read",
+///     { "request.id" => MetaValue::U64(id) }
+/// ).await?;
+/// ```
+#[macro_export]
+macro_rules! peepable_with_meta {
+    ($future:expr, $label:literal, {$($k:literal => $v:expr),* $(,)?}) => {{
+        #[cfg(feature = "diagnostics")]
+        {
+            $crate::PeepableFutureExt::peepable_with_meta(
+                $future,
+                $label,
+                $crate::peep_meta!($($k => $v),*),
+            )
+        }
+        #[cfg(not(feature = "diagnostics"))]
+        {
+            $future
+        }
+    }};
+}
+
 pub trait PeepableFutureExt: Future + Sized {
     fn peepable(self, resource: impl Into<String>) -> PeepableFuture<Self> {
         peepable(self, resource)
+    }
+    fn peepable_with_meta<const N: usize>(
+        self,
+        resource: impl Into<String>,
+        meta: MetaBuilder<'_, N>,
+    ) -> PeepableFuture<Self> {
+        peepable_with_meta(self, resource, meta)
     }
 }
 
@@ -129,4 +196,237 @@ impl<F: Future> PeepableFutureExt for F {}
 /// Remove completed tasks from the registry. No-op without `diagnostics`.
 pub fn cleanup_completed_tasks() {
     snapshot::cleanup_completed_tasks()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── MetaBuilder acceptance / clamping / dropping ─────────
+
+    #[test]
+    fn meta_builder_accepts_valid_keys() {
+        let mut mb = MetaBuilder::<16>::new();
+        mb.push("request.id", MetaValue::U64(42));
+        mb.push("request.method", MetaValue::Static("get_page"));
+        mb.push("rpc.peer", MetaValue::Str("backend-1"));
+        let json = mb.to_json_object();
+        assert!(json.contains("\"request.id\":\"42\""));
+        assert!(json.contains("\"request.method\":\"get_page\""));
+        assert!(json.contains("\"rpc.peer\":\"backend-1\""));
+    }
+
+    #[test]
+    fn meta_builder_drops_invalid_keys() {
+        let mut mb = MetaBuilder::<16>::new();
+        mb.push("UPPER", MetaValue::Static("nope"));
+        mb.push("has space", MetaValue::Static("nope"));
+        mb.push("has:colon", MetaValue::Static("nope"));
+        mb.push("", MetaValue::Static("nope"));
+        assert_eq!(mb.to_json_object(), "");
+    }
+
+    #[test]
+    fn meta_builder_clamps_at_capacity() {
+        let mut mb = MetaBuilder::<2>::new();
+        mb.push("a", MetaValue::Static("1"));
+        mb.push("b", MetaValue::Static("2"));
+        mb.push("c", MetaValue::Static("3")); // dropped: over capacity
+        let json = mb.to_json_object();
+        assert!(json.contains("\"a\":\"1\""));
+        assert!(json.contains("\"b\":\"2\""));
+        assert!(!json.contains("\"c\""));
+    }
+
+    // ── peepable equivalence ────────────────────────────────
+
+    #[test]
+    fn peepable_and_peepable_with_empty_meta_are_equivalent() {
+        // Both should produce a PeepableFuture wrapping the same inner future.
+        // We verify that both compile and produce the same output.
+        let fut_a = peepable(async { 42 }, "test.resource");
+        let fut_b = peepable_with_meta(async { 42 }, "test.resource", MetaBuilder::<0>::new());
+
+        // Both are PeepableFuture<impl Future<Output = i32>>
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let val_a = rt.block_on(fut_a);
+        let val_b = rt.block_on(fut_b);
+        assert_eq!(val_a, 42);
+        assert_eq!(val_b, 42);
+    }
+
+    #[test]
+    fn peepable_ext_trait_works() {
+        let fut = async { 7 };
+        let peepable_fut = fut.peepable("test.ext");
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        assert_eq!(rt.block_on(peepable_fut), 7);
+    }
+
+    #[test]
+    fn peepable_ext_with_meta_works() {
+        let meta = peep_meta!("request.id" => MetaValue::U64(99));
+        let fut = async { "hello" };
+        let peepable_fut = fut.peepable_with_meta("test.ext.meta", meta);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        assert_eq!(rt.block_on(peepable_fut), "hello");
+    }
+
+    // ── peepable_with_meta! macro ───────────────────────────
+
+    #[test]
+    fn peepable_with_meta_macro_compiles() {
+        let fut = peepable_with_meta!(
+            async { 123 },
+            "socket.read",
+            {
+                "request.id" => MetaValue::U64(55),
+                "request.method" => MetaValue::Static("get"),
+            }
+        );
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        assert_eq!(rt.block_on(fut), 123);
+    }
+
+    // ── Graph emission attrs_json.meta shape ────────────────
+
+    #[cfg(feature = "diagnostics")]
+    #[test]
+    fn emit_graph_task_node_has_required_attrs() {
+        init_task_tracking();
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let handle = spawn_tracked("test-task", async { 1 + 1 });
+            let _ = handle.await;
+        });
+
+        let graph = emit_graph("test-proc-1");
+        let task_node = graph
+            .nodes
+            .iter()
+            .find(|n| n.kind == "task")
+            .expect("should have a task node");
+
+        assert!(task_node.id.starts_with("task:test-proc-1:"));
+        assert_eq!(task_node.kind, "task");
+
+        let attrs = &task_node.attrs_json;
+        assert!(attrs.contains("\"task_id\":"));
+        assert!(attrs.contains("\"name\":"));
+        assert!(attrs.contains("\"state\":"));
+        assert!(attrs.contains("\"spawned_at_ns\":"));
+        assert!(attrs.contains("\"meta\":{}"));
+    }
+
+    #[cfg(feature = "diagnostics")]
+    #[test]
+    fn emit_graph_future_node_has_required_attrs_and_meta() {
+        init_task_tracking();
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let meta = peep_meta!(
+                "request.id" => MetaValue::U64(42),
+                "request.method" => MetaValue::Static("get_page"),
+            );
+            let fut = peepable_with_meta(async { "done" }, "test.resource", meta);
+            let _ = spawn_tracked("meta-task", async move {
+                fut.await
+            })
+            .await;
+        });
+
+        let graph = emit_graph("test-proc-2");
+        let future_node = graph
+            .nodes
+            .iter()
+            .find(|n| n.kind == "future")
+            .expect("should have a future node");
+
+        assert!(future_node.id.starts_with("future:test-proc-2:"));
+
+        let attrs = &future_node.attrs_json;
+        assert!(attrs.contains("\"future_id\":"));
+        assert!(attrs.contains("\"label\":\"test.resource\""));
+        assert!(attrs.contains("\"pending_count\":"));
+        assert!(attrs.contains("\"ready_count\":"));
+        // meta should contain the metadata we passed
+        assert!(attrs.contains("\"meta\":{"));
+        assert!(attrs.contains("\"request.id\":\"42\""));
+        assert!(attrs.contains("\"request.method\":\"get_page\""));
+    }
+
+    #[cfg(feature = "diagnostics")]
+    #[test]
+    fn emit_graph_future_node_empty_meta() {
+        init_task_tracking();
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let fut = peepable(async { "bare" }, "bare.resource");
+            let _ = spawn_tracked("bare-task", async move {
+                fut.await
+            })
+            .await;
+        });
+
+        let graph = emit_graph("test-proc-3");
+        let future_node = graph
+            .nodes
+            .iter()
+            .find(|n| n.kind == "future" && n.attrs_json.contains("\"label\":\"bare.resource\""))
+            .expect("should have a future node for bare.resource");
+
+        // Empty meta should serialize as {}
+        assert!(future_node.attrs_json.contains("\"meta\":{}"));
+    }
+
+    #[cfg(feature = "diagnostics")]
+    #[test]
+    fn emit_graph_has_task_to_future_edges() {
+        init_task_tracking();
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let fut = peepable(async { 1 }, "edge.test");
+            let _ = spawn_tracked("edge-task", async move {
+                fut.await
+            })
+            .await;
+        });
+
+        let graph = emit_graph("test-proc-4");
+        let edge = graph
+            .edges
+            .iter()
+            .find(|e| e.src_id.starts_with("task:") && e.dst_id.starts_with("future:"))
+            .expect("should have a task→future edge");
+
+        assert_eq!(edge.kind, "needs");
+        assert_eq!(
+            edge.origin,
+            peeps_types::GraphEdgeOrigin::Explicit
+        );
+    }
 }

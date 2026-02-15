@@ -2,6 +2,9 @@ use std::future::Future;
 
 use peeps_types::TaskId;
 
+#[cfg(feature = "diagnostics")]
+use peeps_types::{PollEvent, PollResult, TaskSnapshot, TaskState};
+
 // ── Diagnostics statics ─────────────────────────────────
 
 #[cfg(feature = "diagnostics")]

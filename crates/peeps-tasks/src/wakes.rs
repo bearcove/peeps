@@ -1,3 +1,5 @@
+#[cfg(feature = "diagnostics")]
+use peeps_types::{FutureId, TaskId};
 
 // ── Diagnostics statics ─────────────────────────────────
 

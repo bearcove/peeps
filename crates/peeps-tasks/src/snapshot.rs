@@ -1,6 +1,9 @@
+#[cfg(feature = "diagnostics")]
+use peeps_types::{FutureId, TaskId, TaskState};
+
 use peeps_types::{
     FuturePollEdgeSnapshot, FutureResumeEdgeSnapshot, FutureSpawnEdgeSnapshot,
-    FutureWaitSnapshot, FutureWakeEdgeSnapshot, TaskSnapshot,
+    FutureWaitSnapshot, FutureWakeEdgeSnapshot, GraphSnapshot, TaskSnapshot,
     WakeEdgeSnapshot,
 };
 
@@ -332,6 +335,192 @@ pub fn snapshot_future_resume_edges() -> Vec<FutureResumeEdgeSnapshot> {
 #[inline(always)]
 pub fn snapshot_future_resume_edges() -> Vec<FutureResumeEdgeSnapshot> {
     Vec::new()
+}
+
+// ── emit_graph ──────────────────────────────────────────
+
+#[cfg(feature = "diagnostics")]
+pub fn emit_graph(proc_key: &str) -> GraphSnapshot {
+    use peeps_types::{GraphEdgeOrigin, GraphEdgeSnapshot, GraphNodeSnapshot, GraphSnapshotBuilder};
+
+    let now = std::time::Instant::now();
+    let mut builder = GraphSnapshotBuilder::new();
+
+    // Build last_wake_from_task_id lookup: target_task_id → most recent source_task_id
+    let last_wake_from: std::collections::HashMap<TaskId, TaskId> = {
+        let registry = crate::wakes::WAKE_REGISTRY.lock().unwrap();
+        let mut map = std::collections::HashMap::new();
+        if let Some(edges) = registry.as_ref() {
+            for (&(source_task_id, target_task_id), _edge) in edges.iter() {
+                if let Some(src) = source_task_id {
+                    map.insert(target_task_id, src);
+                }
+            }
+        }
+        map
+    };
+
+    // Task nodes
+    {
+        let registry = crate::tasks::TASK_REGISTRY.lock().unwrap();
+        if let Some(tasks) = registry.as_ref() {
+            let cutoff = now - std::time::Duration::from_secs(30);
+            for task in tasks.iter() {
+                let state = task.state.lock().unwrap();
+                if state.state == TaskState::Completed && task.spawned_at <= cutoff {
+                    continue;
+                }
+                let state_str = match state.state {
+                    TaskState::Pending => "pending",
+                    TaskState::Polling => "polling",
+                    TaskState::Completed => "completed",
+                };
+                let spawned_at_ns =
+                    now.duration_since(task.spawned_at).as_nanos() as u64;
+
+                let mut attrs = String::with_capacity(256);
+                attrs.push('{');
+                write_json_kv_u64(&mut attrs, "task_id", task.id, true);
+                write_json_kv_str(&mut attrs, "name", &task.name, false);
+                write_json_kv_str(&mut attrs, "state", state_str, false);
+                write_json_kv_u64(&mut attrs, "spawned_at_ns", spawned_at_ns, false);
+                if let Some(pid) = task.parent_id {
+                    write_json_kv_u64(&mut attrs, "parent_task_id", pid, false);
+                }
+                if !task.spawn_backtrace.is_empty() {
+                    write_json_kv_str(&mut attrs, "spawn_backtrace", &task.spawn_backtrace, false);
+                }
+                if let Some(wake_src) = last_wake_from.get(&task.id) {
+                    write_json_kv_u64(&mut attrs, "last_wake_from_task_id", *wake_src, false);
+                }
+                attrs.push_str(",\"meta\":{}");
+                attrs.push('}');
+
+                builder.push_node(GraphNodeSnapshot {
+                    id: peeps_types::canonical_id::task(proc_key, task.id),
+                    kind: "task".to_string(),
+                    process: proc_key.to_string(),
+                    proc_key: proc_key.to_string(),
+                    label: Some(task.name.clone()),
+                    attrs_json: attrs,
+                });
+            }
+        }
+    }
+
+    // Future nodes
+    {
+        let registry = crate::futures::FUTURE_WAIT_REGISTRY.lock().unwrap();
+        if let Some(waits) = registry.as_ref() {
+            for (&future_id, wait) in waits.iter() {
+                let mut attrs = String::with_capacity(256);
+                attrs.push('{');
+                write_json_kv_u64(&mut attrs, "future_id", future_id, true);
+                write_json_kv_str(&mut attrs, "label", &wait.resource, false);
+                write_json_kv_u64(&mut attrs, "pending_count", wait.pending_count, false);
+                write_json_kv_u64(&mut attrs, "ready_count", wait.ready_count, false);
+                if let Some(tid) = wait.created_by_task_id {
+                    write_json_kv_u64(&mut attrs, "created_by_task_id", tid, false);
+                }
+                if let Some(tid) = wait.last_polled_by_task_id {
+                    write_json_kv_u64(&mut attrs, "last_polled_by_task_id", tid, false);
+                }
+                let total_pending_ns = wait.total_pending.as_nanos() as u64;
+                if total_pending_ns > 0 {
+                    write_json_kv_u64(&mut attrs, "total_pending_ns", total_pending_ns, false);
+                }
+                if wait.meta_json.is_empty() {
+                    attrs.push_str(",\"meta\":{}");
+                } else {
+                    attrs.push_str(",\"meta\":");
+                    attrs.push_str(&wait.meta_json);
+                }
+                attrs.push('}');
+
+                builder.push_node(GraphNodeSnapshot {
+                    id: peeps_types::canonical_id::future(proc_key, future_id),
+                    kind: "future".to_string(),
+                    process: proc_key.to_string(),
+                    proc_key: proc_key.to_string(),
+                    label: Some(wait.resource.clone()),
+                    attrs_json: attrs,
+                });
+            }
+        }
+    }
+
+    // task → future edges (from poll edges — explicit measurement)
+    {
+        let registry = crate::futures::FUTURE_POLL_EDGE_REGISTRY.lock().unwrap();
+        if let Some(edges) = registry.as_ref() {
+            for (&(task_id, future_id), _edge) in edges.iter() {
+                builder.push_edge(GraphEdgeSnapshot {
+                    src_id: peeps_types::canonical_id::task(proc_key, task_id),
+                    dst_id: peeps_types::canonical_id::future(proc_key, future_id),
+                    kind: "needs".to_string(),
+                    observed_at_ns: None,
+                    attrs_json: "{}".to_string(),
+                    origin: GraphEdgeOrigin::Explicit,
+                });
+            }
+        }
+    }
+
+    // task → task edges (from wake edges — explicit wake dependency)
+    {
+        let registry = crate::wakes::WAKE_REGISTRY.lock().unwrap();
+        if let Some(edges) = registry.as_ref() {
+            for (&(source_task_id, target_task_id), _edge) in edges.iter() {
+                // Only emit when source is known (explicit dependency)
+                if let Some(src_id) = source_task_id {
+                    builder.push_edge(GraphEdgeSnapshot {
+                        src_id: peeps_types::canonical_id::task(proc_key, src_id),
+                        dst_id: peeps_types::canonical_id::task(proc_key, target_task_id),
+                        kind: "needs".to_string(),
+                        observed_at_ns: None,
+                        attrs_json: "{}".to_string(),
+                        origin: GraphEdgeOrigin::Explicit,
+                    });
+                }
+            }
+        }
+    }
+
+    builder.finish()
+}
+
+#[cfg(not(feature = "diagnostics"))]
+#[inline(always)]
+pub fn emit_graph(_proc_key: &str) -> GraphSnapshot {
+    GraphSnapshot::empty()
+}
+
+#[cfg(feature = "diagnostics")]
+fn write_json_kv_str(out: &mut String, key: &str, value: &str, first: bool) {
+    if !first {
+        out.push(',');
+    }
+    out.push('"');
+    out.push_str(key);
+    out.push_str("\":\"");
+    peeps_types::json_escape_into(out, value);
+    out.push('"');
+}
+
+#[cfg(feature = "diagnostics")]
+fn write_json_kv_u64(out: &mut String, key: &str, value: u64, first: bool) {
+    use std::io::Write;
+    if !first {
+        out.push(',');
+    }
+    out.push('"');
+    out.push_str(key);
+    out.push_str("\":");
+    let mut buf = [0u8; 20];
+    let mut cursor = std::io::Cursor::new(&mut buf[..]);
+    let _ = write!(cursor, "{value}");
+    let len = cursor.position() as usize;
+    out.push_str(std::str::from_utf8(&buf[..len]).unwrap_or("0"));
 }
 
 // ── cleanup_completed_tasks ─────────────────────────────

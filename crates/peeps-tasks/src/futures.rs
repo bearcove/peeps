@@ -1,5 +1,7 @@
 use std::future::Future;
 
+#[cfg(feature = "diagnostics")]
+use peeps_types::{FutureId, TaskId};
 
 // ── Diagnostics statics ─────────────────────────────────
 
@@ -39,6 +41,8 @@ pub(crate) struct FutureWaitInfo {
     pub(crate) ready_count: u64,
     pub(crate) total_pending: std::time::Duration,
     pub(crate) last_seen: std::time::Instant,
+    /// Serialized metadata JSON from MetaBuilder, empty string if none.
+    pub(crate) meta_json: String,
 }
 
 #[cfg(feature = "diagnostics")]
@@ -62,7 +66,12 @@ pub(crate) struct FuturePollEdgeInfo {
 // ── Recording functions ─────────────────────────────────
 
 #[cfg(feature = "diagnostics")]
-fn register_future(future_id: FutureId, resource: String, created_by_task_id: Option<TaskId>) {
+fn register_future(
+    future_id: FutureId,
+    resource: String,
+    created_by_task_id: Option<TaskId>,
+    meta_json: String,
+) {
     let mut registry = FUTURE_WAIT_REGISTRY.lock().unwrap();
     let Some(waits) = registry.as_mut() else {
         return;
@@ -76,6 +85,7 @@ fn register_future(future_id: FutureId, resource: String, created_by_task_id: Op
         ready_count: 0,
         total_pending: std::time::Duration::from_secs(0),
         last_seen: std::time::Instant::now(),
+        meta_json,
     });
 }
 
@@ -200,6 +210,18 @@ where
     PeepableFuture { inner: future }
 }
 
+#[cfg(not(feature = "diagnostics"))]
+pub(crate) fn peepable_with_meta<F, const N: usize>(
+    future: F,
+    _resource: impl Into<String>,
+    _meta: peeps_types::MetaBuilder<'_, N>,
+) -> PeepableFuture<F>
+where
+    F: Future,
+{
+    PeepableFuture { inner: future }
+}
+
 // ── PeepableFuture (diagnostics) ────────────────────────
 
 #[cfg(feature = "diagnostics")]
@@ -283,12 +305,25 @@ pub(crate) fn peepable<F>(future: F, resource: impl Into<String>) -> PeepableFut
 where
     F: Future,
 {
+    peepable_with_meta(future, resource, peeps_types::MetaBuilder::<0>::new())
+}
+
+#[cfg(feature = "diagnostics")]
+pub(crate) fn peepable_with_meta<F, const N: usize>(
+    future: F,
+    resource: impl Into<String>,
+    meta: peeps_types::MetaBuilder<'_, N>,
+) -> PeepableFuture<F>
+where
+    F: Future,
+{
     use std::sync::atomic::Ordering;
 
     let future_id = NEXT_FUTURE_ID.fetch_add(1, Ordering::Relaxed);
     let resource = resource.into();
     let task_id = crate::tasks::current_task_id();
-    register_future(future_id, resource.clone(), task_id);
+    let meta_json = meta.to_json_object();
+    register_future(future_id, resource.clone(), task_id, meta_json);
 
     // If created during another PeepableFuture's poll, record spawn edge.
     CURRENT_POLLING_FUTURE.with(|c| {
