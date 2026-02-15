@@ -40,11 +40,7 @@ pub fn init_named(process_name: impl Into<String>) {
     #[cfg(feature = "dashboard")]
     {
         if let Ok(addr) = std::env::var("PEEPS_DASHBOARD") {
-            dashboard_client::start_push_loop(
-                name,
-                addr,
-                std::time::Duration::from_secs(2),
-            );
+            dashboard_client::start_pull_loop(name, addr);
             return;
         }
     }

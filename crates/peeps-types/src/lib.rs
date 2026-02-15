@@ -554,13 +554,34 @@ pub enum SocketWaitDirection {
 #[derive(Debug, Clone, Facet)]
 #[repr(u8)]
 pub enum ResourceRefSnapshot {
-    Lock { process: String, name: String },
-    Mpsc { process: String, name: String },
-    Oneshot { process: String, name: String },
-    Watch { process: String, name: String },
-    Semaphore { process: String, name: String },
-    OnceCell { process: String, name: String },
-    RoamChannel { process: String, channel_id: u64 },
+    Lock {
+        process: String,
+        name: String,
+    },
+    Mpsc {
+        process: String,
+        name: String,
+    },
+    Oneshot {
+        process: String,
+        name: String,
+    },
+    Watch {
+        process: String,
+        name: String,
+    },
+    Semaphore {
+        process: String,
+        name: String,
+    },
+    OnceCell {
+        process: String,
+        name: String,
+    },
+    RoamChannel {
+        process: String,
+        channel_id: u64,
+    },
     Socket {
         process: String,
         fd: u64,
@@ -568,7 +589,9 @@ pub enum ResourceRefSnapshot {
         direction: Option<SocketWaitDirection>,
         peer: Option<String>,
     },
-    Unknown { label: String },
+    Unknown {
+        label: String,
+    },
 }
 
 /// Future waiting on a structured resource.
@@ -793,9 +816,9 @@ fn is_valid_meta_key(key: &str) -> bool {
     let bytes = key.as_bytes();
     !bytes.is_empty()
         && bytes.len() <= META_MAX_KEY_LEN
-        && bytes
-            .iter()
-            .all(|&b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'.' || b == b'-')
+        && bytes.iter().all(|&b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'.' || b == b'-'
+        })
 }
 
 /// A validated metadata entry stored on the stack.
@@ -867,8 +890,7 @@ impl<'a, const N: usize> MetaBuilder<'a, N> {
             out.push('"');
             json_escape_into(&mut out, entry.key);
             out.push_str("\":\"");
-            let value_str =
-                std::str::from_utf8(&entry.value_buf[..entry.value_len]).unwrap_or("");
+            let value_str = std::str::from_utf8(&entry.value_buf[..entry.value_len]).unwrap_or("");
             json_escape_into(&mut out, value_str);
             out.push('"');
         }
@@ -1103,6 +1125,26 @@ pub struct DeadlockCandidate {
     pub worst_wait_secs: f64,
     /// Number of tasks transitively blocked by this cycle.
     pub blocked_task_count: u32,
+}
+
+// ── Snapshot protocol types ──────────────────────────────────────
+
+/// Server-to-client: request a snapshot.
+#[derive(Debug, Clone, Facet)]
+pub struct SnapshotRequest {
+    pub r#type: String,
+    pub snapshot_id: i64,
+    pub timeout_ms: i64,
+}
+
+/// Client-to-server: snapshot reply envelope.
+#[derive(Debug, Clone, Facet)]
+pub struct SnapshotReply {
+    pub r#type: String,
+    pub snapshot_id: i64,
+    pub process: String,
+    pub pid: u32,
+    pub dump: ProcessDump,
 }
 
 // ── Dashboard payload ────────────────────────────────────────────

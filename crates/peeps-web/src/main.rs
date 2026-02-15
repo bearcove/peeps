@@ -10,11 +10,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
-use rusqlite::{Connection, params};
-use serde::{Deserialize, Serialize};
+use peeps_types::{SnapshotReply, SnapshotRequest};
+use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{Mutex, oneshot};
+use tokio::sync::{oneshot, Mutex};
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -48,40 +48,7 @@ pub(crate) struct InFlightSnapshot {
     completion_tx: Option<oneshot::Sender<()>>,
 }
 
-#[derive(Serialize)]
-struct SnapshotRequest {
-    r#type: &'static str,
-    snapshot_id: i64,
-    timeout_ms: i64,
-}
-
-#[derive(Deserialize)]
-struct SnapshotReply {
-    r#type: String,
-    snapshot_id: i64,
-    process: String,
-    pid: u32,
-    dump: serde_json::Value,
-}
-
-struct ProcessGraph {
-    nodes: Vec<GraphNode>,
-    edges: Vec<GraphEdge>,
-}
-
-struct GraphNode {
-    id: String,
-    kind: String,
-    process: String,
-    proc_key: String,
-    attrs_json: String,
-}
-
-struct GraphEdge {
-    src_id: String,
-    dst_id: String,
-    attrs_json: String,
-}
+use peeps_types::GraphSnapshot;
 
 pub(crate) const DEFAULT_TIMEOUT_MS: i64 = 1500;
 const MAX_SNAPSHOTS: i64 = 500;
@@ -189,11 +156,11 @@ pub(crate) async fn trigger_snapshot(state: &AppState) -> Result<(i64, usize), S
         });
 
         let req = SnapshotRequest {
-            r#type: "snapshot_request",
+            r#type: "snapshot_request".to_string(),
             snapshot_id,
             timeout_ms: DEFAULT_TIMEOUT_MS,
         };
-        let req_json = serde_json::to_vec(&req).map_err(|e| e.to_string())?;
+        let req_json = facet_json::to_vec(&req).map_err(|e| e.to_string())?;
 
         for conn in ctl.connections.values() {
             let _ = conn.tx.try_send(req_json.clone());
@@ -232,10 +199,7 @@ async fn finalize_snapshot(
     let now_ns = now_nanos();
 
     for proc_key in &in_flight.pending {
-        let still_connected = guard
-            .connections
-            .values()
-            .any(|c| &c.proc_key == proc_key);
+        let still_connected = guard.connections.values().any(|c| &c.proc_key == proc_key);
         let status = if still_connected {
             "timeout"
         } else {
@@ -345,10 +309,7 @@ async fn read_replies(
             .await
             .map_err(|e| format!("read frame payload: {e}"))?;
 
-        let json_str =
-            std::str::from_utf8(&frame).map_err(|e| format!("utf8 decode failed: {e}"))?;
-
-        let reply: SnapshotReply = match serde_json::from_str(json_str) {
+        let reply: SnapshotReply = match facet_json::from_slice(&frame) {
             Ok(r) => r,
             Err(e) => {
                 record_ingest_event(
@@ -407,10 +368,7 @@ async fn process_reply(state: &AppState, reply: &SnapshotReply, proc_key: &str) 
                     Some(reply.pid),
                     Some(proc_key),
                     "snapshot_id_mismatch",
-                    &format!(
-                        "expected snapshot_id={expected}, got {}",
-                        reply.snapshot_id
-                    ),
+                    &format!("expected snapshot_id={expected}, got {}", reply.snapshot_id),
                 );
                 return;
             }
@@ -432,7 +390,7 @@ async fn process_reply(state: &AppState, reply: &SnapshotReply, proc_key: &str) 
         }
     };
 
-    let graph = extract_graph(&reply.dump);
+    let graph = reply.dump.graph.as_ref();
 
     if let Err(e) = persist_reply(
         &state.db_path,
@@ -441,7 +399,7 @@ async fn process_reply(state: &AppState, reply: &SnapshotReply, proc_key: &str) 
         reply.pid,
         proc_key,
         now_ns,
-        &graph,
+        graph,
     ) {
         record_ingest_event(
             &state.db_path,
@@ -455,11 +413,12 @@ async fn process_reply(state: &AppState, reply: &SnapshotReply, proc_key: &str) 
         return;
     }
 
+    let (node_count, edge_count) = graph
+        .map(|g| (g.nodes.len(), g.edges.len()))
+        .unwrap_or((0, 0));
     eprintln!(
-        "[peeps-web] snapshot {snapshot_id}: reply from {} ({proc_key}): {} nodes, {} edges",
+        "[peeps-web] snapshot {snapshot_id}: reply from {} ({proc_key}): {node_count} nodes, {edge_count} edges",
         reply.process,
-        graph.nodes.len(),
-        graph.edges.len()
     );
 
     let mut ctl = state.snapshot_ctl.inner.lock().await;
@@ -475,62 +434,6 @@ async fn process_reply(state: &AppState, reply: &SnapshotReply, proc_key: &str) 
     }
 }
 
-// ── Graph extraction from dump ───────────────────────────────────
-
-fn extract_graph(dump: &serde_json::Value) -> ProcessGraph {
-    if let Some(graph_val) = dump.get("graph") {
-        if let (Some(nodes_arr), Some(edges_arr)) =
-            (graph_val.get("nodes"), graph_val.get("edges"))
-        {
-            if let (Some(nodes), Some(edges)) = (nodes_arr.as_array(), edges_arr.as_array()) {
-                let mut graph_nodes = Vec::with_capacity(nodes.len());
-                for n in nodes {
-                    if let (Some(id), Some(kind), Some(proc), Some(pk), Some(attrs)) = (
-                        n.get("id").and_then(|v| v.as_str()),
-                        n.get("kind").and_then(|v| v.as_str()),
-                        n.get("process").and_then(|v| v.as_str()),
-                        n.get("proc_key").and_then(|v| v.as_str()),
-                        n.get("attrs_json").and_then(|v| v.as_str()),
-                    ) {
-                        graph_nodes.push(GraphNode {
-                            id: id.to_string(),
-                            kind: kind.to_string(),
-                            process: proc.to_string(),
-                            proc_key: pk.to_string(),
-                            attrs_json: attrs.to_string(),
-                        });
-                    }
-                }
-
-                let mut graph_edges = Vec::with_capacity(edges.len());
-                for e in edges {
-                    if let (Some(src), Some(dst), Some(attrs)) = (
-                        e.get("src_id").and_then(|v| v.as_str()),
-                        e.get("dst_id").and_then(|v| v.as_str()),
-                        e.get("attrs_json").and_then(|v| v.as_str()),
-                    ) {
-                        graph_edges.push(GraphEdge {
-                            src_id: src.to_string(),
-                            dst_id: dst.to_string(),
-                            attrs_json: attrs.to_string(),
-                        });
-                    }
-                }
-
-                return ProcessGraph {
-                    nodes: graph_nodes,
-                    edges: graph_edges,
-                };
-            }
-        }
-    }
-
-    ProcessGraph {
-        nodes: Vec::new(),
-        edges: Vec::new(),
-    }
-}
-
 // ── Reply persistence ────────────────────────────────────────────
 
 fn persist_reply(
@@ -540,7 +443,7 @@ fn persist_reply(
     pid: u32,
     proc_key: &str,
     recv_at_ns: i64,
-    graph: &ProcessGraph,
+    graph: Option<&GraphSnapshot>,
 ) -> Result<(), String> {
     let mut conn = open_db(db_path);
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -552,67 +455,69 @@ fn persist_reply(
     )
     .map_err(|e| e.to_string())?;
 
-    let local_node_ids: BTreeSet<&str> = graph.nodes.iter().map(|n| n.id.as_str()).collect();
+    if let Some(graph) = graph {
+        let local_node_ids: BTreeSet<&str> = graph.nodes.iter().map(|n| n.id.as_str()).collect();
 
-    for node in &graph.nodes {
-        tx.execute(
-            "INSERT OR REPLACE INTO nodes (snapshot_id, id, kind, process, proc_key, attrs_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                snapshot_id,
-                node.id,
-                node.kind,
-                node.process,
-                node.proc_key,
-                node.attrs_json
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    for edge in &graph.edges {
-        let src_exists = local_node_ids.contains(edge.src_id.as_str())
-            || node_exists_in_snapshot(&tx, snapshot_id, &edge.src_id);
-        let dst_exists = local_node_ids.contains(edge.dst_id.as_str())
-            || node_exists_in_snapshot(&tx, snapshot_id, &edge.dst_id);
-
-        if src_exists && dst_exists {
+        for node in &graph.nodes {
             tx.execute(
-                "INSERT OR REPLACE INTO edges (snapshot_id, src_id, dst_id, kind, attrs_json)
-                 VALUES (?1, ?2, ?3, 'needs', ?4)",
-                params![snapshot_id, edge.src_id, edge.dst_id, edge.attrs_json],
-            )
-            .map_err(|e| e.to_string())?;
-        } else {
-            let (missing_side, referenced_proc_key) = if !src_exists && !dst_exists {
-                let src_pk = extract_proc_key(&edge.src_id);
-                let dst_pk = extract_proc_key(&edge.dst_id);
-                let rpk = resolve_referenced_proc_key_both(&tx, snapshot_id, src_pk, dst_pk);
-                ("both", rpk)
-            } else if !src_exists {
-                let pk = extract_proc_key(&edge.src_id);
-                ("src", pk.map(|s| s.to_string()))
-            } else {
-                let pk = extract_proc_key(&edge.dst_id);
-                ("dst", pk.map(|s| s.to_string()))
-            };
-
-            let reason = determine_unresolved_reason(&tx, snapshot_id, &referenced_proc_key);
-
-            tx.execute(
-                "INSERT OR REPLACE INTO unresolved_edges (snapshot_id, src_id, dst_id, missing_side, reason, referenced_proc_key, attrs_json)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT OR REPLACE INTO nodes (snapshot_id, id, kind, process, proc_key, attrs_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![
                     snapshot_id,
-                    edge.src_id,
-                    edge.dst_id,
-                    missing_side,
-                    reason,
-                    referenced_proc_key,
-                    edge.attrs_json
+                    node.id,
+                    node.kind,
+                    node.process,
+                    node.proc_key,
+                    node.attrs_json
                 ],
             )
             .map_err(|e| e.to_string())?;
+        }
+
+        for edge in &graph.edges {
+            let src_exists = local_node_ids.contains(edge.src_id.as_str())
+                || node_exists_in_snapshot(&tx, snapshot_id, &edge.src_id);
+            let dst_exists = local_node_ids.contains(edge.dst_id.as_str())
+                || node_exists_in_snapshot(&tx, snapshot_id, &edge.dst_id);
+
+            if src_exists && dst_exists {
+                tx.execute(
+                    "INSERT OR REPLACE INTO edges (snapshot_id, src_id, dst_id, kind, attrs_json)
+                     VALUES (?1, ?2, ?3, 'needs', ?4)",
+                    params![snapshot_id, edge.src_id, edge.dst_id, edge.attrs_json],
+                )
+                .map_err(|e| e.to_string())?;
+            } else {
+                let (missing_side, referenced_proc_key) = if !src_exists && !dst_exists {
+                    let src_pk = extract_proc_key(&edge.src_id);
+                    let dst_pk = extract_proc_key(&edge.dst_id);
+                    let rpk = resolve_referenced_proc_key_both(&tx, snapshot_id, src_pk, dst_pk);
+                    ("both", rpk)
+                } else if !src_exists {
+                    let pk = extract_proc_key(&edge.src_id);
+                    ("src", pk.map(|s| s.to_string()))
+                } else {
+                    let pk = extract_proc_key(&edge.dst_id);
+                    ("dst", pk.map(|s| s.to_string()))
+                };
+
+                let reason = determine_unresolved_reason(&tx, snapshot_id, &referenced_proc_key);
+
+                tx.execute(
+                    "INSERT OR REPLACE INTO unresolved_edges (snapshot_id, src_id, dst_id, missing_side, reason, referenced_proc_key, attrs_json)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        snapshot_id,
+                        edge.src_id,
+                        edge.dst_id,
+                        missing_side,
+                        reason,
+                        referenced_proc_key,
+                        edge.attrs_json
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
         }
     }
 

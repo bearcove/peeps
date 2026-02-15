@@ -776,6 +776,8 @@ name = "peeps-web"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "facet",
+ "facet-json",
  "peeps-types",
  "rusqlite",
  "serde",
