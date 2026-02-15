@@ -27,6 +27,7 @@ pub(crate) struct TaskInfo {
     pub(crate) name: String,
     pub(crate) parent_id: Option<TaskId>,
     pub(crate) spawned_at: std::time::Instant,
+    pub(crate) spawn_location: &'static std::panic::Location<'static>,
     pub(crate) state: std::sync::Mutex<TaskInfoState>,
 }
 
@@ -193,16 +194,6 @@ pub fn task_name(id: TaskId) -> Option<String> {
 }
 
 #[cfg(feature = "diagnostics")]
-#[inline]
-fn decorate_task_name(name: String, caller: &'static std::panic::Location<'static>) -> String {
-    let file = std::path::Path::new(caller.file())
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or(caller.file());
-    format!("{name} @ {file}:{}", caller.line())
-}
-
-#[cfg(feature = "diagnostics")]
 #[track_caller]
 pub fn spawn_tracked<F>(name: impl Into<String>, future: F) -> tokio::task::JoinHandle<F::Output>
 where
@@ -213,14 +204,14 @@ where
     use std::sync::Arc;
     use std::time::Instant;
 
-    let name = decorate_task_name(name.into(), std::panic::Location::caller());
     let task_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
     let parent_id = current_task_id();
     let task_info = Arc::new(TaskInfo {
         id: task_id,
-        name,
+        name: name.into(),
         parent_id,
         spawned_at: Instant::now(),
+        spawn_location: std::panic::Location::caller(),
         state: std::sync::Mutex::new(TaskInfoState {
             state: TaskState::Pending,
             poll_events: Vec::new(),

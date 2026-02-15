@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use peeps_types::{GraphEdgeSnapshot, GraphNodeSnapshot, GraphSnapshot};
+use peeps_types::{Edge, Node, GraphSt};, Node
 
 /// A validated node row ready for SQLite insertion.
 #[derive(Debug)]
@@ -94,10 +94,7 @@ pub fn project_graphs(
 /// Project a single process's graph snapshot into canonical rows.
 ///
 /// Convenience wrapper when you only have one process dump at a time.
-pub fn project_single_process(
-    process_name: &str,
-    graph: &GraphSnapshot,
-) -> ProjectionResult {
+pub fn project_single_process(process_name: &str, graph: &GraphSnapshot) -> ProjectionResult {
     let mut graphs = HashMap::new();
     graphs.insert(process_name.to_string(), graph);
     let mut responded = HashSet::new();
@@ -105,10 +102,7 @@ pub fn project_single_process(
     project_graphs(&graphs, &responded)
 }
 
-fn project_node(
-    node: &GraphNodeSnapshot,
-    errors: &mut Vec<IngestError>,
-) -> Option<ProjectedNode> {
+fn project_node(node: &Node, errors: &mut Vec<IngestError>) -> Option<ProjectedNode> {
     if node.kind.is_empty() {
         errors.push(IngestError {
             message: format!("node '{}' has empty kind", node.id),
@@ -141,7 +135,7 @@ fn project_node(
 }
 
 fn project_edge(
-    edge: &GraphEdgeSnapshot,
+    edge: &Edge,
     node_ids: &HashSet<String>,
     node_process: &HashMap<String, String>,
     responded_processes: &HashSet<String>,
@@ -174,10 +168,7 @@ fn project_edge(
     // Determine which endpoint is missing and whether that's an unresolved
     // (process didn't respond) or an ingest error (process responded but
     // the node wasn't in its graph).
-    for (missing_id, exists) in [
-        (&edge.src_id, src_exists),
-        (&edge.dst_id, dst_exists),
-    ] {
+    for (missing_id, exists) in [(&edge.src_id, src_exists), (&edge.dst_id, dst_exists)] {
         if exists {
             continue;
         }
@@ -213,10 +204,7 @@ fn project_edge(
 /// segment and looking it up in the known node→process mapping.
 ///
 /// ID format: `{kind}:{proc_key}:{rest...}`
-fn infer_process_from_id(
-    node_id: &str,
-    node_process: &HashMap<String, String>,
-) -> Option<String> {
+fn infer_process_from_id(node_id: &str, node_process: &HashMap<String, String>) -> Option<String> {
     // First: check if any existing node shares the same proc_key prefix.
     // Extract proc_key: skip first segment (kind), take second segment.
     let proc_key = extract_proc_key(node_id)?;
@@ -249,10 +237,10 @@ fn extract_proc_key(id: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use peeps_types::{GraphEdgeOrigin, GraphEdgeSnapshot, GraphNodeSnapshot, GraphSnapshot};
+    use peeps_types::{GraphEdgeOrigin, Edge, Node, GraphSt};, Node
 
-    fn make_node(id: &str, kind: &str, proc_key: &str) -> GraphNodeSnapshot {
-        GraphNodeSnapshot {
+    fn make_node(id: &str, kind: &str, proc_key: &str) -> Node {
+        Node {
             id: id.to_string(),
             kind: kind.to_string(),
             process: "test-process".to_string(),
@@ -262,8 +250,8 @@ mod tests {
         }
     }
 
-    fn make_edge(src: &str, dst: &str) -> GraphEdgeSnapshot {
-        GraphEdgeSnapshot {
+    fn make_edge(src: &str, dst: &str) -> Edge {
+        Edge {
             src_id: src.to_string(),
             dst_id: dst.to_string(),
             kind: "needs".to_string(),
@@ -325,7 +313,7 @@ mod tests {
                 make_node("task:app-1:1", "task", "app-1"),
                 make_node("task:app-1:2", "task", "app-1"),
             ],
-            edges: vec![GraphEdgeSnapshot {
+            edges: vec![Edge {
                 src_id: "task:app-1:1".to_string(),
                 dst_id: "task:app-1:2".to_string(),
                 kind: "spawned".to_string(),
@@ -338,7 +326,9 @@ mod tests {
         let result = project_single_process("test-process", &graph);
         assert!(result.edges.is_empty());
         assert_eq!(result.errors.len(), 1);
-        assert!(result.errors[0].message.contains("only 'needs' is accepted"));
+        assert!(result.errors[0]
+            .message
+            .contains("only 'needs' is accepted"));
     }
 
     #[test]
@@ -352,7 +342,10 @@ mod tests {
         let result = project_single_process("test-process", &graph);
         assert!(result.edges.is_empty());
         assert_eq!(result.unresolved_edges.len(), 1);
-        assert_eq!(result.unresolved_edges[0].missing_id, "response:other-2:conn_1:5");
+        assert_eq!(
+            result.unresolved_edges[0].missing_id,
+            "response:other-2:conn_1:5"
+        );
     }
 
     #[test]
@@ -379,15 +372,14 @@ mod tests {
     #[test]
     fn multi_process_projection() {
         let graph_a = GraphSnapshot {
-            nodes: vec![
-                make_node("request:app-1:conn_1:5", "request", "app-1"),
-            ],
-            edges: vec![make_edge("request:app-1:conn_1:5", "response:svc-2:conn_1:5")],
+            nodes: vec![make_node("request:app-1:conn_1:5", "request", "app-1")],
+            edges: vec![make_edge(
+                "request:app-1:conn_1:5",
+                "response:svc-2:conn_1:5",
+            )],
         };
         let graph_b = GraphSnapshot {
-            nodes: vec![
-                make_node("response:svc-2:conn_1:5", "response", "svc-2"),
-            ],
+            nodes: vec![make_node("response:svc-2:conn_1:5", "response", "svc-2")],
             edges: vec![],
         };
 

@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
 use peeps_types::{
-    canonical_id, meta_key, Direction, Diagnostics, GraphEdgeOrigin, GraphEdgeSnapshot,
-    GraphNodeSnapshot, MetaBuilder, MetaValue, ProcessDump,
+    canonical_id, meta_key, Direction, Edge, GraphEdgeOrigin, MetaBuilder, MetaValue, Node,
     SessionSnapshot,
 };
 
@@ -11,7 +10,7 @@ pub fn collect_graph(process_name: &str) -> Option<peeps_types::GraphSnapshot> {
     let pid = std::process::id();
     let proc_key = peeps_types::make_proc_key(process_name, pid);
 
-    let mut graph = peeps_tasks::emit_graph(&proc_key);
+    let mut graph = peeps_tasks::emit_graph(process_name, &proc_key);
     let roam = peeps_types::collect_roam_session();
     emit_roam_graph(process_name, &proc_key, &roam, &mut graph);
 
@@ -19,222 +18,6 @@ pub fn collect_graph(process_name: &str) -> Option<peeps_types::GraphSnapshot> {
         None
     } else {
         Some(graph)
-    }
-}
-
-/// Manually collect a diagnostic dump.
-pub fn collect_dump(process_name: &str, custom: HashMap<String, String>) -> ProcessDump {
-    let timestamp = format_timestamp();
-
-    let tasks = peeps_tasks::snapshot_all_tasks();
-    let wake_edges = peeps_tasks::snapshot_wake_edges();
-    let future_wake_edges = peeps_tasks::snapshot_future_wake_edges();
-    let future_waits = peeps_tasks::snapshot_future_waits();
-    let future_spawn_edges = peeps_tasks::snapshot_future_spawn_edges();
-    let future_poll_edges = peeps_tasks::snapshot_future_poll_edges();
-    let future_resume_edges = peeps_tasks::snapshot_future_resume_edges();
-    let threads = peeps_threads::collect_all_thread_stacks();
-
-    #[cfg(feature = "locks")]
-    let locks = Some(peeps_locks::snapshot_lock_diagnostics());
-    #[cfg(not(feature = "locks"))]
-    let locks = None;
-
-    let sync = {
-        let snap = peeps_sync::snapshot_all();
-        if snap.mpsc_channels.is_empty()
-            && snap.oneshot_channels.is_empty()
-            && snap.watch_channels.is_empty()
-            && snap.once_cells.is_empty()
-        {
-            None
-        } else {
-            Some(snap)
-        }
-    };
-
-    // Collect roam diagnostics from inventory-registered sources
-    let all_diags = peeps_types::collect_all_diagnostics();
-    let mut roam = None;
-    let mut shm = None;
-    for diag in all_diags {
-        match diag {
-            Diagnostics::RoamSession(s) => roam = Some(s),
-            Diagnostics::RoamShm(s) => shm = Some(s),
-        }
-    }
-
-    // Extract cross-process request parent edges from incoming request metadata.
-    let request_parents = extract_request_parents(process_name, &roam);
-    let future_resource_edges = collect_future_resource_edges(process_name, &future_waits);
-
-    let pid = std::process::id();
-    let proc_key = peeps_types::make_proc_key(process_name, pid);
-
-    // Emit canonical graph from task/future instrumentation
-    let mut graph = peeps_tasks::emit_graph(&proc_key);
-    // Merge RPC request/response and roam channel nodes/edges
-    emit_roam_graph(process_name, &proc_key, &roam, &mut graph);
-    let graph = if graph.nodes.is_empty() && graph.edges.is_empty() {
-        None
-    } else {
-        Some(graph)
-    };
-
-    ProcessDump {
-        process_name: process_name.to_string(),
-        pid,
-        timestamp,
-        tasks,
-        wake_edges,
-        future_wake_edges,
-        future_waits,
-        threads,
-        locks,
-        sync,
-        roam,
-        shm,
-        future_spawn_edges,
-        future_poll_edges,
-        future_resume_edges,
-        future_resource_edges,
-        request_parents,
-        graph,
-        custom,
-    }
-}
-
-fn collect_future_resource_edges(
-    process_name: &str,
-    waits: &[peeps_types::FutureWaitSnapshot],
-) -> Vec<peeps_types::FutureResourceEdgeSnapshot> {
-    waits
-        .iter()
-        .map(|w| {
-            let resource = classify_resource_ref(process_name, &w.resource);
-            peeps_types::FutureResourceEdgeSnapshot {
-                future_id: w.future_id,
-                resource,
-                wait_count: w.pending_count,
-                total_wait_secs: w.total_pending_secs,
-                last_wait_age_secs: w.last_seen_age_secs,
-            }
-        })
-        .collect()
-}
-
-fn classify_resource_ref(process_name: &str, raw: &str) -> peeps_types::ResourceRefSnapshot {
-    use peeps_types::{ResourceRefSnapshot, SocketWaitDirection};
-
-    if let Some(fd) = raw.strip_prefix("socket:").and_then(|s| s.parse::<u64>().ok()) {
-        return ResourceRefSnapshot::Socket {
-            process: process_name.to_string(),
-            fd,
-            label: Some(raw.to_string()),
-            direction: None,
-            peer: None,
-        };
-    }
-    if raw.starts_with("socket.") || raw.contains(".socket.") || raw == "socket" {
-        let direction = if raw.contains(".read") || raw.contains(".recv") {
-            Some(SocketWaitDirection::Readable)
-        } else if raw.contains(".write")
-            || raw.contains(".send")
-            || raw.contains(".flush")
-            || raw.contains(".connect")
-        {
-            Some(SocketWaitDirection::Writable)
-        } else {
-            None
-        };
-        return ResourceRefSnapshot::Socket {
-            process: process_name.to_string(),
-            fd: 0,
-            label: Some(raw.to_string()),
-            direction,
-            peer: None,
-        };
-    }
-
-    if raw.starts_with("lock:") || raw.starts_with("lock.") {
-        return ResourceRefSnapshot::Lock {
-            process: process_name.to_string(),
-            name: raw
-                .strip_prefix("lock:")
-                .or_else(|| raw.strip_prefix("lock."))
-                .unwrap_or(raw)
-                .to_string(),
-        };
-    }
-    if raw.starts_with("mpsc:") || raw.starts_with("mpsc.") || raw.starts_with("channel.") {
-        return ResourceRefSnapshot::Mpsc {
-            process: process_name.to_string(),
-            name: raw
-                .strip_prefix("mpsc:")
-                .or_else(|| raw.strip_prefix("mpsc."))
-                .or_else(|| raw.strip_prefix("channel."))
-                .unwrap_or(raw)
-                .to_string(),
-        };
-    }
-    if raw.starts_with("oneshot:") || raw.starts_with("oneshot.") {
-        return ResourceRefSnapshot::Oneshot {
-            process: process_name.to_string(),
-            name: raw
-                .strip_prefix("oneshot:")
-                .or_else(|| raw.strip_prefix("oneshot."))
-                .unwrap_or(raw)
-                .to_string(),
-        };
-    }
-    if raw.starts_with("watch:") || raw.starts_with("watch.") {
-        return ResourceRefSnapshot::Watch {
-            process: process_name.to_string(),
-            name: raw
-                .strip_prefix("watch:")
-                .or_else(|| raw.strip_prefix("watch."))
-                .unwrap_or(raw)
-                .to_string(),
-        };
-    }
-    if raw.starts_with("semaphore:") || raw.starts_with("semaphore.") {
-        return ResourceRefSnapshot::Semaphore {
-            process: process_name.to_string(),
-            name: raw
-                .strip_prefix("semaphore:")
-                .or_else(|| raw.strip_prefix("semaphore."))
-                .unwrap_or(raw)
-                .to_string(),
-        };
-    }
-    if raw.starts_with("once_cell:")
-        || raw.starts_with("once_cell.")
-        || raw.starts_with("oncecell:")
-        || raw.starts_with("oncecell.")
-    {
-        return ResourceRefSnapshot::OnceCell {
-            process: process_name.to_string(),
-            name: raw
-                .strip_prefix("once_cell:")
-                .or_else(|| raw.strip_prefix("once_cell."))
-                .or_else(|| raw.strip_prefix("oncecell:"))
-                .or_else(|| raw.strip_prefix("oncecell."))
-                .unwrap_or(raw)
-                .to_string(),
-        };
-    }
-    if let Some(id) = raw
-        .strip_prefix("roam.channel.")
-        .and_then(|s| s.parse::<u64>().ok())
-    {
-        return ResourceRefSnapshot::RoamChannel {
-            process: process_name.to_string(),
-            channel_id: id,
-        };
-    }
-
-    ResourceRefSnapshot::Unknown {
-        label: raw.to_string(),
     }
 }
 
@@ -252,6 +35,9 @@ fn emit_roam_graph(
         return;
     };
 
+    let mut request_node_ids: HashMap<(String, u64), String> = HashMap::new();
+    let mut request_span_ids: HashMap<(String, u64), String> = HashMap::new();
+
     // ── RPC request/response nodes ──────────────────────────────
     for conn in &session.connections {
         let conn_name = &conn.name;
@@ -266,18 +52,28 @@ fn emit_roam_graph(
             let elapsed_ns = (req.elapsed_secs * 1_000_000_000.0) as u64;
             let correlation = canonical_id::correlation_key(conn_name, req.request_id);
 
+            let span_id = req
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get(peeps_types::PEEPS_SPAN_ID_KEY))
+                .cloned();
+
+            if let Some(ref sid) = span_id {
+                request_span_ids.insert((conn_name.clone(), req.request_id), sid.clone());
+            }
+
             match req.direction {
                 Direction::Outgoing => {
-                    let attrs = build_request_attrs(
-                        req,
-                        method,
-                        elapsed_ns,
-                        conn_name,
-                        peer,
-                        &correlation,
-                    );
-                    graph.nodes.push(GraphNodeSnapshot {
-                        id: canonical_id::request(proc_key, conn_name, req.request_id),
+                    let node_id = match &span_id {
+                        Some(sid) => canonical_id::request_from_span_id(sid),
+                        None => peeps_types::new_node_id("request"),
+                    };
+                    request_node_ids
+                        .insert((conn_name.to_string(), req.request_id), node_id.clone());
+                    let attrs =
+                        build_request_attrs(req, method, elapsed_ns, conn_name, peer, &correlation);
+                    graph.nodes.push(Node {
+                        id: node_id,
                         kind: "request".to_string(),
                         process: process_name.to_string(),
                         proc_key: proc_key.to_string(),
@@ -294,9 +90,8 @@ fn emit_roam_graph(
                         peer,
                         &correlation,
                     );
-                    let response_id =
-                        canonical_id::response(proc_key, conn_name, req.request_id);
-                    graph.nodes.push(GraphNodeSnapshot {
+                    let response_id = peeps_types::new_node_id("response");
+                    graph.nodes.push(Node {
                         id: response_id.clone(),
                         kind: "response".to_string(),
                         process: process_name.to_string(),
@@ -305,19 +100,23 @@ fn emit_roam_graph(
                         attrs_json: attrs,
                     });
 
-                    // request → response edge
-                    let request_node_id =
-                        resolve_caller_request_id(req, proc_key, conn_name);
-                    graph.edges.push(GraphEdgeSnapshot {
-                        src_id: request_node_id,
-                        dst_id: response_id.clone(),
+                    // request → response edge: use span_id to reference caller's request node
+                    let caller_request_id = match &span_id {
+                        Some(sid) => canonical_id::request_from_span_id(sid),
+                        None => peeps_types::new_node_id("request"),
+                    };
+                    request_node_ids.insert(
+                        (conn_name.to_string(), req.request_id),
+                        caller_request_id.clone(),
+                    );
+                    graph.edges.push(Edge {
+                        src_id: caller_request_id,
+                        dst_id: response_id,
                         kind: "needs".to_string(),
                         observed_at_ns: None,
                         attrs_json: "{}".to_string(),
                         origin: GraphEdgeOrigin::Explicit,
                     });
-
-                    // Task linkage stays in attrs metadata, not canonical graph edges.
                 }
             }
         }
@@ -336,10 +135,19 @@ fn emit_roam_graph(
             peeps_types::ChannelDir::Tx => "roam_channel_tx",
             peeps_types::ChannelDir::Rx => "roam_channel_rx",
         };
-        let node_id = canonical_id::roam_channel(proc_key, ch.channel_id, endpoint);
+        // Derive channel node ID from span_id (as chain_id) for cross-process matching
+        let conn_for_channel = find_connection_for_channel(&session.connections, ch.channel_id);
+        let chain_id = ch.request_id.and_then(|rid| {
+            conn_for_channel.and_then(|cn| request_span_ids.get(&(cn.to_string(), rid)).cloned())
+        });
+
+        let node_id = match &chain_id {
+            Some(cid) => canonical_id::roam_channel(cid, ch.channel_id, endpoint),
+            None => peeps_types::new_node_id(kind),
+        };
         let attrs = build_channel_attrs(ch);
 
-        graph.nodes.push(GraphNodeSnapshot {
+        graph.nodes.push(Node {
             id: node_id.clone(),
             kind: kind.to_string(),
             process: process_name.to_string(),
@@ -352,21 +160,21 @@ fn emit_roam_graph(
             attrs_json: attrs,
         });
 
-        // Task linkage stays in attrs metadata, not canonical graph edges.
-
         // request → endpoint edge
         if let Some(request_id) = ch.request_id {
-            if let Some(conn_name) =
-                find_connection_for_channel(&session.connections, ch.channel_id)
-            {
-                graph.edges.push(GraphEdgeSnapshot {
-                    src_id: canonical_id::request(proc_key, conn_name, request_id),
-                    dst_id: node_id.clone(),
-                    kind: "needs".to_string(),
-                    observed_at_ns: None,
-                    attrs_json: "{}".to_string(),
-                    origin: GraphEdgeOrigin::Explicit,
-                });
+            if let Some(conn_name) = conn_for_channel {
+                if let Some(req_node_id) =
+                    request_node_ids.get(&(conn_name.to_string(), request_id))
+                {
+                    graph.edges.push(Edge {
+                        src_id: req_node_id.clone(),
+                        dst_id: node_id.clone(),
+                        kind: "needs".to_string(),
+                        observed_at_ns: None,
+                        attrs_json: "{}".to_string(),
+                        origin: GraphEdgeOrigin::Explicit,
+                    });
+                }
             }
         }
 
@@ -383,7 +191,7 @@ fn emit_roam_graph(
     // tx → rx edges
     for (channel_id, tx_node_id) in &tx_ids {
         if let Some(rx_node_id) = rx_ids.get(channel_id) {
-            graph.edges.push(GraphEdgeSnapshot {
+            graph.edges.push(Edge {
                 src_id: tx_node_id.clone(),
                 dst_id: rx_node_id.clone(),
                 kind: "needs".to_string(),
@@ -535,29 +343,6 @@ fn build_channel_attrs(ch: &peeps_types::RoamChannelSnapshot) -> String {
     out
 }
 
-/// Resolve the caller's request node ID from propagated metadata.
-fn resolve_caller_request_id(
-    req: &peeps_types::RequestSnapshot,
-    local_proc_key: &str,
-    local_conn: &str,
-) -> String {
-    if let Some(ref meta) = req.metadata {
-        let caller_process = meta.get(peeps_types::PEEPS_CALLER_PROCESS_KEY);
-        let caller_connection = meta.get(peeps_types::PEEPS_CALLER_CONNECTION_KEY);
-        let caller_request_id = meta
-            .get(peeps_types::PEEPS_CALLER_REQUEST_ID_KEY)
-            .and_then(|v| v.parse::<u64>().ok());
-
-        if let (Some(parent_process), Some(parent_connection), Some(parent_request_id)) =
-            (caller_process, caller_connection, caller_request_id)
-        {
-            let caller_proc_key = peeps_types::sanitize_id_segment(parent_process);
-            return canonical_id::request(&caller_proc_key, parent_connection, parent_request_id);
-        }
-    }
-    canonical_id::request(local_proc_key, local_conn, req.request_id)
-}
-
 /// Find which connection owns a given channel_id.
 fn find_connection_for_channel<'a>(
     connections: &'a [peeps_types::ConnectionSnapshot],
@@ -661,49 +446,6 @@ fn json_kv_raw(out: &mut String, key: &str, raw_value: &str, first: bool) {
     out.push_str(raw_value);
 }
 
-// ── Request parent extraction ───────────────────────────────────
-
-/// Extract `RequestParentSnapshot` entries from incoming requests that carry
-/// explicit caller identity metadata (`peeps.caller_process`, `peeps.caller_connection`,
-/// `peeps.caller_request_id`).
-fn extract_request_parents(
-    process_name: &str,
-    roam: &Option<peeps_types::SessionSnapshot>,
-) -> Vec<peeps_types::RequestParentSnapshot> {
-    let Some(session) = roam else {
-        return vec![];
-    };
-    let mut parents = Vec::new();
-    for conn in &session.connections {
-        for req in &conn.in_flight {
-            if !matches!(req.direction, peeps_types::Direction::Incoming) {
-                continue;
-            }
-            let Some(ref meta) = req.metadata else {
-                continue;
-            };
-            let caller_process = meta.get(peeps_types::PEEPS_CALLER_PROCESS_KEY);
-            let caller_connection = meta.get(peeps_types::PEEPS_CALLER_CONNECTION_KEY);
-            let caller_request_id = meta
-                .get(peeps_types::PEEPS_CALLER_REQUEST_ID_KEY)
-                .and_then(|v| v.parse::<u64>().ok());
-            if let (Some(parent_process), Some(parent_connection), Some(parent_request_id)) =
-                (caller_process, caller_connection, caller_request_id)
-            {
-                parents.push(peeps_types::RequestParentSnapshot {
-                    child_process: process_name.to_string(),
-                    child_connection: conn.name.clone(),
-                    child_request_id: req.request_id,
-                    parent_process: parent_process.clone(),
-                    parent_connection: parent_connection.clone(),
-                    parent_request_id,
-                });
-            }
-        }
-    }
-    parents
-}
-
 fn format_timestamp() -> String {
     let d = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -729,416 +471,4 @@ fn format_timestamp() -> String {
     let y = if m <= 2 { y + 1 } else { y };
 
     format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}.{millis:03}Z")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use peeps_types::{
-        ChannelDir, ChannelSnapshot, ConnectionSnapshot, Direction, GraphSnapshot,
-        RoamChannelSnapshot, RequestSnapshot, SessionSnapshot, TransportStats,
-    };
-
-    fn make_transport() -> TransportStats {
-        TransportStats {
-            frames_sent: 0,
-            frames_received: 0,
-            bytes_sent: 0,
-            bytes_received: 0,
-            last_sent_ago_secs: None,
-            last_recv_ago_secs: None,
-        }
-    }
-
-    fn empty_graph() -> GraphSnapshot {
-        GraphSnapshot::empty()
-    }
-
-    #[test]
-    fn emit_outgoing_request_node() {
-        let session = SessionSnapshot {
-            connections: vec![ConnectionSnapshot {
-                name: "conn_1".to_string(),
-                peer_name: Some("backend".to_string()),
-                age_secs: 5.0,
-                total_completed: 10,
-                max_concurrent_requests: 32,
-                initial_credit: 65536,
-                in_flight: vec![RequestSnapshot {
-                    request_id: 42,
-                    method_name: Some("get_page".to_string()),
-                    method_id: 3,
-                    direction: Direction::Outgoing,
-                    elapsed_secs: 0.1,
-                    task_id: Some(5),
-                    task_name: Some("caller".to_string()),
-                    metadata: None,
-                    args: Some(HashMap::from([
-                        ("path".to_string(), "/index.html".to_string()),
-                    ])),
-                    backtrace: None,
-                    server_task_id: None,
-                    server_task_name: None,
-                }],
-                recent_completions: vec![],
-                channels: vec![],
-                transport: make_transport(),
-                channel_credits: vec![],
-            }],
-            method_names: HashMap::new(),
-            channel_details: vec![],
-        };
-
-        let mut graph = empty_graph();
-        emit_roam_graph("frontend", "frontend-100", &Some(session), &mut graph);
-
-        assert_eq!(graph.nodes.len(), 1);
-        assert_eq!(graph.nodes[0].id, "request:frontend-100:conn_1:42");
-        assert_eq!(graph.nodes[0].kind, "request");
-        assert!(graph.nodes[0].attrs_json.contains("\"request_id\":42"));
-        assert!(graph.nodes[0].attrs_json.contains("\"method\":\"get_page\""));
-        assert!(graph.nodes[0].attrs_json.contains("\"direction\":\"outgoing\""));
-        assert!(graph.nodes[0].attrs_json.contains("\"correlation_key\":\"conn_1:42\""));
-        assert!(graph.nodes[0].attrs_json.contains("\"args_preview\":\"path: /index.html\""));
-        assert!(graph.edges.is_empty());
-    }
-
-    #[test]
-    fn emit_incoming_response_node_and_edges() {
-        let mut meta = HashMap::new();
-        meta.insert(
-            peeps_types::PEEPS_CALLER_PROCESS_KEY.to_string(),
-            "frontend".to_string(),
-        );
-        meta.insert(
-            peeps_types::PEEPS_CALLER_CONNECTION_KEY.to_string(),
-            "conn_1".to_string(),
-        );
-        meta.insert(
-            peeps_types::PEEPS_CALLER_REQUEST_ID_KEY.to_string(),
-            "42".to_string(),
-        );
-
-        let session = SessionSnapshot {
-            connections: vec![ConnectionSnapshot {
-                name: "conn_2".to_string(),
-                peer_name: Some("frontend".to_string()),
-                age_secs: 5.0,
-                total_completed: 10,
-                max_concurrent_requests: 32,
-                initial_credit: 65536,
-                in_flight: vec![RequestSnapshot {
-                    request_id: 7,
-                    method_name: Some("get_page".to_string()),
-                    method_id: 3,
-                    direction: Direction::Incoming,
-                    elapsed_secs: 0.05,
-                    task_id: Some(20),
-                    task_name: Some("handler".to_string()),
-                    metadata: Some(meta),
-                    args: None,
-                    backtrace: None,
-                    server_task_id: Some(20),
-                    server_task_name: Some("handler".to_string()),
-                }],
-                recent_completions: vec![],
-                channels: vec![],
-                transport: make_transport(),
-                channel_credits: vec![],
-            }],
-            method_names: HashMap::new(),
-            channel_details: vec![],
-        };
-
-        let mut graph = empty_graph();
-        emit_roam_graph("backend", "backend-200", &Some(session), &mut graph);
-
-        // Should have 1 response node
-        assert_eq!(graph.nodes.len(), 1);
-        assert_eq!(graph.nodes[0].id, "response:backend-200:conn_2:7");
-        assert_eq!(graph.nodes[0].kind, "response");
-        assert!(graph.nodes[0].attrs_json.contains("\"status\":\"in_flight\""));
-        assert!(graph.nodes[0].attrs_json.contains("\"correlation_key\":\"conn_2:7\""));
-        assert!(graph.nodes[0].attrs_json.contains("\"server_task_id\":20"));
-
-        // Should have 1 edge: request→response
-        assert_eq!(graph.edges.len(), 1);
-        // request→response uses caller metadata to build cross-process ID
-        assert_eq!(graph.edges[0].src_id, "request:frontend:conn_1:42");
-        assert_eq!(graph.edges[0].dst_id, "response:backend-200:conn_2:7");
-        assert_eq!(graph.edges[0].kind, "needs");
-    }
-
-    #[test]
-    fn emit_roam_channel_nodes_and_edges() {
-        let session = SessionSnapshot {
-            connections: vec![ConnectionSnapshot {
-                name: "conn_1".to_string(),
-                peer_name: None,
-                age_secs: 1.0,
-                total_completed: 0,
-                max_concurrent_requests: 10,
-                initial_credit: 65536,
-                in_flight: vec![],
-                recent_completions: vec![],
-                channels: vec![ChannelSnapshot {
-                    channel_id: 99,
-                    direction: ChannelDir::Tx,
-                    age_secs: 0.5,
-                    request_id: Some(42),
-                }],
-                transport: make_transport(),
-                channel_credits: vec![],
-            }],
-            method_names: HashMap::new(),
-            channel_details: vec![
-                RoamChannelSnapshot {
-                    channel_id: 99,
-                    name: "events".to_string(),
-                    direction: ChannelDir::Tx,
-                    age_secs: 0.5,
-                    request_id: Some(42),
-                    task_id: Some(10),
-                    task_name: Some("sender".to_string()),
-                    queue_depth: Some(5),
-                    closed: false,
-                },
-                RoamChannelSnapshot {
-                    channel_id: 99,
-                    name: "events".to_string(),
-                    direction: ChannelDir::Rx,
-                    age_secs: 0.5,
-                    request_id: Some(42),
-                    task_id: Some(11),
-                    task_name: Some("receiver".to_string()),
-                    queue_depth: None,
-                    closed: false,
-                },
-            ],
-        };
-
-        let mut graph = empty_graph();
-        emit_roam_graph("app", "app-300", &Some(session), &mut graph);
-
-        // 2 channel endpoint nodes
-        assert_eq!(graph.nodes.len(), 2);
-        let tx_node = graph.nodes.iter().find(|n| n.kind == "roam_channel_tx").unwrap();
-        let rx_node = graph.nodes.iter().find(|n| n.kind == "roam_channel_rx").unwrap();
-        assert_eq!(tx_node.id, "roam-channel:app-300:99:tx");
-        assert_eq!(rx_node.id, "roam-channel:app-300:99:rx");
-        assert!(tx_node.attrs_json.contains("\"queue_depth\":5"));
-        assert!(rx_node.attrs_json.contains("\"queue_depth\":null"));
-
-        // Edges: request→tx, request→rx, tx→rx
-        assert_eq!(graph.edges.len(), 3);
-        let has_edge = |src: &str, dst: &str| graph.edges.iter().any(|e| e.src_id == src && e.dst_id == dst);
-        assert!(has_edge("request:app-300:conn_1:42", "roam-channel:app-300:99:tx"));
-        assert!(has_edge("request:app-300:conn_1:42", "roam-channel:app-300:99:rx"));
-        assert!(has_edge("roam-channel:app-300:99:tx", "roam-channel:app-300:99:rx"));
-    }
-
-    #[test]
-    fn emit_no_graph_when_no_session() {
-        let mut graph = empty_graph();
-        emit_roam_graph("app", "app-100", &None, &mut graph);
-        assert!(graph.nodes.is_empty());
-        assert!(graph.edges.is_empty());
-    }
-
-    #[test]
-    fn args_preview_elides_large_values() {
-        let large_value = "x".repeat(300);
-        let args = Some(HashMap::from([("data".to_string(), large_value)]));
-        let preview = format_args_preview(&args);
-        assert!(preview.contains("bytes elided"));
-        assert!(preview.len() < 300);
-    }
-
-    #[test]
-    fn method_resolved_from_method_names_map() {
-        let mut method_names = HashMap::new();
-        method_names.insert(5u64, "subscribe".to_string());
-
-        let session = SessionSnapshot {
-            connections: vec![ConnectionSnapshot {
-                name: "conn_1".to_string(),
-                peer_name: None,
-                age_secs: 1.0,
-                total_completed: 0,
-                max_concurrent_requests: 10,
-                initial_credit: 65536,
-                in_flight: vec![RequestSnapshot {
-                    request_id: 1,
-                    method_name: None,
-                    method_id: 5,
-                    direction: Direction::Outgoing,
-                    elapsed_secs: 0.01,
-                    task_id: None,
-                    task_name: None,
-                    metadata: None,
-                    args: None,
-                    backtrace: None,
-                    server_task_id: None,
-                    server_task_name: None,
-                }],
-                recent_completions: vec![],
-                channels: vec![],
-                transport: make_transport(),
-                channel_credits: vec![],
-            }],
-            method_names,
-            channel_details: vec![],
-        };
-
-        let mut graph = empty_graph();
-        emit_roam_graph("app", "app-100", &Some(session), &mut graph);
-
-        assert_eq!(graph.nodes.len(), 1);
-        assert!(graph.nodes[0].attrs_json.contains("\"method\":\"subscribe\""));
-    }
-
-    #[test]
-    fn extract_request_parents_from_incoming_metadata() {
-        let mut meta = HashMap::new();
-        meta.insert(
-            peeps_types::PEEPS_CALLER_PROCESS_KEY.to_string(),
-            "frontend".to_string(),
-        );
-        meta.insert(
-            peeps_types::PEEPS_CALLER_CONNECTION_KEY.to_string(),
-            "conn-a".to_string(),
-        );
-        meta.insert(
-            peeps_types::PEEPS_CALLER_REQUEST_ID_KEY.to_string(),
-            "42".to_string(),
-        );
-
-        let session = SessionSnapshot {
-            connections: vec![ConnectionSnapshot {
-                name: "conn-b".to_string(),
-                peer_name: None,
-                age_secs: 1.0,
-                total_completed: 0,
-                max_concurrent_requests: 10,
-                initial_credit: 65536,
-                in_flight: vec![RequestSnapshot {
-                    request_id: 7,
-                    method_name: Some("get_page".to_string()),
-                    method_id: 1,
-                    direction: Direction::Incoming,
-                    elapsed_secs: 0.5,
-                    task_id: Some(10),
-                    task_name: Some("handler".to_string()),
-                    metadata: Some(meta),
-                    args: None,
-                    backtrace: None,
-                    server_task_id: Some(10),
-                    server_task_name: Some("handler".to_string()),
-                }],
-                recent_completions: vec![],
-                channels: vec![],
-                transport: make_transport(),
-                channel_credits: vec![],
-            }],
-            method_names: HashMap::new(),
-            channel_details: vec![],
-        };
-
-        let parents = extract_request_parents("backend", &Some(session));
-        assert_eq!(parents.len(), 1);
-        assert_eq!(parents[0].child_process, "backend");
-        assert_eq!(parents[0].child_connection, "conn-b");
-        assert_eq!(parents[0].child_request_id, 7);
-        assert_eq!(parents[0].parent_process, "frontend");
-        assert_eq!(parents[0].parent_connection, "conn-a");
-        assert_eq!(parents[0].parent_request_id, 42);
-    }
-
-    #[test]
-    fn extract_request_parents_skips_outgoing() {
-        let mut meta = HashMap::new();
-        meta.insert(
-            peeps_types::PEEPS_CALLER_PROCESS_KEY.to_string(),
-            "other".to_string(),
-        );
-        meta.insert(
-            peeps_types::PEEPS_CALLER_CONNECTION_KEY.to_string(),
-            "conn".to_string(),
-        );
-        meta.insert(
-            peeps_types::PEEPS_CALLER_REQUEST_ID_KEY.to_string(),
-            "1".to_string(),
-        );
-
-        let session = SessionSnapshot {
-            connections: vec![ConnectionSnapshot {
-                name: "conn".to_string(),
-                peer_name: None,
-                age_secs: 1.0,
-                total_completed: 0,
-                max_concurrent_requests: 10,
-                initial_credit: 65536,
-                in_flight: vec![RequestSnapshot {
-                    request_id: 1,
-                    method_name: None,
-                    method_id: 1,
-                    direction: Direction::Outgoing,
-                    elapsed_secs: 0.5,
-                    task_id: None,
-                    task_name: None,
-                    metadata: Some(meta),
-                    args: None,
-                    backtrace: None,
-                    server_task_id: None,
-                    server_task_name: None,
-                }],
-                recent_completions: vec![],
-                channels: vec![],
-                transport: make_transport(),
-                channel_credits: vec![],
-            }],
-            method_names: HashMap::new(),
-            channel_details: vec![],
-        };
-
-        let parents = extract_request_parents("app", &Some(session));
-        assert!(parents.is_empty());
-    }
-
-    #[test]
-    fn extract_request_parents_skips_missing_metadata() {
-        let session = SessionSnapshot {
-            connections: vec![ConnectionSnapshot {
-                name: "conn".to_string(),
-                peer_name: None,
-                age_secs: 1.0,
-                total_completed: 0,
-                max_concurrent_requests: 10,
-                initial_credit: 65536,
-                in_flight: vec![RequestSnapshot {
-                    request_id: 1,
-                    method_name: None,
-                    method_id: 1,
-                    direction: Direction::Incoming,
-                    elapsed_secs: 0.5,
-                    task_id: None,
-                    task_name: None,
-                    metadata: None,
-                    args: None,
-                    backtrace: None,
-                    server_task_id: None,
-                    server_task_name: None,
-                }],
-                recent_completions: vec![],
-                channels: vec![],
-                transport: make_transport(),
-                channel_credits: vec![],
-            }],
-            method_names: HashMap::new(),
-            channel_details: vec![],
-        };
-
-        let parents = extract_request_parents("app", &Some(session));
-        assert!(parents.is_empty());
-    }
 }

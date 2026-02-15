@@ -401,7 +401,7 @@ mod tests {
 
     #[cfg(feature = "diagnostics")]
     #[test]
-    fn emit_graph_excludes_task_nodes() {
+    fn emit_graph_task_node_has_location_meta() {
         init_task_tracking();
 
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -414,10 +414,19 @@ mod tests {
         });
 
         let graph = emit_graph("test-proc-1");
-        assert!(
-            graph.nodes.iter().all(|n| n.kind != "task"),
-            "canonical graph should not include task nodes"
-        );
+        let task_node = graph
+            .nodes
+            .iter()
+            .find(|n| n.kind == "task")
+            .expect("should have a task node");
+
+        assert!(task_node.id.starts_with("task:test-proc-1:"));
+        let attrs = &task_node.attrs_json;
+        assert!(attrs.contains("\"task_id\":"));
+        assert!(attrs.contains("\"name\":\"test-task\""));
+        assert!(attrs.contains("\"state\":"));
+        assert!(attrs.contains("\"ctx.file\":"));
+        assert!(attrs.contains("\"ctx.line\":"));
     }
 
     #[cfg(feature = "diagnostics")]
@@ -451,7 +460,7 @@ mod tests {
                 .find(|n| n.kind == "future")
                 .expect("should have a future node");
 
-            assert!(future_node.id.starts_with("future:test-proc-2:"));
+            assert!(future_node.id.starts_with("future:"));
 
             let attrs = &future_node.attrs_json;
             assert!(attrs.contains("\"future_id\":"));

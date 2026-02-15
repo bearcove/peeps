@@ -84,7 +84,7 @@ pub fn dump_lock_diagnostics() -> String {
 pub fn emit_lock_graph(process_name: &str, proc_key: &str) -> peeps_types::GraphSnapshot {
     use std::sync::atomic::Ordering;
 
-    use peeps_types::{GraphNodeSnapshot, GraphSnapshotBuilder};
+    use peeps_types::{GraphSnapshotBuilder, Node};
 
     use crate::registry::{AcquireKind, LOCK_REGISTRY};
 
@@ -142,7 +142,7 @@ pub fn emit_lock_graph(process_name: &str, proc_key: &str) -> peeps_types::Graph
         attrs.push_str(",\"meta\":{}");
         attrs.push('}');
 
-        builder.push_node(GraphNodeSnapshot {
+        builder.push_node(Node {
             id: node_id,
             kind: "lock".to_string(),
             process: process_name.to_string(),

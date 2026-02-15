@@ -56,9 +56,7 @@ pub fn snapshot_all() -> SyncSnapshot {
 pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
     use std::sync::atomic::Ordering;
 
-    use peeps_types::{
-        GraphEdgeOrigin, GraphEdgeSnapshot, GraphNodeSnapshot, GraphSnapshotBuilder,
-    };
+    use peeps_types::{Edge, GraphEdgeOrigin, GraphSnapshotBuilder, Node};
 
     let reg = crate::registry::REGISTRY.lock().unwrap();
     let now = std::time::Instant::now();
@@ -111,7 +109,7 @@ pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
             attrs.push_str(",\"meta\":{}");
             attrs.push('}');
 
-            builder.push_node(GraphNodeSnapshot {
+            builder.push_node(Node {
                 id: tx_id.clone(),
                 kind: "mpsc_tx".to_string(),
                 process: process_name.to_string(),
@@ -137,7 +135,7 @@ pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
             attrs.push_str(",\"meta\":{}");
             attrs.push('}');
 
-            builder.push_node(GraphNodeSnapshot {
+            builder.push_node(Node {
                 id: rx_id.clone(),
                 kind: "mpsc_rx".to_string(),
                 process: process_name.to_string(),
@@ -148,7 +146,7 @@ pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
         }
 
         // tx → rx edge
-        builder.push_edge(GraphEdgeSnapshot {
+        builder.push_edge(Edge {
             src_id: tx_id.clone(),
             dst_id: rx_id.clone(),
             kind: "needs".to_string(),
@@ -193,7 +191,7 @@ pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
             attrs.push_str(",\"meta\":{}");
             attrs.push('}');
 
-            builder.push_node(GraphNodeSnapshot {
+            builder.push_node(Node {
                 id: tx_id.clone(),
                 kind: "oneshot_tx".to_string(),
                 process: process_name.to_string(),
@@ -218,7 +216,7 @@ pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
             attrs.push_str(",\"meta\":{}");
             attrs.push('}');
 
-            builder.push_node(GraphNodeSnapshot {
+            builder.push_node(Node {
                 id: rx_id.clone(),
                 kind: "oneshot_rx".to_string(),
                 process: process_name.to_string(),
@@ -229,7 +227,7 @@ pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
         }
 
         // tx → rx edge
-        builder.push_edge(GraphEdgeSnapshot {
+        builder.push_edge(Edge {
             src_id: tx_id.clone(),
             dst_id: rx_id.clone(),
             kind: "needs".to_string(),
@@ -266,7 +264,7 @@ pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
             attrs.push_str(",\"meta\":{}");
             attrs.push('}');
 
-            builder.push_node(GraphNodeSnapshot {
+            builder.push_node(Node {
                 id: tx_id.clone(),
                 kind: "watch_tx".to_string(),
                 process: process_name.to_string(),
@@ -291,7 +289,7 @@ pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
             attrs.push_str(",\"meta\":{}");
             attrs.push('}');
 
-            builder.push_node(GraphNodeSnapshot {
+            builder.push_node(Node {
                 id: rx_id.clone(),
                 kind: "watch_rx".to_string(),
                 process: process_name.to_string(),
@@ -302,7 +300,7 @@ pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
         }
 
         // tx → rx edge
-        builder.push_edge(GraphEdgeSnapshot {
+        builder.push_edge(Edge {
             src_id: tx_id.clone(),
             dst_id: rx_id.clone(),
             kind: "needs".to_string(),
@@ -352,7 +350,7 @@ pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
         attrs.push_str(",\"meta\":{}");
         attrs.push('}');
 
-        builder.push_node(GraphNodeSnapshot {
+        builder.push_node(Node {
             id: node_id.clone(),
             kind: "semaphore".to_string(),
             process: proc_key.to_string(),
@@ -392,7 +390,7 @@ pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
         attrs.push_str(",\"meta\":{}");
         attrs.push('}');
 
-        builder.push_node(GraphNodeSnapshot {
+        builder.push_node(Node {
             id: node_id,
             kind: "oncecell".to_string(),
             process: proc_key.to_string(),

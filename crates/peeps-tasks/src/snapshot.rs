@@ -2,9 +2,8 @@
 use peeps_types::{FutureId, TaskId, TaskState};
 
 use peeps_types::{
-    FuturePollEdgeSnapshot, FutureResumeEdgeSnapshot, FutureSpawnEdgeSnapshot,
-    FutureWaitSnapshot, FutureWakeEdgeSnapshot, GraphSnapshot, TaskSnapshot,
-    WakeEdgeSnapshot,
+    FuturePollEdgeSnapshot, FutureResumeEdgeSnapshot, FutureSpawnEdgeSnapshot, FutureWaitSnapshot,
+    FutureWakeEdgeSnapshot, GraphSnapshot, TaskSnapshot, WakeEdgeSnapshot,
 };
 
 // ── snapshot_all_tasks ──────────────────────────────────
@@ -320,14 +319,16 @@ pub fn snapshot_future_resume_edges() -> Vec<FutureResumeEdgeSnapshot> {
 
     edges
         .iter()
-        .map(|((future_id, target_task_id), edge)| FutureResumeEdgeSnapshot {
-            future_id: *future_id,
-            future_resource: edge.future_resource.clone(),
-            target_task_id: *target_task_id,
-            target_task_name: task_lookup.get(target_task_id).cloned(),
-            resume_count: edge.resume_count,
-            last_resume_age_secs: now.duration_since(edge.last_resume_at).as_secs_f64(),
-        })
+        .map(
+            |((future_id, target_task_id), edge)| FutureResumeEdgeSnapshot {
+                future_id: *future_id,
+                future_resource: edge.future_resource.clone(),
+                target_task_id: *target_task_id,
+                target_task_name: task_lookup.get(target_task_id).cloned(),
+                resume_count: edge.resume_count,
+                last_resume_age_secs: now.duration_since(edge.last_resume_at).as_secs_f64(),
+            },
+        )
         .collect()
 }
 
@@ -341,11 +342,62 @@ pub fn snapshot_future_resume_edges() -> Vec<FutureResumeEdgeSnapshot> {
 
 #[cfg(feature = "diagnostics")]
 pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
-    use peeps_types::{GraphNodeSnapshot, GraphSnapshotBuilder};
+    use peeps_types::{GraphSnapshotBuilder, Node};
 
     let mut builder = GraphSnapshotBuilder::new();
     let mut future_node_ids: std::collections::HashMap<FutureId, String> =
         std::collections::HashMap::new();
+
+    // Task nodes
+    {
+        let registry = crate::tasks::TASK_REGISTRY.lock().unwrap();
+        if let Some(tasks) = registry.as_ref() {
+            let now = std::time::Instant::now();
+            for task in tasks.iter() {
+                let state = task.state.lock().unwrap();
+                let node_id = format!("task:{proc_key}:{}", task.id);
+                let spawned_at_ns = now.duration_since(task.spawned_at).as_nanos() as u64;
+                let loc = task.spawn_location;
+
+                let mut attrs = String::with_capacity(256);
+                attrs.push('{');
+                write_json_kv_u64(&mut attrs, "task_id", task.id, true);
+                write_json_kv_str(&mut attrs, "name", &task.name, false);
+                write_json_kv_str(
+                    &mut attrs,
+                    "state",
+                    match state.state {
+                        peeps_types::TaskState::Pending => "pending",
+                        peeps_types::TaskState::Polling => "polling",
+                        peeps_types::TaskState::Completed => "completed",
+                    },
+                    false,
+                );
+                write_json_kv_u64(&mut attrs, "spawned_at_ns", spawned_at_ns, false);
+                if let Some(pid) = task.parent_id {
+                    write_json_kv_u64(&mut attrs, "parent_task_id", pid, false);
+                }
+
+                // Location as metadata
+                attrs.push_str(",\"meta\":{");
+                write_json_kv_str(&mut attrs, "ctx.file", loc.file(), true);
+                write_json_kv_u64(&mut attrs, "ctx.line", loc.line() as u64, false);
+                write_json_kv_u64(&mut attrs, "ctx.column", loc.column() as u64, false);
+                attrs.push('}');
+
+                attrs.push('}');
+
+                builder.push_node(Node {
+                    id: node_id,
+                    kind: "task".to_string(),
+                    process: process_name.to_string(),
+                    proc_key: proc_key.to_string(),
+                    label: Some(task.name.clone()),
+                    attrs_json: attrs,
+                });
+            }
+        }
+    }
 
     // Future nodes
     {
@@ -379,7 +431,7 @@ pub fn emit_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
                 }
                 attrs.push('}');
 
-                builder.push_node(GraphNodeSnapshot {
+                builder.push_node(Node {
                     id: node_id,
                     kind: "future".to_string(),
                     process: process_name.to_string(),
