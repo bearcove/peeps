@@ -1,17 +1,30 @@
 use std::sync::atomic::Ordering;
+use std::sync::OnceLock;
 
 use peeps_types::{GraphSnapshot, GraphSnapshotBuilder, Node};
 
 use crate::enabled::registry::{AcquireKind, LOCK_REGISTRY};
 
+static PROCESS_NAME: OnceLock<String> = OnceLock::new();
+static PROC_KEY: OnceLock<String> = OnceLock::new();
+
+pub fn set_process_info(process_name: impl Into<String>, proc_key: impl Into<String>) {
+    PROCESS_NAME.set(process_name.into()).ok();
+    PROC_KEY.set(proc_key.into()).ok();
+}
+
 // ── Canonical graph emission ────────────────────────────
 
-pub fn emit_lock_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
+pub fn emit_lock_graph() -> GraphSnapshot {
     let Ok(registry) = LOCK_REGISTRY.lock() else {
         return GraphSnapshot::empty();
     };
 
     let mut builder = GraphSnapshotBuilder::new();
+
+    let process_name = PROCESS_NAME.get().map(|s| s.as_str()).unwrap_or("unknown");
+    let proc_key = PROC_KEY.get().map(|s| s.as_str()).unwrap_or("unknown");
+    builder.set_process_info(process_name, proc_key);
 
     for weak in registry.iter() {
         let Some(info) = weak.upgrade() else {
@@ -63,9 +76,7 @@ pub fn emit_lock_graph(process_name: &str, proc_key: &str) -> GraphSnapshot {
 
         builder.push_node(Node {
             id: node_id,
-            kind: "lock".to_string(),
-            process: process_name.to_string(),
-            proc_key: proc_key.to_string(),
+            kind: peeps_types::NodeKind::Lock,
             label: Some(info.name.to_string()),
             attrs_json: attrs,
         });

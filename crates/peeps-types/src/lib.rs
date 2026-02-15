@@ -87,9 +87,6 @@ pub struct Node {
     /// Node kind (e.g. `task`, `future`, `lock`, `mpsc_tx`, `request`).
     pub kind: NodeKind,
 
-    /// Opaque process key: `{process_slug}-{pid}`, charset `[a-z0-9._-]+`, no `:`.
-    pub proc_key: String,
-
     /// Optional human-readable label.
     pub label: Option<String>,
 
@@ -140,6 +137,8 @@ pub struct Edge {
 /// Per-process canonical graph snapshot envelope.
 #[derive(Debug, Clone, Default, Facet)]
 pub struct GraphSnapshot {
+    pub process_name: String,
+    pub proc_key: String,
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
 }
@@ -156,6 +155,15 @@ impl GraphSnapshotBuilder {
         }
     }
 
+    pub fn set_process_info(
+        &mut self,
+        process_name: impl Into<String>,
+        proc_key: impl Into<String>,
+    ) {
+        self.graph.process_name = process_name.into();
+        self.graph.proc_key = proc_key.into();
+    }
+
     pub fn push_node(&mut self, node: Node) {
         self.graph.nodes.push(node);
     }
@@ -166,6 +174,12 @@ impl GraphSnapshotBuilder {
 
     pub fn finish(self) -> GraphSnapshot {
         self.graph
+    }
+}
+
+impl Default for GraphSnapshotBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -359,6 +373,12 @@ impl<'a, const N: usize> MetaBuilder<'a, N> {
         }
         out.push('}');
         out
+    }
+}
+
+impl<'a, const N: usize> Default for MetaBuilder<'a, N> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
