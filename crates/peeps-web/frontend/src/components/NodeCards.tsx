@@ -19,6 +19,13 @@ import {
   WifiHigh,
   ArrowFatLineRight,
   ArrowFatLineLeft,
+  Stack,
+  Terminal,
+  FileText,
+  Bell,
+  Moon,
+  Repeat,
+  HourglassSimple,
 } from "@phosphor-icons/react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 
@@ -637,6 +644,254 @@ function GhostCard({ data }: NodeProps<Node<NodeData>>) {
   );
 }
 
+function JoinSetCard({ data }: NodeProps<Node<NodeData>>) {
+  const { label, process, attrs } = data;
+  const cancelled = attr(attrs, "cancelled");
+  const closeCause = attr(attrs, "close_cause");
+  const isCancelled = cancelled === "true";
+
+  return (
+    <CardShell
+      kind="joinset"
+      process={process}
+      label={label}
+      icon={<Stack size={14} weight="bold" />}
+      stateClass={isCancelled ? "card--danger-border" : undefined}
+    >
+      <div className="card-row">
+        <StatePill
+          state={isCancelled ? "ABORTED" : "ACTIVE"}
+          variant={isCancelled ? "crit" : "ok"}
+        />
+      </div>
+      {closeCause && (
+        <div className="card-row">
+          <span className="card-dim">cause</span>
+          <span className="card-val-truncate">{closeCause}</span>
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
+function CommandCard({ data }: NodeProps<Node<NodeData>>) {
+  const { label, process, attrs } = data;
+  const program = attr(attrs, "cmd.program") ?? label;
+  const argsPreview = attr(attrs, "cmd.args_preview");
+  const pid = numAttr(attrs, "process.pid");
+  const exitCode = numAttr(attrs, "exit.code");
+  const exitSignal = attr(attrs, "exit.signal");
+  const elapsedNs = numAttr(attrs, "elapsed_ns");
+  const error = attr(attrs, "error");
+
+  const isRunning = exitCode == null && exitSignal == null && error == null;
+  const isFailed = exitCode != null && exitCode !== 0;
+
+  return (
+    <CardShell
+      kind="command"
+      process={process}
+      label={program}
+      icon={<Terminal size={14} weight="bold" />}
+      stateClass={error ? "card--danger-border" : isFailed ? "card--danger-border" : undefined}
+    >
+      {argsPreview && (
+        <div className="card-row">
+          <span className="card-dim card-val-truncate" title={argsPreview}>{argsPreview}</span>
+        </div>
+      )}
+      <div className="card-row">
+        <StatePill
+          state={error ? "ERROR" : isRunning ? "RUNNING" : exitCode === 0 ? "OK" : `EXIT ${exitCode ?? exitSignal}`}
+          variant={error ? "crit" : isRunning ? "neutral" : exitCode === 0 ? "ok" : "crit"}
+        />
+        {pid != null && <span className="badge">pid {pid}</span>}
+      </div>
+      {elapsedNs != null && (
+        <div className="card-row">
+          <span className="card-dim">elapsed</span>
+          <DurationBadge ns={elapsedNs} warnNs={5_000_000_000} critNs={30_000_000_000} />
+        </div>
+      )}
+      {error && (
+        <div className="card-row">
+          <span className="card-dim card-val-truncate" title={error}>{error}</span>
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
+function FileOpCard({ data }: NodeProps<Node<NodeData>>) {
+  const { label, process, attrs } = data;
+  const fsOp = attr(attrs, "fs.op") ?? label;
+  const path = attr(attrs, "resource.path");
+  const writeBytes = numAttr(attrs, "write.bytes");
+  const readBytes = numAttr(attrs, "read.bytes");
+  const elapsedNs = numAttr(attrs, "elapsed_ns");
+  const result = attr(attrs, "result") ?? "pending";
+  const error = attr(attrs, "error");
+
+  const resultVariant: "ok" | "warn" | "crit" | "neutral" =
+    error ? "crit" : result === "ok" ? "ok" : "neutral";
+
+  return (
+    <CardShell
+      kind="file_op"
+      process={process}
+      label={path ?? fsOp}
+      icon={<FileText size={14} weight="bold" />}
+      stateClass={error ? "card--danger-border" : undefined}
+    >
+      <div className="card-row">
+        <StatePill state={fsOp.toUpperCase()} variant={resultVariant} />
+        {readBytes != null && <span className="badge">{readBytes}B read</span>}
+        {writeBytes != null && <span className="badge">{writeBytes}B written</span>}
+      </div>
+      {elapsedNs != null && (
+        <div className="card-row">
+          <span className="card-dim">elapsed</span>
+          <DurationBadge ns={elapsedNs} warnNs={100_000_000} critNs={1_000_000_000} />
+        </div>
+      )}
+      {error && (
+        <div className="card-row">
+          <span className="card-dim card-val-truncate" title={error}>{error}</span>
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
+function NotifyCard({ data }: NodeProps<Node<NodeData>>) {
+  const { label, process, attrs } = data;
+  const waiters = numAttr(attrs, "waiters") ?? 0;
+  const notifyCount = numAttr(attrs, "notify_count") ?? 0;
+  const wakeupCount = numAttr(attrs, "wakeup_count") ?? 0;
+  const oldestWaitNs = numAttr(attrs, "oldest_wait_ns");
+  const highWatermark = numAttr(attrs, "high_waiters_watermark");
+
+  return (
+    <CardShell
+      kind="notify"
+      process={process}
+      label={label}
+      icon={<Bell size={14} weight="bold" />}
+      stateClass={waiters > 0 ? "card--danger-border" : undefined}
+    >
+      <div className="card-row">
+        <WaiterBadge count={waiters} />
+        <span className="badge">{notifyCount} notified</span>
+        <span className="badge">{wakeupCount} woken</span>
+      </div>
+      {oldestWaitNs != null && oldestWaitNs > 0 && (
+        <div className="card-row">
+          <span className="card-dim">oldest wait</span>
+          <DurationBadge ns={oldestWaitNs} warnNs={1_000_000_000} critNs={5_000_000_000} />
+        </div>
+      )}
+      {highWatermark != null && highWatermark > 0 && (
+        <div className="card-row">
+          <span className="card-dim">peak waiters</span>
+          <span className="badge">{highWatermark}</span>
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
+function SleepCard({ data }: NodeProps<Node<NodeData>>) {
+  const { label, process, attrs } = data;
+  const durationMs = attr(attrs, "sleep.duration_ms");
+  const elapsedNs = firstNumAttr(attrs, ["elapsed_ns", "total_pending_ns"]);
+
+  return (
+    <CardShell
+      kind="sleep"
+      process={process}
+      label={label}
+      icon={<Moon size={14} weight="bold" />}
+    >
+      {durationMs != null && (
+        <div className="card-row">
+          <span className="card-dim">duration</span>
+          <span className="badge">{durationMs}ms</span>
+        </div>
+      )}
+      {elapsedNs != null && (
+        <div className="card-row">
+          <span className="card-dim">elapsed</span>
+          <DurationBadge ns={elapsedNs} warnNs={5_000_000_000} critNs={30_000_000_000} />
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
+function IntervalCard({ data }: NodeProps<Node<NodeData>>) {
+  const { label, process, attrs } = data;
+  const periodMs = numAttr(attrs, "period_ms");
+  const tickCount = numAttr(attrs, "tick_count") ?? 0;
+  const elapsedNs = numAttr(attrs, "elapsed_ns");
+
+  return (
+    <CardShell
+      kind="interval"
+      process={process}
+      label={label}
+      icon={<Repeat size={14} weight="bold" />}
+    >
+      <div className="card-row">
+        {periodMs != null && <span className="badge">{periodMs}ms period</span>}
+        <span className="badge">{tickCount} ticks</span>
+      </div>
+      {elapsedNs != null && (
+        <div className="card-row">
+          <span className="card-dim">elapsed</span>
+          <DurationBadge ns={elapsedNs} warnNs={60_000_000_000} critNs={300_000_000_000} />
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
+function TimeoutCard({ data }: NodeProps<Node<NodeData>>) {
+  const { label, process, attrs } = data;
+  const durationMs = attr(attrs, "timeout.duration_ms");
+  const elapsedNs = firstNumAttr(attrs, ["elapsed_ns", "total_pending_ns"]);
+  const state = attr(attrs, "state");
+
+  const stateVariant: "ok" | "warn" | "crit" | "neutral" =
+    state === "completed" ? "ok" : state === "timed_out" ? "crit" : "neutral";
+
+  return (
+    <CardShell
+      kind="timeout"
+      process={process}
+      label={label}
+      icon={<HourglassSimple size={14} weight="bold" />}
+    >
+      {durationMs != null && (
+        <div className="card-row">
+          <span className="card-dim">limit</span>
+          <span className="badge">{durationMs}ms</span>
+        </div>
+      )}
+      {state != null && (
+        <div className="card-row">
+          <StatePill state={state.toUpperCase()} variant={stateVariant} />
+        </div>
+      )}
+      {elapsedNs != null && (
+        <div className="card-row">
+          <span className="card-dim">elapsed</span>
+          <DurationBadge ns={elapsedNs} warnNs={1_000_000_000} critNs={5_000_000_000} />
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
 /** Fallback for unknown node kinds */
 function GenericCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, kind, process, attrs } = data;
@@ -690,6 +945,13 @@ const cardByKind: Record<string, (props: NodeProps<Node<NodeData>>) => React.Rea
   net_readable: NetWaitCard,
   net_writable: NetWaitCard,
   ghost: GhostCard,
+  joinset: JoinSetCard,
+  command: CommandCard,
+  file_op: FileOpCard,
+  notify: NotifyCard,
+  sleep: SleepCard,
+  interval: IntervalCard,
+  timeout: TimeoutCard,
 };
 
 /** Icon + human-readable name for each node kind (used by the filter dropdown). */
@@ -722,6 +984,13 @@ export const kindMeta: Record<string, { icon: React.ReactNode; displayName: stri
   net_readable: { icon: <ArrowFatLineLeft size={14} weight="bold" />,displayName: "Readable" },
   net_writable: { icon: <ArrowFatLineRight size={14} weight="bold" />,displayName: "Writable" },
   ghost:        { icon: <Ghost size={14} weight="bold" />,           displayName: "Ghost" },
+  joinset:      { icon: <Stack size={14} weight="bold" />,          displayName: "JoinSet" },
+  command:      { icon: <Terminal size={14} weight="bold" />,       displayName: "Command" },
+  file_op:      { icon: <FileText size={14} weight="bold" />,      displayName: "File Op" },
+  notify:       { icon: <Bell size={14} weight="bold" />,           displayName: "Notify" },
+  sleep:        { icon: <Moon size={14} weight="bold" />,           displayName: "Sleep" },
+  interval:     { icon: <Repeat size={14} weight="bold" />,        displayName: "Interval" },
+  timeout:      { icon: <HourglassSimple size={14} weight="bold" />,displayName: "Timeout" },
 };
 
 export const PeepsNode = memo((props: NodeProps<Node<NodeData>>) => {
@@ -763,6 +1032,20 @@ export function estimateNodeHeight(kind: string): number {
     case "net_writable":
       return 100;
     case "ghost":
+      return 100;
+    case "joinset":
+      return 90;
+    case "command":
+      return 130;
+    case "file_op":
+      return 110;
+    case "notify":
+      return 110;
+    case "sleep":
+      return 90;
+    case "interval":
+      return 100;
+    case "timeout":
       return 100;
     default:
       return 100;
