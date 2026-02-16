@@ -55,6 +55,22 @@ PEEPS_DASHBOARD=127.0.0.1:9119 <your-binary>
 
 `peeps` is push-only: no file dump / SIGUSR1 ingestion mode.
 
+## Examples
+
+Runnable scenarios are available in `examples/`.
+
+First scenario: `examples/channel-full-stall`
+
+- Uses a bounded channel with capacity `16`
+- Sends `16` items and then blocks on the next send (queue is full)
+- Useful for exploring backpressure and stuck-send diagnostics in the UI
+
+Run it with:
+
+```bash
+scripts/run-example channel-full-stall
+```
+
 ## Architecture
 
 - `peeps`: Main API — futures, locks, sync, live snapshot collection, optional dashboard push client

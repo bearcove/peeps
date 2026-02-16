@@ -43,6 +43,7 @@ pub(crate) struct InFlightSnapshot {
     pub(crate) snapshot_id: i64,
     pub(crate) requested_at_ns: i64,
     pub(crate) timeout_ms: i64,
+    pub(crate) requested: BTreeSet<String>,
     pub(crate) pending: BTreeSet<String>,
     completion_tx: Option<oneshot::Sender<()>>,
 }
@@ -106,6 +107,7 @@ async fn main() {
         .route("/favicon.svg", get(favicon_svg))
         .route("/favicon.ico", get(favicon_ico))
         .route("/api/jump-now", post(api::api_jump_now))
+        .route("/api/snapshot-progress", get(api::api_snapshot_progress))
         .route("/api/sql", post(api::api_sql))
         .with_state(state.clone());
 
@@ -181,6 +183,7 @@ pub(crate) async fn trigger_snapshot(state: &AppState) -> Result<(i64, usize), S
             snapshot_id,
             requested_at_ns: now_ns,
             timeout_ms: DEFAULT_TIMEOUT_MS,
+            requested: pending.clone(),
             pending: pending.clone(),
             completion_tx: Some(completion_tx),
         });

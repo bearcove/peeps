@@ -1,0 +1,11 @@
+[package]
+name = "channel-full-stall"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+peeps = { path = "../../crates/peeps", features = ["diagnostics", "dashboard"] }
+tokio = { version = "1.49", features = ["macros", "rt-multi-thread", "signal", "time"] }

@@ -6,6 +6,16 @@ export interface JumpNowResponse {
   timed_out: number;
 }
 
+export interface SnapshotProgressResponse {
+  active: boolean;
+  snapshot_id: number | null;
+  requested: number;
+  responded: number;
+  pending: number;
+  responded_processes: string[];
+  pending_processes: string[];
+}
+
 export interface SqlRequest {
   snapshot_id: number;
   sql: string;

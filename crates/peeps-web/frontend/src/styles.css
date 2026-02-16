@@ -33,6 +33,42 @@ body {
     overflow: hidden;
 }
 
+.app-empty-state {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background:
+        radial-gradient(900px 420px at 50% -20%, light-dark(#e9f2ff, #123055), transparent 70%),
+        light-dark(#f5f5f7, #0c0c0e);
+}
+
+.app-empty-card {
+    width: min(560px, 100%);
+    text-align: center;
+    border: 1px solid light-dark(#d2d2d7, #2a2a2e);
+    border-radius: 16px;
+    padding: 32px 28px;
+    background: light-dark(#ffffffd9, #151519d9);
+    backdrop-filter: blur(4px);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    align-items: center;
+}
+
+.app-empty-card h1 {
+    font-size: 28px;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+}
+
+.app-empty-card p {
+    font-size: 14px;
+    color: light-dark(#505057, #b6b6be);
+    max-width: 46ch;
+}
+
 .header {
     display: flex;
     align-items: center;
@@ -400,6 +436,15 @@ body {
 .btn--loading {
     opacity: 0.6;
     pointer-events: none;
+}
+
+.btn--hero {
+    margin-top: 6px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    gap: 8px;
 }
 
 /* ── Graph panel ──────────────────────────────────────────── */

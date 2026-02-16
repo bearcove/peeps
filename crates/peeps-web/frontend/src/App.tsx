@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { WarningCircle } from "@phosphor-icons/react";
+import { Camera, WarningCircle } from "@phosphor-icons/react";
 import { fetchGraph, fetchRecentTimelineEvents, fetchTimelineProcessOptions, jumpNow } from "./api";
 import { Header } from "./components/Header";
 import { SuspectsTable, type SuspectItem } from "./components/SuspectsTable";
@@ -515,7 +515,7 @@ export function App() {
     sessionStorage.setItem("peeps-investigation-mode", mode);
   }, []);
 
-  const handleJumpNow = useCallback(async () => {
+  const handleTakeSnapshot = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -535,10 +535,6 @@ export function App() {
       setLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    handleJumpNow();
-  }, [handleJumpNow]);
 
   useEffect(() => {
     if (!snapshot) return;
@@ -806,7 +802,7 @@ export function App() {
 
   return (
     <div className="app">
-      <Header snapshot={snapshot} loading={loading} onJumpNow={handleJumpNow} />
+      <Header snapshot={snapshot} loading={loading} onTakeSnapshot={handleTakeSnapshot} />
       {error && (
         <div className="status-bar">
           <WarningCircle
@@ -817,96 +813,116 @@ export function App() {
           <span className="error-text">{error}</span>
         </div>
       )}
-      <div className="mode-toggle-row">
-        <span className="mode-toggle-label">Investigation mode</span>
-        <button
-          className={`btn ${investigationMode === "graph" ? "btn--primary" : ""}`}
-          type="button"
-          onClick={() => handleSetMode("graph")}
-        >
-          Graph
-        </button>
-        <button
-          className={`btn ${investigationMode === "timeline" ? "btn--primary" : ""}`}
-          type="button"
-          onClick={() => handleSetMode("timeline")}
-        >
-          Timeline (spike)
-        </button>
-      </div>
-      <div
-        className={[
-          "main-content",
-          leftCollapsed && "main-content--left-collapsed",
-          rightCollapsed && "main-content--right-collapsed",
-        ].filter(Boolean).join(" ")}
-      >
-        <SuspectsTable
-          suspects={suspects}
-          selectedId={selectedNodeId}
-          onSelect={handleSelectSuspect}
-          collapsed={leftCollapsed}
-          onToggleCollapse={toggleLeft}
-        />
-        {investigationMode === "graph" ? (
-          <GraphView
-            graph={displayGraph}
-            fullGraph={enrichedGraph}
-            filteredNodeId={filteredNodeId}
-            selectedNodeId={selectedNodeId}
-            selectedEdge={selectedEdge}
-            searchQuery={graphSearchQuery}
-            searchResults={searchResults}
-            allKinds={allKinds}
-            hiddenKinds={hiddenKinds}
-            onToggleKind={toggleKind}
-            onSoloKind={soloKind}
-            allProcesses={allProcesses}
-            hiddenProcesses={hiddenProcesses}
-            onToggleProcess={toggleProcess}
-            onSoloProcess={soloProcess}
-            deadlockFocus={deadlockFocus}
-            onToggleDeadlockFocus={toggleDeadlockFocus}
-            detailLevel={detailLevel}
-            onDetailLevelChange={handleDetailLevelChange}
-            hasActiveFilters={hasActiveFilters}
-            onResetFilters={handleResetFilters}
-            onSearchQueryChange={setGraphSearchQuery}
-            onSelectSearchResult={handleSelectSearchResult}
-            onSelectNode={handleSelectGraphNode}
-            onSelectEdge={handleSelectEdge}
-            onClearSelection={handleClearSelection}
-          />
-        ) : (
-          <TimelineView
-            events={timelineEvents}
-            loading={timelineLoading}
-            error={timelineError}
-            selectedEventId={selectedTimelineEventId}
-            selectedProcKey={timelineSelectedProcKey}
-            processOptions={timelineProcessOptions}
-            windowSeconds={timelineWindowSeconds}
-            snapshotCapturedAtNs={snapshot?.captured_at_ns ?? null}
-            onSelectProcKey={setTimelineSelectedProcKey}
-            onWindowSecondsChange={handleTimelineWindowChange}
-            onRefresh={handleRefreshTimeline}
-            onSelectEvent={handleSelectTimelineEvent}
-          />
-        )}
-        <Inspector
-          snapshotId={snapshot?.snapshot_id ?? null}
-          snapshotCapturedAtNs={snapshot?.captured_at_ns ?? null}
-          selectedRequest={null}
-          selectedNode={selectedNode}
-          selectedEdge={selectedEdge}
-          graph={enrichedGraph}
-          filteredNodeId={filteredNodeId}
-          onFocusNode={setFilteredNodeId}
-          onSelectNode={handleSelectGraphNode}
-          collapsed={rightCollapsed}
-          onToggleCollapse={toggleRight}
-        />
-      </div>
+      {!snapshot ? (
+        <div className="app-empty-state">
+          <div className="app-empty-card">
+            <h1>Take a snapshot</h1>
+            <p>Capture the current runtime state to start investigating your system.</p>
+            <button
+              className={`btn btn--primary btn--hero ${loading ? "btn--loading" : ""}`}
+              type="button"
+              onClick={handleTakeSnapshot}
+              disabled={loading}
+            >
+              <Camera size={18} weight="bold" />
+              {loading ? "Taking snapshot..." : "Take snapshot now"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="mode-toggle-row">
+            <span className="mode-toggle-label">Investigation mode</span>
+            <button
+              className={`btn ${investigationMode === "graph" ? "btn--primary" : ""}`}
+              type="button"
+              onClick={() => handleSetMode("graph")}
+            >
+              Graph
+            </button>
+            <button
+              className={`btn ${investigationMode === "timeline" ? "btn--primary" : ""}`}
+              type="button"
+              onClick={() => handleSetMode("timeline")}
+            >
+              Timeline (spike)
+            </button>
+          </div>
+          <div
+            className={[
+              "main-content",
+              leftCollapsed && "main-content--left-collapsed",
+              rightCollapsed && "main-content--right-collapsed",
+            ].filter(Boolean).join(" ")}
+          >
+            <SuspectsTable
+              suspects={suspects}
+              selectedId={selectedNodeId}
+              onSelect={handleSelectSuspect}
+              collapsed={leftCollapsed}
+              onToggleCollapse={toggleLeft}
+            />
+            {investigationMode === "graph" ? (
+              <GraphView
+                graph={displayGraph}
+                fullGraph={enrichedGraph}
+                filteredNodeId={filteredNodeId}
+                selectedNodeId={selectedNodeId}
+                selectedEdge={selectedEdge}
+                searchQuery={graphSearchQuery}
+                searchResults={searchResults}
+                allKinds={allKinds}
+                hiddenKinds={hiddenKinds}
+                onToggleKind={toggleKind}
+                onSoloKind={soloKind}
+                allProcesses={allProcesses}
+                hiddenProcesses={hiddenProcesses}
+                onToggleProcess={toggleProcess}
+                onSoloProcess={soloProcess}
+                deadlockFocus={deadlockFocus}
+                onToggleDeadlockFocus={toggleDeadlockFocus}
+                detailLevel={detailLevel}
+                onDetailLevelChange={handleDetailLevelChange}
+                hasActiveFilters={hasActiveFilters}
+                onResetFilters={handleResetFilters}
+                onSearchQueryChange={setGraphSearchQuery}
+                onSelectSearchResult={handleSelectSearchResult}
+                onSelectNode={handleSelectGraphNode}
+                onSelectEdge={handleSelectEdge}
+                onClearSelection={handleClearSelection}
+              />
+            ) : (
+              <TimelineView
+                events={timelineEvents}
+                loading={timelineLoading}
+                error={timelineError}
+                selectedEventId={selectedTimelineEventId}
+                selectedProcKey={timelineSelectedProcKey}
+                processOptions={timelineProcessOptions}
+                windowSeconds={timelineWindowSeconds}
+                snapshotCapturedAtNs={snapshot?.captured_at_ns ?? null}
+                onSelectProcKey={setTimelineSelectedProcKey}
+                onWindowSecondsChange={handleTimelineWindowChange}
+                onRefresh={handleRefreshTimeline}
+                onSelectEvent={handleSelectTimelineEvent}
+              />
+            )}
+            <Inspector
+              snapshotId={snapshot?.snapshot_id ?? null}
+              snapshotCapturedAtNs={snapshot?.captured_at_ns ?? null}
+              selectedRequest={null}
+              selectedNode={selectedNode}
+              selectedEdge={selectedEdge}
+              graph={enrichedGraph}
+              filteredNodeId={filteredNodeId}
+              onFocusNode={setFilteredNodeId}
+              onSelectNode={handleSelectGraphNode}
+              collapsed={rightCollapsed}
+              onToggleCollapse={toggleRight}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

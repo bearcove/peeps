@@ -4,10 +4,10 @@ import type { JumpNowResponse } from "../types";
 interface HeaderProps {
   snapshot: JumpNowResponse | null;
   loading: boolean;
-  onJumpNow: () => void;
+  onTakeSnapshot: () => void;
 }
 
-export function Header({ snapshot, loading, onJumpNow }: HeaderProps) {
+export function Header({ snapshot, loading, onTakeSnapshot }: HeaderProps) {
   return (
     <div className="header">
       <Aperture size={18} weight="bold" />
@@ -21,7 +21,7 @@ export function Header({ snapshot, loading, onJumpNow }: HeaderProps) {
         ) : (
           <>
             <Clock size={12} weight="bold" />
-            no snapshot
+            no snapshot yet
           </>
         )}
       </span>
@@ -48,11 +48,11 @@ export function Header({ snapshot, loading, onJumpNow }: HeaderProps) {
       <span className="header-spacer" />
       <button
         className={`btn btn--primary ${loading ? "btn--loading" : ""}`}
-        onClick={onJumpNow}
+        onClick={onTakeSnapshot}
         disabled={loading}
       >
         <Camera size={14} weight="bold" />
-        {loading ? "Jumping..." : "Jump to now"}
+        {loading ? "Taking snapshot..." : "Take snapshot"}
       </button>
     </div>
   );

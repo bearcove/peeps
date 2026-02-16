@@ -1,5 +1,6 @@
 import type {
   JumpNowResponse,
+  SnapshotProgressResponse,
   SqlRequest,
   SqlResponse,
   StuckRequest,
@@ -34,8 +35,28 @@ async function post<T>(url: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function get<T>(url: string): Promise<T> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    const text = await res.text();
+    let msg = `${res.status} ${res.statusText}`;
+    try {
+      const err = JSON.parse(text);
+      if (err.error) msg = err.error;
+    } catch {
+      /* use status text */
+    }
+    throw new Error(msg);
+  }
+  return res.json() as Promise<T>;
+}
+
 export async function jumpNow(): Promise<JumpNowResponse> {
   return post<JumpNowResponse>("/api/jump-now", {});
+}
+
+export async function fetchSnapshotProgress(): Promise<SnapshotProgressResponse> {
+  return get<SnapshotProgressResponse>("/api/snapshot-progress");
 }
 
 export async function querySql(
