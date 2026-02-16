@@ -1,4 +1,3 @@
-use std::backtrace::Backtrace;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex as StdMutex, Weak};
@@ -119,8 +118,6 @@ struct WaiterOrHolder {
     kind: AcquireKind,
     #[allow(dead_code)]
     since: Instant,
-    #[allow(dead_code)]
-    backtrace: Backtrace,
 }
 
 struct LockInfo {
@@ -159,7 +156,6 @@ impl LockInfo {
             id,
             kind,
             since: Instant::now(),
-            backtrace: Backtrace::force_capture(),
         });
         id
     }
@@ -184,7 +180,6 @@ impl LockInfo {
             id: holder_id,
             kind,
             since: Instant::now(),
-            backtrace: Backtrace::force_capture(),
         });
 
         self.total_acquires.fetch_add(1, Ordering::Relaxed);
@@ -197,7 +192,6 @@ impl LockInfo {
             id,
             kind,
             since: Instant::now(),
-            backtrace: Backtrace::force_capture(),
         });
         self.total_acquires.fetch_add(1, Ordering::Relaxed);
         id
