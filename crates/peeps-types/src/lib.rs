@@ -27,15 +27,6 @@ pub fn process_name() -> Option<&'static str> {
 
 // ── Reserved metadata keys for context propagation ──────────────
 
-/// Metadata key for the caller's process name.
-pub const PEEPS_CALLER_PROCESS_KEY: &str = "peeps.caller_process";
-
-/// Metadata key for the caller's connection name.
-pub const PEEPS_CALLER_CONNECTION_KEY: &str = "peeps.caller_connection";
-
-/// Metadata key for the caller's request ID.
-pub const PEEPS_CALLER_REQUEST_ID_KEY: &str = "peeps.caller_request_id";
-
 /// Metadata key for the span ID (ULID) assigned to an outgoing request.
 pub const PEEPS_SPAN_ID_KEY: &str = "peeps.span_id";
 
@@ -143,6 +134,8 @@ pub enum NodeKind {
     NetReadable,
     /// Canonical ID format: `net_writable:{ulid}`
     NetWritable,
+    /// Canonical ID format: `syscall:{ulid}`
+    Syscall,
 }
 
 impl NodeKind {
@@ -170,6 +163,7 @@ impl NodeKind {
             NodeKind::NetAccept => "net_accept",
             NodeKind::NetReadable => "net_readable",
             NodeKind::NetWritable => "net_writable",
+            NodeKind::Syscall => "syscall",
         }
     }
 }
