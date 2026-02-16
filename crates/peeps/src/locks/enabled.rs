@@ -3,7 +3,27 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex as StdMutex, Weak};
 use std::time::Instant;
 
+use facet::Facet;
 use peeps_types::{GraphSnapshot, Node};
+
+// ── Attrs structs ─────────────────────────────────────
+
+#[derive(Facet)]
+struct LockAttrs<'a> {
+    name: &'a str,
+    lock_kind: &'a str,
+    acquires: u64,
+    releases: u64,
+    holder_count: u64,
+    waiter_count: u64,
+    meta: LocationMeta<'a>,
+}
+
+#[derive(Facet)]
+struct LocationMeta<'a> {
+    #[facet(rename = "ctx.location")]
+    ctx_location: &'a str,
+}
 
 // ── Lock info registry ─────────────────────────────────
 
@@ -51,57 +71,25 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
             }
         };
 
-        let mut attrs = String::with_capacity(256);
-        attrs.push('{');
-        write_json_kv_str(&mut attrs, "name", info.name, true);
-        write_json_kv_str(&mut attrs, "lock_kind", lock_kind, false);
-        write_json_kv_u64(&mut attrs, "acquires", acquires, false);
-        write_json_kv_u64(&mut attrs, "releases", releases, false);
-        write_json_kv_u64(&mut attrs, "holder_count", holder_count, false);
-        write_json_kv_u64(&mut attrs, "waiter_count", waiter_count, false);
-        attrs.push_str(",\"meta\":{");
-        write_json_kv_str(
-            &mut attrs,
-            peeps_types::meta_key::CTX_LOCATION,
-            &info.location,
-            true,
-        );
-        attrs.push('}');
-        attrs.push('}');
+        let attrs = LockAttrs {
+            name: info.name,
+            lock_kind,
+            acquires,
+            releases,
+            holder_count,
+            waiter_count,
+            meta: LocationMeta {
+                ctx_location: &info.location,
+            },
+        };
 
         graph.nodes.push(Node {
             id: info.endpoint_id.clone(),
             kind: peeps_types::NodeKind::Lock,
             label: Some(info.name.to_string()),
-            attrs_json: attrs,
+            attrs_json: facet_json::to_string(&attrs).unwrap(),
         });
     }
-}
-
-fn write_json_kv_str(out: &mut String, key: &str, value: &str, first: bool) {
-    if !first {
-        out.push(',');
-    }
-    out.push('"');
-    out.push_str(key);
-    out.push_str("\":\"");
-    peeps_types::json_escape_into(out, value);
-    out.push('"');
-}
-
-fn write_json_kv_u64(out: &mut String, key: &str, value: u64, first: bool) {
-    use std::io::Write;
-    if !first {
-        out.push(',');
-    }
-    out.push('"');
-    out.push_str(key);
-    out.push_str("\":");
-    let mut buf = [0u8; 20];
-    let mut cursor = std::io::Cursor::new(&mut buf[..]);
-    let _ = write!(cursor, "{value}");
-    let len = cursor.position() as usize;
-    out.push_str(std::str::from_utf8(&buf[..len]).unwrap_or("0"));
 }
 
 // ── Internal types ─────────────────────────────────────

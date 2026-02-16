@@ -2,9 +2,26 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::time::Instant;
 
+use facet::Facet;
 use peeps_types::{Node, NodeKind};
 
-use super::channels::{json_kv_str, json_kv_u64};
+// ── Attrs structs ─────────────────────────────────────
+
+#[derive(Facet)]
+struct OnceCellAttrs<'a> {
+    name: &'a str,
+    state: &'a str,
+    age_ns: u64,
+    #[facet(skip_unless_truthy)]
+    init_duration_ns: Option<u64>,
+    meta: OnceCellMeta<'a>,
+}
+
+#[derive(Facet)]
+struct OnceCellMeta<'a> {
+    #[facet(rename = "ctx.location")]
+    ctx_location: &'a str,
+}
 
 const ONCE_EMPTY: u8 = 0;
 const ONCE_INITIALIZING: u8 = 1;
@@ -238,29 +255,21 @@ pub(super) fn emit_oncecell_nodes(graph: &mut peeps_types::GraphSnapshot) {
             .unwrap()
             .map(|d| d.as_nanos() as u64);
 
-        let mut attrs = String::with_capacity(256);
-        attrs.push('{');
-        json_kv_str(&mut attrs, "name", name, true);
-        json_kv_str(&mut attrs, "state", state_str, false);
-        json_kv_u64(&mut attrs, "age_ns", age_ns, false);
-        if let Some(dur) = init_duration_ns {
-            json_kv_u64(&mut attrs, "init_duration_ns", dur, false);
-        }
-        attrs.push_str(",\"meta\":{");
-        json_kv_str(
-            &mut attrs,
-            peeps_types::meta_key::CTX_LOCATION,
-            &info.location,
-            true,
-        );
-        attrs.push('}');
-        attrs.push('}');
+        let attrs = OnceCellAttrs {
+            name,
+            state: state_str,
+            age_ns,
+            init_duration_ns,
+            meta: OnceCellMeta {
+                ctx_location: &info.location,
+            },
+        };
 
         graph.nodes.push(Node {
             id: info.node_id.clone(),
             kind: NodeKind::OnceCell,
             label: Some(name.clone()),
-            attrs_json: attrs,
+            attrs_json: facet_json::to_string(&attrs).unwrap(),
         });
     }
 }

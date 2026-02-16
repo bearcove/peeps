@@ -2,9 +2,28 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::time::Instant;
 
+use facet::Facet;
 use peeps_types::{Node, NodeKind};
 
-use super::channels::{json_kv_str, json_kv_u64};
+// ── Attrs structs ─────────────────────────────────────
+
+#[derive(Facet)]
+struct SemaphoreAttrs<'a> {
+    name: &'a str,
+    permits_total: u64,
+    permits_available: u64,
+    waiters: u64,
+    acquires: u64,
+    oldest_wait_ns: u64,
+    high_waiters_watermark: u64,
+    meta: SemaphoreMeta<'a>,
+}
+
+#[derive(Facet)]
+struct SemaphoreMeta<'a> {
+    #[facet(rename = "ctx.location")]
+    ctx_location: &'a str,
+}
 
 // ── Info type ───────────────────────────────────────────
 
@@ -327,35 +346,24 @@ pub(super) fn emit_semaphore_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 .unwrap_or(0)
         };
 
-        let mut attrs = String::with_capacity(384);
-        attrs.push('{');
-        json_kv_str(&mut attrs, "name", name, true);
-        json_kv_u64(&mut attrs, "permits_total", info.permits_total, false);
-        json_kv_u64(&mut attrs, "permits_available", permits_available, false);
-        json_kv_u64(&mut attrs, "waiters", waiters, false);
-        json_kv_u64(&mut attrs, "acquires", acquires, false);
-        json_kv_u64(&mut attrs, "oldest_wait_ns", oldest_wait_ns, false);
-        json_kv_u64(
-            &mut attrs,
-            "high_waiters_watermark",
+        let attrs = SemaphoreAttrs {
+            name,
+            permits_total: info.permits_total,
+            permits_available,
+            waiters,
+            acquires,
+            oldest_wait_ns,
             high_waiters_watermark,
-            false,
-        );
-        attrs.push_str(",\"meta\":{");
-        json_kv_str(
-            &mut attrs,
-            peeps_types::meta_key::CTX_LOCATION,
-            &info.location,
-            true,
-        );
-        attrs.push('}');
-        attrs.push('}');
+            meta: SemaphoreMeta {
+                ctx_location: &info.location,
+            },
+        };
 
         graph.nodes.push(Node {
             id: info.node_id.clone(),
             kind: NodeKind::Semaphore,
             label: Some(name.clone()),
-            attrs_json: attrs,
+            attrs_json: facet_json::to_string(&attrs).unwrap(),
         });
     }
 }

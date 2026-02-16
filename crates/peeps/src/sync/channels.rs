@@ -5,6 +5,7 @@ use std::sync::{Arc, LazyLock, Mutex, Weak};
 use std::task::{Context, Poll};
 use std::time::Instant;
 
+use facet::Facet;
 use peeps_types::{Edge, EdgeKind, Node, NodeKind};
 
 // ── WaitEdge ───────────────────────────────────────────
@@ -240,7 +241,11 @@ pub struct Receiver<T> {
 
 impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
-        self.info.receiver_closed.store(1, Ordering::Relaxed);
+        // 1 = dropped (won't overwrite explicit close which uses 2)
+        self.info
+            .receiver_closed
+            .compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed)
+            .ok();
     }
 }
 
@@ -265,7 +270,8 @@ impl<T> Receiver<T> {
 
     pub fn close(&mut self) {
         self.inner.close();
-        self.info.receiver_closed.store(1, Ordering::Relaxed);
+        // 2 = explicitly closed (distinct from 1 = dropped)
+        self.info.receiver_closed.store(2, Ordering::Relaxed);
     }
 }
 
@@ -355,7 +361,11 @@ pub struct UnboundedReceiver<T> {
 
 impl<T> Drop for UnboundedReceiver<T> {
     fn drop(&mut self) {
-        self.info.receiver_closed.store(1, Ordering::Relaxed);
+        // 1 = dropped (won't overwrite explicit close which uses 2)
+        self.info
+            .receiver_closed
+            .compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed)
+            .ok();
     }
 }
 
@@ -380,7 +390,8 @@ impl<T> UnboundedReceiver<T> {
 
     pub fn close(&mut self) {
         self.inner.close();
-        self.info.receiver_closed.store(1, Ordering::Relaxed);
+        // 2 = explicitly closed (distinct from 1 = dropped)
+        self.info.receiver_closed.store(2, Ordering::Relaxed);
     }
 }
 
@@ -651,6 +662,73 @@ pub fn watch_channel<T: Send + Sync + 'static>(
     )
 }
 
+// ── Attrs structs ───────────────────────────────────────
+
+#[derive(Facet)]
+struct ChannelMeta {
+    #[facet(rename = "ctx.location")]
+    ctx_location: String,
+}
+
+#[derive(Facet)]
+struct MpscTxAttrs {
+    name: String,
+    channel_kind: String,
+    created_at_ns: u64,
+    closed: bool,
+    bounded: bool,
+    #[facet(skip_unless_truthy)]
+    capacity: Option<u64>,
+    sender_count: u64,
+    send_waiters: u64,
+    sent_total: u64,
+    queue_len: u64,
+    high_watermark: u64,
+    #[facet(skip_unless_truthy)]
+    utilization: Option<f64>,
+    #[facet(skip_unless_truthy)]
+    close_cause: Option<String>,
+    meta: ChannelMeta,
+}
+
+#[derive(Facet)]
+struct MpscRxAttrs {
+    name: String,
+    channel_kind: String,
+    created_at_ns: u64,
+    closed: bool,
+    recv_waiters: u64,
+    recv_total: u64,
+    queue_len: u64,
+    #[facet(skip_unless_truthy)]
+    close_cause: Option<String>,
+    meta: ChannelMeta,
+}
+
+#[derive(Facet)]
+struct OneshotNodeAttrs {
+    name: String,
+    channel_kind: String,
+    created_at_ns: u64,
+    closed: bool,
+    state: String,
+    age_ns: u64,
+    #[facet(skip_unless_truthy)]
+    close_cause: Option<String>,
+    meta: ChannelMeta,
+}
+
+#[derive(Facet)]
+struct WatchNodeAttrs {
+    name: String,
+    channel_kind: String,
+    created_at_ns: u64,
+    changes: u64,
+    receiver_count: u64,
+    age_ns: u64,
+    meta: ChannelMeta,
+}
+
 // ── Graph emission ──────────────────────────────────────
 
 pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
@@ -669,79 +747,83 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
             let send_waiters = info.send_waiters.load(Ordering::Relaxed);
             let recv_waiters = info.recv_waiters.load(Ordering::Relaxed);
             let sender_count = info.sender_count.load(Ordering::Relaxed);
-            let sender_closed = info.sender_closed.load(Ordering::Relaxed) != 0;
-            let receiver_closed = info.receiver_closed.load(Ordering::Relaxed) != 0;
+            let sender_closed_val = info.sender_closed.load(Ordering::Relaxed);
+            let receiver_closed_val = info.receiver_closed.load(Ordering::Relaxed);
+            let sender_closed = sender_closed_val != 0;
+            let receiver_closed = receiver_closed_val != 0;
+
+            let utilization = if info.bounded {
+                info.capacity.and_then(|cap| {
+                    if cap > 0 {
+                        Some((queue_len as f64 / cap as f64 * 1000.0).round() / 1000.0)
+                    } else {
+                        None
+                    }
+                })
+            } else {
+                None
+            };
 
             // TX node
             {
-                let mut attrs = String::with_capacity(384);
-                attrs.push('{');
-                json_kv_str(&mut attrs, "name", name, true);
-                json_kv_str(&mut attrs, "channel_kind", "mpsc", false);
-                json_kv_u64(&mut attrs, "created_at_ns", created_at_ns, false);
-                json_kv_bool(&mut attrs, "closed", sender_closed, false);
-                json_kv_bool(&mut attrs, "bounded", info.bounded, false);
-                if let Some(cap) = info.capacity {
-                    json_kv_u64(&mut attrs, "capacity", cap, false);
-                }
-                json_kv_u64(&mut attrs, "sender_count", sender_count, false);
-                json_kv_u64(&mut attrs, "send_waiters", send_waiters, false);
-                json_kv_u64(&mut attrs, "sent_total", sent, false);
-                json_kv_u64(&mut attrs, "queue_len", queue_len, false);
-                json_kv_u64(&mut attrs, "high_watermark", high_watermark, false);
-                if info.bounded {
-                    if let Some(cap) = info.capacity {
-                        if cap > 0 {
-                            let utilization =
-                                (queue_len as f64 / cap as f64 * 1000.0).round() / 1000.0;
-                            json_kv_f64(&mut attrs, "utilization", utilization, false);
-                        }
-                    }
-                }
-                attrs.push_str(",\"meta\":{");
-                json_kv_str(
-                    &mut attrs,
-                    peeps_types::meta_key::CTX_LOCATION,
-                    &info.location,
-                    true,
-                );
-                attrs.push('}');
-                attrs.push('}');
+                let attrs = MpscTxAttrs {
+                    name: name.clone(),
+                    channel_kind: "mpsc".to_owned(),
+                    created_at_ns,
+                    closed: sender_closed,
+                    bounded: info.bounded,
+                    capacity: info.capacity,
+                    sender_count,
+                    send_waiters,
+                    sent_total: sent,
+                    queue_len,
+                    high_watermark,
+                    utilization,
+                    close_cause: if sender_closed {
+                        Some("all_senders_dropped".to_owned())
+                    } else {
+                        None
+                    },
+                    meta: ChannelMeta {
+                        ctx_location: info.location.clone(),
+                    },
+                };
 
                 graph.nodes.push(Node {
                     id: info.tx_node_id.clone(),
                     kind: NodeKind::Tx,
                     label: Some(format!("{name}:tx")),
-                    attrs_json: attrs,
+                    attrs_json: facet_json::to_string(&attrs).unwrap(),
                 });
             }
 
             // RX node
             {
-                let mut attrs = String::with_capacity(384);
-                attrs.push('{');
-                json_kv_str(&mut attrs, "name", name, true);
-                json_kv_str(&mut attrs, "channel_kind", "mpsc", false);
-                json_kv_u64(&mut attrs, "created_at_ns", created_at_ns, false);
-                json_kv_bool(&mut attrs, "closed", receiver_closed, false);
-                json_kv_u64(&mut attrs, "recv_waiters", recv_waiters, false);
-                json_kv_u64(&mut attrs, "recv_total", received, false);
-                json_kv_u64(&mut attrs, "queue_len", queue_len, false);
-                attrs.push_str(",\"meta\":{");
-                json_kv_str(
-                    &mut attrs,
-                    peeps_types::meta_key::CTX_LOCATION,
-                    &info.location,
-                    true,
-                );
-                attrs.push('}');
-                attrs.push('}');
+                let close_cause = match receiver_closed_val {
+                    1 => Some("receiver_dropped".to_owned()),
+                    2 => Some("receiver_closed".to_owned()),
+                    _ => None,
+                };
+
+                let attrs = MpscRxAttrs {
+                    name: name.clone(),
+                    channel_kind: "mpsc".to_owned(),
+                    created_at_ns,
+                    closed: receiver_closed,
+                    recv_waiters,
+                    recv_total: received,
+                    queue_len,
+                    close_cause,
+                    meta: ChannelMeta {
+                        ctx_location: info.location.clone(),
+                    },
+                };
 
                 graph.nodes.push(Node {
                     id: info.rx_node_id.clone(),
                     kind: NodeKind::Rx,
                     label: Some(format!("{name}:rx")),
-                    attrs_json: attrs,
+                    attrs_json: facet_json::to_string(&attrs).unwrap(),
                 });
             }
 
@@ -752,6 +834,24 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 kind: EdgeKind::Needs,
                 attrs_json: "{}".to_string(),
             });
+
+            // ClosedBy causal edges
+            if sender_closed {
+                graph.edges.push(Edge {
+                    src: info.rx_node_id.clone(),
+                    dst: info.tx_node_id.clone(),
+                    kind: EdgeKind::ClosedBy,
+                    attrs_json: "{}".to_string(),
+                });
+            }
+            if receiver_closed {
+                graph.edges.push(Edge {
+                    src: info.tx_node_id.clone(),
+                    dst: info.rx_node_id.clone(),
+                    kind: EdgeKind::ClosedBy,
+                    attrs_json: "{}".to_string(),
+                });
+            }
         }
     }
 
@@ -775,57 +875,59 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
 
             // TX node
             {
-                let mut attrs = String::with_capacity(256);
-                attrs.push('{');
-                json_kv_str(&mut attrs, "name", name, true);
-                json_kv_str(&mut attrs, "channel_kind", "oneshot", false);
-                json_kv_u64(&mut attrs, "created_at_ns", age_ns, false);
-                json_kv_bool(&mut attrs, "closed", sender_closed, false);
-                json_kv_str(&mut attrs, "state", state_str, false);
-                json_kv_u64(&mut attrs, "age_ns", age_ns, false);
-                attrs.push_str(",\"meta\":{");
-                json_kv_str(
-                    &mut attrs,
-                    peeps_types::meta_key::CTX_LOCATION,
-                    &info.location,
-                    true,
-                );
-                attrs.push('}');
-                attrs.push('}');
+                let close_cause = if state_val == ONESHOT_SENDER_DROPPED {
+                    Some("sender_dropped".to_owned())
+                } else {
+                    None
+                };
+
+                let attrs = OneshotNodeAttrs {
+                    name: name.clone(),
+                    channel_kind: "oneshot".to_owned(),
+                    created_at_ns: age_ns,
+                    closed: sender_closed,
+                    state: state_str.to_owned(),
+                    age_ns,
+                    close_cause,
+                    meta: ChannelMeta {
+                        ctx_location: info.location.clone(),
+                    },
+                };
 
                 graph.nodes.push(Node {
                     id: info.tx_node_id.clone(),
                     kind: NodeKind::Tx,
                     label: Some(format!("{name}:tx")),
-                    attrs_json: attrs,
+                    attrs_json: facet_json::to_string(&attrs).unwrap(),
                 });
             }
 
             // RX node
             {
-                let mut attrs = String::with_capacity(256);
-                attrs.push('{');
-                json_kv_str(&mut attrs, "name", name, true);
-                json_kv_str(&mut attrs, "channel_kind", "oneshot", false);
-                json_kv_u64(&mut attrs, "created_at_ns", age_ns, false);
-                json_kv_bool(&mut attrs, "closed", receiver_closed, false);
-                json_kv_str(&mut attrs, "state", state_str, false);
-                json_kv_u64(&mut attrs, "age_ns", age_ns, false);
-                attrs.push_str(",\"meta\":{");
-                json_kv_str(
-                    &mut attrs,
-                    peeps_types::meta_key::CTX_LOCATION,
-                    &info.location,
-                    true,
-                );
-                attrs.push('}');
-                attrs.push('}');
+                let close_cause = if state_val == ONESHOT_RECEIVER_DROPPED {
+                    Some("receiver_dropped".to_owned())
+                } else {
+                    None
+                };
+
+                let attrs = OneshotNodeAttrs {
+                    name: name.clone(),
+                    channel_kind: "oneshot".to_owned(),
+                    created_at_ns: age_ns,
+                    closed: receiver_closed,
+                    state: state_str.to_owned(),
+                    age_ns,
+                    close_cause,
+                    meta: ChannelMeta {
+                        ctx_location: info.location.clone(),
+                    },
+                };
 
                 graph.nodes.push(Node {
                     id: info.rx_node_id.clone(),
                     kind: NodeKind::Rx,
                     label: Some(format!("{name}:rx")),
-                    attrs_json: attrs,
+                    attrs_json: facet_json::to_string(&attrs).unwrap(),
                 });
             }
 
@@ -836,6 +938,24 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                 kind: EdgeKind::Needs,
                 attrs_json: "{}".to_string(),
             });
+
+            // ClosedBy causal edges
+            if state_val == ONESHOT_SENDER_DROPPED {
+                graph.edges.push(Edge {
+                    src: info.rx_node_id.clone(),
+                    dst: info.tx_node_id.clone(),
+                    kind: EdgeKind::ClosedBy,
+                    attrs_json: "{}".to_string(),
+                });
+            }
+            if state_val == ONESHOT_RECEIVER_DROPPED {
+                graph.edges.push(Edge {
+                    src: info.tx_node_id.clone(),
+                    dst: info.rx_node_id.clone(),
+                    kind: EdgeKind::ClosedBy,
+                    attrs_json: "{}".to_string(),
+                });
+            }
         }
     }
 
@@ -850,57 +970,45 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
 
             // TX node
             {
-                let mut attrs = String::with_capacity(256);
-                attrs.push('{');
-                json_kv_str(&mut attrs, "name", name, true);
-                json_kv_str(&mut attrs, "channel_kind", "watch", false);
-                json_kv_u64(&mut attrs, "created_at_ns", age_ns, false);
-                json_kv_u64(&mut attrs, "changes", changes, false);
-                json_kv_u64(&mut attrs, "receiver_count", receiver_count, false);
-                json_kv_u64(&mut attrs, "age_ns", age_ns, false);
-                attrs.push_str(",\"meta\":{");
-                json_kv_str(
-                    &mut attrs,
-                    peeps_types::meta_key::CTX_LOCATION,
-                    &info.location,
-                    true,
-                );
-                attrs.push('}');
-                attrs.push('}');
+                let attrs = WatchNodeAttrs {
+                    name: name.clone(),
+                    channel_kind: "watch".to_owned(),
+                    created_at_ns: age_ns,
+                    changes,
+                    receiver_count,
+                    age_ns,
+                    meta: ChannelMeta {
+                        ctx_location: info.location.clone(),
+                    },
+                };
 
                 graph.nodes.push(Node {
                     id: info.tx_node_id.clone(),
                     kind: NodeKind::Tx,
                     label: Some(format!("{name}:tx")),
-                    attrs_json: attrs,
+                    attrs_json: facet_json::to_string(&attrs).unwrap(),
                 });
             }
 
             // RX node
             {
-                let mut attrs = String::with_capacity(256);
-                attrs.push('{');
-                json_kv_str(&mut attrs, "name", name, true);
-                json_kv_str(&mut attrs, "channel_kind", "watch", false);
-                json_kv_u64(&mut attrs, "created_at_ns", age_ns, false);
-                json_kv_u64(&mut attrs, "changes", changes, false);
-                json_kv_u64(&mut attrs, "receiver_count", receiver_count, false);
-                json_kv_u64(&mut attrs, "age_ns", age_ns, false);
-                attrs.push_str(",\"meta\":{");
-                json_kv_str(
-                    &mut attrs,
-                    peeps_types::meta_key::CTX_LOCATION,
-                    &info.location,
-                    true,
-                );
-                attrs.push('}');
-                attrs.push('}');
+                let attrs = WatchNodeAttrs {
+                    name: name.clone(),
+                    channel_kind: "watch".to_owned(),
+                    created_at_ns: age_ns,
+                    changes,
+                    receiver_count,
+                    age_ns,
+                    meta: ChannelMeta {
+                        ctx_location: info.location.clone(),
+                    },
+                };
 
                 graph.nodes.push(Node {
                     id: info.rx_node_id.clone(),
                     kind: NodeKind::Rx,
                     label: Some(format!("{name}:rx")),
-                    attrs_json: attrs,
+                    attrs_json: facet_json::to_string(&attrs).unwrap(),
                 });
             }
 
@@ -913,57 +1021,4 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
             });
         }
     }
-}
-
-// ── JSON helpers ────────────────────────────────────────
-
-pub(super) fn json_kv_str(out: &mut String, key: &str, value: &str, first: bool) {
-    if !first {
-        out.push(',');
-    }
-    out.push('"');
-    out.push_str(key);
-    out.push_str("\":\"");
-    peeps_types::json_escape_into(out, value);
-    out.push('"');
-}
-
-pub(super) fn json_kv_u64(out: &mut String, key: &str, value: u64, first: bool) {
-    use std::io::Write;
-    if !first {
-        out.push(',');
-    }
-    out.push('"');
-    out.push_str(key);
-    out.push_str("\":");
-    let mut buf = [0u8; 20];
-    let mut cursor = std::io::Cursor::new(&mut buf[..]);
-    let _ = write!(cursor, "{value}");
-    let len = cursor.position() as usize;
-    out.push_str(std::str::from_utf8(&buf[..len]).unwrap_or("0"));
-}
-
-pub(super) fn json_kv_bool(out: &mut String, key: &str, value: bool, first: bool) {
-    if !first {
-        out.push(',');
-    }
-    out.push('"');
-    out.push_str(key);
-    out.push_str("\":");
-    out.push_str(if value { "true" } else { "false" });
-}
-
-pub(super) fn json_kv_f64(out: &mut String, key: &str, value: f64, first: bool) {
-    use std::io::Write;
-    if !first {
-        out.push(',');
-    }
-    out.push('"');
-    out.push_str(key);
-    out.push_str("\":");
-    let mut buf = [0u8; 32];
-    let mut cursor = std::io::Cursor::new(&mut buf[..]);
-    let _ = write!(cursor, "{value}");
-    let len = cursor.position() as usize;
-    out.push_str(std::str::from_utf8(&buf[..len]).unwrap_or("0"));
 }
