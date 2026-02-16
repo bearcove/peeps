@@ -5,6 +5,8 @@ use std::sync::{LazyLock, Mutex};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
+use facet::Facet;
+use facet_json::RawJson;
 use peeps_types::{GraphSnapshot, Node, NodeKind};
 
 // ── Storage ──────────────────────────────────────────────
@@ -212,10 +214,11 @@ where
 
 /// Spawn a future with a task-local stack for canonical edge tracking.
 ///
-/// The `name` parameter is accepted for API compatibility but does not
-/// create task nodes (tasks are not part of the canonical graph model).
+/// The `name` parameter is used for diagnostics when no parent context exists.
+/// Tasks are not part of the canonical graph model; only the futures they
+/// contain appear as nodes.
 #[track_caller]
-pub fn spawn_tracked<F>(_name: impl Into<String>, future: F) -> tokio::task::JoinHandle<F::Output>
+pub fn spawn_tracked<F>(name: impl Into<String>, future: F) -> tokio::task::JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
@@ -223,6 +226,15 @@ where
     // Propagate the current top-of-stack into the spawned task, so work that
     // is logically a continuation of a request/response keeps a causal parent.
     let parent = crate::stack::capture_top();
+    if parent.is_none() {
+        let name = name.into();
+        let caller = std::panic::Location::caller();
+        tracing::debug!(
+            task = %name,
+            location = %caller,
+            "spawn_tracked: no parent context, spawned task will have empty stack"
+        );
+    }
     tokio::spawn(async move {
         if let Some(parent) = parent {
             let fut = crate::stack::scope(&parent, future);
@@ -231,6 +243,158 @@ where
             crate::stack::ensure(future).await
         }
     })
+}
+
+// ── spawn_blocking_tracked ───────────────────────────────
+
+/// Spawn a blocking closure on the tokio blocking threadpool with context tracking.
+///
+/// Captures the current stack context before spawning, registers a future node
+/// for the blocking task, and emits edges (spawned + touch) from the parent.
+/// The node is cleaned up when the blocking closure completes.
+///
+/// Unlike `spawn_tracked`, the blocking closure cannot participate in the
+/// async task-local stack — this only provides lineage tracking.
+#[track_caller]
+pub fn spawn_blocking_tracked<F, T>(
+    name: impl Into<String>,
+    f: F,
+) -> tokio::task::JoinHandle<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    let name = name.into();
+    let node_id = peeps_types::new_node_id("future");
+    let caller = std::panic::Location::caller();
+    let location = crate::caller_location(caller);
+
+    let meta_json = inject_location_meta_json(
+        "{\"blocking\":\"true\"}".to_string(),
+        &location,
+    );
+
+    register_future(node_id.clone(), name, meta_json);
+
+    // Emit edges from parent context.
+    let child_id = node_id.clone();
+    crate::stack::with_top(|parent_node_id| {
+        crate::registry::spawn_edge(parent_node_id, &child_id);
+        crate::registry::touch_edge(parent_node_id, &child_id);
+    });
+
+    let cleanup_id = node_id;
+    tokio::task::spawn_blocking(move || {
+        let result = f();
+        // Clean up node — registry operations are thread-safe (std::sync::Mutex).
+        unregister_future(&cleanup_id);
+        crate::registry::remove_spawn_edges_to(&cleanup_id);
+        crate::registry::remove_touch_edges_to(&cleanup_id);
+        result
+    })
+}
+
+// ── Wait helpers ─────────────────────────────────────────
+
+/// Wrap `tokio::time::timeout` with instrumentation.
+///
+/// Creates a `PeepableFuture` node labeled `timeout:{label}`, making
+/// the timeout visible in the graph as a child of the current stack frame.
+///
+/// ```ignore
+/// let result = peeps::timeout(Duration::from_secs(5), rpc_call(), "rpc").await;
+/// ```
+#[track_caller]
+pub fn timeout<F: Future>(
+    duration: std::time::Duration,
+    future: F,
+    label: impl Into<String>,
+) -> PeepableFuture<tokio::time::Timeout<F>> {
+    let label = format!("timeout:{}", label.into());
+    let node_id = peeps_types::new_node_id("future");
+    let caller = std::panic::Location::caller();
+    let location = crate::caller_location(caller);
+
+    let dur_ms = duration.as_millis();
+    let dur_str = format!("{dur_ms}");
+    let mut meta = peeps_types::MetaBuilder::<2>::new();
+    meta.push(
+        peeps_types::meta_key::CTX_LOCATION,
+        peeps_types::MetaValue::Str(&location),
+    );
+    meta.push("timeout.duration_ms", peeps_types::MetaValue::Str(&dur_str));
+    let meta_json = meta.to_json_object();
+
+    register_future(node_id.clone(), label.clone(), meta_json);
+
+    let child_id = node_id.clone();
+    crate::stack::with_top(|parent_node_id| {
+        crate::registry::spawn_edge(parent_node_id, &child_id);
+    });
+
+    PeepableFuture {
+        node_id,
+        resource: label,
+        inner: tokio::time::timeout(duration, future),
+        pending_since: None,
+        await_edge_src: None,
+    }
+}
+
+/// Wrap `tokio::time::sleep` with instrumentation.
+///
+/// Creates a `PeepableFuture` node labeled `sleep:{label}`, making
+/// the sleep visible in the graph as a child of the current stack frame.
+///
+/// ```ignore
+/// peeps::sleep(Duration::from_secs(30), "heartbeat_interval").await;
+/// ```
+#[track_caller]
+pub fn sleep(
+    duration: std::time::Duration,
+    label: impl Into<String>,
+) -> PeepableFuture<tokio::time::Sleep> {
+    let label = format!("sleep:{}", label.into());
+    let node_id = peeps_types::new_node_id("future");
+    let caller = std::panic::Location::caller();
+    let location = crate::caller_location(caller);
+
+    let dur_ms = duration.as_millis();
+    let dur_str = format!("{dur_ms}");
+    let mut meta = peeps_types::MetaBuilder::<2>::new();
+    meta.push(
+        peeps_types::meta_key::CTX_LOCATION,
+        peeps_types::MetaValue::Str(&location),
+    );
+    meta.push("sleep.duration_ms", peeps_types::MetaValue::Str(&dur_str));
+    let meta_json = meta.to_json_object();
+
+    register_future(node_id.clone(), label.clone(), meta_json);
+
+    let child_id = node_id.clone();
+    crate::stack::with_top(|parent_node_id| {
+        crate::registry::spawn_edge(parent_node_id, &child_id);
+    });
+
+    PeepableFuture {
+        node_id,
+        resource: label,
+        inner: tokio::time::sleep(duration),
+        pending_since: None,
+        await_edge_src: None,
+    }
+}
+
+// ── Attrs structs ────────────────────────────────────────
+
+#[derive(Facet)]
+struct FutureAttrs<'a> {
+    label: &'a str,
+    pending_count: u64,
+    ready_count: u64,
+    #[facet(skip_unless_truthy)]
+    total_pending_ns: Option<u64>,
+    meta: RawJson<'a>,
 }
 
 // ── Graph emission ───────────────────────────────────────
@@ -244,55 +408,29 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
     for (node_id, info) in registry.iter() {
         let total_pending_ns = info.total_pending.as_nanos() as u64;
 
-        let mut attrs = String::with_capacity(256);
-        attrs.push('{');
-        write_json_kv_str(&mut attrs, "label", &info.resource, true);
-        write_json_kv_u64(&mut attrs, "pending_count", info.pending_count, false);
-        write_json_kv_u64(&mut attrs, "ready_count", info.ready_count, false);
-        if total_pending_ns > 0 {
-            write_json_kv_u64(&mut attrs, "total_pending_ns", total_pending_ns, false);
-        }
-        attrs.push_str(",\"meta\":");
-        if info.meta_json.is_empty() {
-            attrs.push_str("{}");
+        let meta_str = if info.meta_json.is_empty() {
+            "{}"
         } else {
-            attrs.push_str(&info.meta_json);
-        }
-        attrs.push('}');
+            &info.meta_json
+        };
+
+        let attrs = FutureAttrs {
+            label: &info.resource,
+            pending_count: info.pending_count,
+            ready_count: info.ready_count,
+            total_pending_ns: if total_pending_ns > 0 {
+                Some(total_pending_ns)
+            } else {
+                None
+            },
+            meta: RawJson::new(meta_str),
+        };
 
         graph.nodes.push(Node {
             id: node_id.clone(),
             kind: NodeKind::Future,
             label: Some(info.resource.clone()),
-            attrs_json: attrs,
+            attrs_json: facet_json::to_string(&attrs).unwrap(),
         });
     }
-}
-
-// ── JSON helpers ─────────────────────────────────────────
-
-fn write_json_kv_str(out: &mut String, key: &str, value: &str, first: bool) {
-    if !first {
-        out.push(',');
-    }
-    out.push('"');
-    out.push_str(key);
-    out.push_str("\":\"");
-    peeps_types::json_escape_into(out, value);
-    out.push('"');
-}
-
-fn write_json_kv_u64(out: &mut String, key: &str, value: u64, first: bool) {
-    use std::io::Write;
-    if !first {
-        out.push(',');
-    }
-    out.push('"');
-    out.push_str(key);
-    out.push_str("\":");
-    let mut buf = [0u8; 20];
-    let mut cursor = std::io::Cursor::new(&mut buf[..]);
-    let _ = write!(cursor, "{value}");
-    let len = cursor.position() as usize;
-    out.push_str(std::str::from_utf8(&buf[..len]).unwrap_or("0"));
 }

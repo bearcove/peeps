@@ -64,6 +64,40 @@ where
     tokio::spawn(future)
 }
 
+// ── spawn_blocking_tracked ───────────────────────────────
+
+#[inline]
+pub fn spawn_blocking_tracked<F, T>(_name: impl Into<String>, f: F) -> tokio::task::JoinHandle<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+}
+
+// ── Wait helpers (zero-cost) ─────────────────────────────
+
+#[inline]
+pub fn timeout<F: Future>(
+    duration: std::time::Duration,
+    future: F,
+    _label: impl Into<String>,
+) -> PeepableFuture<tokio::time::Timeout<F>> {
+    PeepableFuture {
+        inner: tokio::time::timeout(duration, future),
+    }
+}
+
+#[inline]
+pub fn sleep(
+    duration: std::time::Duration,
+    _label: impl Into<String>,
+) -> PeepableFuture<tokio::time::Sleep> {
+    PeepableFuture {
+        inner: tokio::time::sleep(duration),
+    }
+}
+
 // ── Graph emission (no-op) ───────────────────────────────
 
 #[inline(always)]
