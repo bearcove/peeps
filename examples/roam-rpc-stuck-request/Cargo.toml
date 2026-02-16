@@ -1,0 +1,19 @@
+[package]
+name = "roam-rpc-stuck-request"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+peeps = { path = "../../crates/peeps", features = ["diagnostics", "dashboard"] }
+tokio = { version = "1.49", features = ["macros", "rt-multi-thread", "signal", "time", "sync"] }
+roam = { path = "../../../roam/rust/roam" }
+roam-session = { path = "../../../roam/rust/roam-session", features = ["diagnostics"] }
+roam-wire = { path = "../../../roam/rust/roam-wire" }
+ulid = "1"
+
+[patch."https://github.com/bearcove/peeps"]
+peeps = { path = "../../crates/peeps" }
+peeps-types = { path = "../../crates/peeps-types" }

@@ -44,3 +44,42 @@ PEEPS_DASHBOARD=127.0.0.1:9119 \
 ```
 
 Then open [http://127.0.0.1:9131](http://127.0.0.1:9131) and inspect the `demo.work_queue` channel nodes plus the `queue.send.blocked` task.
+
+## 2) Roam RPC stuck request
+
+Path: `examples/roam-rpc-stuck-request`
+
+What it does:
+- Starts an in-memory Roam client/server connection
+- Sends one RPC request (`sleepy_forever`)
+- Handler records a response node and then sleeps forever
+- Caller remains blocked waiting for a response that never arrives
+
+### Run it
+
+Single-command runner:
+
+```bash
+scripts/run-example roam-rpc-stuck-request
+```
+
+Manual mode:
+
+Terminal 1:
+
+```bash
+cargo run -p peeps-web
+```
+
+Terminal 2:
+
+```bash
+pnpm --dir crates/peeps-web/frontend dev
+```
+
+Terminal 3:
+
+```bash
+PEEPS_DASHBOARD=127.0.0.1:9119 \
+  cargo run --manifest-path examples/roam-rpc-stuck-request/Cargo.toml
+```
