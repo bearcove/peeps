@@ -8,7 +8,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axum::response::{IntoResponse, Redirect};
 use axum::routing::{get, post};
 use axum::Router;
-use facet::Facet;
 use peeps_types::{DashboardHandshake, GraphReply, SnapshotRequest};
 use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -43,38 +42,6 @@ pub(crate) struct ConnectedProcess {
     pub(crate) last_frame_recv_at_ns: Option<i64>,
     pub(crate) last_frame_sent_at_ns: Option<i64>,
     tx: tokio::sync::mpsc::Sender<Vec<u8>>,
-}
-
-#[derive(Debug, Clone)]
-struct LiveConnectionState {
-    connection_id: String,
-    opened_at_ns: i64,
-    closed_at_ns: Option<i64>,
-    last_frame_recv_at_ns: Option<i64>,
-    last_frame_sent_at_ns: Option<i64>,
-    pending_requests: Option<u64>,
-}
-
-#[derive(Facet)]
-struct ConnectionNodeAttrs<'a> {
-    created_at: i64,
-    source: &'a str,
-    #[facet(rename = "rpc.connection")]
-    rpc_connection: &'a str,
-    #[facet(rename = "connection.id")]
-    connection_id: &'a str,
-    #[facet(rename = "connection.state")]
-    connection_state: &'a str,
-    #[facet(rename = "connection.opened_at_ns")]
-    connection_opened_at_ns: i64,
-    #[facet(rename = "connection.closed_at_ns")]
-    connection_closed_at_ns: Option<i64>,
-    #[facet(rename = "connection.last_frame_recv_at_ns")]
-    connection_last_frame_recv_at_ns: Option<i64>,
-    #[facet(rename = "connection.last_frame_sent_at_ns")]
-    connection_last_frame_sent_at_ns: Option<i64>,
-    #[facet(rename = "connection.pending_requests")]
-    connection_pending_requests: Option<u64>,
 }
 
 pub(crate) struct InFlightSnapshot {
@@ -536,25 +503,10 @@ async fn apply_connection_identity(
 async fn process_reply(state: &AppState, reply: &GraphReply, proc_key: &str) {
     let now_ns = now_nanos();
 
-    let (snapshot_id, live_connection) = {
+    let snapshot_id = {
         let ctl = state.snapshot_ctl.inner.lock().await;
         match &ctl.in_flight {
-            Some(f) if f.snapshot_id == reply.snapshot_id => {
-                let pending_requests = Some(if f.pending.contains(proc_key) { 1 } else { 0 });
-                let live_connection = ctl
-                    .connections
-                    .values()
-                    .find(|conn| conn.proc_key == proc_key)
-                    .map(|conn| LiveConnectionState {
-                        connection_id: conn.connection_token.clone(),
-                        opened_at_ns: conn.opened_at_ns,
-                        closed_at_ns: conn.closed_at_ns,
-                        last_frame_recv_at_ns: conn.last_frame_recv_at_ns,
-                        last_frame_sent_at_ns: conn.last_frame_sent_at_ns,
-                        pending_requests,
-                    });
-                (f.snapshot_id, live_connection)
-            }
+            Some(f) if f.snapshot_id == reply.snapshot_id => f.snapshot_id,
             Some(f) => {
                 let expected = f.snapshot_id;
                 warn!(
@@ -607,7 +559,6 @@ async fn process_reply(state: &AppState, reply: &GraphReply, proc_key: &str) {
         proc_key,
         now_ns,
         graph,
-        live_connection.as_ref(),
     ) {
         record_ingest_event(
             &state.db_path,
@@ -657,7 +608,6 @@ fn persist_reply(
     proc_key: &str,
     recv_at_ns: i64,
     graph: Option<&GraphSnapshot>,
-    live_connection: Option<&LiveConnectionState>,
 ) -> Result<(), String> {
     let mut conn = open_db(db_path);
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -670,22 +620,8 @@ fn persist_reply(
     .map_err(|e| e.to_string())?;
 
     if let Some(graph) = graph {
-        let live_connection_node_id = live_connection.map(connection_node_id);
-        let live_connection_attrs_json = live_connection.map(connection_attrs_json);
-        let mut saw_live_connection_node = false;
-
         for node in &graph.nodes {
-            let attrs_json = if matches!(node.kind, peeps_types::NodeKind::Connection)
-                && live_connection_node_id.as_deref() == Some(node.id.as_str())
-            {
-                saw_live_connection_node = true;
-                live_connection_attrs_json
-                    .as_deref()
-                    .unwrap_or(node.attrs_json.as_str())
-            } else {
-                node.attrs_json.as_str()
-            };
-            let canonical_attrs_json = canonicalize_inspector_attrs(attrs_json)
+            let canonical_attrs_json = canonicalize_inspector_attrs(node.attrs_json.as_str())
                 .map_err(|e| format!("node {} ({}) attrs contract: {e}", node.id, node.kind.as_str()))?;
             tx.execute(
                 "INSERT OR REPLACE INTO nodes (snapshot_id, id, kind, process, proc_key, attrs_json)
@@ -700,29 +636,6 @@ fn persist_reply(
                 ],
             )
             .map_err(|e| e.to_string())?;
-        }
-
-        if let (Some(connection_node_id), Some(attrs_json)) = (
-            live_connection_node_id.as_deref(),
-            live_connection_attrs_json.as_deref(),
-        ) {
-            if !saw_live_connection_node {
-                let canonical_attrs_json = canonicalize_inspector_attrs(attrs_json)
-                    .map_err(|e| format!("live connection attrs contract: {e}"))?;
-                tx.execute(
-                    "INSERT OR REPLACE INTO nodes (snapshot_id, id, kind, process, proc_key, attrs_json)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                    params![
-                        snapshot_id,
-                        connection_node_id,
-                        peeps_types::NodeKind::Connection.as_str(),
-                        process,
-                        proc_key,
-                        canonical_attrs_json
-                    ],
-                )
-                .map_err(|e| e.to_string())?;
-            }
         }
 
         for edge in &graph.edges {
@@ -766,30 +679,6 @@ fn persist_reply(
     }
 
     tx.commit().map_err(|e| e.to_string())
-}
-
-fn connection_node_id(connection: &LiveConnectionState) -> String {
-    format!("connection:{}", connection.connection_id)
-}
-
-fn connection_attrs_json(connection: &LiveConnectionState) -> String {
-    let attrs = ConnectionNodeAttrs {
-        created_at: connection.opened_at_ns,
-        source: "peeps-web/live-connection",
-        rpc_connection: &connection.connection_id,
-        connection_id: &connection.connection_id,
-        connection_state: if connection.closed_at_ns.is_some() {
-            "closed"
-        } else {
-            "open"
-        },
-        connection_opened_at_ns: connection.opened_at_ns,
-        connection_closed_at_ns: connection.closed_at_ns,
-        connection_last_frame_recv_at_ns: connection.last_frame_recv_at_ns,
-        connection_last_frame_sent_at_ns: connection.last_frame_sent_at_ns,
-        connection_pending_requests: connection.pending_requests,
-    };
-    facet_json::to_string(&attrs).unwrap()
 }
 
 const FORBIDDEN_INSPECTOR_ALIAS_KEYS: [&str; 10] = [

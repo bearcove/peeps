@@ -958,8 +958,6 @@ export function App() {
     [enrichedGraph, handleSelectGraphNode, handleSetMode],
   );
 
-  const connectedProcessNamesPreview = connectedProcessNames.slice(0, 6);
-  const hiddenConnectedProcessNames = Math.max(0, connectedProcessNames.length - connectedProcessNamesPreview.length);
   const hasConnectedProcesses = connectedProcessCount > 0;
   const connectedProcessList = connectedProcessNames.slice(0, 5);
   const hiddenConnectedProcessRows = Math.max(0, connectedProcessNames.length - connectedProcessList.length);
@@ -1006,21 +1004,21 @@ export function App() {
               <div className={`app-empty-transition ${hasConnectedProcesses ? "app-empty-transition--connected" : "app-empty-transition--waiting"}`}>
                 {hasConnectedProcesses ? (
                   <div className="app-empty-connected-group">
-                    <div className="app-empty-connected-list" title={connectedProcessNames.join(", ")}>
-                      {connectedProcessList.map((processName) => (
-                        <div key={processName} className="app-empty-connected-item">
-                          {processName}
-                        </div>
-                      ))}
-                    </div>
+                    {connectedProcessCount === 1 ? (
+                      <div className="app-empty-connected-list" title={connectedProcessNames[0]}>
+                        <div className="app-empty-connected-item">{connectedProcessNames[0]}</div>
+                      </div>
+                    ) : (
+                      <div className="app-empty-connected-list" title={connectedProcessNames.join(", ")}>
+                        {connectedProcessList.map((processName, index) => (
+                          <div key={`${processName}-${index}`} className="app-empty-connected-item">
+                            {processName}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {hiddenConnectedProcessRows > 0 && (
                       <p className="app-empty-connected-more">+{hiddenConnectedProcessRows} more</p>
-                    )}
-                    {connectedProcessNamesPreview.length > 0 && (
-                      <p className="app-empty-connected-processes">
-                        {connectedProcessNamesPreview.join(", ")}
-                        {hiddenConnectedProcessNames > 0 ? ` +${hiddenConnectedProcessNames} more` : ""}
-                      </p>
                     )}
                   </div>
                 ) : (
