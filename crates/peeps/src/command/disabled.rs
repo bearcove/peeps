@@ -94,10 +94,37 @@ impl Command {
     pub async fn output(&mut self) -> io::Result<Output> {
         self.0.output().await
     }
+
+    #[inline]
+    pub fn as_std(&self) -> &std::process::Command {
+        self.0.as_std()
+    }
+
+    #[cfg(unix)]
+    #[inline]
+    pub unsafe fn pre_exec<F>(&mut self, f: F) -> &mut Self
+    where
+        F: FnMut() -> io::Result<()> + Send + Sync + 'static,
+    {
+        self.0.pre_exec(f);
+        self
+    }
+
+    #[inline]
+    pub fn into_inner(self) -> tokio::process::Command {
+        self.0
+    }
 }
 
 /// Zero-cost wrapper around `tokio::process::Child` (diagnostics disabled).
 pub struct Child(tokio::process::Child);
+
+impl From<tokio::process::Child> for Child {
+    #[inline]
+    fn from(child: tokio::process::Child) -> Self {
+        Self(child)
+    }
+}
 
 impl Child {
     #[inline]
@@ -116,7 +143,7 @@ impl Child {
     }
 
     #[inline]
-    pub fn kill(&mut self) -> io::Result<()> {
+    pub fn start_kill(&mut self) -> io::Result<()> {
         self.0.start_kill()
     }
 

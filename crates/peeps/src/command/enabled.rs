@@ -330,6 +330,23 @@ impl Command {
 
         result
     }
+
+    pub fn as_std(&self) -> &std::process::Command {
+        self.inner.as_std()
+    }
+
+    #[cfg(unix)]
+    pub unsafe fn pre_exec<F>(&mut self, f: F) -> &mut Self
+    where
+        F: FnMut() -> io::Result<()> + Send + Sync + 'static,
+    {
+        self.inner.pre_exec(f);
+        self
+    }
+
+    pub fn into_inner(self) -> tokio::process::Command {
+        self.inner
+    }
 }
 
 /// Diagnostic wrapper around `tokio::process::Child`.
@@ -346,6 +363,44 @@ pub struct Child {
     env_count: usize,
 }
 
+impl From<tokio::process::Child> for Child {
+    fn from(child: tokio::process::Child) -> Self {
+        let node_id = peeps_types::new_node_id("command");
+        let pid = child.id();
+        let attrs = build_attrs_json(
+            "",
+            "",
+            None,
+            0,
+            pid,
+            None,
+            None,
+            None,
+            None,
+        );
+        crate::registry::register_node(Node {
+            id: node_id.clone(),
+            kind: NodeKind::Command,
+            label: Some("command".to_string()),
+            attrs_json: attrs,
+        });
+        crate::stack::with_top(|src| {
+            crate::registry::touch_edge(src, &node_id);
+            crate::registry::edge(src, &node_id);
+        });
+
+        Self {
+            inner: Some(child),
+            node_id,
+            start: Instant::now(),
+            program: String::new(),
+            args_preview: String::new(),
+            cwd: None,
+            env_count: 0,
+        }
+    }
+}
+
 impl Child {
     fn inner(&self) -> &tokio::process::Child {
         self.inner.as_ref().expect("Child already consumed")
@@ -360,12 +415,20 @@ impl Child {
     }
 
     pub async fn wait(&mut self) -> io::Result<ExitStatus> {
+        crate::stack::with_top(|src| {
+            crate::registry::touch_edge(src, &self.node_id);
+            crate::registry::edge(src, &self.node_id);
+        });
         let result = self.inner_mut().wait().await;
         self.update_node_on_exit(&result);
         result
     }
 
     pub async fn wait_with_output(mut self) -> io::Result<Output> {
+        crate::stack::with_top(|src| {
+            crate::registry::touch_edge(src, &self.node_id);
+            crate::registry::edge(src, &self.node_id);
+        });
         let inner = self.inner.take().expect("Child already consumed");
         let pid = inner.id();
 
@@ -403,7 +466,7 @@ impl Child {
         result
     }
 
-    pub fn kill(&mut self) -> io::Result<()> {
+    pub fn start_kill(&mut self) -> io::Result<()> {
         self.inner_mut().start_kill()
     }
 
@@ -477,4 +540,3 @@ fn exit_signal_str(status: &ExitStatus) -> Option<String> {
 fn exit_signal_str(_status: &ExitStatus) -> Option<String> {
     None
 }
-
