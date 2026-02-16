@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axum::response::{IntoResponse, Redirect};
 use axum::routing::{get, post};
 use axum::Router;
+use facet::Facet;
 use peeps_types::{GraphReply, SnapshotRequest};
 use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -36,7 +37,42 @@ pub(crate) struct SnapshotControllerInner {
 pub(crate) struct ConnectedProcess {
     pub(crate) proc_key: String,
     pub(crate) process_name: String,
+    pub(crate) connection_token: String,
+    pub(crate) opened_at_ns: i64,
+    pub(crate) closed_at_ns: Option<i64>,
+    pub(crate) last_frame_recv_at_ns: Option<i64>,
+    pub(crate) last_frame_sent_at_ns: Option<i64>,
     tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+}
+
+#[derive(Debug, Clone)]
+struct LiveConnectionState {
+    connection_id: String,
+    opened_at_ns: i64,
+    closed_at_ns: Option<i64>,
+    last_frame_recv_at_ns: Option<i64>,
+    last_frame_sent_at_ns: Option<i64>,
+    pending_requests: Option<u64>,
+}
+
+#[derive(Facet)]
+struct ConnectionNodeAttrs<'a> {
+    #[facet(rename = "rpc.connection")]
+    rpc_connection: &'a str,
+    #[facet(rename = "connection.id")]
+    connection_id: &'a str,
+    #[facet(rename = "connection.state")]
+    connection_state: &'a str,
+    #[facet(rename = "connection.opened_at_ns")]
+    connection_opened_at_ns: i64,
+    #[facet(rename = "connection.closed_at_ns")]
+    connection_closed_at_ns: Option<i64>,
+    #[facet(rename = "connection.last_frame_recv_at_ns")]
+    connection_last_frame_recv_at_ns: Option<i64>,
+    #[facet(rename = "connection.last_frame_sent_at_ns")]
+    connection_last_frame_sent_at_ns: Option<i64>,
+    #[facet(rename = "connection.pending_requests")]
+    connection_pending_requests: Option<u64>,
 }
 
 pub(crate) struct InFlightSnapshot {
@@ -205,9 +241,11 @@ pub(crate) async fn trigger_snapshot(state: &AppState) -> Result<(i64, usize), S
         };
         let req_json = facet_json::to_vec(&req).map_err(|e| e.to_string())?;
 
-        for conn in ctl.connections.values() {
+        for conn in ctl.connections.values_mut() {
             if let Err(e) = conn.tx.try_send(req_json.clone()) {
                 error!(proc_key = %conn.proc_key, %e, "failed to send snapshot request");
+            } else {
+                conn.last_frame_sent_at_ns = Some(now_nanos());
             }
         }
 
@@ -302,11 +340,17 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
         let mut ctl = state.snapshot_ctl.inner.lock().await;
         let id = ctl.next_conn_id;
         ctl.next_conn_id += 1;
+        let now_ns = now_nanos();
         ctl.connections.insert(
             id,
             ConnectedProcess {
                 proc_key: format!("unknown-{id}"),
                 process_name: String::new(),
+                connection_token: peeps_types::canonical_id::connection(id),
+                opened_at_ns: now_ns,
+                closed_at_ns: None,
+                last_frame_recv_at_ns: None,
+                last_frame_sent_at_ns: None,
                 tx: msg_tx,
             },
         );
@@ -329,6 +373,9 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
 
     {
         let mut ctl = state.snapshot_ctl.inner.lock().await;
+        if let Some(conn) = ctl.connections.get_mut(&conn_id) {
+            conn.closed_at_ns = Some(now_nanos());
+        }
         ctl.connections.remove(&conn_id);
     }
     writer_handle.abort();
@@ -361,6 +408,12 @@ async fn read_replies(
             .read_exact(&mut frame)
             .await
             .map_err(|e| format!("read frame payload: {e}"))?;
+        {
+            let mut ctl = state.snapshot_ctl.inner.lock().await;
+            if let Some(conn) = ctl.connections.get_mut(&conn_id) {
+                conn.last_frame_recv_at_ns = Some(now_nanos());
+            }
+        }
 
         debug!(
             conn_id,
@@ -405,9 +458,25 @@ async fn read_replies(
 
         {
             let mut ctl = state.snapshot_ctl.inner.lock().await;
+            let mut previous_proc_key: Option<String> = None;
             if let Some(conn) = ctl.connections.get_mut(&conn_id) {
+                previous_proc_key = Some(conn.proc_key.clone());
                 conn.proc_key = proc_key.clone();
                 conn.process_name = reply.process.clone();
+            }
+
+            // If a snapshot started before this connection reported identity,
+            // it may be tracked as "unknown-<id>". Swap to the real proc_key
+            // so pending bookkeeping can complete without waiting for timeout.
+            if let (Some(prev), Some(in_flight)) = (previous_proc_key, ctl.in_flight.as_mut()) {
+                if prev != proc_key {
+                    if in_flight.requested.remove(&prev) {
+                        in_flight.requested.insert(proc_key.clone());
+                    }
+                    if in_flight.pending.remove(&prev) {
+                        in_flight.pending.insert(proc_key.clone());
+                    }
+                }
             }
         }
 
@@ -418,10 +487,25 @@ async fn read_replies(
 async fn process_reply(state: &AppState, reply: &GraphReply, proc_key: &str) {
     let now_ns = now_nanos();
 
-    let snapshot_id = {
+    let (snapshot_id, live_connection) = {
         let ctl = state.snapshot_ctl.inner.lock().await;
         match &ctl.in_flight {
-            Some(f) if f.snapshot_id == reply.snapshot_id => f.snapshot_id,
+            Some(f) if f.snapshot_id == reply.snapshot_id => {
+                let pending_requests = Some(if f.pending.contains(proc_key) { 1 } else { 0 });
+                let live_connection = ctl
+                    .connections
+                    .values()
+                    .find(|conn| conn.proc_key == proc_key)
+                    .map(|conn| LiveConnectionState {
+                        connection_id: conn.connection_token.clone(),
+                        opened_at_ns: conn.opened_at_ns,
+                        closed_at_ns: conn.closed_at_ns,
+                        last_frame_recv_at_ns: conn.last_frame_recv_at_ns,
+                        last_frame_sent_at_ns: conn.last_frame_sent_at_ns,
+                        pending_requests,
+                    });
+                (f.snapshot_id, live_connection)
+            }
             Some(f) => {
                 let expected = f.snapshot_id;
                 warn!(
@@ -474,6 +558,7 @@ async fn process_reply(state: &AppState, reply: &GraphReply, proc_key: &str) {
         proc_key,
         now_ns,
         graph,
+        live_connection.as_ref(),
     ) {
         record_ingest_event(
             &state.db_path,
@@ -523,6 +608,7 @@ fn persist_reply(
     proc_key: &str,
     recv_at_ns: i64,
     graph: Option<&GraphSnapshot>,
+    live_connection: Option<&LiveConnectionState>,
 ) -> Result<(), String> {
     let mut conn = open_db(db_path);
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -535,20 +621,48 @@ fn persist_reply(
     .map_err(|e| e.to_string())?;
 
     if let Some(graph) = graph {
+        let live_connection_node_id = live_connection.map(connection_node_id);
+        let live_connection_attrs_json = live_connection.map(connection_attrs_json);
+        let mut saw_live_connection_node = false;
+
         for node in &graph.nodes {
+            let attrs_json = if matches!(node.kind, peeps_types::NodeKind::Connection)
+                && live_connection_node_id.as_deref() == Some(node.id.as_str())
+            {
+                saw_live_connection_node = true;
+                live_connection_attrs_json
+                    .as_deref()
+                    .unwrap_or(node.attrs_json.as_str())
+            } else {
+                node.attrs_json.as_str()
+            };
             tx.execute(
                 "INSERT OR REPLACE INTO nodes (snapshot_id, id, kind, process, proc_key, attrs_json)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    snapshot_id,
-                    node.id,
-                    node.kind.as_str(),
-                    process,
-                    proc_key,
-                    node.attrs_json
-                ],
+                params![snapshot_id, node.id, node.kind.as_str(), process, proc_key, attrs_json],
             )
             .map_err(|e| e.to_string())?;
+        }
+
+        if let (Some(connection_node_id), Some(attrs_json)) = (
+            live_connection_node_id.as_deref(),
+            live_connection_attrs_json.as_deref(),
+        ) {
+            if !saw_live_connection_node {
+                tx.execute(
+                    "INSERT OR REPLACE INTO nodes (snapshot_id, id, kind, process, proc_key, attrs_json)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        snapshot_id,
+                        connection_node_id,
+                        peeps_types::NodeKind::Connection.as_str(),
+                        process,
+                        proc_key,
+                        attrs_json
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
         }
 
         for edge in &graph.edges {
@@ -592,6 +706,28 @@ fn persist_reply(
     }
 
     tx.commit().map_err(|e| e.to_string())
+}
+
+fn connection_node_id(connection: &LiveConnectionState) -> String {
+    format!("connection:{}", connection.connection_id)
+}
+
+fn connection_attrs_json(connection: &LiveConnectionState) -> String {
+    let attrs = ConnectionNodeAttrs {
+        rpc_connection: &connection.connection_id,
+        connection_id: &connection.connection_id,
+        connection_state: if connection.closed_at_ns.is_some() {
+            "closed"
+        } else {
+            "open"
+        },
+        connection_opened_at_ns: connection.opened_at_ns,
+        connection_closed_at_ns: connection.closed_at_ns,
+        connection_last_frame_recv_at_ns: connection.last_frame_recv_at_ns,
+        connection_last_frame_sent_at_ns: connection.last_frame_sent_at_ns,
+        connection_pending_requests: connection.pending_requests,
+    };
+    facet_json::to_string(&attrs).unwrap()
 }
 
 // ── Ingest events ────────────────────────────────────────────────

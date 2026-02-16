@@ -122,6 +122,32 @@ function attrFromMeta(attrs: Record<string, unknown>, key: string): string | und
   return undefined;
 }
 
+function sourceLocationFromAttrs(attrs: Record<string, unknown>): string | null {
+  const direct = attrs["ctx.location"];
+  if (direct != null && String(direct).trim() !== "") return String(direct);
+
+  const meta = attrs["meta"];
+  if (meta && typeof meta === "object" && !Array.isArray(meta)) {
+    const fromMeta = (meta as Record<string, unknown>)["ctx.location"];
+    if (fromMeta != null && String(fromMeta).trim() !== "") return String(fromMeta);
+  }
+
+  return null;
+}
+
+function sourceDisplayName(location: string): string {
+  const trimmed = location.trim();
+  if (trimmed === "") return location;
+
+  const match = trimmed.match(/^(.*[\\/])?([^\\/]+?):(\d+)(?::\d+)?$/);
+  if (match) {
+    return `${match[2]}:${match[3]}`;
+  }
+
+  const lastSlash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed;
+}
+
 function rpcConnectionAttr(attrs: Record<string, unknown>): string | undefined {
   return (
     firstAttr(attrs, ["connection", "rpc.connection"]) ??
@@ -599,6 +625,7 @@ function NodeDetail({
         ])
       : undefined;
   const deadlockReason = attr(node.attrs, "_ui_deadlock_reason");
+  const sourceLocation = sourceLocationFromAttrs(node.attrs);
   const blockers =
     graph?.edges
       .filter((e) => e.kind === "needs" && e.src_id === node.id)
@@ -769,6 +796,19 @@ function NodeDetail({
           <span className="inspect-key">Process</span>
           <span className="inspect-val">{node.process}</span>
         </div>
+        {sourceLocation && (
+          <div className="inspect-row">
+            <span className="inspect-key">Source</span>
+            <a
+              className="inspect-val inspect-val--mono inspect-link"
+              href={`zed://file/${encodeURIComponent(sourceLocation)}`}
+              title={sourceLocation}
+            >
+              <ArrowSquareOut size={12} weight="bold" className="inspect-link-icon" />
+              {sourceDisplayName(sourceLocation)}
+            </a>
+          </div>
+        )}
       </div>
 
       {(uniqueBlockers.length > 0 || uniqueDependents.length > 0) && (
@@ -909,7 +949,7 @@ function NodeDetail({
 
 function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
   const [expanded, setExpanded] = useState(false);
-  const entries = Object.entries(attrs).filter(([, v]) => v != null);
+  const entries = Object.entries(attrs).filter(([k, v]) => v != null && !k.startsWith("_ui_"));
   if (entries.length === 0) return null;
 
   function parseJsonObject(s: string): Record<string, unknown> | null {
@@ -1659,6 +1699,70 @@ function RpcResponseDetail({ attrs, graph, onSelectNode }: DetailProps) {
   );
 }
 
+function formatOptionalTimestampNs(value?: number): string {
+  if (value == null) return "—";
+  return formatTimelineTimestamp(normalizeToNanos(value));
+}
+
+function ConnectionDetail({ attrs }: DetailProps) {
+  const connectionId = firstAttr(attrs, ["connection.id", "rpc.connection", "connection"]);
+  const state = firstAttr(attrs, ["connection.state", "state"]);
+  const openedAtNs = firstNumAttr(attrs, ["connection.opened_at_ns", "opened_at_ns"]);
+  const closedAtNs = firstNumAttr(attrs, ["connection.closed_at_ns", "closed_at_ns"]);
+  const lastFrameRecvAtNs = firstNumAttr(attrs, [
+    "connection.last_frame_recv_at_ns",
+    "last_frame_recv_at_ns",
+  ]);
+  const lastFrameSentAtNs = firstNumAttr(attrs, [
+    "connection.last_frame_sent_at_ns",
+    "last_frame_sent_at_ns",
+  ]);
+  const pendingRequests = firstNumAttr(attrs, ["connection.pending_requests", "pending_requests"]);
+
+  return (
+    <>
+      <div className="inspect-row">
+        <span className="inspect-key">Connection</span>
+        <span className="inspect-val inspect-val--mono">{connectionId ?? "—"}</span>
+      </div>
+      <div className="inspect-row">
+        <span className="inspect-key">State</span>
+        <span
+          className={`inspect-pill inspect-pill--${
+            state === "open" ? "ok" : state === "closed" ? "crit" : "neutral"
+          }`}
+        >
+          {(state ?? "—").toUpperCase()}
+        </span>
+      </div>
+      <div className="inspect-row">
+        <span className="inspect-key">Opened</span>
+        <span className="inspect-val inspect-val--mono">{formatOptionalTimestampNs(openedAtNs)}</span>
+      </div>
+      <div className="inspect-row">
+        <span className="inspect-key">Closed</span>
+        <span className="inspect-val inspect-val--mono">{formatOptionalTimestampNs(closedAtNs)}</span>
+      </div>
+      <div className="inspect-row">
+        <span className="inspect-key">Last frame recv</span>
+        <span className="inspect-val inspect-val--mono">
+          {formatOptionalTimestampNs(lastFrameRecvAtNs)}
+        </span>
+      </div>
+      <div className="inspect-row">
+        <span className="inspect-key">Last frame sent</span>
+        <span className="inspect-val inspect-val--mono">
+          {formatOptionalTimestampNs(lastFrameSentAtNs)}
+        </span>
+      </div>
+      <div className="inspect-row">
+        <span className="inspect-key">Pending requests</span>
+        <span className="inspect-val">{pendingRequests != null ? pendingRequests : "—"}</span>
+      </div>
+    </>
+  );
+}
+
 const kindDetailMap: Record<string, (props: DetailProps) => React.ReactNode> = {
   future: FutureDetail,
   task: FutureDetail,
@@ -1677,6 +1781,7 @@ const kindDetailMap: Record<string, (props: DetailProps) => React.ReactNode> = {
   semaphore: SemaphoreDetail,
   oncecell: OnceCellDetail,
   once_cell: OnceCellDetail,
+  connection: ConnectionDetail,
   request: RpcRequestDetail,
   response: RpcResponseDetail,
 };
