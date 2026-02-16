@@ -453,21 +453,22 @@ async fn process_reply(state: &AppState, reply: &GraphReply, proc_key: &str) {
             "other",
             &format!("persist failed: {e}"),
         );
-        return;
+    } else {
+        let (node_count, edge_count) = graph
+            .map(|g| (g.nodes.len(), g.edges.len()))
+            .unwrap_or((0, 0));
+        info!(
+            snapshot_id,
+            process = %reply.process,
+            %proc_key,
+            node_count,
+            edge_count,
+            "snapshot reply persisted"
+        );
     }
 
-    let (node_count, edge_count) = graph
-        .map(|g| (g.nodes.len(), g.edges.len()))
-        .unwrap_or((0, 0));
-    info!(
-        snapshot_id,
-        process = %reply.process,
-        %proc_key,
-        node_count,
-        edge_count,
-        "snapshot reply persisted"
-    );
-
+    // Always mark the process as responded, even if persist failed —
+    // the process DID reply, we just couldn't store it.
     let mut ctl = state.snapshot_ctl.inner.lock().await;
     if let Some(ref mut in_flight) = ctl.in_flight {
         if in_flight.snapshot_id == snapshot_id {
@@ -593,8 +594,8 @@ pub(crate) fn run_retention(db_path: &PathBuf) -> Result<(), String> {
 fn init_db(path: &str) -> rusqlite::Result<()> {
     let conn = Connection::open(path)?;
 
-    // Migrate: if the edges table exists with the old primary key (without kind),
-    // drop and recreate it. This is safe because snapshot data is ephemeral.
+    // Migrate: drop the edges table if it has an outdated schema.
+    // This is safe because snapshot data is ephemeral.
     let needs_migration: bool = conn
         .query_row(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='edges'",
@@ -602,7 +603,10 @@ fn init_db(path: &str) -> rusqlite::Result<()> {
             |row| row.get::<_, String>(0),
         )
         .ok()
-        .is_some_and(|sql| !sql.contains("src_id, dst_id, kind)"));
+        .is_some_and(|sql| {
+            // Old PK without kind column, or CHECK constraint that restricts edge kinds
+            !sql.contains("src_id, dst_id, kind)") || sql.contains("CHECK")
+        });
     if needs_migration {
         conn.execute_batch("DROP TABLE IF EXISTS edges;")?;
     }
@@ -644,7 +648,7 @@ fn init_db(path: &str) -> rusqlite::Result<()> {
             snapshot_id INTEGER NOT NULL,
             src_id TEXT NOT NULL,
             dst_id TEXT NOT NULL,
-            kind TEXT NOT NULL CHECK (kind IN ('needs', 'touches')),
+            kind TEXT NOT NULL,
             attrs_json TEXT NOT NULL,
             PRIMARY KEY (snapshot_id, src_id, dst_id, kind)
         );
