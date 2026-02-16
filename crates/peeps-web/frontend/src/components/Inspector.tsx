@@ -602,6 +602,9 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
     }
 
     const k = key.toLowerCase();
+    if (k === "ctx.location" && typeof val === "string") {
+      return <MetaView meta={{ "ctx.location": val }} />;
+    }
     if (k === "meta" || k.endsWith(".meta")) {
       const obj = asObject(val);
       if (obj) return <MetaView meta={obj} />;
