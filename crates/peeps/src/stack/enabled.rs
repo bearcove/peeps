@@ -26,7 +26,11 @@ pub fn capture_top() -> Option<String> {
 /// No-op if called outside a stack scope.
 pub(crate) fn push(node_id: &str) {
     let _ = STACK.try_with(|stack| {
-        stack.borrow_mut().push(node_id.to_string());
+        let mut s = stack.borrow_mut();
+        if let Some(parent) = s.last() {
+            crate::registry::touch_edge(parent, node_id);
+        }
+        s.push(node_id.to_string());
     });
 }
 
