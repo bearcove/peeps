@@ -186,6 +186,9 @@ pub enum EdgeKind {
     /// Spawn lineage: src spawned dst. Permanent historical fact,
     /// retained for the lifetime of the child node.
     Spawned,
+    /// Causal close/cancel: src was closed/cancelled because of dst.
+    /// Emitted when one endpoint's closure directly causes another to stop.
+    ClosedBy,
 }
 
 impl EdgeKind {
@@ -195,6 +198,7 @@ impl EdgeKind {
             EdgeKind::Needs => "needs",
             EdgeKind::Touches => "touches",
             EdgeKind::Spawned => "spawned",
+            EdgeKind::ClosedBy => "closed_by",
         }
     }
 }
@@ -584,6 +588,10 @@ pub mod meta_key {
     pub const NET_ENDPOINT: &str = "net.endpoint";
     pub const NET_LOCAL: &str = "net.local";
     pub const NET_PEER: &str = "net.peer";
+    /// Why this node was closed/cancelled (e.g. "all_senders_dropped", "peer_cancelled").
+    pub const CLOSE_CAUSE: &str = "close.cause";
+    /// Whether the resource was cancelled (as opposed to gracefully closed).
+    pub const CANCELLED: &str = "cancelled";
 }
 
 // ── Snapshot protocol types ──────────────────────────────────────
