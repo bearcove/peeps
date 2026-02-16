@@ -55,6 +55,12 @@ function connectedSubgraph(graph: SnapshotGraph, seedId: string): SnapshotGraph 
   };
 }
 
+function searchGraphNodes(graph: SnapshotGraph, needle: string): SnapshotNode[] {
+  const q = needle.trim().toLowerCase();
+  if (!q) return [];
+  return graph.nodes.filter((n) => JSON.stringify(n).toLowerCase().includes(q));
+}
+
 export function App() {
   const [snapshot, setSnapshot] = useState<JumpNowResponse | null>(null);
   const [requests, setRequests] = useState<StuckRequest[]>([]);
@@ -65,6 +71,7 @@ export function App() {
   const [selectedRequest, setSelectedRequest] = useState<StuckRequest | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [filteredNodeId, setFilteredNodeId] = useState<string | null>(null);
+  const [graphSearchQuery, setGraphSearchQuery] = useState("");
   const [selectedNode, setSelectedNode] = useState<SnapshotNode | null>(null);
 
   // Keep graph/inspector focus-first: left and right panels are collapsed by default,
@@ -88,6 +95,7 @@ export function App() {
       setSelectedNode(null);
       setSelectedNodeId(null);
       setFilteredNodeId(null);
+      setGraphSearchQuery("");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -132,6 +140,19 @@ export function App() {
     return connectedSubgraph(graph, filteredNodeId);
   }, [graph, filteredNodeId]);
 
+  const searchResults = useMemo(() => {
+    if (!graph) return [];
+    return searchGraphNodes(graph, graphSearchQuery).slice(0, 100);
+  }, [graph, graphSearchQuery]);
+
+  const handleSelectSearchResult = useCallback(
+    (nodeId: string) => {
+      setFilteredNodeId(null);
+      handleSelectGraphNode(nodeId);
+    },
+    [handleSelectGraphNode],
+  );
+
   return (
     <div className="app">
       <Header snapshot={snapshot} loading={loading} onJumpNow={handleJumpNow} />
@@ -163,6 +184,11 @@ export function App() {
           graph={displayGraph}
           fullGraph={graph}
           filteredNodeId={filteredNodeId}
+          selectedNodeId={selectedNodeId}
+          searchQuery={graphSearchQuery}
+          searchResults={searchResults}
+          onSearchQueryChange={setGraphSearchQuery}
+          onSelectSearchResult={handleSelectSearchResult}
           onSelectNode={handleSelectGraphNode}
           onClearSelection={handleClearSelection}
         />

@@ -297,6 +297,112 @@ body {
     min-height: 0;
 }
 
+.graph-filter-row {
+    padding: 6px 10px 8px;
+    border-bottom: 1px solid light-dark(#ebebf0, #2a2a2e);
+}
+
+.graph-filter-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
+    border-radius: 6px;
+    padding: 5px 8px;
+    color: light-dark(#6e6e73, #a0a0a6);
+    background: light-dark(#fff, #1f1f22);
+}
+
+.graph-filter-input {
+    width: 100%;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    font-size: 11px;
+    font-family: var(--font-mono);
+}
+
+.graph-filter-input::placeholder {
+    color: light-dark(#8e8e93, #7a7a80);
+}
+
+.graph-search-results {
+    margin-top: 8px;
+    max-height: 180px;
+    overflow: auto;
+    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
+    border-radius: 6px;
+    background: light-dark(#fff, #1f1f22);
+}
+
+.graph-search-results-head {
+    padding: 6px 8px;
+    font-size: 10px;
+    color: light-dark(#6e6e73, #9a9aa1);
+    border-bottom: 1px solid light-dark(#ececf1, #2a2a2e);
+}
+
+.graph-search-empty {
+    padding: 8px;
+    font-size: 11px;
+    color: light-dark(#8e8e93, #7a7a80);
+}
+
+.graph-search-item {
+    width: 100%;
+    border: 0;
+    border-top: 1px solid light-dark(#f0f0f5, #2a2a2e);
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.graph-search-item:hover {
+    background: light-dark(#f7f7fa, #27272c);
+}
+
+.graph-search-item--active {
+    background: light-dark(#e8f2ff, #1f3048);
+}
+
+.graph-search-item-kind {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: light-dark(#6e6e73, #9a9aa1);
+    flex: 0 0 auto;
+}
+
+.graph-search-item-label {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+}
+
+.graph-search-item-id {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: light-dark(#8e8e93, #7a7a80);
+    max-width: 35%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.react-flow__node.selected .card {
+    border-color: light-dark(#0071e3, #0a84ff);
+    box-shadow: 0 0 0 2px light-dark(rgba(0, 113, 227, 0.25), rgba(10, 132, 255, 0.35));
+}
+
 /* ── Node cards (graph) ──────────────────────────────────── */
 
 .card {
@@ -719,6 +825,32 @@ body {
 .inspect-val--crit {
     color: light-dark(#d30000, #ff6b6b);
     font-weight: 600;
+}
+
+.inspect-val--copyable {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.inspect-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
+    border-radius: 4px;
+    background: light-dark(#f0f0f5, #2a2a2e);
+    color: light-dark(#6e6e73, #98989d);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.inspect-copy-btn:hover {
+    background: light-dark(#e5e5ea, #3a3a3e);
+    color: light-dark(#1d1d1f, #f5f5f7);
 }
 
 /* ── Inspector meta ───────────────────────────────────────── */

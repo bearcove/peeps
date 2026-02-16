@@ -15,7 +15,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk-api.js";
 import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
-import { Graph as GraphIcon, X } from "@phosphor-icons/react";
+import { Graph as GraphIcon, MagnifyingGlass, X } from "@phosphor-icons/react";
 import type { SnapshotGraph } from "../types";
 import { PeepsNode, processColor, estimateNodeHeight, type NodeData } from "./NodeCards";
 
@@ -134,22 +134,29 @@ interface GraphViewProps {
   graph: SnapshotGraph | null;
   fullGraph: SnapshotGraph | null;
   filteredNodeId: string | null;
+  selectedNodeId: string | null;
+  searchQuery: string;
+  searchResults: SnapshotGraph["nodes"];
+  onSearchQueryChange: (value: string) => void;
+  onSelectSearchResult: (nodeId: string) => void;
   onSelectNode: (nodeId: string) => void;
   onClearSelection: () => void;
 }
 
 function GraphFlow({
   graph,
+  selectedNodeId,
   onSelectNode,
 }: {
   graph: SnapshotGraph;
+  selectedNodeId: string | null;
   onSelectNode: (id: string) => void;
 }) {
   const { nodes: initNodes, edges: initEdges } = useMemo(() => graphToFlowElements(graph), [graph]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initEdges);
-  const { fitView } = useReactFlow();
+  const { fitView, setCenter, getZoom } = useReactFlow();
 
   useEffect(() => {
     const { nodes: n, edges: e } = graphToFlowElements(graph);
@@ -164,6 +171,24 @@ function GraphFlow({
       window.requestAnimationFrame(() => fitView({ padding: 0.15 }));
     });
   }, [graph, setNodes, setEdges, fitView]);
+
+  useEffect(() => {
+    setNodes((curr) =>
+      curr.map((node) => ({
+        ...node,
+        selected: selectedNodeId != null && node.id === selectedNodeId,
+      })),
+    );
+  }, [selectedNodeId, setNodes]);
+
+  useEffect(() => {
+    if (!selectedNodeId) return;
+    const selected = nodes.find((n) => n.id === selectedNodeId);
+    if (!selected) return;
+    const cx = selected.position.x + 125;
+    const cy = selected.position.y + estimateNodeHeight(selected.data.kind) / 2;
+    setCenter(cx, cy, { duration: 220, zoom: Math.max(getZoom(), 0.7) });
+  }, [selectedNodeId, nodes, setCenter, getZoom]);
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -193,10 +218,22 @@ function GraphFlow({
   );
 }
 
-export function GraphView({ graph, fullGraph, filteredNodeId, onSelectNode, onClearSelection }: GraphViewProps) {
+export function GraphView({
+  graph,
+  fullGraph,
+  filteredNodeId,
+  selectedNodeId,
+  searchQuery,
+  searchResults,
+  onSearchQueryChange,
+  onSelectSearchResult,
+  onSelectNode,
+  onClearSelection,
+}: GraphViewProps) {
   const nodeCount = graph?.nodes.length ?? 0;
   const edgeCount = graph?.edges.length ?? 0;
   const isFiltered = filteredNodeId != null && fullGraph != null && graph !== fullGraph;
+  const hasSearch = searchQuery.trim().length > 0;
 
   return (
     <div className="panel panel--graph">
@@ -214,10 +251,45 @@ export function GraphView({ graph, fullGraph, filteredNodeId, onSelectNode, onCl
           </button>
         )}
       </div>
+      <div className="graph-filter-row">
+        <label className="graph-filter-input-wrap" title="Contains match across all node and edge fields">
+          <MagnifyingGlass size={12} weight="bold" />
+          <input
+            className="graph-filter-input"
+            type="text"
+            placeholder="Search graph (contains any field)"
+            value={searchQuery}
+            onChange={(e) => onSearchQueryChange(e.target.value)}
+          />
+        </label>
+        {hasSearch && (
+          <div className="graph-search-results">
+            <div className="graph-search-results-head">{searchResults.length} result(s)</div>
+            {searchResults.length === 0 ? (
+              <div className="graph-search-empty">No matches</div>
+            ) : (
+              searchResults.map((node) => (
+                <button
+                  key={node.id}
+                  className={`graph-search-item${selectedNodeId === node.id ? " graph-search-item--active" : ""}`}
+                  onClick={() => onSelectSearchResult(node.id)}
+                  title={node.id}
+                >
+                  <span className="graph-search-item-kind">{node.kind}</span>
+                  <span className="graph-search-item-label">
+                    {String(node.attrs["method"] ?? node.attrs["request.method"] ?? node.attrs["name"] ?? node.id)}
+                  </span>
+                  <span className="graph-search-item-id">{node.id}</span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
       <div className="react-flow-wrapper">
         {graph && graph.nodes.length > 0 ? (
           <ReactFlowProvider>
-            <GraphFlow graph={graph} onSelectNode={onSelectNode} />
+            <GraphFlow graph={graph} selectedNodeId={selectedNodeId} onSelectNode={onSelectNode} />
           </ReactFlowProvider>
         ) : (
           <div style={{ padding: 16, color: "light-dark(#6e6e73, #98989d)", fontSize: 12 }}>

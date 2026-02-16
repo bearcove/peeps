@@ -25,7 +25,6 @@ export interface StuckRequest {
   process: string;
   elapsed_ns: number;
   connection: string | null;
-  correlation_key: string | null;
 }
 
 // Raw graph data from the snapshot SQLite tables

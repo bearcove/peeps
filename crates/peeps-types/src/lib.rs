@@ -485,11 +485,6 @@ pub mod canonical_id {
         format!("conn_{id}")
     }
 
-    /// Construct a correlation key for request/response pairing.
-    pub fn correlation_key(connection: &str, request_id: u64) -> String {
-        format!("{connection}:{request_id}")
-    }
-
     /// Construct a roam channel node ID from chain_id, channel_id, and endpoint.
     ///
     /// Both sides of a cross-process channel derive the same ID from shared metadata.
@@ -512,7 +507,6 @@ pub mod canonical_id {
 pub mod meta_key {
     pub const REQUEST_ID: &str = "request.id";
     pub const REQUEST_METHOD: &str = "request.method";
-    pub const REQUEST_CORRELATION_KEY: &str = "request.correlation_key";
     pub const RPC_CONNECTION: &str = "rpc.connection";
     pub const RPC_PEER: &str = "rpc.peer";
     pub const TASK_ID: &str = "task.id";

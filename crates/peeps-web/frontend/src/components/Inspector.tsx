@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   MagnifyingGlass,
   CaretLeft,
@@ -24,6 +25,8 @@ import {
   ArrowBendDownLeft,
   Warning,
   Crosshair,
+  CopySimple,
+  Check,
 } from "@phosphor-icons/react";
 import type { StuckRequest, SnapshotNode } from "../types";
 
@@ -146,7 +149,11 @@ export function Inspector({
         {selectedRequest ? (
           <RequestDetail req={selectedRequest} />
         ) : selectedNode ? (
-          <NodeDetail node={selectedNode} filteredNodeId={filteredNodeId} onFocusNode={onFocusNode} />
+          <NodeDetail
+            node={selectedNode}
+            filteredNodeId={filteredNodeId}
+            onFocusNode={onFocusNode}
+          />
         ) : (
           <div className="inspector-empty">
             Select a request or graph node to inspect.
@@ -173,9 +180,33 @@ function RequestDetail({ req }: { req: StuckRequest }) {
       <dd>{formatElapsedFull(req.elapsed_ns)}</dd>
       <dt>Connection</dt>
       <dd>{req.connection ?? "—"}</dd>
-      <dt>Correlation Key</dt>
-      <dd>{req.correlation_key ?? "—"}</dd>
     </dl>
+  );
+}
+
+function CopyIdButton({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function onCopy() {
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="inspect-copy-btn"
+      onClick={onCopy}
+      title={copied ? "Copied" : "Copy ID"}
+      aria-label="Copy node ID"
+    >
+      {copied ? <Check size={12} weight="bold" /> : <CopySimple size={12} weight="bold" />}
+    </button>
   );
 }
 
@@ -189,7 +220,10 @@ function NodeDetail({
   onFocusNode: (nodeId: string | null) => void;
 }) {
   const channelKind =
-    node.kind === "tx" || node.kind === "rx" || node.kind.endsWith("_tx") || node.kind.endsWith("_rx")
+    node.kind === "tx" ||
+    node.kind === "rx" ||
+    node.kind.endsWith("_tx") ||
+    node.kind.endsWith("_rx")
       ? firstAttr(node.attrs, ["channel_kind", "channel.kind", "channel_type", "channel.type"])
       : undefined;
   const icon =
@@ -201,9 +235,9 @@ function NodeDetail({
       <ToggleRight size={16} weight="bold" />
     ) : (node.kind === "rx" || node.kind.endsWith("_rx")) && channelKind === "oneshot" ? (
       <ToggleRight size={16} weight="bold" />
-    ) : (node.kind === "tx" || node.kind.endsWith("_tx")) ? (
+    ) : node.kind === "tx" || node.kind.endsWith("_tx") ? (
       <ArrowLineUp size={16} weight="bold" />
-    ) : (node.kind === "rx" || node.kind.endsWith("_rx")) ? (
+    ) : node.kind === "rx" || node.kind.endsWith("_rx") ? (
       <ArrowLineDown size={16} weight="bold" />
     ) : (
       kindIcons[node.kind]
@@ -216,7 +250,11 @@ function NodeDetail({
       : undefined;
   const correlationKey =
     node.kind === "request" || node.kind === "response"
-      ? firstAttr(node.attrs, ["correlation_key", "request.correlation_key", "response.correlation_key"])
+      ? firstAttr(node.attrs, [
+          "correlation_key",
+          "request.correlation_key",
+          "response.correlation_key",
+        ])
       : undefined;
 
   return (
@@ -238,14 +276,15 @@ function NodeDetail({
                 return (
                   firstAttr(node.attrs, ["method", "response.method", "request.method"]) ??
                   firstAttr(node.attrs, ["label", "name"]) ??
-                  firstAttr(node.attrs, ["correlation_key", "response.correlation_key", "request.correlation_key"]) ??
+                  firstAttr(node.attrs, [
+                    "correlation_key",
+                    "response.correlation_key",
+                    "request.correlation_key",
+                  ]) ??
                   node.id
                 );
               }
-              return (
-                firstAttr(node.attrs, ["label", "name", "method"]) ??
-                node.id
-              );
+              return firstAttr(node.attrs, ["label", "name", "method"]) ?? node.id;
             })()}
           </div>
         </div>
@@ -262,12 +301,13 @@ function NodeDetail({
       </div>
 
       <div className="inspect-section">
-        {(node.kind !== "request" && node.kind !== "response") && (
-          <div className="inspect-row">
-            <span className="inspect-key">ID</span>
-            <span className="inspect-val">{node.id}</span>
-          </div>
-        )}
+        <div className="inspect-row">
+          <span className="inspect-key">ID</span>
+          <span className="inspect-val inspect-val--copyable">
+            {node.id}
+            <CopyIdButton id={node.id} />
+          </span>
+        </div>
         {method && (
           <div className="inspect-row">
             <span className="inspect-key">Method</span>
@@ -318,7 +358,8 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
   }
 
   function asObject(val: unknown): Record<string, unknown> | null {
-    if (val && typeof val === "object" && !Array.isArray(val)) return val as Record<string, unknown>;
+    if (val && typeof val === "object" && !Array.isArray(val))
+      return val as Record<string, unknown>;
     if (typeof val === "string") return parseJsonObject(val);
     return null;
   }
@@ -422,7 +463,8 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
       return <Users size={12} weight="bold" />;
 
     if (k.includes("sent") || k.includes("send")) return <ArrowLineUp size={12} weight="bold" />;
-    if (k.includes("recv") || k.includes("received")) return <ArrowLineDown size={12} weight="bold" />;
+    if (k.includes("recv") || k.includes("received"))
+      return <ArrowLineDown size={12} weight="bold" />;
 
     if (
       k.includes("capacity") ||
@@ -440,7 +482,8 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
     if (k === "pending_count") return <CircleNotch size={12} weight="bold" />;
 
     // Special-case value-dependent "closed" fields where the key isn't literally "closed".
-    if (k.includes("closed") && typeof val === "boolean") return <XCircle size={12} weight="bold" />;
+    if (k.includes("closed") && typeof val === "boolean")
+      return <XCircle size={12} weight="bold" />;
 
     return null;
   }
@@ -478,7 +521,9 @@ function FutureDetail({ attrs }: DetailProps) {
       {state && (
         <div className="inspect-row">
           <span className="inspect-key">State</span>
-          <span className={`inspect-pill inspect-pill--${state === "completed" ? "ok" : state === "polling" ? "ok" : "neutral"}`}>
+          <span
+            className={`inspect-pill inspect-pill--${state === "completed" ? "ok" : state === "polling" ? "ok" : "neutral"}`}
+          >
             {state}
           </span>
         </div>
@@ -487,14 +532,17 @@ function FutureDetail({ attrs }: DetailProps) {
         <div className="inspect-row">
           <span className="inspect-key">Poll count</span>
           <span className={`inspect-val ${pollCount === 0 ? "inspect-val--crit" : ""}`}>
-            {pollCount}{pollCount === 0 ? " (never polled!)" : ""}
+            {pollCount}
+            {pollCount === 0 ? " (never polled!)" : ""}
           </span>
         </div>
       )}
       {lastPolledNs != null && (
         <div className="inspect-row">
           <span className="inspect-key">Last polled</span>
-          <span className={`inspect-val ${durationClass(lastPolledNs, 1_000_000_000, 5_000_000_000)}`}>
+          <span
+            className={`inspect-val ${durationClass(lastPolledNs, 1_000_000_000, 5_000_000_000)}`}
+          >
             {formatDuration(lastPolledNs)} ago
           </span>
         </div>
@@ -539,14 +587,14 @@ function MutexDetail({ attrs }: DetailProps) {
       )}
       <div className="inspect-row">
         <span className="inspect-key">Waiters</span>
-        <span className={`inspect-val ${waiters > 0 ? "inspect-val--crit" : ""}`}>
-          {waiters}
-        </span>
+        <span className={`inspect-val ${waiters > 0 ? "inspect-val--crit" : ""}`}>{waiters}</span>
       </div>
       {longestWaitNs != null && longestWaitNs > 0 && (
         <div className="inspect-row">
           <span className="inspect-key">Longest wait</span>
-          <span className={`inspect-val ${durationClass(longestWaitNs, 100_000_000, 1_000_000_000)}`}>
+          <span
+            className={`inspect-val ${durationClass(longestWaitNs, 100_000_000, 1_000_000_000)}`}
+          >
             {formatDuration(longestWaitNs)}
           </span>
         </div>
@@ -580,7 +628,9 @@ function RwLockDetail({ attrs }: DetailProps) {
       )}
       <div className="inspect-row">
         <span className="inspect-key">Waiters</span>
-        <span className={`inspect-val ${(writerWaiters + readerWaiters) > 0 ? "inspect-val--crit" : ""}`}>
+        <span
+          className={`inspect-val ${writerWaiters + readerWaiters > 0 ? "inspect-val--crit" : ""}`}
+        >
           {readerWaiters}R + {writerWaiters}W
         </span>
       </div>
@@ -606,8 +656,13 @@ function ChannelTxDetail({ attrs }: DetailProps) {
             </span>
           </div>
           <div className="inspect-bar-wrap">
-            <div className={`inspect-bar inspect-bar--${isFull ? "crit" : buffered / capacity >= 0.5 ? "warn" : "ok"}`}>
-              <div className="inspect-bar-fill" style={{ width: `${Math.min(buffered / capacity, 1) * 100}%` }} />
+            <div
+              className={`inspect-bar inspect-bar--${isFull ? "crit" : buffered / capacity >= 0.5 ? "warn" : "ok"}`}
+            >
+              <div
+                className="inspect-bar-fill"
+                style={{ width: `${Math.min(buffered / capacity, 1) * 100}%` }}
+              />
             </div>
           </div>
         </>
@@ -709,7 +764,9 @@ function WatchDetail({ attrs }: DetailProps) {
       {senderAlive != null && (
         <div className="inspect-row">
           <span className="inspect-key">Sender</span>
-          <span className={`inspect-val ${isSenderAlive ? "inspect-val--ok" : "inspect-val--crit"}`}>
+          <span
+            className={`inspect-val ${isSenderAlive ? "inspect-val--ok" : "inspect-val--crit"}`}
+          >
             {isSenderAlive ? "alive" : "DROPPED"}
           </span>
         </div>
@@ -722,7 +779,9 @@ function WatchDetail({ attrs }: DetailProps) {
       {lastUpdatedNs != null && (
         <div className="inspect-row">
           <span className="inspect-key">Last updated</span>
-          <span className={`inspect-val ${durationClass(lastUpdatedNs, 5_000_000_000, 30_000_000_000)}`}>
+          <span
+            className={`inspect-val ${durationClass(lastUpdatedNs, 5_000_000_000, 30_000_000_000)}`}
+          >
             {formatDuration(lastUpdatedNs)} ago
           </span>
         </div>
@@ -749,8 +808,13 @@ function SemaphoreDetail({ attrs }: DetailProps) {
             </span>
           </div>
           <div className="inspect-bar-wrap">
-            <div className={`inspect-bar inspect-bar--${exhausted ? "crit" : (total - available) / total >= 0.5 ? "warn" : "ok"}`}>
-              <div className="inspect-bar-fill" style={{ width: `${((total - available) / total) * 100}%` }} />
+            <div
+              className={`inspect-bar inspect-bar--${exhausted ? "crit" : (total - available) / total >= 0.5 ? "warn" : "ok"}`}
+            >
+              <div
+                className="inspect-bar-fill"
+                style={{ width: `${((total - available) / total) * 100}%` }}
+              />
             </div>
           </div>
         </>
@@ -762,14 +826,14 @@ function SemaphoreDetail({ attrs }: DetailProps) {
       )}
       <div className="inspect-row">
         <span className="inspect-key">Waiters</span>
-        <span className={`inspect-val ${waiters > 0 ? "inspect-val--crit" : ""}`}>
-          {waiters}
-        </span>
+        <span className={`inspect-val ${waiters > 0 ? "inspect-val--crit" : ""}`}>{waiters}</span>
       </div>
       {longestWaitNs != null && longestWaitNs > 0 && (
         <div className="inspect-row">
           <span className="inspect-key">Longest wait</span>
-          <span className={`inspect-val ${durationClass(longestWaitNs, 100_000_000, 1_000_000_000)}`}>
+          <span
+            className={`inspect-val ${durationClass(longestWaitNs, 100_000_000, 1_000_000_000)}`}
+          >
             {formatDuration(longestWaitNs)}
           </span>
         </div>
@@ -787,7 +851,9 @@ function OnceCellDetail({ attrs }: DetailProps) {
     <>
       <div className="inspect-row">
         <span className="inspect-key">State</span>
-        <span className={`inspect-pill inspect-pill--${state === "set" ? "ok" : state === "initializing" ? "warn" : "neutral"}`}>
+        <span
+          className={`inspect-pill inspect-pill--${state === "set" ? "ok" : state === "initializing" ? "warn" : "neutral"}`}
+        >
           {state.toUpperCase()}
         </span>
       </div>
@@ -827,14 +893,18 @@ function RpcRequestDetail({ attrs }: DetailProps) {
       )}
       <div className="inspect-row">
         <span className="inspect-key">Status</span>
-        <span className={`inspect-pill inspect-pill--${status === "completed" ? "ok" : status === "timed_out" ? "crit" : "neutral"}`}>
+        <span
+          className={`inspect-pill inspect-pill--${status === "completed" ? "ok" : status === "timed_out" ? "crit" : "neutral"}`}
+        >
           {status.toUpperCase()}
         </span>
       </div>
       {elapsedNs != null && (
         <div className="inspect-row">
           <span className="inspect-key">Elapsed</span>
-          <span className={`inspect-val ${durationClass(elapsedNs, 1_000_000_000, 10_000_000_000)}`}>
+          <span
+            className={`inspect-val ${durationClass(elapsedNs, 1_000_000_000, 10_000_000_000)}`}
+          >
             {formatElapsedFull(elapsedNs)}
           </span>
         </div>
@@ -864,7 +934,11 @@ function RpcRequestDetail({ attrs }: DetailProps) {
 function RpcResponseDetail({ attrs }: DetailProps) {
   const status = firstAttr(attrs, ["status", "response.status"]) ?? "in_flight";
   const elapsedNs = firstNumAttr(attrs, ["elapsed_ns", "response.elapsed_ns"]);
-  const correlationKey = firstAttr(attrs, ["correlation_key", "response.correlation_key", "request.correlation_key"]);
+  const correlationKey = firstAttr(attrs, [
+    "correlation_key",
+    "response.correlation_key",
+    "request.correlation_key",
+  ]);
 
   return (
     <>
@@ -883,7 +957,9 @@ function RpcResponseDetail({ attrs }: DetailProps) {
       {elapsedNs != null && (
         <div className="inspect-row">
           <span className="inspect-key">Elapsed</span>
-          <span className={`inspect-val ${durationClass(elapsedNs, 1_000_000_000, 10_000_000_000)}`}>
+          <span
+            className={`inspect-val ${durationClass(elapsedNs, 1_000_000_000, 10_000_000_000)}`}
+          >
             {formatElapsedFull(elapsedNs)}
           </span>
         </div>
