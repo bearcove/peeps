@@ -13,6 +13,7 @@ import type { JumpNowResponse, SnapshotProgressResponse } from "../types";
 import type { SnapshotProcessInfo, ProcessDebugResponse } from "../types";
 
 const DASH = "—";
+const PROCESS_STATUS_UNKNOWN = "unknown";
 
 interface HeaderProps {
   snapshot: JumpNowResponse | null;
