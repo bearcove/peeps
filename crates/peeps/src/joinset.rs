@@ -61,6 +61,15 @@ where
 
     pub fn abort_all(&mut self) {
         self.inner.abort_all();
+        #[cfg(feature = "diagnostics")]
+        {
+            crate::registry::register_node(peeps_types::Node {
+                id: self.node_id.clone(),
+                kind: peeps_types::NodeKind::JoinSet,
+                label: Some("joinset (aborted)".to_string()),
+                attrs_json: r#"{"cancelled":true,"close_cause":"abort_all"}"#.to_string(),
+            });
+        }
     }
 
     pub async fn join_next(&mut self) -> Option<Result<T, tokio::task::JoinError>> {
