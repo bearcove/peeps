@@ -10,6 +10,7 @@ use peeps_types::NodeKind;
 #[derive(Facet)]
 struct NotifyAttrs<'a> {
     name: &'a str,
+    source: &'a str,
     #[facet(rename = "wait.kind")]
     wait_kind: &'a str,
     waiters: u64,
@@ -18,13 +19,6 @@ struct NotifyAttrs<'a> {
     oldest_wait_ns: u64,
     elapsed_ns: u64,
     high_waiters_watermark: u64,
-    meta: NotifyMeta<'a>,
-}
-
-#[derive(Facet)]
-struct NotifyMeta<'a> {
-    #[facet(rename = "ctx.location")]
-    ctx_location: &'a str,
 }
 
 // ── Info type ───────────────────────────────────────────
@@ -191,9 +185,7 @@ pub(super) fn emit_notify_nodes(graph: &mut peeps_types::GraphSnapshot) {
             oldest_wait_ns,
             elapsed_ns,
             high_waiters_watermark,
-            meta: NotifyMeta {
-                ctx_location: &info.location,
-            },
+            source: &info.location,
         };
 
         graph.nodes.push(crate::registry::make_node(

@@ -11,6 +11,7 @@ use peeps_types::GraphSnapshot;
 #[derive(Facet)]
 struct LockAttrs<'a> {
     name: &'a str,
+    source: &'a str,
     lock_kind: &'a str,
     acquires: u64,
     releases: u64,
@@ -18,13 +19,6 @@ struct LockAttrs<'a> {
     waiter_count: u64,
     #[facet(rename = "peeps.level")]
     peeps_level: &'a str,
-    meta: LocationMeta<'a>,
-}
-
-#[derive(Facet)]
-struct LocationMeta<'a> {
-    #[facet(rename = "ctx.location")]
-    ctx_location: &'a str,
 }
 
 // ── Lock info registry ─────────────────────────────────
@@ -77,9 +71,7 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
             holder_count,
             waiter_count,
             peeps_level: lock_detail_level(info.name),
-            meta: LocationMeta {
-                ctx_location: &info.location,
-            },
+            source: &info.location,
         };
 
         graph.nodes.push(crate::registry::make_node(

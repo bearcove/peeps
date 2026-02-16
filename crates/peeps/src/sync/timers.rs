@@ -10,18 +10,12 @@ use peeps_types::NodeKind;
 #[derive(Facet)]
 struct IntervalAttrs<'a> {
     name: &'a str,
+    source: &'a str,
     #[facet(rename = "wait.kind")]
     wait_kind: &'a str,
     period_ms: u64,
     tick_count: u64,
     elapsed_ns: u64,
-    meta: TimerMeta<'a>,
-}
-
-#[derive(Facet)]
-struct TimerMeta<'a> {
-    #[facet(rename = "ctx.location")]
-    ctx_location: &'a str,
 }
 
 // ── Interval ────────────────────────────────────────────
@@ -148,9 +142,7 @@ pub(super) fn emit_interval_nodes(graph: &mut peeps_types::GraphSnapshot) {
             period_ms: info.period_ms,
             tick_count,
             elapsed_ns,
-            meta: TimerMeta {
-                ctx_location: &info.location,
-            },
+            source: &info.location,
         };
 
         graph.nodes.push(crate::registry::make_node(

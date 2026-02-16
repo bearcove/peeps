@@ -79,10 +79,10 @@ function elapsedBetween(startNs?: number, endNs?: number): number | undefined {
 
 function requestElapsedNs(attrs: Record<string, unknown>, status: string): number | undefined {
   const snapshotAtNs = firstNumAttr(attrs, ["_ui_snapshot_captured_at_ns"]);
-  const queuedAtNs = firstNumAttr(attrs, ["request.queued_at_ns", "queued_at_ns"]);
-  const startedAtNs = firstNumAttr(attrs, ["request.started_at_ns", "request.delivered_at_ns", "started_at_ns"]);
-  const completedAtNs = firstNumAttr(attrs, ["request.completed_at_ns", "completed_at_ns"]);
-  const legacyElapsedNs = firstNumAttr(attrs, ["elapsed_ns", "request.elapsed_ns"]);
+  const queuedAtNs = firstNumAttr(attrs, ["queued_at_ns"]);
+  const startedAtNs = firstNumAttr(attrs, ["started_at_ns", "created_at"]);
+  const completedAtNs = firstNumAttr(attrs, ["completed_at_ns"]);
+  const elapsedNs = firstNumAttr(attrs, ["elapsed_ns"]);
 
   const startNs = status === "queued" ? (queuedAtNs ?? startedAtNs) : (startedAtNs ?? queuedAtNs);
   const completedElapsed = elapsedBetween(startNs, completedAtNs);
@@ -91,7 +91,7 @@ function requestElapsedNs(attrs: Record<string, unknown>, status: string): numbe
   const inFlightElapsed = elapsedBetween(startNs, snapshotAtNs);
   if (inFlightElapsed != null) return inFlightElapsed;
 
-  return legacyElapsedNs;
+  return elapsedNs;
 }
 
 function responseTiming(attrs: Record<string, unknown>, status: string): {
@@ -100,12 +100,12 @@ function responseTiming(attrs: Record<string, unknown>, status: string): {
   queueWaitNs?: number;
 } {
   const snapshotAtNs = firstNumAttr(attrs, ["_ui_snapshot_captured_at_ns"]);
-  const startedAtNs = firstNumAttr(attrs, ["response.started_at_ns", "response.created_at_ns", "started_at_ns"]);
-  const handledAtNs = firstNumAttr(attrs, ["response.handled_at_ns", "handled_at_ns"]);
-  const deliveredAtNs = firstNumAttr(attrs, ["response.delivered_at_ns", "delivered_at_ns"]);
-  const cancelledAtNs = firstNumAttr(attrs, ["response.cancelled_at_ns", "cancelled_at_ns"]);
-  const legacyElapsedNs = firstNumAttr(attrs, ["elapsed_ns", "response.elapsed_ns"]);
-  const legacyHandledElapsedNs = firstNumAttr(attrs, ["response.handled_elapsed_ns", "handled_elapsed_ns"]);
+  const startedAtNs = firstNumAttr(attrs, ["created_at", "started_at_ns"]);
+  const handledAtNs = firstNumAttr(attrs, ["handled_at_ns"]);
+  const deliveredAtNs = firstNumAttr(attrs, ["delivered_at_ns"]);
+  const cancelledAtNs = firstNumAttr(attrs, ["cancelled_at_ns"]);
+  const elapsedNsOverride = firstNumAttr(attrs, ["elapsed_ns"]);
+  const handledElapsedNsOverride = firstNumAttr(attrs, ["handled_elapsed_ns"]);
 
   let endAtNs = deliveredAtNs;
   if (endAtNs == null && status === "cancelled") {
@@ -115,8 +115,8 @@ function responseTiming(attrs: Record<string, unknown>, status: string): {
     endAtNs = snapshotAtNs;
   }
 
-  const elapsedNs = elapsedBetween(startedAtNs, endAtNs) ?? legacyElapsedNs;
-  const handledElapsedNs = elapsedBetween(startedAtNs, handledAtNs) ?? legacyHandledElapsedNs;
+  const elapsedNs = elapsedBetween(startedAtNs, endAtNs) ?? elapsedNsOverride;
+  const handledElapsedNs = elapsedBetween(startedAtNs, handledAtNs) ?? handledElapsedNsOverride;
   const queueWaitNs = elapsedBetween(handledAtNs, deliveredAtNs ?? snapshotAtNs);
 
   return { elapsedNs, handledElapsedNs, queueWaitNs };
@@ -720,11 +720,11 @@ function OnceCellCard({ data }: NodeProps<Node<NodeData>>) {
 
 function RequestCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, process, attrs } = data;
-  const method = firstAttr(attrs, ["method", "request.method"]) ?? label;
-  const status = firstAttr(attrs, ["status", "request.status"]) ?? "in_flight";
+  const method = firstAttr(attrs, ["method"]) ?? label;
+  const status = firstAttr(attrs, ["status"]) ?? "in_flight";
   const elapsedNs = requestElapsedNs(attrs, status);
   const connection = firstAttr(attrs, ["rpc.connection", "connection"]);
-  const requestId = firstAttr(attrs, ["request.id", "request_id"]);
+  const requestId = firstAttr(attrs, ["correlation"]);
   const isSlow = (elapsedNs ?? 0) >= 5_000_000_000;
 
   const statusVariant: "ok" | "warn" | "crit" | "neutral" =
@@ -755,9 +755,9 @@ function RequestCard({ data }: NodeProps<Node<NodeData>>) {
 
 function ResponseCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, process, attrs } = data;
-  const status = firstAttr(attrs, ["response.state", "status", "response.status"]) ?? "handling";
-  const correlationKey = firstAttr(attrs, ["correlation_key", "response.correlation_key", "request.correlation_key"]);
-  const requestId = firstAttr(attrs, ["request.id", "request_id"]);
+  const status = firstAttr(attrs, ["status"]) ?? "handling";
+  const correlationKey = firstAttr(attrs, ["correlation"]);
+  const requestId = firstAttr(attrs, ["correlation"]);
   const connection = firstAttr(attrs, ["rpc.connection", "connection"]);
   const { elapsedNs, handledElapsedNs, queueWaitNs } = responseTiming(attrs, status);
   const isQueuedLong = (status === "queued" || status === "handling") && (queueWaitNs ?? 0) >= 1_000_000_000;

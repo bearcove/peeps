@@ -62,7 +62,7 @@ export interface TimelineEvent {
   entity_id: string;
   parent_entity_id: string | null;
   name: string;
-  correlation_key: string | null;
+  correlation: string | null;
   attrs: Record<string, unknown>;
 }
 
@@ -76,10 +76,16 @@ export interface SnapshotNode {
 }
 
 export interface InspectorNodeAttrs extends Record<string, unknown> {
+  // Canonical-only inspector attrs; legacy aliases are unsupported.
   created_at: number | string;
   source: string;
   method?: string;
   correlation?: string;
+  "request.method"?: never;
+  "response.method"?: never;
+  correlation_key?: never;
+  "ctx.location"?: never;
+  created_at_ns?: never;
 }
 
 export interface InspectorSnapshotNode extends Omit<SnapshotNode, "attrs"> {

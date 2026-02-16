@@ -10,17 +10,11 @@ use peeps_types::NodeKind;
 #[derive(Facet)]
 struct OnceCellAttrs<'a> {
     name: &'a str,
+    source: &'a str,
     state: &'a str,
     age_ns: u64,
     #[facet(skip_unless_truthy)]
     init_duration_ns: Option<u64>,
-    meta: OnceCellMeta<'a>,
-}
-
-#[derive(Facet)]
-struct OnceCellMeta<'a> {
-    #[facet(rename = "ctx.location")]
-    ctx_location: &'a str,
 }
 
 const ONCE_EMPTY: u8 = 0;
@@ -260,9 +254,7 @@ pub(super) fn emit_oncecell_nodes(graph: &mut peeps_types::GraphSnapshot) {
             state: state_str,
             age_ns,
             init_duration_ns,
-            meta: OnceCellMeta {
-                ctx_location: &info.location,
-            },
+            source: &info.location,
         };
 
         graph.nodes.push(crate::registry::make_node(

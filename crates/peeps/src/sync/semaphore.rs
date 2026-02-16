@@ -10,19 +10,13 @@ use peeps_types::NodeKind;
 #[derive(Facet)]
 struct SemaphoreAttrs<'a> {
     name: &'a str,
+    source: &'a str,
     permits_total: u64,
     permits_available: u64,
     waiters: u64,
     acquires: u64,
     oldest_wait_ns: u64,
     high_waiters_watermark: u64,
-    meta: SemaphoreMeta<'a>,
-}
-
-#[derive(Facet)]
-struct SemaphoreMeta<'a> {
-    #[facet(rename = "ctx.location")]
-    ctx_location: &'a str,
 }
 
 // ── Info type ───────────────────────────────────────────
@@ -338,9 +332,7 @@ pub(super) fn emit_semaphore_nodes(graph: &mut peeps_types::GraphSnapshot) {
             acquires,
             oldest_wait_ns,
             high_waiters_watermark,
-            meta: SemaphoreMeta {
-                ctx_location: &info.location,
-            },
+            source: &info.location,
         };
 
         graph.nodes.push(crate::registry::make_node(

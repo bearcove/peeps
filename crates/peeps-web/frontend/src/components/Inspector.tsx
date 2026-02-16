@@ -136,10 +136,10 @@ function elapsedBetween(startNs?: number, endNs?: number): number | undefined {
 
 function requestElapsedNs(attrs: Record<string, unknown>, status: string): number | undefined {
   const snapshotAtNs = firstNumAttr(attrs, ["_ui_snapshot_captured_at_ns"]);
-  const queuedAtNs = firstNumAttr(attrs, ["request.queued_at_ns", "queued_at_ns"]);
+  const queuedAtNs = firstNumAttr(attrs, ["queued_at_ns"]);
   const startedAtNs = getCreatedAtNs(attrs);
-  const completedAtNs = firstNumAttr(attrs, ["request.completed_at_ns", "completed_at_ns"]);
-  const legacyElapsedNs = firstNumAttr(attrs, ["elapsed_ns", "request.elapsed_ns"]);
+  const completedAtNs = firstNumAttr(attrs, ["completed_at_ns"]);
+  const elapsedNs = firstNumAttr(attrs, ["elapsed_ns"]);
 
   const startNs = status === "queued" ? (queuedAtNs ?? startedAtNs) : (startedAtNs ?? queuedAtNs);
   const completedElapsed = elapsedBetween(startNs, completedAtNs);
@@ -148,7 +148,7 @@ function requestElapsedNs(attrs: Record<string, unknown>, status: string): numbe
   const inFlightElapsed = elapsedBetween(startNs, snapshotAtNs);
   if (inFlightElapsed != null) return inFlightElapsed;
 
-  return legacyElapsedNs;
+  return elapsedNs;
 }
 
 function responseTiming(attrs: Record<string, unknown>, status: string): {
@@ -158,11 +158,11 @@ function responseTiming(attrs: Record<string, unknown>, status: string): {
 } {
   const snapshotAtNs = firstNumAttr(attrs, ["_ui_snapshot_captured_at_ns"]);
   const startedAtNs = getCreatedAtNs(attrs);
-  const handledAtNs = firstNumAttr(attrs, ["response.handled_at_ns", "handled_at_ns"]);
-  const deliveredAtNs = firstNumAttr(attrs, ["response.delivered_at_ns", "delivered_at_ns"]);
-  const cancelledAtNs = firstNumAttr(attrs, ["response.cancelled_at_ns", "cancelled_at_ns"]);
-  const legacyElapsedNs = firstNumAttr(attrs, ["elapsed_ns", "response.elapsed_ns"]);
-  const legacyHandledElapsedNs = firstNumAttr(attrs, ["response.handled_elapsed_ns", "handled_elapsed_ns"]);
+  const handledAtNs = firstNumAttr(attrs, ["handled_at_ns"]);
+  const deliveredAtNs = firstNumAttr(attrs, ["delivered_at_ns"]);
+  const cancelledAtNs = firstNumAttr(attrs, ["cancelled_at_ns"]);
+  const elapsedNs = firstNumAttr(attrs, ["elapsed_ns"]);
+  const handledElapsedNs = firstNumAttr(attrs, ["handled_elapsed_ns"]);
 
   let endAtNs = deliveredAtNs;
   if (endAtNs == null && status === "cancelled") {
@@ -172,10 +172,10 @@ function responseTiming(attrs: Record<string, unknown>, status: string): {
     endAtNs = snapshotAtNs;
   }
 
-  const elapsedNs = elapsedBetween(startedAtNs, endAtNs) ?? legacyElapsedNs;
-  const handledElapsedNs = elapsedBetween(startedAtNs, handledAtNs) ?? legacyHandledElapsedNs;
+  const computedElapsedNs = elapsedBetween(startedAtNs, endAtNs) ?? elapsedNs;
+  const computedHandledElapsedNs = elapsedBetween(startedAtNs, handledAtNs) ?? handledElapsedNs;
   const queueWaitNs = elapsedBetween(handledAtNs, deliveredAtNs ?? snapshotAtNs);
-  return { elapsedNs, handledElapsedNs, queueWaitNs };
+  return { elapsedNs: computedElapsedNs, handledElapsedNs: computedHandledElapsedNs, queueWaitNs };
 }
 
 const kindIcons: Record<string, React.ReactNode> = {
@@ -940,7 +940,7 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
 
     // Heuristic mapping by convention (keys are stable, values vary).
     const k = key.toLowerCase();
-    if (k.endsWith(".id") || k === "request.id") return <Hash size={12} weight="bold" />;
+    if (k.endsWith(".id")) return <Hash size={12} weight="bold" />;
     if (k.includes("connection")) return <LinkSimple size={12} weight="bold" />;
 
     if (k.includes("created_at") || k.includes("age") || k.includes("duration"))
@@ -1428,7 +1428,7 @@ function OnceCellDetail({ attrs }: DetailProps) {
 }
 
 function RpcRequestDetail({ attrs, graph, onSelectNode }: DetailProps) {
-  const status = firstAttr(attrs, ["status", "request.status"]) ?? "in_flight";
+  const status = firstAttr(attrs, ["status"]) ?? "in_flight";
   const elapsedNs = requestElapsedNs(attrs, status);
   const connection = rpcConnectionAttr(attrs);
 
@@ -1467,7 +1467,7 @@ function RpcRequestDetail({ attrs, graph, onSelectNode }: DetailProps) {
 }
 
 function RpcResponseDetail({ attrs, graph, onSelectNode }: DetailProps) {
-  const status = firstAttr(attrs, ["response.state", "status", "response.status"]) ?? "handling";
+  const status = firstAttr(attrs, ["status"]) ?? "handling";
   const { elapsedNs, handledElapsedNs, queueWaitNs } = responseTiming(attrs, status);
   const connection = rpcConnectionAttr(attrs);
 

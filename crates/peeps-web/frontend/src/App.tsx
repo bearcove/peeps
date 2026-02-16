@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Camera, CircleNotch, WarningCircle } from "@phosphor-icons/react";
+import { Camera, WarningCircle } from "@phosphor-icons/react";
 import {
   fetchConnections,
   fetchGraph,
@@ -992,10 +992,10 @@ export function App() {
           >
             <h1 id="snapshot-panel-title">Take a snapshot</h1>
             <p id="snapshot-panel-subtitle">Capture the current runtime state to start investigating your system.</p>
+            <div className="app-empty-anchor" aria-hidden="true">
+              <Camera size={30} weight="bold" />
+            </div>
             <div className="app-empty-state-block">
-              <p className="app-empty-connection-count">
-                {connectedProcessCount} connected process{connectedProcessCount === 1 ? "" : "es"}
-              </p>
               <span className="app-empty-live" aria-live="polite">
                 {hasConnectedProcesses
                   ? `${connectedProcessCount} connected process${connectedProcessCount === 1 ? "" : "es"} available.`
@@ -1004,6 +1004,9 @@ export function App() {
               <div className={`app-empty-transition ${hasConnectedProcesses ? "app-empty-transition--connected" : "app-empty-transition--waiting"}`}>
                 {hasConnectedProcesses ? (
                   <div className="app-empty-connected-group">
+                    <p className="app-empty-connection-count">
+                      {connectedProcessCount} connected process{connectedProcessCount === 1 ? "" : "es"}
+                    </p>
                     {connectedProcessCount === 1 ? (
                       <div className="app-empty-connected-list" title={connectedProcessNames[0]}>
                         <div className="app-empty-connected-item">{connectedProcessNames[0]}</div>
@@ -1023,12 +1026,12 @@ export function App() {
                   </div>
                 ) : (
                   <div className="app-empty-waiting-group" role="status" aria-live="polite">
-                    <p className="app-empty-waiting-line">
-                      <CircleNotch size={18} weight="bold" className="app-empty-waiting-spinner" />
-                      Waiting for process connections...
-                    </p>
+                    <span className="app-empty-pulse" aria-hidden="true" />
+                    <p className="app-empty-waiting-line">No processes connected</p>
                     <p className="app-empty-helper-text">
-                      Start your app with the tracer enabled, then it will appear here.
+                      Start your app with the tracer enabled.
+                      <br />
+                      It will appear here automatically.
                     </p>
                     <p className="app-empty-helper-caption">Connect a process to enable snapshots.</p>
                   </div>

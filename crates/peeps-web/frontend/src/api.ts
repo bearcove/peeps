@@ -75,7 +75,7 @@ export async function querySql(
 
 const STUCK_REQUEST_SQL = `SELECT
   r.id,
-  json_extract(r.attrs_json, '$."request.method"') AS method,
+  json_extract(r.attrs_json, '$.method') AS method,
   r.process,
   CAST(json_extract(r.attrs_json, '$.elapsed_ns') AS INTEGER) AS elapsed_ns,
   json_extract(r.attrs_json, '$."rpc.connection"') AS connection
@@ -208,15 +208,7 @@ event_base AS (
     e.parent_entity_id,
     e.name,
     e.attrs_json,
-    COALESCE(
-      json_extract(e.attrs_json, '$."request.id"'),
-      json_extract(e.attrs_json, '$.request_id'),
-      json_extract(e.attrs_json, '$."peeps.span_id"'),
-      json_extract(e.attrs_json, '$.trace_id'),
-      json_extract(e.attrs_json, '$.correlation_id'),
-      json_extract(e.attrs_json, '$.meta."request.id"'),
-      json_extract(e.attrs_json, '$.meta."peeps.span_id"')
-    ) AS correlation_key
+    json_extract(e.attrs_json, '$.correlation') AS correlation
   FROM events e
   INNER JOIN proc_scope p ON p.proc_key = e.proc_key
   WHERE e.ts_ns >= ?1
@@ -232,7 +224,7 @@ SELECT
   entity_id,
   parent_entity_id,
   name,
-  correlation_key,
+  correlation,
   attrs_json
 FROM event_base
 ORDER BY ts_ns DESC, id DESC;`;
@@ -282,7 +274,7 @@ export async function fetchRecentTimelineEvents(
       entity_id: String(row[4] ?? ""),
       parent_entity_id: row[5] != null ? String(row[5]) : null,
       name: String(row[6] ?? ""),
-      correlation_key: row[7] != null ? String(row[7]) : null,
+      correlation: row[7] != null ? String(row[7]) : null,
       attrs,
     };
   });

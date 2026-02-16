@@ -88,10 +88,10 @@ function eventTone(name: string): "ok" | "warn" | "crit" | "neutral" {
 }
 
 function formatGroupLabel(event: TimelineEvent): { key: string; label: string; kind: "correlation" | "entity" } {
-  if (event.correlation_key && event.correlation_key.length > 0) {
+  if (event.correlation && event.correlation.length > 0) {
     return {
-      key: `corr:${event.correlation_key}`,
-      label: event.correlation_key,
+      key: `corr:${event.correlation}`,
+      label: event.correlation,
       kind: "correlation",
     };
   }

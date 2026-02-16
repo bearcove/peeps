@@ -49,8 +49,8 @@ function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; e
   const methodByCorrelationKey = new Map<string, string>();
   for (const n of graph.nodes) {
     if (n.kind !== "request") continue;
-    const method = firstString(n.attrs, ["method", "request.method"]);
-    const corr = firstString(n.attrs, ["correlation_key", "request.correlation_key"]);
+    const method = firstString(n.attrs, ["method"]);
+    const corr = firstString(n.attrs, ["correlation"]);
     if (method && corr) methodByCorrelationKey.set(corr, method);
   }
 
@@ -67,16 +67,16 @@ function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; e
 
         if (n.kind === "request") {
           return (
-            firstString(n.attrs, ["method", "request.method"]) ??
+            firstString(n.attrs, ["method"]) ??
             firstString(n.attrs, ["label", "name"]) ??
             n.id
           );
         }
 
         if (n.kind === "response") {
-          const corr = firstString(n.attrs, ["correlation_key", "response.correlation_key", "request.correlation_key"]);
+          const corr = firstString(n.attrs, ["correlation"]);
           return (
-            firstString(n.attrs, ["method", "response.method", "request.method"]) ??
+            firstString(n.attrs, ["method"]) ??
             (corr ? methodByCorrelationKey.get(corr) : undefined) ??
             firstString(n.attrs, ["label", "name"]) ??
             n.id
@@ -584,7 +584,7 @@ export function GraphView({
                 >
                   <span className="graph-search-item-kind">{node.kind}</span>
                   <span className="graph-search-item-label">
-                    {String(node.attrs["method"] ?? node.attrs["request.method"] ?? node.attrs["name"] ?? node.id)}
+                    {String(node.attrs["method"] ?? node.attrs["name"] ?? node.id)}
                   </span>
                   <span className="graph-search-item-id">{node.id}</span>
                 </button>
