@@ -69,6 +69,22 @@ body {
     max-width: 46ch;
 }
 
+.app-empty-connection-count {
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: light-dark(#6e6e73, #98989d);
+}
+
+.app-empty-connected-processes {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: light-dark(#3a3a40, #c8c8d0);
+    max-width: 56ch;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .app-empty-progress {
     margin-top: 4px;
     font-size: 12px;
@@ -585,6 +601,11 @@ body {
 
 .btn:active {
     background: light-dark(#e5e5ea, #444448);
+}
+
+.btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 .btn--primary {

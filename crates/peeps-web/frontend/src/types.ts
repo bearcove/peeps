@@ -16,6 +16,17 @@ export interface SnapshotProgressResponse {
   pending_processes: string[];
 }
 
+export interface ConnectionsResponse {
+  connected_processes: number;
+  can_take_snapshot: boolean;
+  processes: ConnectedProcessInfo[];
+}
+
+export interface ConnectedProcessInfo {
+  proc_key: string;
+  process_name: string;
+}
+
 export interface SqlRequest {
   snapshot_id: number;
   sql: string;
@@ -62,6 +73,17 @@ export interface SnapshotNode {
   process: string;
   proc_key: string;
   attrs: Record<string, unknown>;
+}
+
+export interface InspectorNodeAttrs extends Record<string, unknown> {
+  created_at: number | string;
+  source: string;
+  method?: string;
+  correlation?: string;
+}
+
+export interface InspectorSnapshotNode extends Omit<SnapshotNode, "attrs"> {
+  attrs: InspectorNodeAttrs;
 }
 
 export interface SnapshotEdge {

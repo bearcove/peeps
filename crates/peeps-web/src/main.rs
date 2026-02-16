@@ -144,6 +144,7 @@ async fn main() {
         .route("/favicon.ico", get(favicon_ico))
         .route("/api/jump-now", post(api::api_jump_now))
         .route("/api/snapshot-progress", get(api::api_snapshot_progress))
+        .route("/api/connections", get(api::api_connections))
         .route("/api/sql", post(api::api_sql))
         .with_state(state.clone());
 

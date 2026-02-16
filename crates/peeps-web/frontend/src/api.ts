@@ -1,4 +1,5 @@
 import type {
+  ConnectionsResponse,
   JumpNowResponse,
   SnapshotProgressResponse,
   SqlRequest,
@@ -57,6 +58,10 @@ export async function jumpNow(): Promise<JumpNowResponse> {
 
 export async function fetchSnapshotProgress(): Promise<SnapshotProgressResponse> {
   return get<SnapshotProgressResponse>("/api/snapshot-progress");
+}
+
+export async function fetchConnections(): Promise<ConnectionsResponse> {
+  return get<ConnectionsResponse>("/api/connections");
 }
 
 export async function querySql(

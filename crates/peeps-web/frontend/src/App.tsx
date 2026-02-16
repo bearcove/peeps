@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Camera, WarningCircle } from "@phosphor-icons/react";
-import { fetchGraph, fetchRecentTimelineEvents, fetchSnapshotProgress, fetchTimelineProcessOptions, jumpNow } from "./api";
+import {
+  fetchConnections,
+  fetchGraph,
+  fetchRecentTimelineEvents,
+  fetchSnapshotProgress,
+  fetchTimelineProcessOptions,
+  jumpNow,
+} from "./api";
 import { Header } from "./components/Header";
 import { SuspectsTable, type SuspectItem } from "./components/SuspectsTable";
 import { GraphView } from "./components/GraphView";
@@ -482,6 +489,8 @@ export function App() {
   const [graph, setGraph] = useState<SnapshotGraph | null>(null);
   const [loading, setLoading] = useState(false);
   const [snapshotProgress, setSnapshotProgress] = useState<SnapshotProgressResponse | null>(null);
+  const [connectedProcessCount, setConnectedProcessCount] = useState(0);
+  const [connectedProcessNames, setConnectedProcessNames] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [investigationMode, setInvestigationMode] = useState<InvestigationMode>(() => {
     return sessionStorage.getItem("peeps-investigation-mode") === "timeline" ? "timeline" : "graph";
@@ -553,6 +562,7 @@ export function App() {
   }, []);
 
   const handleTakeSnapshot = useCallback(async () => {
+    if (connectedProcessCount === 0) return;
     setLoading(true);
     setSnapshotProgress(null);
     setError(null);
@@ -573,6 +583,32 @@ export function App() {
       setLoading(false);
       setSnapshotProgress(null);
     }
+  }, [connectedProcessCount]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const status = await fetchConnections();
+        if (!cancelled) {
+          setConnectedProcessCount(status.connected_processes);
+          setConnectedProcessNames(status.processes.map((proc) => proc.process_name));
+        }
+      } catch {
+        // Ignore transient connection polling errors.
+      }
+    };
+
+    void poll();
+    const timer = window.setInterval(() => {
+      void poll();
+    }, 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -922,9 +958,18 @@ export function App() {
     [enrichedGraph, handleSelectGraphNode, handleSetMode],
   );
 
+  const connectedProcessNamesPreview = connectedProcessNames.slice(0, 6);
+  const hiddenConnectedProcessNames = Math.max(0, connectedProcessNames.length - connectedProcessNamesPreview.length);
+
   return (
     <div className="app">
-      <Header snapshot={snapshot} loading={loading} progress={snapshotProgress} onTakeSnapshot={handleTakeSnapshot} />
+      <Header
+        snapshot={snapshot}
+        loading={loading}
+        progress={snapshotProgress}
+        canTakeSnapshot={connectedProcessCount > 0}
+        onTakeSnapshot={handleTakeSnapshot}
+      />
       {error && (
         <div className="status-bar">
           <WarningCircle
@@ -940,11 +985,20 @@ export function App() {
           <div className="app-empty-card">
             <h1>Take a snapshot</h1>
             <p>Capture the current runtime state to start investigating your system.</p>
+            <p className="app-empty-connection-count">
+              {connectedProcessCount} connected process{connectedProcessCount === 1 ? "" : "es"}
+            </p>
+            {connectedProcessNamesPreview.length > 0 && (
+              <p className="app-empty-connected-processes" title={connectedProcessNames.join(", ")}>
+                {connectedProcessNamesPreview.join(", ")}
+                {hiddenConnectedProcessNames > 0 ? ` +${hiddenConnectedProcessNames} more` : ""}
+              </p>
+            )}
             <button
               className={`btn btn--primary btn--hero ${loading ? "btn--loading" : ""}`}
               type="button"
               onClick={handleTakeSnapshot}
-              disabled={loading}
+              disabled={loading || connectedProcessCount === 0}
             >
               <Camera size={18} weight="bold" />
               {loading ? "Taking snapshot..." : "Take snapshot now"}

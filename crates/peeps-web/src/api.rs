@@ -1,4 +1,5 @@
-//! HTTP API endpoints: POST /api/jump-now, GET /api/snapshot-progress, POST /api/sql
+//! HTTP API endpoints: POST /api/jump-now, GET /api/snapshot-progress,
+//! GET /api/connections, POST /api/sql
 //!
 //! SQL enforcement: authorizer, progress handler, hard caps.
 
@@ -56,6 +57,19 @@ pub struct SnapshotProgressResponse {
     pub pending: usize,
     pub responded_processes: Vec<String>,
     pub pending_processes: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConnectionsResponse {
+    pub connected_processes: usize,
+    pub can_take_snapshot: bool,
+    pub processes: Vec<ConnectedProcessInfo>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConnectedProcessInfo {
+    pub proc_key: String,
+    pub process_name: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -181,6 +195,39 @@ pub async fn api_snapshot_progress(
         pending: 0,
         responded_processes: Vec::new(),
         pending_processes: Vec::new(),
+    }))
+}
+
+// ── GET /api/connections ─────────────────────────────────────────
+
+pub async fn api_connections(
+    State(state): State<AppState>,
+) -> Result<Json<ConnectionsResponse>, (StatusCode, Json<ApiError>)> {
+    let ctl = state.snapshot_ctl.inner.lock().await;
+    let connected_processes = ctl.connections.len();
+    let mut processes: Vec<ConnectedProcessInfo> = ctl
+        .connections
+        .values()
+        .map(|conn| ConnectedProcessInfo {
+            proc_key: conn.proc_key.clone(),
+            process_name: if conn.process_name.is_empty() {
+                conn.proc_key.clone()
+            } else {
+                conn.process_name.clone()
+            },
+        })
+        .collect();
+    processes.sort_by(|a, b| {
+        a.process_name
+            .cmp(&b.process_name)
+            .then_with(|| a.proc_key.cmp(&b.proc_key))
+    });
+    processes.dedup_by(|a, b| a.proc_key == b.proc_key);
+
+    Ok(Json(ConnectionsResponse {
+        connected_processes,
+        can_take_snapshot: connected_processes > 0 && ctl.in_flight.is_none(),
+        processes,
     }))
 }
 

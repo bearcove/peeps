@@ -5,10 +5,11 @@ interface HeaderProps {
   snapshot: JumpNowResponse | null;
   loading: boolean;
   progress: SnapshotProgressResponse | null;
+  canTakeSnapshot: boolean;
   onTakeSnapshot: () => void;
 }
 
-export function Header({ snapshot, loading, progress, onTakeSnapshot }: HeaderProps) {
+export function Header({ snapshot, loading, progress, canTakeSnapshot, onTakeSnapshot }: HeaderProps) {
   const requested = progress?.requested ?? 0;
   const responded = progress?.responded ?? 0;
   const preview = (progress?.responded_processes ?? []).slice(-4);
@@ -63,7 +64,7 @@ export function Header({ snapshot, loading, progress, onTakeSnapshot }: HeaderPr
       <button
         className={`btn btn--primary ${loading ? "btn--loading" : ""}`}
         onClick={onTakeSnapshot}
-        disabled={loading}
+        disabled={loading || !canTakeSnapshot}
       >
         <Camera size={14} weight="bold" />
         {loading ? "Taking snapshot..." : "Take snapshot"}
