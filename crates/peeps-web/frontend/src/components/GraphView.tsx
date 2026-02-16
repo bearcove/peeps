@@ -101,6 +101,7 @@ function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; e
     .map((e) => {
       const isTouches = e.kind === "touches";
       const isSpawned = e.kind === "spawned";
+      const isClosedBy = e.kind === "closed_by";
       const involvesGhost = ghostIds.has(e.src_id) || ghostIds.has(e.dst_id);
       return {
         id: `${e.src_id}->${e.dst_id}:${e.kind}`,
@@ -109,22 +110,26 @@ function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; e
         data: { kind: e.kind, srcId: e.src_id, dstId: e.dst_id },
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          width: isTouches || isSpawned ? 8 : 12,
-          height: isTouches || isSpawned ? 8 : 12,
+          width: isTouches || isSpawned || isClosedBy ? 8 : 12,
+          height: isTouches || isSpawned || isClosedBy ? 8 : 12,
         },
         style: involvesGhost
           ? { stroke: "light-dark(#b0b0b6, #505056)", strokeWidth: 1, strokeDasharray: "6 4", opacity: 0.5 }
+          : isClosedBy
+            ? { stroke: "light-dark(#e74c3c, #ff6b6b)", strokeWidth: 1.5, strokeDasharray: "4 2", opacity: 0.85 }
+            : isSpawned
+              ? { stroke: "light-dark(#8e7cc3, #b4a7d6)", strokeWidth: 1.2, strokeDasharray: "2 3", opacity: 0.7 }
+              : isTouches
+                ? { stroke: "light-dark(#a1a1a6, #636366)", strokeWidth: 1, strokeDasharray: "4 3", opacity: 0.6 }
+                : { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
+        label: isClosedBy ? "closed_by" : isSpawned ? "spawned" : isTouches ? "touches" : undefined,
+        labelStyle: isClosedBy
+          ? { fontSize: 9, fill: "light-dark(#e74c3c, #ff6b6b)" }
           : isSpawned
-            ? { stroke: "light-dark(#8e7cc3, #b4a7d6)", strokeWidth: 1.2, strokeDasharray: "2 3", opacity: 0.7 }
+            ? { fontSize: 9, fill: "light-dark(#8e7cc3, #b4a7d6)" }
             : isTouches
-              ? { stroke: "light-dark(#a1a1a6, #636366)", strokeWidth: 1, strokeDasharray: "4 3", opacity: 0.6 }
-              : { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
-        label: isSpawned ? "spawned" : isTouches ? "touches" : undefined,
-        labelStyle: isSpawned
-          ? { fontSize: 9, fill: "light-dark(#8e7cc3, #b4a7d6)" }
-          : isTouches
-            ? { fontSize: 9, fill: "light-dark(#a1a1a6, #636366)" }
-            : undefined,
+              ? { fontSize: 9, fill: "light-dark(#a1a1a6, #636366)" }
+              : undefined,
       };
     });
 
