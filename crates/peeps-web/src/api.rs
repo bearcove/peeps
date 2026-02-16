@@ -105,9 +105,8 @@ pub async fn api_jump_now(
     State(state): State<AppState>,
 ) -> Result<Json<JumpNowResponse>, (StatusCode, Json<ApiError>)> {
     info!("api jump-now requested");
-    let (snapshot_id, processes_requested) = crate::trigger_snapshot(&state)
-        .await
-        .map_err(|e| {
+    let (snapshot_id, processes_requested) =
+        crate::trigger_snapshot(&state).await.map_err(|e| {
             error!(%e, "api jump-now failed to trigger snapshot");
             api_error(StatusCode::INTERNAL_SERVER_ERROR, e)
         })?;

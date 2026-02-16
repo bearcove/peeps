@@ -455,17 +455,16 @@ struct MetaEntry<'a> {
 /// Metadata builder for canonical graph nodes.
 ///
 /// Validates keys/values per the spec and drops invalid pairs silently.
-/// Uses a growable `Vec` and accepts more entries than the compile-time
-/// generic capacity parameter.
-pub struct MetaBuilder<'a, const N: usize = META_MAX_PAIRS> {
+/// Uses a growable `Vec` with runtime capacity.
+pub struct MetaBuilder<'a> {
     entries: Vec<MetaEntry<'a>>,
 }
 
-impl<'a, const N: usize> MetaBuilder<'a, N> {
+impl<'a> MetaBuilder<'a> {
     /// Create an empty metadata builder.
     pub fn new() -> Self {
         Self {
-            entries: Vec::with_capacity(N),
+            entries: Vec::new(),
         }
     }
 
@@ -514,7 +513,7 @@ impl<'a, const N: usize> MetaBuilder<'a, N> {
     }
 }
 
-impl<'a, const N: usize> Default for MetaBuilder<'a, N> {
+impl<'a> Default for MetaBuilder<'a> {
     fn default() -> Self {
         Self::new()
     }
@@ -691,7 +690,7 @@ mod tests {
 
     #[test]
     fn meta_builder_is_not_limited_by_const_capacity() {
-        let mut builder = MetaBuilder::<1>::new();
+        let mut builder = MetaBuilder::new();
         builder
             .push("peeps.level", MetaValue::Static("debug"))
             .push("sleep.duration_ms", MetaValue::Static("5000"));

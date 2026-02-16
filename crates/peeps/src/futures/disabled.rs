@@ -40,10 +40,11 @@ where
 }
 
 #[inline]
-pub fn peepable_with_meta<F, const N: usize>(
+#[doc(hidden)]
+pub fn __peeps_track_future_with_meta<F>(
     future: F,
     _resource: impl Into<String>,
-    _meta: peeps_types::MetaBuilder<'_, N>,
+    _meta: peeps_types::MetaBuilder<'_>,
 ) -> PeepableFuture<F::IntoFuture>
 where
     F: IntoFuture,
@@ -54,11 +55,12 @@ where
 }
 
 #[inline]
-pub fn peepable_with_meta_kind<F, const N: usize>(
+#[doc(hidden)]
+pub fn __peeps_track_future_with_meta_kind<F>(
     future: F,
     _kind: peeps_types::NodeKind,
     _resource: impl Into<String>,
-    _meta: peeps_types::MetaBuilder<'_, N>,
+    _meta: peeps_types::MetaBuilder<'_>,
 ) -> PeepableFuture<F::IntoFuture>
 where
     F: IntoFuture,
@@ -69,12 +71,13 @@ where
 }
 
 #[inline]
-pub fn peepable_with_meta_kind_level<F, const N: usize>(
+#[doc(hidden)]
+pub fn __peeps_track_future_with_meta_kind_level<F>(
     future: F,
     _kind: peeps_types::NodeKind,
     _resource: impl Into<String>,
     _level: peeps_types::InstrumentationLevel,
-    _meta: peeps_types::MetaBuilder<'_, N>,
+    _meta: peeps_types::MetaBuilder<'_>,
 ) -> PeepableFuture<F::IntoFuture>
 where
     F: IntoFuture,

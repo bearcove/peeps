@@ -62,10 +62,14 @@ pub struct RpcEvent<'a> {
 }
 
 #[cfg(not(feature = "diagnostics"))]
+#[doc(hidden)]
 pub use disabled::{
-    record_request, record_request_with_meta, record_response, record_response_with_meta,
+    __peeps_track_rpc_request_with_meta, __peeps_track_rpc_response_with_meta, record_request,
+    record_response,
 };
 #[cfg(feature = "diagnostics")]
+#[doc(hidden)]
 pub use enabled::{
-    record_request, record_request_with_meta, record_response, record_response_with_meta,
+    __peeps_track_rpc_request_with_meta, __peeps_track_rpc_response_with_meta, record_request,
+    record_response,
 };

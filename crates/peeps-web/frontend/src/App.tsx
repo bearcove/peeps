@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Camera, WarningCircle } from "@phosphor-icons/react";
+import { Cpu, Camera, WarningCircle } from "@phosphor-icons/react";
 import {
   fetchConnections,
   fetchGraph,
@@ -959,7 +959,14 @@ export function App() {
   );
 
   const hasConnectedProcesses = connectedProcessCount > 0;
-  const connectedProcessList = connectedProcessNames.slice(0, 5);
+  const MAX_SHOWN_CONNECTED_PROCESSES = 12;
+  const connectedProcessList = connectedProcessNames.slice(0, MAX_SHOWN_CONNECTED_PROCESSES);
+  const renderConnectedProcessItem = (processName: string, key: string) => (
+    <div key={key} className="app-empty-connected-item">
+      <Cpu size={14} weight="bold" className="app-empty-connected-item-icon" />
+      <span className="app-empty-connected-item-text">{processName}</span>
+    </div>
+  );
   const hiddenConnectedProcessRows = Math.max(0, connectedProcessNames.length - connectedProcessList.length);
 
   return (
@@ -1009,15 +1016,13 @@ export function App() {
                     </p>
                     {connectedProcessCount === 1 ? (
                       <div className="app-empty-connected-list" title={connectedProcessNames[0]}>
-                        <div className="app-empty-connected-item">{connectedProcessNames[0]}</div>
+                        {renderConnectedProcessItem(connectedProcessNames[0], connectedProcessNames[0])}
                       </div>
                     ) : (
                       <div className="app-empty-connected-list" title={connectedProcessNames.join(", ")}>
-                        {connectedProcessList.map((processName, index) => (
-                          <div key={`${processName}-${index}`} className="app-empty-connected-item">
-                            {processName}
-                          </div>
-                        ))}
+                        {connectedProcessList.map((processName, index) =>
+                          renderConnectedProcessItem(processName, `${processName}-${index}`),
+                        )}
                       </div>
                     )}
                     {hiddenConnectedProcessRows > 0 && (

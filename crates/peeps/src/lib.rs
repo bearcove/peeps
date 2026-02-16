@@ -53,8 +53,9 @@ pub use stack::ensure as ensure_stack;
 // ── futures ─────────────────────────────────────────────
 
 pub use futures::{
-    peepable, peepable_with_meta, peepable_with_meta_kind, peepable_with_meta_kind_level, sleep,
-    spawn_blocking_tracked, spawn_tracked, timeout, PeepableFuture,
+    __peeps_track_future_with_meta, __peeps_track_future_with_meta_kind,
+    __peeps_track_future_with_meta_kind_level, peepable, sleep, spawn_blocking_tracked,
+    spawn_tracked, timeout, PeepableFuture,
 };
 pub use joinset::JoinSet;
 pub use peeps_types::InstrumentationLevel;
@@ -120,7 +121,7 @@ pub(crate) fn caller_location(caller: &std::panic::Location<'_>) -> String {
 #[macro_export]
 macro_rules! peep_meta {
     ($($k:literal => $v:expr),* $(,)?) => {{
-        let mut mb = $crate::MetaBuilder::<16>::new();
+        let mut mb = $crate::MetaBuilder::new();
         $(mb.push($k, $v);)*
         mb
     }};
@@ -131,14 +132,14 @@ macro_rules! peep_meta {
 #[macro_export]
 macro_rules! peepable_with_meta {
     ($future:expr, $label:literal, {$($k:literal => $v:expr),* $(,)?}) => {{
-        $crate::peepable_with_meta(
+        $crate::__peeps_track_future_with_meta(
             $future,
             $label,
             $crate::peep_meta!($($k => $v),*),
         )
     }};
     ($future:expr, $label:literal, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
-        $crate::peepable_with_meta_kind(
+        $crate::__peeps_track_future_with_meta_kind(
             $future,
             $kind,
             $label,
@@ -178,47 +179,47 @@ macro_rules! peep {
     ($future:expr, $label:expr, level = $level:expr, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         let mut mb = $crate::MetaBuilder::new();
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
-        $crate::peepable_with_meta_kind_level($future, $kind, $label, $level, mb)
+        $crate::__peeps_track_future_with_meta_kind_level($future, $kind, $label, $level, mb)
     }};
     ($future:expr, $label:expr, level = $level:expr, kind = $kind:expr) => {{
         let mb = $crate::MetaBuilder::new();
-        $crate::peepable_with_meta_kind_level($future, $kind, $label, $level, mb)
+        $crate::__peeps_track_future_with_meta_kind_level($future, $kind, $label, $level, mb)
     }};
     ($future:expr, $label:expr, kind = $kind:expr, level = $level:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         let mut mb = $crate::MetaBuilder::new();
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
-        $crate::peepable_with_meta_kind_level($future, $kind, $label, $level, mb)
+        $crate::__peeps_track_future_with_meta_kind_level($future, $kind, $label, $level, mb)
     }};
     ($future:expr, $label:expr, kind = $kind:expr, level = $level:expr) => {{
         let mb = $crate::MetaBuilder::new();
-        $crate::peepable_with_meta_kind_level($future, $kind, $label, $level, mb)
+        $crate::__peeps_track_future_with_meta_kind_level($future, $kind, $label, $level, mb)
     }};
     ($future:expr, $label:expr, kind = $kind:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         let mut mb = $crate::MetaBuilder::new();
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
-        $crate::peepable_with_meta_kind($future, $kind, $label, mb)
+        $crate::__peeps_track_future_with_meta_kind($future, $kind, $label, mb)
     }};
     ($future:expr, $label:expr, level = $level:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         let mut mb = $crate::MetaBuilder::new();
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
-        $crate::peepable_with_meta_kind_level($future, $crate::types::NodeKind::Future, $label, $level, mb)
+        $crate::__peeps_track_future_with_meta_kind_level($future, $crate::types::NodeKind::Future, $label, $level, mb)
     }};
     ($future:expr, $label:expr, level = $level:expr) => {{
         let mb = $crate::MetaBuilder::new();
-        $crate::peepable_with_meta_kind_level($future, $crate::types::NodeKind::Future, $label, $level, mb)
+        $crate::__peeps_track_future_with_meta_kind_level($future, $crate::types::NodeKind::Future, $label, $level, mb)
     }};
     ($future:expr, $label:expr, kind = $kind:expr) => {{
         let mb = $crate::MetaBuilder::new();
-        $crate::peepable_with_meta_kind($future, $kind, $label, mb)
+        $crate::__peeps_track_future_with_meta_kind($future, $kind, $label, mb)
     }};
     ($future:expr, $label:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
         let mut mb = $crate::MetaBuilder::new();
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
-        $crate::peepable_with_meta($future, $label, mb)
+        $crate::__peeps_track_future_with_meta($future, $label, mb)
     }};
     ($future:expr, $label:expr) => {{
         let mb = $crate::MetaBuilder::new();
-        $crate::peepable_with_meta($future, $label, mb)
+        $crate::__peeps_track_future_with_meta($future, $label, mb)
     }};
 }
 
@@ -265,14 +266,14 @@ macro_rules! peep {
 #[macro_export]
 macro_rules! rpc_request_event {
     ($entity_id:expr, $name:expr, parent = $parent:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
-        let mut mb = $crate::MetaBuilder::<16>::new();
+        let mut mb = $crate::MetaBuilder::new();
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
-        $crate::rpc::record_request_with_meta($entity_id, $name, mb, Some($parent));
+        $crate::rpc::__peeps_track_rpc_request_with_meta($entity_id, $name, mb, Some($parent));
     }};
     ($entity_id:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
-        let mut mb = $crate::MetaBuilder::<16>::new();
+        let mut mb = $crate::MetaBuilder::new();
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
-        $crate::rpc::record_request_with_meta($entity_id, $name, mb, None);
+        $crate::rpc::__peeps_track_rpc_request_with_meta($entity_id, $name, mb, None);
     }};
 }
 
@@ -291,14 +292,14 @@ macro_rules! rpc_request_event {
 #[macro_export]
 macro_rules! rpc_response_event {
     ($entity_id:expr, $name:expr, parent = $parent:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
-        let mut mb = $crate::MetaBuilder::<16>::new();
+        let mut mb = $crate::MetaBuilder::new();
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
-        $crate::rpc::record_response_with_meta($entity_id, $name, mb, Some($parent));
+        $crate::rpc::__peeps_track_rpc_response_with_meta($entity_id, $name, mb, Some($parent));
     }};
     ($entity_id:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?}) => {{
-        let mut mb = $crate::MetaBuilder::<16>::new();
+        let mut mb = $crate::MetaBuilder::new();
         $(mb.push($k, $crate::IntoMetaValue::into_meta_value($v));)*
-        $crate::rpc::record_response_with_meta($entity_id, $name, mb, None);
+        $crate::rpc::__peeps_track_rpc_response_with_meta($entity_id, $name, mb, None);
     }};
 }
 

@@ -205,25 +205,26 @@ pub fn peepable<F>(future: F, resource: impl Into<String>) -> PeepableFuture<F::
 where
     F: IntoFuture,
 {
-    peepable_with_meta_kind_level(
+    __peeps_track_future_with_meta_kind_level(
         future,
         NodeKind::Future,
         resource,
         InstrumentationLevel::Info,
-        peeps_types::MetaBuilder::<0>::new(),
+        peeps_types::MetaBuilder::new(),
     )
 }
 
 #[track_caller]
-pub fn peepable_with_meta<F, const N: usize>(
+#[doc(hidden)]
+pub fn __peeps_track_future_with_meta<F>(
     future: F,
     resource: impl Into<String>,
-    meta: peeps_types::MetaBuilder<'_, N>,
+    meta: peeps_types::MetaBuilder<'_>,
 ) -> PeepableFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
-    peepable_with_meta_kind_level(
+    __peeps_track_future_with_meta_kind_level(
         future,
         NodeKind::Future,
         resource,
@@ -233,25 +234,33 @@ where
 }
 
 #[track_caller]
-pub fn peepable_with_meta_kind<F, const N: usize>(
+#[doc(hidden)]
+pub fn __peeps_track_future_with_meta_kind<F>(
     future: F,
     kind: NodeKind,
     resource: impl Into<String>,
-    meta: peeps_types::MetaBuilder<'_, N>,
+    meta: peeps_types::MetaBuilder<'_>,
 ) -> PeepableFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
-    peepable_with_meta_kind_level(future, kind, resource, InstrumentationLevel::Info, meta)
+    __peeps_track_future_with_meta_kind_level(
+        future,
+        kind,
+        resource,
+        InstrumentationLevel::Info,
+        meta,
+    )
 }
 
 #[track_caller]
-pub fn peepable_with_meta_kind_level<F, const N: usize>(
+#[doc(hidden)]
+pub fn __peeps_track_future_with_meta_kind_level<F>(
     future: F,
     kind: NodeKind,
     resource: impl Into<String>,
     level: InstrumentationLevel,
-    mut meta: peeps_types::MetaBuilder<'_, N>,
+    mut meta: peeps_types::MetaBuilder<'_>,
 ) -> PeepableFuture<F::IntoFuture>
 where
     F: IntoFuture,

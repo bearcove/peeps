@@ -42,10 +42,11 @@ pub fn record_response(event: RpcEvent<'_>) {
 /// Builds `attrs_json` as:
 /// `{"method":"...","source":"..."}`.
 #[track_caller]
-pub fn record_request_with_meta<const N: usize>(
+#[doc(hidden)]
+pub fn __peeps_track_rpc_request_with_meta(
     entity_id: &str,
     name: &str,
-    _meta: MetaBuilder<'_, N>,
+    _meta: MetaBuilder<'_>,
     parent_entity_id: Option<&str>,
 ) {
     let caller = std::panic::Location::caller();
@@ -63,10 +64,11 @@ pub fn record_request_with_meta<const N: usize>(
 /// Builds `attrs_json` as:
 /// `{"method":"...","source":"..."}`.
 #[track_caller]
-pub fn record_response_with_meta<const N: usize>(
+#[doc(hidden)]
+pub fn __peeps_track_rpc_response_with_meta(
     entity_id: &str,
     name: &str,
-    _meta: MetaBuilder<'_, N>,
+    _meta: MetaBuilder<'_>,
     parent_entity_id: Option<&str>,
 ) {
     let caller = std::panic::Location::caller();
