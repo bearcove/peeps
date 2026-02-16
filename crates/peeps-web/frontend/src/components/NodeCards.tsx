@@ -178,6 +178,8 @@ function FutureCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, process, attrs } = data;
   const pollCount = numAttr(attrs, "poll_count");
   const lastPolledNs = numAttr(attrs, "last_polled_ns");
+  const ageNs = numAttr(attrs, "age_ns");
+  const idleNs = numAttr(attrs, "idle_ns");
   const state = attr(attrs, "state") ?? "waiting";
 
   const stateVariant: "ok" | "warn" | "crit" | "neutral" =
@@ -201,6 +203,18 @@ function FutureCard({ data }: NodeProps<Node<NodeData>>) {
           </span>
         )}
       </div>
+      {ageNs != null && (
+        <div className="card-row">
+          <span className="card-dim">age</span>
+          <DurationBadge ns={ageNs} warnNs={60_000_000_000} critNs={300_000_000_000} />
+        </div>
+      )}
+      {idleNs != null && (
+        <div className="card-row">
+          <span className="card-dim">idle</span>
+          <DurationBadge ns={idleNs} warnNs={5_000_000_000} critNs={30_000_000_000} />
+        </div>
+      )}
       {lastPolledNs != null && (
         <div className="card-row">
           <span className="card-dim">last poll</span>
