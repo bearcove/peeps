@@ -168,6 +168,27 @@ impl NodeKind {
     }
 }
 
+/// Instrumentation visibility level for graph nodes.
+///
+/// Higher levels include progressively noisier/internal details.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Facet)]
+#[repr(u8)]
+pub enum InstrumentationLevel {
+    Info = 0,
+    Debug = 1,
+    Trace = 2,
+}
+
+impl InstrumentationLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            InstrumentationLevel::Info => "info",
+            InstrumentationLevel::Debug => "debug",
+            InstrumentationLevel::Trace => "trace",
+        }
+    }
+}
+
 /// Edge kind enumeration for canonical graph edges.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Facet)]
 #[repr(u8)]
@@ -570,6 +591,7 @@ pub mod meta_key {
     pub const FUTURE_ID: &str = "future.id";
     pub const CHANNEL_ID: &str = "channel.id";
     pub const RESOURCE_PATH: &str = "resource.path";
+    pub const PEEPS_LEVEL: &str = "peeps.level";
     /// Canonical source location, formatted as `path:line` or `path:line:column`.
     pub const CTX_LOCATION: &str = "ctx.location";
     pub const CTX_MODULE_PATH: &str = "ctx.module_path";

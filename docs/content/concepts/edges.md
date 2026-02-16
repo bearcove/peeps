@@ -3,32 +3,24 @@ title = "Edges"
 weight = 2
 +++
 
-Edges encode relationships between nodes. There are four edge kinds, each with strict semantics.
+Edges are the core explanatory mechanism in peeps. They answer "why is this happening?"
 
-## `Needs`
+## `Needs` (progress dependency)
 
-Current progress dependency. `src` is blocked waiting on `dst`.
+`src` cannot make progress until `dst` changes state. This is the wait graph and the fastest path to "what is blocking what."
 
-Added when a resource is awaited — channel recv, lock acquire, future poll. Removed when the blocking condition resolves (lock acquired, message received, future ready).
+## `Touches` (observed interaction)
 
-This is the **wait graph**. If you see a `Needs` edge, the source cannot make progress until the destination does something. A chain of `Needs` edges tells you exactly what's blocking what.
+`src` interacted with `dst` at least once. These edges preserve context and help reconstruct data/control flow, even when nothing is currently blocked.
 
-## `Touches`
+## `Spawned` (lineage)
 
-Observed interaction history. `src` interacted with `dst` at least once.
+`src` created `dst`. Use this to answer "where did this task/resource come from?"
 
-Added automatically by the [causality stack](@/concepts/stack.md): when a parent polls a child, a `Touches` edge is emitted from parent to child. These accumulate and are retained until either endpoint node is removed.
+## `ClosedBy` (termination cause)
 
-`Touches` edges record "who looked at what." They're useful for understanding dataflow — which futures polled which resources, which handler touched which channels.
+`src` ended because `dst` ended or was dropped. This captures causal shutdown and closure chains.
 
-## `Spawned`
+## Reading tip
 
-Lineage. `src` spawned `dst`.
-
-Permanent — retained for the entire lifetime of the child node. Tells you where things came from. A `JoinSet` will have `Spawned` edges to every task it launched.
-
-## `ClosedBy`
-
-Causal closure. `src` was closed because of `dst`.
-
-Records why something ended. For example, a channel `Rx` might have a `ClosedBy` edge pointing to the last `Tx` that was dropped, explaining why the receive side closed.
+Start with `Needs` for active stalls, then add `Touches` and `Spawned` for narrative context. `ClosedBy` explains why things stopped.

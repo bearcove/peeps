@@ -3,30 +3,19 @@ title = "Commands, file ops, net ops"
 weight = 6
 +++
 
-## Command
+System instrumentation covers async boundaries where work leaves pure in-memory execution.
 
-`peeps::Command` wraps `tokio::process::Command` and `tokio::process::Child`.
+## Command operations
 
-- Creates a `Command` node on spawn
-- Tracks: `program`, `args` (truncated to 200 chars), `cwd`, `env_count`, `pid`, `exit_code`, `exit_signal`, `elapsed_ns`, errors
-- Updated on exit, removed on `Drop`
+Process launch/wait is represented so external process latency and failures are visible in the same causal graph.
 
 ## File operations
 
-`peeps::fs::create_dir_all` and file read/write wrappers.
-
-- Creates a `FileOp` node per operation
-- Tracks: bytes read/written, `elapsed_ns`, result (ok/error)
+File I/O operations become nodes that can explain blocking and throughput constraints.
+Use `peeps::fs` wrappers (`write`, `read_*`, `File`, `OpenOptions`) so operations are represented in the graph.
 
 ## Network operations
 
-Four wrappers:
+Connection setup and readiness waits become graph-visible so transport-level stalls can be traced back to callers.
 
-| Function | Node kind | What it wraps |
-|----------|-----------|---------------|
-| `peeps::net::connect` | `NetConnect` | Connection establishment |
-| `peeps::net::accept` | `NetAccept` | Socket accept |
-| `peeps::net::readable` | `NetReadable` | Readability wait |
-| `peeps::net::writable` | `NetWritable` | Writability wait |
-
-All track: `endpoint`, `transport`, `elapsed_ns`.
+These nodes are typically short-lived and most useful when correlated with upstream futures via edges.

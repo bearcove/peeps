@@ -5,8 +5,8 @@ sort_by = "weight"
 insert_anchor_links = "heading"
 +++
 
-Roam is a Rust-native RPC framework (separate project). It uses peeps throughout — all task spawning, channels, mutexes, timers, and futures in roam go through peeps wrappers. Beyond that, roam creates dedicated Request and Response nodes to track RPC lifecycles end-to-end.
+Roam is instrumented with peeps end-to-end. Standard runtime primitives use peeps wrappers, and RPC lifecycle adds request/response-specific nodes and links.
 
-This section documents how roam integrates with peeps.
+This section focuses on cross-process causality intent, not protocol field inventory.
 
 Roam crates that use peeps: `roam-session`, `roam-shm`, `roam-stream`, `roam-tracing`, `roam-local`, `roam-telemetry`, `roam-http-bridge`.

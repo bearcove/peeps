@@ -3,19 +3,20 @@ title = "Locks"
 weight = 2
 +++
 
-peeps provides four lock wrappers:
+Lock instrumentation exists to make contention visible.
 
-| Wrapper | Underlying | Use case |
-|---------|-----------|----------|
-| `peeps::Mutex<T>` | `parking_lot::Mutex` | Synchronous mutual exclusion |
-| `peeps::RwLock<T>` | `parking_lot::RwLock` | Synchronous read-write |
-| `peeps::AsyncMutex<T>` | `tokio::sync::Mutex` | Async mutual exclusion |
-| `peeps::AsyncRwLock<T>` | `tokio::sync::RwLock` | Async read-write |
+## Graph intent
 
-## What they track
+- Lock nodes represent shared exclusion points.
+- Waiters create `Needs` edges while blocked.
+- Acquisitions/releases update lock state and remove stale waits.
 
-- Current holders and waiters
-- Total acquires and releases
-- `needs` edges while waiting to acquire (removed once acquired)
+## Debugging intent
 
-**Node kind:** `Lock`
+Use lock nodes to answer:
+
+- Is contention local or system-wide?
+- Which tasks are waiting behind which holder?
+- Is fairness/starvation behavior matching expectations?
+
+Exact lock wrappers and attributes may evolve; contention semantics should remain stable.

@@ -3,27 +3,22 @@ title = "Futures and tasks"
 weight = 1
 +++
 
-## PeepableFuture
+Future instrumentation is the spine of peeps causality.
 
-`PeepableFuture` wraps any future with diagnostic tracking. Use the `.peepable("label")` extension method (from the `PeepableFutureExt` trait) to wrap a future.
+## Intent
 
-### What it tracks
-
-- `pending_count` — number of polls that returned `Pending`
-- `ready_count` — number of polls that returned `Ready`
-- `total_pending` — aggregate time spent in `Pending` state
-- `elapsed_ns` — total lifetime
+- Attribute work to the future currently being polled.
+- Show what that future is blocked on right now.
+- Preserve lineage when tasks spawn other tasks.
 
 ### Edge behavior
 
-- While pending, emits `needs` edges to whatever the wrapped future is waiting on.
-- On each poll, pushes itself onto the causality stack — nested polls will get `touches` edges.
-- On `Drop`, removes itself from the registry and cleans up all edges.
+- `Needs` captures active awaits.
+- `Touches` captures nested poll context via the causality stack.
+- `Spawned` captures parent/child task lineage.
 
-## Task spawning
+## Practical reading
 
-`peeps::spawn_tracked(name, future)` spawns a Tokio task with peeps tracking. The task gets its own stack scope, so all work done inside is attributed to it.
+When a service appears stuck, start at long-lived pending futures and follow their `Needs` chain outward.
 
-## JoinSet
-
-Wrapper around `tokio::task::JoinSet`. Tracks spawned tasks. Removed on `Drop`.
+For concrete wrapper APIs (`PeepableFuture`, tracked spawn, join set integration), refer to the crate docs/source.

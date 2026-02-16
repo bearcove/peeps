@@ -570,8 +570,7 @@ pub(crate) fn run_retention(db_path: &PathBuf) -> Result<(), String> {
 
     if let Some(cutoff_id) = cutoff {
         conn.execute_batch(&format!(
-            "DELETE FROM unresolved_edges WHERE snapshot_id <= {cutoff_id};
-             DELETE FROM edges WHERE snapshot_id <= {cutoff_id};
+            "DELETE FROM edges WHERE snapshot_id <= {cutoff_id};
              DELETE FROM nodes WHERE snapshot_id <= {cutoff_id};
              DELETE FROM snapshot_processes WHERE snapshot_id <= {cutoff_id};
              DELETE FROM snapshots WHERE snapshot_id <= {cutoff_id};"
@@ -610,6 +609,10 @@ fn init_db(path: &str) -> rusqlite::Result<()> {
     if needs_migration {
         conn.execute_batch("DROP TABLE IF EXISTS edges;")?;
     }
+
+    // Legacy table from an abandoned unresolved-edge pipeline.
+    // Ghost endpoint synthesis now happens in the frontend from dangling edges.
+    conn.execute_batch("DROP TABLE IF EXISTS unresolved_edges;")?;
 
     conn.execute_batch(
         "
@@ -653,17 +656,6 @@ fn init_db(path: &str) -> rusqlite::Result<()> {
             PRIMARY KEY (snapshot_id, src_id, dst_id, kind)
         );
 
-        CREATE TABLE IF NOT EXISTS unresolved_edges (
-            snapshot_id INTEGER NOT NULL,
-            src_id TEXT NOT NULL,
-            dst_id TEXT NOT NULL,
-            missing_side TEXT NOT NULL,
-            reason TEXT NOT NULL,
-            referenced_proc_key TEXT,
-            attrs_json TEXT NOT NULL,
-            PRIMARY KEY (snapshot_id, src_id, dst_id)
-        );
-
         CREATE TABLE IF NOT EXISTS ingest_events (
             event_id INTEGER PRIMARY KEY,
             event_at_ns INTEGER NOT NULL,
@@ -679,7 +671,6 @@ fn init_db(path: &str) -> rusqlite::Result<()> {
         CREATE INDEX IF NOT EXISTS idx_nodes_snapshot_proc_key ON nodes(snapshot_id, proc_key);
         CREATE INDEX IF NOT EXISTS idx_edges_snapshot_src ON edges(snapshot_id, src_id);
         CREATE INDEX IF NOT EXISTS idx_edges_snapshot_dst ON edges(snapshot_id, dst_id);
-        CREATE INDEX IF NOT EXISTS idx_unresolved_edges_snapshot ON unresolved_edges(snapshot_id);
         ",
     )?;
     Ok(())

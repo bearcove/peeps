@@ -169,6 +169,23 @@ fn prune_and_register_watch(info: &Arc<WatchInfo>) {
     reg.push(Arc::downgrade(info));
 }
 
+struct WaiterGuard<'a> {
+    counter: &'a AtomicU64,
+}
+
+impl<'a> WaiterGuard<'a> {
+    fn new(counter: &'a AtomicU64) -> Self {
+        counter.fetch_add(1, Ordering::Relaxed);
+        Self { counter }
+    }
+}
+
+impl Drop for WaiterGuard<'_> {
+    fn drop(&mut self) {
+        self.counter.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 // ── mpsc bounded ────────────────────────────────────────
 
 pub struct Sender<T> {
@@ -200,9 +217,8 @@ impl<T> Sender<T> {
         &self,
         value: T,
     ) -> Result<(), tokio::sync::mpsc::error::SendError<T>> {
-        self.info.send_waiters.fetch_add(1, Ordering::Relaxed);
+        let _waiter = WaiterGuard::new(&self.info.send_waiters);
         let result = WaitEdge::new(&self.info.tx_node_id, self.inner.send(value)).await;
-        self.info.send_waiters.fetch_sub(1, Ordering::Relaxed);
         if result.is_ok() {
             self.info.sent.fetch_add(1, Ordering::Relaxed);
             self.info.track_send_watermark();
@@ -252,9 +268,8 @@ impl<T> Drop for Receiver<T> {
 
 impl<T> Receiver<T> {
     pub async fn recv(&mut self) -> Option<T> {
-        self.info.recv_waiters.fetch_add(1, Ordering::Relaxed);
+        let _waiter = WaiterGuard::new(&self.info.recv_waiters);
         let result = WaitEdge::new(&self.info.rx_node_id, self.inner.recv()).await;
-        self.info.recv_waiters.fetch_sub(1, Ordering::Relaxed);
         if result.is_some() {
             self.info.received.fetch_add(1, Ordering::Relaxed);
         }
@@ -372,9 +387,8 @@ impl<T> Drop for UnboundedReceiver<T> {
 
 impl<T> UnboundedReceiver<T> {
     pub async fn recv(&mut self) -> Option<T> {
-        self.info.recv_waiters.fetch_add(1, Ordering::Relaxed);
+        let _waiter = WaiterGuard::new(&self.info.recv_waiters);
         let result = WaitEdge::new(&self.info.rx_node_id, self.inner.recv()).await;
-        self.info.recv_waiters.fetch_sub(1, Ordering::Relaxed);
         if result.is_some() {
             self.info.received.fetch_add(1, Ordering::Relaxed);
         }
@@ -676,6 +690,8 @@ pub fn watch_channel<T: Send + Sync + 'static>(
 struct ChannelMeta {
     #[facet(rename = "ctx.location")]
     ctx_location: String,
+    #[facet(rename = "peeps.level")]
+    peeps_level: &'static str,
 }
 
 #[derive(Facet)]
@@ -809,6 +825,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                     },
                     meta: ChannelMeta {
                         ctx_location: info.location.clone(),
+                        peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
                     },
                 };
 
@@ -839,6 +856,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                     close_cause,
                     meta: ChannelMeta {
                         ctx_location: info.location.clone(),
+                        peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
                     },
                 };
 
@@ -914,6 +932,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                     close_cause,
                     meta: ChannelMeta {
                         ctx_location: info.location.clone(),
+                        peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
                     },
                 };
 
@@ -943,6 +962,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                     close_cause,
                     meta: ChannelMeta {
                         ctx_location: info.location.clone(),
+                        peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
                     },
                 };
 
@@ -1012,6 +1032,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                     },
                     meta: ChannelMeta {
                         ctx_location: info.location.clone(),
+                        peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
                     },
                 };
 
@@ -1035,6 +1056,7 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
                     age_ns,
                     meta: ChannelMeta {
                         ctx_location: info.location.clone(),
+                        peeps_level: peeps_types::InstrumentationLevel::Debug.as_str(),
                     },
                 };
 

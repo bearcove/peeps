@@ -240,6 +240,36 @@ body {
     color: light-dark(#1d1d1f, #f5f5f7);
 }
 
+.card-wrap {
+    transition: opacity 140ms ease, filter 140ms ease;
+}
+
+.card-wrap--dimmed {
+    opacity: 0.18;
+    filter: saturate(0.45);
+}
+
+.filter-reset-btn {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
+    border-radius: 6px;
+    background: light-dark(#f0f0f5, #2a2a2e);
+    color: light-dark(#6e6e73, #98989d);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.filter-reset-btn:hover {
+    background: light-dark(#e5e5ea, #3a3a3e);
+    color: light-dark(#1d1d1f, #f5f5f7);
+}
+
 /* ── Requests list ───────────────────────────────────────── */
 
 .request-list {
@@ -388,6 +418,25 @@ body {
 .graph-filter-row {
     padding: 6px 10px 8px;
     border-bottom: 1px solid light-dark(#ebebf0, #2a2a2e);
+}
+
+.graph-level-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.graph-level-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: light-dark(#6e6e73, #98989d);
+    white-space: nowrap;
+}
+
+.graph-level-slider {
+    width: 140px;
+    accent-color: light-dark(#0071e3, #0a84ff);
 }
 
 .graph-filter-input-wrap {
@@ -1351,11 +1400,33 @@ body {
     font-size: 11px;
 }
 
+.inspect-raw-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
 .inspect-raw-title {
     color: light-dark(#6e6e73, #98989d);
     font-weight: 600;
     font-size: 11px;
     padding: 4px 0;
+}
+
+.inspect-raw-toggle {
+    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
+    background: light-dark(#f8f8fb, #232327);
+    color: light-dark(#4a4a4f, #b8b8bf);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.inspect-raw-toggle:hover {
+    background: light-dark(#f0f0f5, #2a2a2e);
 }
 
 .inspect-raw dl {

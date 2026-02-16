@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use facet::Facet;
 use facet_json::RawJson;
-use peeps_types::{GraphSnapshot, Node, NodeKind};
+use peeps_types::{GraphSnapshot, InstrumentationLevel, Node, NodeKind};
 
 // ── Storage ──────────────────────────────────────────────
 
@@ -15,6 +15,7 @@ static FUTURE_WAIT_REGISTRY: LazyLock<Mutex<HashMap<String, FutureWaitInfo>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 struct FutureWaitInfo {
+    kind: NodeKind,
     resource: String,
     created_at: Instant,
     poll_count: u64,
@@ -32,10 +33,17 @@ struct FutureWaitInfo {
 
 // ── Registration ─────────────────────────────────────────
 
-fn register_future(node_id: String, resource: String, location: String, user_meta_json: String) {
+fn register_future(
+    node_id: String,
+    kind: NodeKind,
+    resource: String,
+    location: String,
+    user_meta_json: String,
+) {
     FUTURE_WAIT_REGISTRY.lock().unwrap().insert(
         node_id,
         FutureWaitInfo {
+            kind,
             resource,
             created_at: Instant::now(),
             poll_count: 0,
@@ -194,7 +202,13 @@ pub fn peepable<F>(future: F, resource: impl Into<String>) -> PeepableFuture<F::
 where
     F: IntoFuture,
 {
-    peepable_with_meta(future, resource, peeps_types::MetaBuilder::<0>::new())
+    peepable_with_meta_kind_level(
+        future,
+        NodeKind::Future,
+        resource,
+        InstrumentationLevel::Info,
+        peeps_types::MetaBuilder::<0>::new(),
+    )
 }
 
 #[track_caller]
@@ -206,13 +220,62 @@ pub fn peepable_with_meta<F, const N: usize>(
 where
     F: IntoFuture,
 {
-    let node_id = peeps_types::new_node_id("future");
+    peepable_with_meta_kind_level(
+        future,
+        NodeKind::Future,
+        resource,
+        InstrumentationLevel::Info,
+        meta,
+    )
+}
+
+#[track_caller]
+pub fn peepable_with_meta_kind<F, const N: usize>(
+    future: F,
+    kind: NodeKind,
+    resource: impl Into<String>,
+    meta: peeps_types::MetaBuilder<'_, N>,
+) -> PeepableFuture<F::IntoFuture>
+where
+    F: IntoFuture,
+{
+    peepable_with_meta_kind_level(
+        future,
+        kind,
+        resource,
+        InstrumentationLevel::Info,
+        meta,
+    )
+}
+
+#[track_caller]
+pub fn peepable_with_meta_kind_level<F, const N: usize>(
+    future: F,
+    kind: NodeKind,
+    resource: impl Into<String>,
+    level: InstrumentationLevel,
+    mut meta: peeps_types::MetaBuilder<'_, N>,
+) -> PeepableFuture<F::IntoFuture>
+where
+    F: IntoFuture,
+{
+    meta.push(
+        peeps_types::meta_key::PEEPS_LEVEL,
+        peeps_types::MetaValue::Static(level.as_str()),
+    );
+    let node_id = peeps_types::new_node_id(kind.as_str());
     let resource = resource.into();
     let caller = std::panic::Location::caller();
     let location = crate::caller_location(caller);
     let user_meta_json = meta.to_json_object();
 
-    register_future(node_id.clone(), resource.clone(), location, user_meta_json);
+    register_future(
+        node_id.clone(),
+        kind,
+        resource.clone(),
+        location,
+        user_meta_json,
+    );
 
     // If created during another PeepableFuture's poll, record a spawned edge.
     let child_id = node_id.clone();
@@ -293,7 +356,7 @@ where
     };
     let user_meta_json = facet_json::to_string(&user_meta).unwrap();
 
-    register_future(node_id.clone(), name, location, user_meta_json);
+    register_future(node_id.clone(), NodeKind::Future, name, location, user_meta_json);
 
     // Emit edges from parent context.
     let child_id = node_id.clone();
@@ -339,7 +402,13 @@ pub fn timeout<F: Future>(
     };
     let user_meta_json = facet_json::to_string(&user_meta).unwrap();
 
-    register_future(node_id.clone(), label.clone(), location, user_meta_json);
+    register_future(
+        node_id.clone(),
+        NodeKind::Future,
+        label.clone(),
+        location,
+        user_meta_json,
+    );
 
     let child_id = node_id.clone();
     crate::stack::with_top(|parent_node_id| {
@@ -378,7 +447,13 @@ pub fn sleep(
     };
     let user_meta_json = facet_json::to_string(&user_meta).unwrap();
 
-    register_future(node_id.clone(), label.clone(), location, user_meta_json);
+    register_future(
+        node_id.clone(),
+        NodeKind::Future,
+        label.clone(),
+        location,
+        user_meta_json,
+    );
 
     let child_id = node_id.clone();
     crate::stack::with_top(|parent_node_id| {
@@ -490,7 +565,7 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
 
         graph.nodes.push(Node {
             id: node_id.clone(),
-            kind: NodeKind::Future,
+            kind: info.kind,
             label: Some(info.resource.clone()),
             attrs_json: facet_json::to_string(&attrs).unwrap(),
         });

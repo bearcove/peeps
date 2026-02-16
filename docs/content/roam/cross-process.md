@@ -16,6 +16,4 @@ Caller and responder derive compatible request/response identities from propagat
 - Optional for channel correlation: `peeps.chain_id`
 - Optional for nested request trees: `peeps.parent_span_id`
 
-## Unresolved edges
-
-If one process misses a snapshot window, links are preserved as unresolved references rather than discarded. The UI can surface these as ghost/missing endpoints so investigations remain navigable.
+If one side of a linked edge is absent in a snapshot, the UI synthesizes a ghost endpoint from dangling edge references so causal paths remain visible.

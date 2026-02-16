@@ -565,6 +565,7 @@ function NodeDetail({
 }
 
 function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
+  const [expanded, setExpanded] = useState(false);
   const entries = Object.entries(attrs).filter(([, v]) => v != null);
   if (entries.length === 0) return null;
 
@@ -734,18 +735,29 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
 
   return (
     <div className="inspect-raw">
-      <div className="inspect-raw-title">All attributes ({entries.length})</div>
-      <dl>
-        {entries.map(([key, val]) => (
-          <div key={key}>
-            <dt>
-              <span className="inspect-raw-key-icon">{iconForKey(key, val)}</span>
-              <span className="inspect-raw-key-text">{key}</span>
-            </dt>
-            <dd>{formatValue(key, val)}</dd>
-          </div>
-        ))}
-      </dl>
+      <div className="inspect-raw-head">
+        <div className="inspect-raw-title">All attributes ({entries.length})</div>
+        <button
+          className="inspect-raw-toggle"
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "Hide raw" : "Show raw"}
+        </button>
+      </div>
+      {expanded && (
+        <dl>
+          {entries.map(([key, val]) => (
+            <div key={key}>
+              <dt>
+                <span className="inspect-raw-key-icon">{iconForKey(key, val)}</span>
+                <span className="inspect-raw-key-text">{key}</span>
+              </dt>
+              <dd>{formatValue(key, val)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
     </div>
   );
 }

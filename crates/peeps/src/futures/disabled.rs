@@ -53,6 +53,37 @@ where
     }
 }
 
+#[inline]
+pub fn peepable_with_meta_kind<F, const N: usize>(
+    future: F,
+    _kind: peeps_types::NodeKind,
+    _resource: impl Into<String>,
+    _meta: peeps_types::MetaBuilder<'_, N>,
+) -> PeepableFuture<F::IntoFuture>
+where
+    F: IntoFuture,
+{
+    PeepableFuture {
+        inner: future.into_future(),
+    }
+}
+
+#[inline]
+pub fn peepable_with_meta_kind_level<F, const N: usize>(
+    future: F,
+    _kind: peeps_types::NodeKind,
+    _resource: impl Into<String>,
+    _level: peeps_types::InstrumentationLevel,
+    _meta: peeps_types::MetaBuilder<'_, N>,
+) -> PeepableFuture<F::IntoFuture>
+where
+    F: IntoFuture,
+{
+    PeepableFuture {
+        inner: future.into_future(),
+    }
+}
+
 // ── spawn_tracked ────────────────────────────────────────
 
 #[inline]

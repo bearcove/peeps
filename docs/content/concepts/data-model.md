@@ -3,53 +3,29 @@ title = "Data Model"
 weight = 1
 +++
 
-peeps represents your program as a directed graph. The two building blocks are **nodes** and **edges**.
+peeps models runtime behavior as a directed graph with two parts: **nodes** and **edges**.
 
-## Nodes
+## Node contract
 
-A node represents a runtime entity — a future being polled, a lock being held, a channel endpoint, an RPC request in flight.
+A node is "something that exists at runtime and can participate in causality" (task, resource, RPC unit, system operation).
 
-Each node has four fields:
+Stable guarantees:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | Globally unique. Format: `{kind}:{ulid}` for most nodes. |
-| `kind` | `NodeKind` | One of 21 variants (see below). |
-| `label` | `Option<String>` | Human-readable label, when available. |
-| `attrs_json` | `String` | JSON with type-specific attributes and a `meta` sub-object for shared metadata. |
+- Every node has a globally unique ID.
+- Every node has a kind so the UI can group similar entities.
+- Optional metadata can be attached for debugging context.
+- Metadata shape is intentionally flexible and may evolve.
 
-### ID formats
+Treat IDs as stable identity and metadata as observational detail.
 
-Most nodes use `{kind}:{ulid}` — e.g., `future:01ARZ3NDEKTSV4RRFFQ69G5FAV`. Some node types use different schemes:
+## Edge contract
 
-- **Request**: `request:{span_id}` (span ID from caller metadata)
-- **Response**: `response:{ulid}`
-- **RemoteTx**: `remote_tx:{mother_request_ulid}:{channel_idx}:{dir}`
-- **RemoteRx**: `remote_rx:{mother_request_ulid}:{channel_idx}:{dir}`
+An edge says "this node has a causal relationship to that node."
 
-### 21 node kinds
+Stable guarantees:
 
-Organized by category:
+- Edges are directional.
+- Edge kind communicates meaning (`Needs`, `Touches`, `Spawned`, `ClosedBy`).
+- Edges appear and disappear with runtime state transitions.
 
-| Category | Kinds |
-|----------|-------|
-| **Async** | `Future`, `JoinSet` |
-| **Sync** | `Semaphore`, `OnceCell`, `Notify` |
-| **Timers** | `Sleep`, `Interval`, `Timeout` |
-| **Channels** | `Tx`, `Rx`, `RemoteTx`, `RemoteRx` |
-| **Locks** | `Lock` |
-| **RPC** | `Request`, `Response` |
-| **System** | `Command`, `FileOp`, `NetConnect`, `NetAccept`, `NetReadable`, `NetWritable` |
-
-## Edges
-
-An edge connects two nodes with a direction and a kind.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `src` | `String` | Source node ID. |
-| `dst` | `String` | Destination node ID. |
-| `kind` | `EdgeKind` | One of `Needs`, `Touches`, `Spawned`, `ClosedBy`. |
-| `attrs_json` | `String` | JSON-encoded edge attributes. |
-
-Edge semantics are covered in detail in the [Edges](@/concepts/edges.md) page.
+Semantics of each edge kind are described in [Edges](@/concepts/edges.md).

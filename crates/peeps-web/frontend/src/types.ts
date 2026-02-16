@@ -43,15 +43,6 @@ export interface SnapshotEdge {
   attrs: Record<string, unknown>;
 }
 
-export interface UnresolvedEdge {
-  src_id: string;
-  dst_id: string;
-  missing_side: string;
-  reason: string;
-  referenced_proc_key: string | null;
-  attrs: Record<string, unknown>;
-}
-
 export interface SnapshotGraph {
   nodes: SnapshotNode[];
   edges: SnapshotEdge[];

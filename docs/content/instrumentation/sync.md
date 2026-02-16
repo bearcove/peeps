@@ -3,23 +3,18 @@ title = "Semaphore, OnceCell, Notify"
 weight = 5
 +++
 
+These primitives mostly coordinate wakeups and availability rather than carrying business data. Instrumentation emphasizes wait relationships.
+
 ## Semaphore
 
-`peeps::Semaphore` wraps `tokio::sync::Semaphore`.
-
-- Tracks: available permits, waiters
-- `needs` edges while waiting to acquire a permit
+Shows permit contention and blocked acquirers.
 
 ## OnceCell
 
-`peeps::OnceCell` wraps lazy initialization.
-
-- Tracks: initialization timing
-- Node exists until the cell is dropped
+Shows lazy-init timing and whether initialization becomes a bottleneck hotspot.
 
 ## Notify
 
-`peeps::Notify` wraps `tokio::sync::Notify`.
+Shows wait/notify coordination patterns.
 
-- Tracks: notify/wait patterns
-- `needs` edges while waiting for notification
+Across all three, `Needs` edges are the key signal: who is waiting and what they are waiting on.

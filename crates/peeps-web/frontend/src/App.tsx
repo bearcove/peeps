@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { WarningCircle } from "@phosphor-icons/react";
-import { jumpNow, fetchStuckRequests, fetchGraph } from "./api";
+import { jumpNow, fetchGraph } from "./api";
 import { Header } from "./components/Header";
-import { RequestsTable } from "./components/RequestsTable";
+import { SuspectsTable, type SuspectItem } from "./components/SuspectsTable";
 import { GraphView } from "./components/GraphView";
 import { Inspector } from "./components/Inspector";
-import type { JumpNowResponse, StuckRequest, SnapshotGraph, SnapshotNode, SnapshotEdge } from "./types";
+import type { JumpNowResponse, SnapshotGraph, SnapshotNode, SnapshotEdge } from "./types";
 
 function useSessionState(key: string, initial: boolean): [boolean, () => void] {
   const [value, setValue] = useState(() => {
@@ -22,6 +22,8 @@ function useSessionState(key: string, initial: boolean): [boolean, () => void] {
 }
 
 const MIN_ELAPSED_NS = 5_000_000_000; // 5 seconds
+type DetailLevel = "info" | "debug" | "trace";
+const DETAIL_LEVELS: DetailLevel[] = ["info", "debug", "trace"];
 
 function firstNumAttr(attrs: Record<string, unknown>, keys: string[]): number | undefined {
   for (const k of keys) {
@@ -31,6 +33,42 @@ function firstNumAttr(attrs: Record<string, unknown>, keys: string[]): number | 
     if (!Number.isNaN(n)) return n;
   }
   return undefined;
+}
+
+function firstString(attrs: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = attrs[k];
+    if (v != null && v !== "") return String(v);
+  }
+  return undefined;
+}
+
+function parseDetailLevel(value: string | null): DetailLevel {
+  return value === "debug" || value === "trace" ? value : "info";
+}
+
+function detailLevelRank(level: DetailLevel): number {
+  return DETAIL_LEVELS.indexOf(level);
+}
+
+function defaultDetailLevelForKind(kind: string): DetailLevel {
+  if (kind === "tx" || kind === "rx" || kind === "remote_tx" || kind === "remote_rx") {
+    return "debug";
+  }
+  return "info";
+}
+
+function nodeDetailLevel(node: SnapshotNode): DetailLevel {
+  const directLevel = firstString(node.attrs, ["peeps.level"]);
+  if (directLevel) return parseDetailLevel(directLevel);
+
+  const maybeMeta = node.attrs["meta"];
+  if (maybeMeta && typeof maybeMeta === "object" && !Array.isArray(maybeMeta)) {
+    const metaLevel = firstString(maybeMeta as Record<string, unknown>, ["peeps.level"]);
+    if (metaLevel) return parseDetailLevel(metaLevel);
+  }
+
+  return defaultDetailLevelForKind(node.kind);
 }
 
 /** BFS from a seed node, collecting all reachable nodes (both directions). */
@@ -150,6 +188,33 @@ function searchGraphNodes(graph: SnapshotGraph, needle: string): SnapshotNode[] 
   const q = needle.trim().toLowerCase();
   if (!q) return [];
   return graph.nodes.filter((n) => JSON.stringify(n).toLowerCase().includes(q));
+}
+
+function filterByDetailWithNeedsContext(graph: SnapshotGraph, detailLevel: DetailLevel): SnapshotGraph {
+  const hidden = new Set<string>();
+  const nodeById = new Map(graph.nodes.map((n) => [n.id, n]));
+
+  for (const n of graph.nodes) {
+    if (detailLevelRank(nodeDetailLevel(n)) > detailLevelRank(detailLevel)) {
+      hidden.add(n.id);
+    }
+  }
+  if (hidden.size === 0) return graph;
+
+  // Keep direct needs neighbors of visible nodes so requests don't look disconnected
+  // when transport/resource helper nodes are at a higher detail level.
+  for (const e of graph.edges) {
+    if (e.kind !== "needs") continue;
+    const srcExists = nodeById.has(e.src_id);
+    const dstExists = nodeById.has(e.dst_id);
+    if (!srcExists || !dstExists) continue;
+    const srcHidden = hidden.has(e.src_id);
+    const dstHidden = hidden.has(e.dst_id);
+    if (srcHidden && !dstHidden) hidden.delete(e.src_id);
+    if (dstHidden && !srcHidden) hidden.delete(e.dst_id);
+  }
+
+  return filterHiddenNodes(graph, (n) => hidden.has(n.id));
 }
 
 function enrichGraph(graph: SnapshotGraph): SnapshotGraph {
@@ -310,14 +375,86 @@ function enrichGraph(graph: SnapshotGraph): SnapshotGraph {
   };
 }
 
+function applyDeadlockFocus(
+  graph: SnapshotGraph,
+  enabled: boolean,
+  selectedNodeId: string | null,
+): SnapshotGraph {
+  const nodesById = new Map(graph.nodes.map((n) => [n.id, n]));
+  const focusSeeds = new Set<string>();
+  for (const n of graph.nodes) {
+    if (n.attrs._ui_deadlock_candidate === true) focusSeeds.add(n.id);
+  }
+  if (selectedNodeId && nodesById.has(selectedNodeId)) focusSeeds.add(selectedNodeId);
+
+  if (!enabled || focusSeeds.size === 0) {
+    return {
+      nodes: graph.nodes.map((n) => ({ ...n, attrs: { ...n.attrs, _ui_dimmed: false } })),
+      edges: graph.edges.map((e) => ({ ...e, attrs: { ...e.attrs, _ui_dimmed: false } })),
+      ghostNodes: graph.ghostNodes.map((n) => ({ ...n, attrs: { ...n.attrs, _ui_dimmed: false } })),
+    };
+  }
+
+  const needsEdges = graph.edges.filter((e) => e.kind === "needs");
+  const out = new Map<string, string[]>();
+  const inn = new Map<string, string[]>();
+  for (const id of nodesById.keys()) {
+    out.set(id, []);
+    inn.set(id, []);
+  }
+  for (const e of needsEdges) {
+    if (!nodesById.has(e.src_id) || !nodesById.has(e.dst_id)) continue;
+    out.get(e.src_id)!.push(e.dst_id);
+    inn.get(e.dst_id)!.push(e.src_id);
+  }
+
+  const focusIds = new Set<string>(focusSeeds);
+  const walk = (start: Iterable<string>, next: (id: string) => string[]) => {
+    const stack = Array.from(start);
+    while (stack.length > 0) {
+      const id = stack.pop()!;
+      for (const n of next(id)) {
+        if (focusIds.has(n)) continue;
+        focusIds.add(n);
+        stack.push(n);
+      }
+    }
+  };
+  walk(focusSeeds, (id) => out.get(id) ?? []);
+  walk(focusSeeds, (id) => inn.get(id) ?? []);
+
+  const dimmedNodeIds = new Set<string>();
+  const focusedNodeIds = new Set<string>();
+  const nodes = graph.nodes.map((n) => {
+    const dimmed = !focusIds.has(n.id);
+    if (dimmed) dimmedNodeIds.add(n.id);
+    else focusedNodeIds.add(n.id);
+    return { ...n, attrs: { ...n.attrs, _ui_dimmed: dimmed } };
+  });
+
+  const edges = graph.edges.map((e) => {
+    const highlightedNeeds =
+      e.kind === "needs" && focusedNodeIds.has(e.src_id) && focusedNodeIds.has(e.dst_id);
+    const dimmed = !highlightedNeeds;
+    return { ...e, attrs: { ...e.attrs, _ui_dimmed: dimmed } };
+  });
+
+  return {
+    nodes,
+    edges,
+    ghostNodes: graph.ghostNodes.map((n) => {
+      const dimmed = dimmedNodeIds.has(n.id);
+      return { ...n, attrs: { ...n.attrs, _ui_dimmed: dimmed } };
+    }),
+  };
+}
+
 export function App() {
   const [snapshot, setSnapshot] = useState<JumpNowResponse | null>(null);
-  const [requests, setRequests] = useState<StuckRequest[]>([]);
   const [graph, setGraph] = useState<SnapshotGraph | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [selectedRequest, setSelectedRequest] = useState<StuckRequest | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [filteredNodeId, setFilteredNodeId] = useState<string | null>(null);
   const [graphSearchQuery, setGraphSearchQuery] = useState("");
@@ -325,11 +462,15 @@ export function App() {
   const [selectedEdge, setSelectedEdge] = useState<SnapshotEdge | null>(null);
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
   const [hiddenProcesses, setHiddenProcesses] = useState<Set<string>>(new Set());
+  const [detailLevel, setDetailLevel] = useState<DetailLevel>(() => {
+    return parseDetailLevel(sessionStorage.getItem("peeps-detail-level"));
+  });
 
   // Keep graph/inspector focus-first: left and right panels are collapsed by default,
   // but users can expand them and the state is sticky for the current browser session.
   const [leftCollapsed, toggleLeft] = useSessionState("peeps-left-collapsed", true);
   const [rightCollapsed, toggleRight] = useSessionState("peeps-right-collapsed", true);
+  const [deadlockFocus, toggleDeadlockFocus] = useSessionState("peeps-deadlock-focus", true);
 
   const handleJumpNow = useCallback(async () => {
     setLoading(true);
@@ -337,13 +478,8 @@ export function App() {
     try {
       const snap = await jumpNow();
       setSnapshot(snap);
-      const [stuck, graphData] = await Promise.all([
-        fetchStuckRequests(snap.snapshot_id, MIN_ELAPSED_NS),
-        fetchGraph(snap.snapshot_id),
-      ]);
-      setRequests(stuck);
+      const graphData = await fetchGraph(snap.snapshot_id);
       setGraph(graphData);
-      setSelectedRequest(null);
       setSelectedNode(null);
       setSelectedNodeId(null);
       setSelectedEdge(null);
@@ -365,20 +501,48 @@ export function App() {
     return enrichGraph(graph);
   }, [graph]);
 
-  const handleSelectRequest = useCallback(
-    (req: StuckRequest) => {
-      const node = enrichedGraph?.nodes.find((n) => n.id === req.id) ?? null;
-      setSelectedNodeId(req.id);
-      setFilteredNodeId(req.id);
+  const suspects = useMemo<SuspectItem[]>(() => {
+    if (!enrichedGraph) return [];
+    return enrichedGraph.nodes
+      .filter((n) => n.attrs._ui_deadlock_candidate === true)
+      .map((n) => {
+        const reason = firstString(n.attrs, ["_ui_deadlock_reason"]) ?? "unknown";
+        const ageNs = firstNumAttr(n.attrs, ["_ui_deadlock_age_ns", "poll_in_flight_ns", "idle_ns"]) ?? null;
+        const cycleSize = firstNumAttr(n.attrs, ["_ui_cycle_size"]) ?? 0;
+        const baseScore =
+          reason === "needs_cycle"
+            ? 1000
+            : reason === "in_poll_stuck"
+              ? 700
+              : reason === "pending_idle"
+                ? 500
+                : reason === "contended_wait"
+                  ? 350
+                  : 100;
+        const score = baseScore + Math.round((ageNs ?? 0) / 1_000_000_000) + cycleSize * 50;
+        const label =
+          firstString(n.attrs, ["method", "request.method", "label", "name"]) ??
+          n.id;
+        return {
+          id: n.id,
+          label,
+          process: n.process,
+          reason,
+          age_ns: ageNs,
+          score,
+        };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 100);
+  }, [enrichedGraph]);
+
+  const handleSelectSuspect = useCallback(
+    (suspect: SuspectItem) => {
+      setFilteredNodeId(suspect.id);
+      setSelectedNodeId(suspect.id);
       setSelectedEdge(null);
-      // Prefer full graph node metadata in inspector when available.
-      if (node) {
-        setSelectedNode(node);
-        setSelectedRequest(null);
-      } else {
-        setSelectedNode(null);
-        setSelectedRequest(req);
-      }
+      const node = enrichedGraph?.nodes.find((n) => n.id === suspect.id) ?? null;
+      setSelectedNode(node);
     },
     [enrichedGraph],
   );
@@ -386,7 +550,6 @@ export function App() {
   const handleSelectGraphNode = useCallback(
     (nodeId: string) => {
       setSelectedNodeId(nodeId);
-      setSelectedRequest(null);
       setSelectedEdge(null);
       const node = enrichedGraph?.nodes.find((n) => n.id === nodeId) ?? null;
       setSelectedNode(node);
@@ -397,7 +560,6 @@ export function App() {
   const handleSelectEdge = useCallback(
     (edge: SnapshotEdge) => {
       setSelectedEdge(edge);
-      setSelectedRequest(null);
       setSelectedNode(null);
       setSelectedNodeId(null);
     },
@@ -405,7 +567,6 @@ export function App() {
   );
 
   const handleClearSelection = useCallback(() => {
-    setSelectedRequest(null);
     setSelectedNode(null);
     setSelectedNodeId(null);
     setSelectedEdge(null);
@@ -473,14 +634,25 @@ export function App() {
     });
   }, [allProcesses]);
 
-  const hasActiveFilters = hiddenKinds.size > 0 || hiddenProcesses.size > 0 || filteredNodeId != null || graphSearchQuery.trim().length > 0;
+  const hasActiveFilters =
+    hiddenKinds.size > 0 ||
+    hiddenProcesses.size > 0 ||
+    filteredNodeId != null ||
+    graphSearchQuery.trim().length > 0 ||
+    detailLevel !== "info";
+
+  const handleDetailLevelChange = useCallback((level: DetailLevel) => {
+    setDetailLevel(level);
+    sessionStorage.setItem("peeps-detail-level", level);
+  }, []);
 
   const handleResetFilters = useCallback(() => {
     setHiddenKinds(new Set());
     setHiddenProcesses(new Set());
     setFilteredNodeId(null);
     setGraphSearchQuery("");
-  }, []);
+    handleDetailLevelChange("info");
+  }, [handleDetailLevelChange]);
 
   // Compute the displayed graph: full graph normally,
   // connected subgraph only when filtering via stuck request click.
@@ -493,8 +665,10 @@ export function App() {
     }
     g = filterHiddenNodes(g, (n) => hiddenKinds.has(n.kind));
     g = filterHiddenNodes(g, (n) => hiddenProcesses.has(n.process));
+    g = filterByDetailWithNeedsContext(g, detailLevel);
+    g = applyDeadlockFocus(g, deadlockFocus, selectedNodeId);
     return g;
-  }, [enrichedGraph, filteredNodeId, hiddenKinds, hiddenProcesses]);
+  }, [enrichedGraph, filteredNodeId, hiddenKinds, hiddenProcesses, detailLevel, deadlockFocus, selectedNodeId]);
 
   const searchResults = useMemo(() => {
     if (!enrichedGraph) return [];
@@ -529,10 +703,10 @@ export function App() {
           rightCollapsed && "main-content--right-collapsed",
         ].filter(Boolean).join(" ")}
       >
-        <RequestsTable
-          requests={requests}
+        <SuspectsTable
+          suspects={suspects}
           selectedId={selectedNodeId}
-          onSelect={handleSelectRequest}
+          onSelect={handleSelectSuspect}
           collapsed={leftCollapsed}
           onToggleCollapse={toggleLeft}
         />
@@ -552,6 +726,10 @@ export function App() {
           hiddenProcesses={hiddenProcesses}
           onToggleProcess={toggleProcess}
           onSoloProcess={soloProcess}
+          deadlockFocus={deadlockFocus}
+          onToggleDeadlockFocus={toggleDeadlockFocus}
+          detailLevel={detailLevel}
+          onDetailLevelChange={handleDetailLevelChange}
           hasActiveFilters={hasActiveFilters}
           onResetFilters={handleResetFilters}
           onSearchQueryChange={setGraphSearchQuery}
@@ -561,7 +739,7 @@ export function App() {
           onClearSelection={handleClearSelection}
         />
         <Inspector
-          selectedRequest={selectedRequest}
+          selectedRequest={null}
           selectedNode={selectedNode}
           selectedEdge={selectedEdge}
           graph={enrichedGraph}

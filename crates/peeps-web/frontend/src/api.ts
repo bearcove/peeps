@@ -6,7 +6,6 @@ import type {
   SnapshotGraph,
   SnapshotNode,
   SnapshotEdge,
-  UnresolvedEdge,
 } from "./types";
 
 async function post<T>(url: string, body: unknown): Promise<T> {
@@ -70,13 +69,11 @@ export async function fetchStuckRequests(
 
 const NODES_SQL = `SELECT id, kind, process, proc_key, attrs_json FROM nodes ORDER BY id`;
 const EDGES_SQL = `SELECT src_id, dst_id, kind, attrs_json FROM edges ORDER BY src_id, dst_id`;
-const UNRESOLVED_EDGES_SQL = `SELECT src_id, dst_id, missing_side, reason, referenced_proc_key, attrs_json FROM unresolved_edges ORDER BY src_id, dst_id`;
 
 export async function fetchGraph(snapshotId: number): Promise<SnapshotGraph> {
-  const [nodesResp, edgesResp, unresolvedResp] = await Promise.all([
+  const [nodesResp, edgesResp] = await Promise.all([
     querySql(snapshotId, NODES_SQL),
     querySql(snapshotId, EDGES_SQL),
-    querySql(snapshotId, UNRESOLVED_EDGES_SQL),
   ]);
 
   const nodes: SnapshotNode[] = nodesResp.rows.map((row) => ({
@@ -94,56 +91,39 @@ export async function fetchGraph(snapshotId: number): Promise<SnapshotGraph> {
     attrs: JSON.parse((row[3] as string) || "{}"),
   }));
 
-  const unresolvedEdges: UnresolvedEdge[] = unresolvedResp.rows.map((row) => ({
-    src_id: row[0] as string,
-    dst_id: row[1] as string,
-    missing_side: row[2] as string,
-    reason: row[3] as string,
-    referenced_proc_key: row[4] as string | null,
-    attrs: JSON.parse((row[5] as string) || "{}"),
-  }));
-
-  // Synthesize ghost nodes for unresolved edge endpoints
+  // Synthesize ghost nodes for dangling edge endpoints.
   const nodeIds = new Set(nodes.map((n) => n.id));
   const ghostMap = new Map<string, SnapshotNode>();
 
-  for (const ue of unresolvedEdges) {
-    // Determine which side(s) are missing and create ghost nodes
-    const missingSrc = !nodeIds.has(ue.src_id) && !ghostMap.has(ue.src_id);
-    const missingDst = !nodeIds.has(ue.dst_id) && !ghostMap.has(ue.dst_id);
-
-    if (missingSrc) {
-      ghostMap.set(ue.src_id, {
-        id: ue.src_id,
+  // Fallback ghost synthesis: if any persisted edge references a missing endpoint,
+  // materialize a ghost node so the edge remains visible instead of being dropped.
+  for (const e of edges) {
+    if (!nodeIds.has(e.src_id) && !ghostMap.has(e.src_id)) {
+      ghostMap.set(e.src_id, {
+        id: e.src_id,
         kind: "ghost",
         process: "",
-        proc_key: ue.referenced_proc_key ?? "",
+        proc_key: "",
         attrs: {
-          reason: ue.missing_side === "src" ? ue.reason : "missing_src",
-          referenced_proc_key: ue.referenced_proc_key,
+          reason: "missing_src",
+          missing_side: "src",
+          source: "dangling_edge",
         },
       });
     }
-    if (missingDst) {
-      ghostMap.set(ue.dst_id, {
-        id: ue.dst_id,
+    if (!nodeIds.has(e.dst_id) && !ghostMap.has(e.dst_id)) {
+      ghostMap.set(e.dst_id, {
+        id: e.dst_id,
         kind: "ghost",
         process: "",
-        proc_key: ue.referenced_proc_key ?? "",
+        proc_key: "",
         attrs: {
-          reason: ue.missing_side === "dst" ? ue.reason : "missing_dst",
-          referenced_proc_key: ue.referenced_proc_key,
+          reason: "missing_dst",
+          missing_side: "dst",
+          source: "dangling_edge",
         },
       });
     }
-
-    // Add the unresolved edge as a regular edge so it renders in the graph
-    edges.push({
-      src_id: ue.src_id,
-      dst_id: ue.dst_id,
-      kind: "needs",
-      attrs: ue.attrs,
-    });
   }
 
   const ghostNodes = Array.from(ghostMap.values());

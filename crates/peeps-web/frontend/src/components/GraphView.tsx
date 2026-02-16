@@ -103,6 +103,7 @@ function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; e
       const isSpawned = e.kind === "spawned";
       const isClosedBy = e.kind === "closed_by";
       const isCycleEdge = e.kind === "needs" && e.attrs?._ui_cycle_edge === true;
+      const isDimmed = e.attrs?._ui_dimmed === true;
       const involvesGhost = ghostIds.has(e.src_id) || ghostIds.has(e.dst_id);
       return {
         id: `${e.src_id}->${e.dst_id}:${e.kind}`,
@@ -116,6 +117,8 @@ function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; e
         },
         style: involvesGhost
           ? { stroke: "light-dark(#b0b0b6, #505056)", strokeWidth: 1, strokeDasharray: "6 4", opacity: 0.5 }
+          : isDimmed
+            ? { stroke: "light-dark(#8b8b92, #4a4a50)", strokeWidth: 1, opacity: 0.14 }
           : isCycleEdge
             ? { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4, opacity: 0.95 }
           : isClosedBy
@@ -125,7 +128,7 @@ function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; e
               : isTouches
                 ? { stroke: "light-dark(#a1a1a6, #636366)", strokeWidth: 1, strokeDasharray: "4 3", opacity: 0.6 }
                 : { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
-        label: isClosedBy ? "closed_by" : isSpawned ? "spawned" : isTouches ? "touches" : undefined,
+        label: isDimmed ? undefined : isClosedBy ? "closed_by" : isSpawned ? "spawned" : isTouches ? "touches" : undefined,
         labelStyle: isClosedBy
           ? { fontSize: 9, fill: "light-dark(#e74c3c, #ff6b6b)" }
           : isSpawned
@@ -184,6 +187,10 @@ interface GraphViewProps {
   hiddenProcesses: Set<string>;
   onToggleProcess: (process: string) => void;
   onSoloProcess: (process: string) => void;
+  deadlockFocus: boolean;
+  onToggleDeadlockFocus: () => void;
+  detailLevel: "info" | "debug" | "trace";
+  onDetailLevelChange: (level: "info" | "debug" | "trace") => void;
   onSearchQueryChange: (value: string) => void;
   onSelectSearchResult: (nodeId: string) => void;
   onSelectNode: (nodeId: string) => void;
@@ -456,6 +463,10 @@ export function GraphView({
   hiddenProcesses,
   onToggleProcess,
   onSoloProcess,
+  deadlockFocus,
+  onToggleDeadlockFocus,
+  detailLevel,
+  onDetailLevelChange,
   onSearchQueryChange,
   onSelectSearchResult,
   onSelectNode,
@@ -464,6 +475,7 @@ export function GraphView({
   hasActiveFilters,
   onResetFilters,
 }: GraphViewProps) {
+  const levelIndex = detailLevel === "trace" ? 2 : detailLevel === "debug" ? 1 : 0;
   const ghostCount = graph?.ghostNodes?.length ?? 0;
   const nodeCount = (graph?.nodes.length ?? 0) - ghostCount;
   const edgeCount = graph?.edges.length ?? 0;
@@ -487,6 +499,14 @@ export function GraphView({
         {graph
           ? `Graph (${nodeCount} nodes, ${edgeCount} edges${ghostCount > 0 ? `, ${ghostCount} ghost` : ""})`
           : "Graph"}
+        <button
+          className="filter-clear-btn"
+          onClick={onToggleDeadlockFocus}
+          title="Highlight suspects and their needs ancestors/descendants"
+          type="button"
+        >
+          {deadlockFocus ? "deadlock focus" : "focus off"}
+        </button>
         {graph && (cycleCount > 0 || deadlockCandidateCount > 0) && (
           <span className="kind-filter-badge" style={{ marginLeft: 8 }}>
             {cycleCount > 0 ? `${cycleCount} cycle${cycleCount === 1 ? "" : "s"}` : ""}
@@ -508,6 +528,24 @@ export function GraphView({
         )}
       </div>
       <div className="graph-filter-row">
+        <div className="graph-level-row">
+          <span className="graph-level-label">Detail level</span>
+          <input
+            className="graph-level-slider"
+            type="range"
+            min={0}
+            max={2}
+            step={1}
+            value={levelIndex}
+            onChange={(e) => {
+              const idx = Number(e.target.value);
+              const next = idx <= 0 ? "info" : idx === 1 ? "debug" : "trace";
+              onDetailLevelChange(next);
+            }}
+            aria-label="Graph detail level"
+          />
+          <span className="kind-filter-badge">{detailLevel}</span>
+        </div>
         <label className="graph-filter-input-wrap" title="Contains match across all node and edge fields">
           <MagnifyingGlass size={12} weight="bold" />
           <input

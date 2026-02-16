@@ -31,10 +31,6 @@ const SCOPED_TABLES: &[(&str, &str)] = &[
     ("nodes", "id, kind, process, proc_key, attrs_json"),
     ("edges", "src_id, dst_id, kind, attrs_json"),
     (
-        "unresolved_edges",
-        "src_id, dst_id, missing_side, reason, referenced_proc_key, attrs_json",
-    ),
-    (
         "snapshot_processes",
         "process, pid, proc_key, status, recv_at_ns, error_text",
     ),

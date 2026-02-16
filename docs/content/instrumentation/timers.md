@@ -3,18 +3,14 @@ title = "Timers"
 weight = 4
 +++
 
-Three timer wrappers:
+Timer instrumentation answers "is this work waiting on time itself?"
 
-## sleep
+## Intent
 
-`peeps::sleep(duration)` wraps `tokio::time::sleep`. Creates a `Sleep` node. Tracks `elapsed_ns`.
+- Represent waits introduced by `sleep`/interval cadence/timeout guards.
+- Distinguish timer-driven waiting from lock/channel/external I/O waits.
+- Preserve causal links from parent tasks to timer nodes.
 
-## interval
+## Reading tip
 
-`peeps::interval(period)` and `peeps::interval_at(start, period)` wrap `tokio::time::interval`. Creates an `Interval` node. Tracks tick count and missed tick behavior.
-
-## timeout
-
-`peeps::timeout(duration, future)` wraps `tokio::time::timeout`. Creates a `Timeout` node. Tracks `elapsed_ns`.
-
-All timer nodes exist for the duration of the timer and are removed when it completes or is dropped.
+If many tasks share long timer waits, that is usually intentional pacing. If a timeout node dominates critical paths, investigate downstream dependency latency.

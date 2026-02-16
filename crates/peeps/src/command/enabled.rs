@@ -366,9 +366,10 @@ impl Command {
     }
 
     pub fn into_inner_with_diagnostics(self) -> (tokio::process::Command, CommandDiagnostics) {
+        let args_preview = self.args_preview();
         let diag = CommandDiagnostics {
             program: self.program,
-            args_preview: self.args_preview(),
+            args_preview,
             cwd: self.cwd,
             env_count: self.env_count,
         };

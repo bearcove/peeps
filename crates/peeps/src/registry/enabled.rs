@@ -331,6 +331,7 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
     let mut net_accepts = 0u32;
     let mut net_readables = 0u32;
     let mut net_writables = 0u32;
+    let mut syscalls = 0u32;
     for n in &graph.nodes {
         match n.kind {
             peeps_types::NodeKind::Future => futures += 1,
@@ -354,6 +355,7 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
             peeps_types::NodeKind::NetAccept => net_accepts += 1,
             peeps_types::NodeKind::NetReadable => net_readables += 1,
             peeps_types::NodeKind::NetWritable => net_writables += 1,
+            peeps_types::NodeKind::Syscall => syscalls += 1,
         }
     }
 
@@ -383,6 +385,7 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
         net_accepts,
         net_readables,
         net_writables,
+        syscalls,
         nodes = graph.nodes.len(),
         edges = graph.edges.len(),
         elapsed_us = elapsed.as_micros() as u64,

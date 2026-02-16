@@ -4,61 +4,25 @@ weight = 1
 insert_anchor_links = "heading"
 +++
 
-Adding a new instrumented primitive.
+Add new primitives by following the same causal contract used everywhere else.
 
-Follow this checklist.
+## Checklist
 
-## 1. Add the node kind
+1. Add/choose a node kind that represents the runtime entity.
+2. Provide `diagnostics`-enabled and disabled implementations.
+3. Register node on creation; remove on drop/completion.
+4. Emit `Needs` while blocked; remove when unblocked.
+5. Ensure stack/scoping integration so `Touches` can be inferred.
+6. Include timing and source-location metadata that helps debugging.
+7. Re-export from the public API.
 
-Add a variant to `NodeKind` in `peeps-types/src/lib.rs`.
+## Rule of thumb
 
-## 2. Create the wrapper module
+Prefer a small, stable semantic surface:
 
-In `peeps/src/`, create a directory with two files:
+- identity (unique node ID),
+- lifecycle (create/update/remove),
+- causality (edges),
+- observability (timing + location).
 
-- `enabled.rs` — the real implementation (compiled when `diagnostics` feature is on)
-- `disabled.rs` — a pass-through that delegates to the underlying type (compiled when `diagnostics` is off)
-
-The module's `mod.rs` uses `cfg` to select:
-
-```rust
-#[cfg(feature = "diagnostics")]
-mod enabled;
-#[cfg(not(feature = "diagnostics"))]
-mod disabled;
-
-#[cfg(feature = "diagnostics")]
-pub use enabled::*;
-#[cfg(not(feature = "diagnostics"))]
-pub use disabled::*;
-```
-
-## 3. In the enabled module
-
-**On creation:** register a node with `peeps::registry::register_node(Node { id, kind, label, attrs_json })`.
-
-- ID convention: `{kind}:{ulid}` — generate a ULID for each instance via `peeps_types::new_node_id`.
-
-**While waiting:** emit `needs` edges via `peeps::registry::edge(src, dst)`.
-
-**On interaction:** the causality stack handles `touches` edges automatically if you use `peeps::stack::scope` or if the wrapper is polled inside a `PeepableFuture`.
-
-**On state change:** update the node by calling `register_node` again with the same ID (it upserts).
-
-**On Drop:** call `peeps::registry::remove_node(id)` to clean up the node and all its edges.
-
-## 4. Required attributes
-
-- `elapsed_ns` — at minimum, track lifetime duration.
-- Location metadata — use `std::panic::Location::caller()` with `crate::caller_location(caller)` to capture the call site.
-
-## 5. Edge conventions
-
-- `needs` — emit while blocked, remove when unblocked.
-- `touches` — handled automatically by the stack for polled futures.
-- `spawned` — use for parent/child relationships (via `peeps::registry::spawn_edge`).
-- `closed_by` — use when tracking why something was closed.
-
-## 6. Re-export
-
-Add the new type to `peeps/src/lib.rs` public API.
+Avoid overfitting docs or schema to current field names. Keep behavior stable; let details iterate in code.

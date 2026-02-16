@@ -4,24 +4,19 @@ weight = 3
 insert_anchor_links = "heading"
 +++
 
-When a roam RPC handler creates streaming channels (for bidirectional communication), both endpoints are registered as peeps nodes.
+When roam creates streaming channels during RPC handling, both endpoints become graph nodes so stream backpressure can be correlated with request flow.
 
-## Node creation
+## Intent
 
-- The sender endpoint gets a `RemoteTx` node: `roam_channel_tx:{chain_id}:{channel_id}`
-- The receiver endpoint gets a `RemoteRx` node: `roam_channel_rx:{chain_id}:{channel_id}`
-- Labels: `"ch#N tx"` and `"ch#N rx"`
+- Make remote stream endpoints first-class causal entities.
+- Preserve correlation across process boundaries.
+- Keep channel lineage attached to the originating request context.
 
-## Edges
+## Causal shape
 
-- `tx → rx` — structural edge linking the two endpoints
-- `request → tx` and `request → rx` — context edges linking the channel to the RPC that created it
+- Endpoint pairing links sender/receiver as one logical channel.
+- Request context links channel activity back to the RPC that created it.
 
-## Cross-process channel identity
+## Identity strategy
 
-Both sides of a cross-process channel derive the same node ID from shared values:
-
-- `chain_id` — propagated in RPC metadata as `peeps.chain_id`
-- `channel_id` — sequential per-connection channel counter
-
-This ensures that when peeps-web collects graphs from both processes, the Tx node in one process and the Rx node in the other can be correlated by their matching IDs.
+Both sides derive correlated IDs from shared metadata so snapshots can join them even when endpoints live in different processes.
