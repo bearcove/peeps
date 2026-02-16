@@ -367,6 +367,10 @@ struct FutureAttrs<'a> {
     ready_count: u64,
     #[facet(skip_unless_truthy)]
     total_pending_ns: Option<u64>,
+    /// Nanoseconds since the future was created.
+    age_ns: u64,
+    /// Nanoseconds since the future was last polled.
+    idle_ns: u64,
     #[facet(rename = "ctx.location")]
     ctx_location: &'a str,
     meta: RawJson<'a>,
@@ -397,8 +401,11 @@ struct BlockingUserMeta {
 pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
     let registry = FUTURE_WAIT_REGISTRY.lock().unwrap();
 
+    let now = Instant::now();
     for (node_id, info) in registry.iter() {
         let total_pending_ns = info.total_pending.as_nanos() as u64;
+        let age_ns = now.duration_since(info.created_at).as_nanos() as u64;
+        let idle_ns = now.duration_since(info.last_seen).as_nanos() as u64;
 
         let meta_str = if info.user_meta_json.is_empty() {
             "{}"
@@ -415,6 +422,8 @@ pub(crate) fn emit_into_graph(graph: &mut GraphSnapshot) {
             } else {
                 None
             },
+            age_ns,
+            idle_ns,
             ctx_location: &info.location,
             meta: RawJson::new(meta_str),
         };
