@@ -5,6 +5,7 @@ import {
   CheckCircle,
   CircleNotch,
   Clock,
+  WarningCircle,
   X,
   Warning,
 } from "@phosphor-icons/react";
@@ -227,6 +228,12 @@ export function Header({
             <>
               <Warning size={12} weight="bold" style={{ color: "light-dark(#bf5600, #ffa94d)" }} />
               {snapshot.timed_out} timed out
+            </>
+          )}
+          {snapshot.error > 0 && (
+            <>
+              <WarningCircle size={12} weight="bold" style={{ color: "light-dark(#b30000, #ff6b6b)" }} />
+              {snapshot.error} errored
             </>
           )}
         </button>
