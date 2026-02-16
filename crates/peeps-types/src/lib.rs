@@ -331,7 +331,7 @@ impl Default for GraphSnapshotBuilder {
 
 // ── Shared metadata system ──────────────────────────────────────
 
-/// Maximum number of metadata pairs per node.
+/// Default initial metadata capacity.
 pub const META_MAX_PAIRS: usize = 16;
 
 /// Maximum key length in bytes.
@@ -444,7 +444,7 @@ fn is_valid_meta_key(key: &str) -> bool {
         })
 }
 
-/// A validated metadata entry stored on the stack.
+/// A validated metadata entry.
 struct MetaEntry<'a> {
     key: &'a str,
     /// Value rendered as a string, stored in a stack buffer.
@@ -452,30 +452,25 @@ struct MetaEntry<'a> {
     value_len: usize,
 }
 
-/// Stack-based metadata builder for canonical graph nodes.
+/// Metadata builder for canonical graph nodes.
 ///
 /// Validates keys/values per the spec and drops invalid pairs silently.
-/// No heap allocation until `to_json_object()` is called.
+/// Uses a growable `Vec` and accepts more entries than the compile-time
+/// generic capacity parameter.
 pub struct MetaBuilder<'a, const N: usize = META_MAX_PAIRS> {
-    entries: [std::mem::MaybeUninit<MetaEntry<'a>>; N],
-    len: usize,
+    entries: Vec<MetaEntry<'a>>,
 }
 
 impl<'a, const N: usize> MetaBuilder<'a, N> {
     /// Create an empty metadata builder.
     pub fn new() -> Self {
         Self {
-            // SAFETY: MaybeUninit doesn't require initialization
-            entries: unsafe { std::mem::MaybeUninit::uninit().assume_init() },
-            len: 0,
+            entries: Vec::with_capacity(N),
         }
     }
 
     /// Push a key-value pair. Invalid keys/values are silently dropped.
     pub fn push(&mut self, key: &'a str, value: MetaValue<'_>) -> &mut Self {
-        if self.len >= N {
-            return self;
-        }
         if !is_valid_meta_key(key) {
             return self;
         }
@@ -486,12 +481,11 @@ impl<'a, const N: usize> MetaBuilder<'a, N> {
         if value_len > META_MAX_VALUE_LEN {
             return self;
         }
-        self.entries[self.len] = std::mem::MaybeUninit::new(MetaEntry {
+        self.entries.push(MetaEntry {
             key,
             value_buf,
             value_len,
         });
-        self.len += 1;
         self
     }
 
@@ -499,14 +493,12 @@ impl<'a, const N: usize> MetaBuilder<'a, N> {
     ///
     /// Returns an empty string if no entries are present.
     pub fn to_json_object(&self) -> String {
-        if self.len == 0 {
+        if self.entries.is_empty() {
             return String::new();
         }
-        let mut out = String::with_capacity(self.len * 32);
+        let mut out = String::with_capacity(self.entries.len() * 32);
         out.push('{');
-        for i in 0..self.len {
-            // SAFETY: entries[0..self.len] are initialized
-            let entry = unsafe { self.entries[i].assume_init_ref() };
+        for (i, entry) in self.entries.iter().enumerate() {
             if i > 0 {
                 out.push(',');
             }
@@ -557,14 +549,10 @@ pub fn json_escape_into(out: &mut String, s: &str) {
 #[macro_export]
 macro_rules! peep_meta {
     ($($k:literal => $v:expr),* $(,)?) => {{
-        const _COUNT: usize = $crate::peep_meta!(@count $($k),*);
-        let mut builder = $crate::MetaBuilder::<_COUNT>::new();
+        let mut builder = $crate::MetaBuilder::new();
         $(builder.push($k, $v);)*
         builder
     }};
-    (@count $($k:literal),*) => {
-        0usize $(+ { let _ = $k; 1usize })*
-    };
 }
 
 // ── Canonical ID construction ───────────────────────────────────
@@ -695,4 +683,20 @@ pub struct DashboardClientError {
     pub error: String,
     #[facet(skip_unless_truthy)]
     pub last_frame_utf8: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MetaBuilder, MetaValue};
+
+    #[test]
+    fn meta_builder_is_not_limited_by_const_capacity() {
+        let mut builder = MetaBuilder::<1>::new();
+        builder
+            .push("peeps.level", MetaValue::Static("debug"))
+            .push("sleep.duration_ms", MetaValue::Static("5000"));
+        let json = builder.to_json_object();
+        assert!(json.contains("\"peeps.level\":\"debug\""));
+        assert!(json.contains("\"sleep.duration_ms\":\"5000\""));
+    }
 }
