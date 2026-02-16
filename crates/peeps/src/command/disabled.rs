@@ -5,6 +5,9 @@ use std::process::{ExitStatus, Output, Stdio};
 /// Zero-cost wrapper around `tokio::process::Command` (diagnostics disabled).
 pub struct Command(tokio::process::Command);
 
+#[derive(Clone, Debug)]
+pub struct CommandDiagnostics;
+
 impl Command {
     #[inline]
     pub fn new(program: impl AsRef<OsStr>) -> Self {
@@ -114,19 +117,25 @@ impl Command {
     pub fn into_inner(self) -> tokio::process::Command {
         self.0
     }
+
+    #[inline]
+    pub fn into_inner_with_diagnostics(self) -> (tokio::process::Command, CommandDiagnostics) {
+        (self.0, CommandDiagnostics)
+    }
 }
 
 /// Zero-cost wrapper around `tokio::process::Child` (diagnostics disabled).
 pub struct Child(tokio::process::Child);
 
-impl From<tokio::process::Child> for Child {
+impl Child {
     #[inline]
-    fn from(child: tokio::process::Child) -> Self {
+    pub fn from_tokio_with_diagnostics(
+        child: tokio::process::Child,
+        _diag: CommandDiagnostics,
+    ) -> Self {
         Self(child)
     }
-}
 
-impl Child {
     #[inline]
     pub fn id(&self) -> Option<u32> {
         self.0.id()

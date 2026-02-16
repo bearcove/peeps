@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}peeps{% endblock title %}</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="site-nav">
+        <a href="/" class="brand">peeps</a>
+        <span class="spacer"></span>
+        <a href="/concepts/" {% if current_path is starting_with("/concepts") %}class="active"{% endif %}>Concepts</a>
+        <a href="/architecture/" {% if current_path is starting_with("/architecture") %}class="active"{% endif %}>Architecture</a>
+        <a href="/instrumentation/" {% if current_path is starting_with("/instrumentation") %}class="active"{% endif %}>Instrumentation</a>
+        <a href="/roam/" {% if current_path is starting_with("/roam") %}class="active"{% endif %}>Roam</a>
+        <a href="/extending/" {% if current_path is starting_with("/extending") %}class="active"{% endif %}>Extending</a>
+    </nav>
+    <div class="wrapper">
+        {% block body %}{% endblock body %}
+    </div>
+    <footer class="site-footer">
+        <span>peeps — a <a href="https://github.com/bearcove">bearcove</a> project</span>
+    </footer>
+    <script>
+        (function() {
+            var toc = document.querySelector('.toc');
+            if (!toc) return;
+            var links = toc.querySelectorAll('a');
+            if (!links.length) return;
+            var headings = [];
+            links.forEach(function(link) {
+                var id = link.getAttribute('href').slice(1);
+                var el = document.getElementById(id);
+                if (el) headings.push({ el: el, link: link });
+            });
+            window.addEventListener('scroll', function() {
+                var scrollTop = window.scrollY + 100;
+                var current = null;
+                headings.forEach(function(h) {
+                    if (h.el.offsetTop <= scrollTop) current = h;
+                });
+                links.forEach(function(l) { l.classList.remove('active'); });
+                if (current) current.link.classList.add('active');
+            });
+        })();
+    </script>
+</body>
+</html>

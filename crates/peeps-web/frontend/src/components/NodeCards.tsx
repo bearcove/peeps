@@ -644,9 +644,12 @@ function RequestCard({ data }: NodeProps<Node<NodeData>>) {
   const method = firstAttr(attrs, ["method", "request.method"]) ?? label;
   const elapsedNs = firstNumAttr(attrs, ["elapsed_ns", "request.elapsed_ns"]);
   const status = firstAttr(attrs, ["status", "request.status"]) ?? "in_flight";
+  const connection = firstAttr(attrs, ["rpc.connection", "connection"]);
+  const requestId = firstAttr(attrs, ["request.id", "request_id"]);
+  const isSlow = (elapsedNs ?? 0) >= 5_000_000_000;
 
   const statusVariant: "ok" | "warn" | "crit" | "neutral" =
-    status === "completed" ? "ok" : status === "timed_out" ? "crit" : "neutral";
+    status === "completed" ? "ok" : status === "timed_out" ? "crit" : isSlow ? "warn" : "neutral";
 
   return (
     <CardShell
@@ -654,6 +657,7 @@ function RequestCard({ data }: NodeProps<Node<NodeData>>) {
       process={process}
       label={method}
       icon={<PaperPlaneTilt size={14} weight="bold" />}
+      stateClass={status === "timed_out" || isSlow ? "card--danger-border" : undefined}
     >
       <div className="card-row">
         <StatePill state={status.toUpperCase()} variant={statusVariant} />
@@ -662,6 +666,8 @@ function RequestCard({ data }: NodeProps<Node<NodeData>>) {
         )}
       </div>
       <div className="card-row">
+        {connection && <span className="badge">{connection}</span>}
+        {requestId && <span className="badge">#{requestId}</span>}
         <span className="card-dim card-process">{process}</span>
       </div>
     </CardShell>
@@ -670,12 +676,20 @@ function RequestCard({ data }: NodeProps<Node<NodeData>>) {
 
 function ResponseCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, process, attrs } = data;
-  const status = firstAttr(attrs, ["status", "response.status"]) ?? "in_flight";
+  const status = firstAttr(attrs, ["response.state", "status", "response.status"]) ?? "in_flight";
   const correlationKey = firstAttr(attrs, ["correlation_key", "response.correlation_key", "request.correlation_key"]);
   const elapsedNs = firstNumAttr(attrs, ["elapsed_ns", "response.elapsed_ns"]);
+  const requestId = firstAttr(attrs, ["request.id", "request_id"]);
+  const connection = firstAttr(attrs, ["rpc.connection", "connection"]);
+  const handledElapsedNs = firstNumAttr(attrs, ["response.handled_elapsed_ns", "handled_elapsed_ns"]);
+  const queueWaitNs =
+    elapsedNs != null && handledElapsedNs != null && elapsedNs >= handledElapsedNs
+      ? elapsedNs - handledElapsedNs
+      : null;
+  const isQueuedLong = status === "queued" && (queueWaitNs ?? 0) >= 1_000_000_000;
 
   const statusVariant: "ok" | "warn" | "crit" | "neutral" =
-    status === "completed" ? "ok" : "neutral";
+    status === "completed" ? "ok" : status === "queued" ? "warn" : "neutral";
 
   return (
     <CardShell
@@ -683,6 +697,7 @@ function ResponseCard({ data }: NodeProps<Node<NodeData>>) {
       process={process}
       label={label}
       icon={<ArrowBendDownLeft size={14} weight="bold" />}
+      stateClass={isQueuedLong ? "card--danger-border" : undefined}
     >
       <div className="card-row">
         <StatePill state={status.toUpperCase()} variant={statusVariant} />
@@ -690,6 +705,23 @@ function ResponseCard({ data }: NodeProps<Node<NodeData>>) {
           <DurationBadge ns={elapsedNs} warnNs={1_000_000_000} critNs={10_000_000_000} />
         )}
       </div>
+      <div className="card-row">
+        {connection && <span className="badge">{connection}</span>}
+        {requestId && <span className="badge">#{requestId}</span>}
+        <span className="card-dim card-process">{process}</span>
+      </div>
+      {handledElapsedNs != null && (
+        <div className="card-row">
+          <span className="card-dim">handled</span>
+          <DurationBadge ns={handledElapsedNs} warnNs={500_000_000} critNs={5_000_000_000} />
+        </div>
+      )}
+      {queueWaitNs != null && (
+        <div className="card-row">
+          <span className="card-dim">queue</span>
+          <DurationBadge ns={queueWaitNs} warnNs={250_000_000} critNs={2_000_000_000} />
+        </div>
+      )}
       {correlationKey && (
         <div className="card-row">
           <span className="card-dim" title={correlationKey}>

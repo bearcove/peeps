@@ -991,6 +991,9 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
             let changes = info.changes.load(Ordering::Relaxed);
             let receiver_count = (info.receiver_count)() as u64;
             let sender_closed = info.sender_closed.load(Ordering::Relaxed) != 0;
+            if sender_closed {
+                continue;
+            }
 
             // TX node
             {
@@ -1052,14 +1055,6 @@ pub(super) fn emit_channel_nodes(graph: &mut peeps_types::GraphSnapshot) {
             });
 
             // ClosedBy causal edge: sender dropped causes rx to get RecvError
-            if sender_closed {
-                graph.edges.push(Edge {
-                    src: info.rx_node_id.clone(),
-                    dst: info.tx_node_id.clone(),
-                    kind: EdgeKind::ClosedBy,
-                    attrs_json: "{}".to_string(),
-                });
-            }
         }
     }
 }

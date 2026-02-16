@@ -92,6 +92,15 @@ pub struct Command {
     kill_on_drop: bool,
 }
 
+/// Captured command metadata used when spawning through external helpers.
+#[derive(Clone, Debug)]
+pub struct CommandDiagnostics {
+    pub program: String,
+    pub args_preview: String,
+    pub cwd: Option<String>,
+    pub env_count: usize,
+}
+
 impl Command {
     pub fn new(program: impl AsRef<OsStr>) -> Self {
         let program_str = program.as_ref().to_string_lossy().to_string();
@@ -355,6 +364,16 @@ impl Command {
     pub fn into_inner(self) -> tokio::process::Command {
         self.inner
     }
+
+    pub fn into_inner_with_diagnostics(self) -> (tokio::process::Command, CommandDiagnostics) {
+        let diag = CommandDiagnostics {
+            program: self.program,
+            args_preview: self.args_preview(),
+            cwd: self.cwd,
+            env_count: self.env_count,
+        };
+        (self.inner, diag)
+    }
 }
 
 /// Diagnostic wrapper around `tokio::process::Child`.
@@ -371,15 +390,18 @@ pub struct Child {
     env_count: usize,
 }
 
-impl From<tokio::process::Child> for Child {
-    fn from(child: tokio::process::Child) -> Self {
+impl Child {
+    pub fn from_tokio_with_diagnostics(
+        child: tokio::process::Child,
+        diag: CommandDiagnostics,
+    ) -> Self {
         let node_id = peeps_types::new_node_id("command");
         let pid = child.id();
         let attrs = build_attrs_json(
-            "",
-            "",
-            None,
-            0,
+            &diag.program,
+            &diag.args_preview,
+            diag.cwd.as_deref(),
+            diag.env_count,
             pid,
             None,
             None,
@@ -389,7 +411,7 @@ impl From<tokio::process::Child> for Child {
         crate::registry::register_node(Node {
             id: node_id.clone(),
             kind: NodeKind::Command,
-            label: Some("command".to_string()),
+            label: Some(diag.program.clone()),
             attrs_json: attrs,
         });
         crate::stack::with_top(|src| {
@@ -401,10 +423,10 @@ impl From<tokio::process::Child> for Child {
             inner: Some(child),
             node_id,
             start: Instant::now(),
-            program: String::new(),
-            args_preview: String::new(),
-            cwd: None,
-            env_count: 0,
+            program: diag.program,
+            args_preview: diag.args_preview,
+            cwd: diag.cwd,
+            env_count: diag.env_count,
         }
     }
 }
