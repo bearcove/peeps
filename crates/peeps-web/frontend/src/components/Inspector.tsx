@@ -394,7 +394,6 @@ function EdgeDetail({
 
 function GhostDetail({ node, graph }: { node: SnapshotNode; graph: SnapshotGraph | null }) {
   const reason = attr(node.attrs, "reason") ?? "unresolved";
-  const refProcKey = attr(node.attrs, "referenced_proc_key");
 
   // Count incoming/outgoing edges
   let incoming = 0;
@@ -437,12 +436,6 @@ function GhostDetail({ node, graph }: { node: SnapshotNode; graph: SnapshotGraph
           <span className="inspect-key">Reason</span>
           <span className="inspect-pill inspect-pill--neutral">{reason}</span>
         </div>
-        {refProcKey && (
-          <div className="inspect-row">
-            <span className="inspect-key">Proc Key</span>
-            <span className="inspect-val inspect-val--mono">{refProcKey}</span>
-          </div>
-        )}
         <div className="inspect-row">
           <span className="inspect-key">Incoming</span>
           <span className="inspect-val">{incoming}</span>
@@ -502,6 +495,16 @@ function formatShortDurationNs(deltaNs: number): string {
   return `${sign}${Math.round(abs / 1_000)}us`;
 }
 
+function normalizeToNanos(ts: number): number {
+  if (!Number.isFinite(ts) || ts <= 0) return ts;
+  // Heuristic unit normalization for mixed timestamp sources:
+  // s  (<1e11), ms (<1e14), us (<1e17), ns (otherwise).
+  if (ts < 100_000_000_000) return ts * 1_000_000_000;
+  if (ts < 100_000_000_000_000) return ts * 1_000_000;
+  if (ts < 100_000_000_000_000_000) return ts * 1_000;
+  return ts;
+}
+
 function nodeTimelineOriginNs(
   kind: string,
   attrs: Record<string, unknown>,
@@ -520,10 +523,10 @@ function nodeTimelineOriginNs(
   ]);
   const genericCreated = firstNumAttr(attrs, ["created_at_ns", "opened_at_ns", "ts_ns"]);
 
-  if (kind === "request" && requestStart != null) return requestStart;
-  if (kind === "response" && responseStart != null) return responseStart;
-  if (genericCreated != null) return genericCreated;
-  return fallbackFirstEventTsNs;
+  if (kind === "request" && requestStart != null) return normalizeToNanos(requestStart);
+  if (kind === "response" && responseStart != null) return normalizeToNanos(responseStart);
+  if (genericCreated != null) return normalizeToNanos(genericCreated);
+  return fallbackFirstEventTsNs != null ? normalizeToNanos(fallbackFirstEventTsNs) : null;
 }
 
 function compactPreviewValue(val: unknown): string {
@@ -766,10 +769,6 @@ function NodeDetail({
           <span className="inspect-key">Process</span>
           <span className="inspect-val">{node.process}</span>
         </div>
-        <div className="inspect-row">
-          <span className="inspect-key">Proc Key</span>
-          <span className="inspect-val">{node.proc_key}</span>
-        </div>
       </div>
 
       {(uniqueBlockers.length > 0 || uniqueDependents.length > 0) && (
@@ -783,9 +782,24 @@ function NodeDetail({
           {uniqueBlockers.slice(0, 8).map((id) => (
             <div className="inspect-row" key={`blk:${id}`}>
               <span className="inspect-key">waits on</span>
-              <button className="inspect-edge-node-btn" onClick={() => onSelectNode(id)} title={id}>
-                {nodeLabel(graph, id)}
-              </button>
+              <div className="inspect-edge-target-row">
+                <button className="inspect-edge-node-btn" onClick={() => onSelectNode(id)} title={id}>
+                  {nodeLabel(graph, id)}
+                </button>
+                <button
+                  type="button"
+                  className="inspect-edge-focus-btn"
+                  onClick={() => {
+                    onSelectNode(id);
+                    onFocusNode(id);
+                  }}
+                  title="Focus this node in graph"
+                  aria-label="Focus this node in graph"
+                >
+                  <Crosshair size={12} weight="bold" />
+                  focus
+                </button>
+              </div>
             </div>
           ))}
           <div className="inspect-row">
@@ -797,9 +811,24 @@ function NodeDetail({
           {uniqueDependents.slice(0, 8).map((id) => (
             <div className="inspect-row" key={`dep:${id}`}>
               <span className="inspect-key">blocking</span>
-              <button className="inspect-edge-node-btn" onClick={() => onSelectNode(id)} title={id}>
-                {nodeLabel(graph, id)}
-              </button>
+              <div className="inspect-edge-target-row">
+                <button className="inspect-edge-node-btn" onClick={() => onSelectNode(id)} title={id}>
+                  {nodeLabel(graph, id)}
+                </button>
+                <button
+                  type="button"
+                  className="inspect-edge-focus-btn"
+                  onClick={() => {
+                    onSelectNode(id);
+                    onFocusNode(id);
+                  }}
+                  title="Focus this node in graph"
+                  aria-label="Focus this node in graph"
+                >
+                  <Crosshair size={12} weight="bold" />
+                  focus
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -855,7 +884,6 @@ function NodeDetail({
                     </span>
                   </div>
                   <div className="inspect-timeline-name">{row.name}</div>
-                  <div className="inspect-timeline-abs">{formatTimelineTimestamp(row.ts_ns)}</div>
                   <div className="inspect-timeline-attrs">{compactAttrsPreview(row.attrs)}</div>
                 </div>
               ))}

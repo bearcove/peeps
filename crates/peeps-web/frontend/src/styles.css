@@ -1577,6 +1577,43 @@ body {
     border-color: light-dark(#0071e3, #0a84ff);
 }
 
+.inspect-edge-target-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.inspect-edge-target-row .inspect-edge-node-btn {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.inspect-edge-focus-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    padding: 0 8px;
+    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
+    border-radius: 4px;
+    background: light-dark(#f0f0f5, #2a2a2e);
+    color: light-dark(#6e6e73, #98989d);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.inspect-edge-focus-btn:hover {
+    background: light-dark(#e5e5ea, #34343a);
+    border-color: light-dark(#0071e3, #0a84ff);
+    color: light-dark(#1d1d1f, #f5f5f7);
+}
+
 .inspect-edge-node-kind {
     font-size: 9px;
     font-weight: 700;
