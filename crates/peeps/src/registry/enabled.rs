@@ -300,11 +300,13 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
     let mut needs = 0u32;
     let mut touches = 0u32;
     let mut spawned = 0u32;
+    let mut closed_by = 0u32;
     for e in &graph.edges {
         match e.kind {
             EdgeKind::Needs => needs += 1,
             EdgeKind::Touches => touches += 1,
             EdgeKind::Spawned => spawned += 1,
+            EdgeKind::ClosedBy => closed_by += 1,
         }
     }
 
@@ -325,6 +327,10 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
     let mut sleeps = 0u32;
     let mut intervals = 0u32;
     let mut timeouts = 0u32;
+    let mut net_connects = 0u32;
+    let mut net_accepts = 0u32;
+    let mut net_readables = 0u32;
+    let mut net_writables = 0u32;
     for n in &graph.nodes {
         match n.kind {
             peeps_types::NodeKind::Future => futures += 1,
@@ -344,10 +350,10 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
             peeps_types::NodeKind::Sleep => sleeps += 1,
             peeps_types::NodeKind::Interval => intervals += 1,
             peeps_types::NodeKind::Timeout => timeouts += 1,
-            peeps_types::NodeKind::NetConnect
-            | peeps_types::NodeKind::NetAccept
-            | peeps_types::NodeKind::NetReadable
-            | peeps_types::NodeKind::NetWritable => {}
+            peeps_types::NodeKind::NetConnect => net_connects += 1,
+            peeps_types::NodeKind::NetAccept => net_accepts += 1,
+            peeps_types::NodeKind::NetReadable => net_readables += 1,
+            peeps_types::NodeKind::NetWritable => net_writables += 1,
         }
     }
 
@@ -355,6 +361,7 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
         needs,
         touches,
         spawned,
+        closed_by,
         futures,
         locks,
         tx,
@@ -372,6 +379,10 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
         sleeps,
         intervals,
         timeouts,
+        net_connects,
+        net_accepts,
+        net_readables,
+        net_writables,
         nodes = graph.nodes.len(),
         edges = graph.edges.len(),
         elapsed_us = elapsed.as_micros() as u64,

@@ -31,6 +31,7 @@ pub mod stack;
 pub(crate) mod sync;
 pub mod command;
 pub mod fs;
+pub mod net;
 mod joinset;
 
 #[cfg(feature = "dashboard")]
@@ -51,7 +52,7 @@ pub use stack::ensure as ensure_stack;
 
 // ── futures ─────────────────────────────────────────────
 
-pub use futures::{peepable, peepable_with_meta, spawn_tracked, PeepableFuture};
+pub use futures::{peepable, peepable_with_meta, spawn_blocking_tracked, spawn_tracked, PeepableFuture};
 pub use joinset::JoinSet;
 
 // ── locks ───────────────────────────────────────────────

@@ -3,7 +3,10 @@ use std::future::Future;
 /// Diagnostic wrapper around `tokio::task::JoinSet`.
 ///
 /// JoinSet is a first-class resource node so spawned tasks can be attached as
-/// descendants through canonical edges.
+/// descendants through canonical edges:
+/// - parent `touches` joinset (on creation)
+/// - joinset `spawned` child (on spawn, via peepable inside scope)
+/// - joinset `touches` child (on poll, via auto-emit in stack::push)
 pub struct JoinSet<T> {
     node_id: String,
     inner: tokio::task::JoinSet<T>,
@@ -23,7 +26,8 @@ where
                 label: Some("joinset".to_string()),
                 attrs_json: "{}".to_string(),
             });
-            crate::stack::with_top(|src| crate::registry::edge(src, &node_id));
+            // Parent touches joinset (historical interaction, not a blocking dependency).
+            crate::stack::with_top(|src| crate::registry::touch_edge(src, &node_id));
         }
         Self {
             node_id,
@@ -37,9 +41,12 @@ where
     {
         let joinset_node_id = self.node_id.clone();
         self.inner.spawn(async move {
-            // Build a stable root future for this joinset child and scope it under joinset.
-            let child = crate::peepable(future, label);
-            let scoped = crate::stack::scope(&joinset_node_id, child);
+            // Scope under the joinset node FIRST, then create the peepable inside
+            // the scope. This ensures peepable() sees joinset_node_id on the stack
+            // and emits a spawned edge (joinset → child).
+            let scoped = crate::stack::scope(&joinset_node_id, async move {
+                crate::peepable(future, label).await
+            });
             crate::stack::ensure(scoped).await
         });
     }
