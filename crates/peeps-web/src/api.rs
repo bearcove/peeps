@@ -1,4 +1,4 @@
-//! HTTP API endpoints: POST /api/jump-now, POST /api/sql, GET /api/validate/:snapshot_id
+//! HTTP API endpoints: POST /api/jump-now, GET /api/snapshot-progress, POST /api/sql
 //!
 //! SQL enforcement: authorizer, progress handler, hard caps.
 
@@ -45,6 +45,17 @@ pub struct JumpNowResponse {
     pub requested: usize,
     pub responded: usize,
     pub timed_out: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SnapshotProgressResponse {
+    pub active: bool,
+    pub snapshot_id: Option<i64>,
+    pub requested: usize,
+    pub responded: usize,
+    pub pending: usize,
+    pub responded_processes: Vec<String>,
+    pub pending_processes: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -134,6 +145,43 @@ pub async fn api_jump_now(
     })
     .await
     .map_err(|e| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("join: {e}")))?
+}
+
+// ── GET /api/snapshot-progress ───────────────────────────────────
+
+pub async fn api_snapshot_progress(
+    State(state): State<AppState>,
+) -> Result<Json<SnapshotProgressResponse>, (StatusCode, Json<ApiError>)> {
+    let ctl = state.snapshot_ctl.inner.lock().await;
+
+    if let Some(in_flight) = &ctl.in_flight {
+        let pending_processes: Vec<String> = in_flight.pending.iter().cloned().collect();
+        let responded_processes: Vec<String> = in_flight
+            .requested
+            .difference(&in_flight.pending)
+            .cloned()
+            .collect();
+
+        return Ok(Json(SnapshotProgressResponse {
+            active: true,
+            snapshot_id: Some(in_flight.snapshot_id),
+            requested: in_flight.requested.len(),
+            responded: responded_processes.len(),
+            pending: in_flight.pending.len(),
+            responded_processes,
+            pending_processes,
+        }));
+    }
+
+    Ok(Json(SnapshotProgressResponse {
+        active: false,
+        snapshot_id: None,
+        requested: 0,
+        responded: 0,
+        pending: 0,
+        responded_processes: Vec::new(),
+        pending_processes: Vec::new(),
+    }))
 }
 
 // ── POST /api/sql ────────────────────────────────────────────────

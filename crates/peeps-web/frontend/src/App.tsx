@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Camera, WarningCircle } from "@phosphor-icons/react";
-import { fetchGraph, fetchRecentTimelineEvents, fetchTimelineProcessOptions, jumpNow } from "./api";
+import { fetchGraph, fetchRecentTimelineEvents, fetchSnapshotProgress, fetchTimelineProcessOptions, jumpNow } from "./api";
 import { Header } from "./components/Header";
 import { SuspectsTable, type SuspectItem } from "./components/SuspectsTable";
 import { GraphView } from "./components/GraphView";
@@ -8,6 +8,7 @@ import { Inspector } from "./components/Inspector";
 import { TimelineView } from "./components/TimelineView";
 import type {
   JumpNowResponse,
+  SnapshotProgressResponse,
   SnapshotEdge,
   SnapshotGraph,
   SnapshotNode,
@@ -33,6 +34,8 @@ const MIN_ELAPSED_NS = 5_000_000_000; // 5 seconds
 type DetailLevel = "info" | "debug" | "trace";
 const DETAIL_LEVELS: DetailLevel[] = ["info", "debug", "trace"];
 type InvestigationMode = "graph" | "timeline";
+const INSPECTOR_WIDTH_MIN = 260;
+const INSPECTOR_WIDTH_MAX = 720;
 
 function firstNumAttr(attrs: Record<string, unknown>, keys: string[]): number | undefined {
   for (const k of keys) {
@@ -476,6 +479,7 @@ export function App() {
   const [snapshot, setSnapshot] = useState<JumpNowResponse | null>(null);
   const [graph, setGraph] = useState<SnapshotGraph | null>(null);
   const [loading, setLoading] = useState(false);
+  const [snapshotProgress, setSnapshotProgress] = useState<SnapshotProgressResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [investigationMode, setInvestigationMode] = useState<InvestigationMode>(() => {
     return sessionStorage.getItem("peeps-investigation-mode") === "timeline" ? "timeline" : "graph";
@@ -495,6 +499,12 @@ export function App() {
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const [selectedTimelineEventId, setSelectedTimelineEventId] = useState<string | null>(null);
   const [timelineRefreshTick, setTimelineRefreshTick] = useState(0);
+  const [inspectorWidth, setInspectorWidth] = useState<number>(() => {
+    const raw = sessionStorage.getItem("peeps-inspector-width");
+    const parsed = raw ? Number(raw) : 320;
+    if (!Number.isFinite(parsed)) return 320;
+    return Math.min(INSPECTOR_WIDTH_MAX, Math.max(INSPECTOR_WIDTH_MIN, parsed));
+  });
   const [timelineWindowSeconds, setTimelineWindowSeconds] = useState<number>(() => {
     const raw = sessionStorage.getItem("peeps-timeline-window-seconds");
     const parsed = raw ? Number(raw) : 300;
@@ -503,6 +513,10 @@ export function App() {
   const [detailLevel, setDetailLevel] = useState<DetailLevel>(() => {
     return parseDetailLevel(sessionStorage.getItem("peeps-detail-level"));
   });
+
+  useEffect(() => {
+    sessionStorage.setItem("peeps-inspector-width", String(inspectorWidth));
+  }, [inspectorWidth]);
 
   // Keep graph/inspector focus-first: left and right panels are collapsed by default,
   // but users can expand them and the state is sticky for the current browser session.
@@ -517,6 +531,7 @@ export function App() {
 
   const handleTakeSnapshot = useCallback(async () => {
     setLoading(true);
+    setSnapshotProgress(null);
     setError(null);
     try {
       const snap = await jumpNow();
@@ -533,8 +548,35 @@ export function App() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
+      setSnapshotProgress(null);
     }
   }, []);
+
+  useEffect(() => {
+    if (!loading) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const progress = await fetchSnapshotProgress();
+        if (!cancelled) {
+          setSnapshotProgress(progress);
+        }
+      } catch {
+        // Ignore transient progress polling errors while the snapshot request is in flight.
+      }
+    };
+
+    void poll();
+    const timer = window.setInterval(() => {
+      void poll();
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [loading]);
 
   useEffect(() => {
     if (!snapshot) return;
@@ -614,6 +656,7 @@ export function App() {
           n.id;
         return {
           id: n.id,
+          kind: n.kind,
           label,
           process: n.process,
           reason,
@@ -781,6 +824,50 @@ export function App() {
     setTimelineRefreshTick((v) => v + 1);
   }, []);
 
+  const handleStartInspectorResize = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = inspectorWidth;
+
+      const onMouseMove = (moveEvent: MouseEvent) => {
+        const delta = startX - moveEvent.clientX;
+        const viewportMax = Math.max(INSPECTOR_WIDTH_MIN, window.innerWidth - 260);
+        const clamped = Math.min(
+          Math.min(INSPECTOR_WIDTH_MAX, viewportMax),
+          Math.max(INSPECTOR_WIDTH_MIN, startWidth + delta),
+        );
+        setInspectorWidth(clamped);
+      };
+
+      const onMouseUp = () => {
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mouseup", onMouseUp);
+      };
+
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+    },
+    [inspectorWidth],
+  );
+
+  const handleInspectorResizeKey = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const delta = event.key === "ArrowLeft" ? 16 : -16;
+    setInspectorWidth((prev) => {
+      const viewportMax = Math.max(INSPECTOR_WIDTH_MIN, window.innerWidth - 260);
+      return Math.min(
+        Math.min(INSPECTOR_WIDTH_MAX, viewportMax),
+        Math.max(INSPECTOR_WIDTH_MIN, prev + delta),
+      );
+    });
+  }, []);
+
   const handleSelectTimelineEvent = useCallback(
     (event: TimelineEvent) => {
       setSelectedTimelineEventId(event.id);
@@ -802,7 +889,7 @@ export function App() {
 
   return (
     <div className="app">
-      <Header snapshot={snapshot} loading={loading} onTakeSnapshot={handleTakeSnapshot} />
+      <Header snapshot={snapshot} loading={loading} progress={snapshotProgress} onTakeSnapshot={handleTakeSnapshot} />
       {error && (
         <div className="status-bar">
           <WarningCircle
@@ -827,6 +914,18 @@ export function App() {
               <Camera size={18} weight="bold" />
               {loading ? "Taking snapshot..." : "Take snapshot now"}
             </button>
+            {loading && snapshotProgress && (
+              <div className="app-empty-progress" role="status" aria-live="polite">
+                {snapshotProgress.requested > 0
+                  ? `Received from ${snapshotProgress.responded}/${snapshotProgress.requested} processes`
+                  : "Waiting for process responses..."}
+                {snapshotProgress.responded_processes.length > 0 && (
+                  <span className="app-empty-progress-list">
+                    {snapshotProgress.responded_processes.join(", ")}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       ) : (
@@ -854,6 +953,10 @@ export function App() {
               leftCollapsed && "main-content--left-collapsed",
               rightCollapsed && "main-content--right-collapsed",
             ].filter(Boolean).join(" ")}
+            style={{
+              ["--inspector-col-width" as string]: `${inspectorWidth}px`,
+              ["--inspector-resizer-width" as string]: rightCollapsed ? "0px" : "10px",
+            }}
           >
             <SuspectsTable
               suspects={suspects}
@@ -905,6 +1008,20 @@ export function App() {
                 onWindowSecondsChange={handleTimelineWindowChange}
                 onRefresh={handleRefreshTimeline}
                 onSelectEvent={handleSelectTimelineEvent}
+              />
+            )}
+            {!rightCollapsed && (
+              <div
+                className="panel-resizer"
+                role="separator"
+                aria-label="Resize inspector"
+                aria-orientation="vertical"
+                aria-valuemin={INSPECTOR_WIDTH_MIN}
+                aria-valuemax={INSPECTOR_WIDTH_MAX}
+                aria-valuenow={Math.round(inspectorWidth)}
+                tabIndex={0}
+                onMouseDown={handleStartInspectorResize}
+                onKeyDown={handleInspectorResizeKey}
               />
             )}
             <Inspector

@@ -128,7 +128,10 @@ async fn health() -> impl IntoResponse {
 async fn favicon_svg() -> impl IntoResponse {
     (
         [
-            (axum::http::header::CONTENT_TYPE, "image/svg+xml; charset=utf-8"),
+            (
+                axum::http::header::CONTENT_TYPE,
+                "image/svg+xml; charset=utf-8",
+            ),
             (axum::http::header::CACHE_CONTROL, "public, max-age=86400"),
         ],
         FAVICON_SVG,

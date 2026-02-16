@@ -113,6 +113,23 @@ function firstNumAttr(attrs: Record<string, unknown>, keys: string[]): number | 
   return undefined;
 }
 
+function attrFromMeta(attrs: Record<string, unknown>, key: string): string | undefined {
+  const meta = attrs["meta"];
+  if (meta && typeof meta === "object" && !Array.isArray(meta)) {
+    const v = (meta as Record<string, unknown>)[key];
+    if (v != null && v !== "") return String(v);
+  }
+  return undefined;
+}
+
+function rpcConnectionAttr(attrs: Record<string, unknown>): string | undefined {
+  return (
+    firstAttr(attrs, ["connection", "rpc.connection"]) ??
+    attrFromMeta(attrs, "rpc.connection") ??
+    attrFromMeta(attrs, "connection")
+  );
+}
+
 function elapsedBetween(startNs?: number, endNs?: number): number | undefined {
   if (startNs == null || endNs == null) return undefined;
   if (!Number.isFinite(startNs) || !Number.isFinite(endNs)) return undefined;
@@ -184,6 +201,7 @@ const kindIcons: Record<string, React.ReactNode> = {
   once_cell: <ToggleRight size={16} weight="bold" />,
   request: <PaperPlaneTilt size={16} weight="bold" />,
   response: <ArrowBendDownLeft size={16} weight="bold" />,
+  connection: <LinkSimple size={16} weight="bold" />,
   ghost: <Ghost size={16} weight="bold" />,
 };
 
@@ -221,7 +239,7 @@ export function Inspector({
       </div>
       <div className="inspector">
         {selectedRequest ? (
-          <RequestDetail req={selectedRequest} />
+          <RequestDetail req={selectedRequest} graph={graph} onSelectNode={onSelectNode} />
         ) : selectedEdge ? (
           <EdgeDetail edge={selectedEdge} graph={graph} onSelectNode={onSelectNode} />
         ) : selectedNode ? (
@@ -251,7 +269,15 @@ export function Inspector({
   );
 }
 
-function RequestDetail({ req }: { req: StuckRequest }) {
+function RequestDetail({
+  req,
+  graph,
+  onSelectNode,
+}: {
+  req: StuckRequest;
+  graph: SnapshotGraph | null;
+  onSelectNode: (nodeId: string) => void;
+}) {
   return (
     <dl>
       <dt>Method</dt>
@@ -261,7 +287,17 @@ function RequestDetail({ req }: { req: StuckRequest }) {
       <dt>Elapsed</dt>
       <dd>{formatElapsedFull(req.elapsed_ns)}</dd>
       <dt>Connection</dt>
-      <dd>{req.connection ?? "—"}</dd>
+      <dd>
+        {req.connection ? (
+          <RelatedConnectionLink
+            connection={req.connection}
+            graph={graph}
+            onSelectNode={onSelectNode}
+          />
+        ) : (
+          "—"
+        )}
+      </dd>
     </dl>
   );
 }
@@ -391,7 +427,9 @@ function GhostDetail({ node, graph }: { node: SnapshotNode; graph: SnapshotGraph
         <div className="inspect-row">
           <span className="inspect-key">ID</span>
           <span className="inspect-val inspect-val--copyable">
-            {node.id}
+            <span className="inspect-val-copy-text" title={node.id}>
+              {node.id}
+            </span>
             <CopyIdButton id={node.id} />
           </span>
         </div>
@@ -706,7 +744,9 @@ function NodeDetail({
         <div className="inspect-row">
           <span className="inspect-key">ID</span>
           <span className="inspect-val inspect-val--copyable">
-            {node.id}
+            <span className="inspect-val-copy-text" title={node.id}>
+              {node.id}
+            </span>
             <CopyIdButton id={node.id} />
           </span>
         </div>
@@ -767,7 +807,7 @@ function NodeDetail({
 
       {DetailComponent && (
         <div className="inspect-section">
-          <DetailComponent attrs={node.attrs} />
+          <DetailComponent attrs={node.attrs} graph={graph} onSelectNode={onSelectNode} />
         </div>
       )}
 
@@ -1039,7 +1079,44 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
 
 // ── Kind-specific detail sections ────────────────────────────
 
-type DetailProps = { attrs: Record<string, unknown> };
+type DetailProps = {
+  attrs: Record<string, unknown>;
+  graph: SnapshotGraph | null;
+  onSelectNode: (nodeId: string) => void;
+};
+
+function connectionNodeId(connection: string): string {
+  return `connection:${connection}`;
+}
+
+function RelatedConnectionLink({
+  connection,
+  graph,
+  onSelectNode,
+}: {
+  connection: string;
+  graph: SnapshotGraph | null;
+  onSelectNode: (nodeId: string) => void;
+}) {
+  const connectionId = connectionNodeId(connection);
+  const hasNode = graph?.nodes.some((node) => node.id === connectionId) ?? false;
+
+  if (!hasNode) {
+    return <span className="inspect-val inspect-val--mono">{connection}</span>;
+  }
+
+  return (
+    <button
+      type="button"
+      className="inspect-meta-val inspect-val--mono inspect-link"
+      onClick={() => onSelectNode(connectionId)}
+      title={`Select ${connectionId}`}
+    >
+      <ArrowSquareOut size={12} weight="bold" className="inspect-link-icon" />
+      {connection}
+    </button>
+  );
+}
 
 function FutureDetail({ attrs }: DetailProps) {
   const state =
@@ -1428,12 +1505,12 @@ function OnceCellDetail({ attrs }: DetailProps) {
   );
 }
 
-function RpcRequestDetail({ attrs }: DetailProps) {
+function RpcRequestDetail({ attrs, graph, onSelectNode }: DetailProps) {
   const method = firstAttr(attrs, ["method", "request.method"]);
   const status = firstAttr(attrs, ["status", "request.status"]) ?? "in_flight";
   const elapsedNs = requestElapsedNs(attrs, status);
   const process = firstAttr(attrs, ["process", "request.process"]);
-  const connection = firstAttr(attrs, ["connection", "rpc.connection"]);
+  const connection = rpcConnectionAttr(attrs);
   const correlationKey = firstAttr(attrs, ["correlation_key", "request.correlation_key"]);
 
   return (
@@ -1471,7 +1548,11 @@ function RpcRequestDetail({ attrs }: DetailProps) {
       {connection && (
         <div className="inspect-row">
           <span className="inspect-key">Connection</span>
-          <span className="inspect-val inspect-val--mono">{connection}</span>
+          <RelatedConnectionLink
+            connection={connection}
+            graph={graph}
+            onSelectNode={onSelectNode}
+          />
         </div>
       )}
       {correlationKey && (
@@ -1484,9 +1565,10 @@ function RpcRequestDetail({ attrs }: DetailProps) {
   );
 }
 
-function RpcResponseDetail({ attrs }: DetailProps) {
+function RpcResponseDetail({ attrs, graph, onSelectNode }: DetailProps) {
   const status = firstAttr(attrs, ["response.state", "status", "response.status"]) ?? "handling";
   const { elapsedNs, handledElapsedNs, queueWaitNs } = responseTiming(attrs, status);
+  const connection = rpcConnectionAttr(attrs);
   const correlationKey = firstAttr(attrs, [
     "correlation_key",
     "response.correlation_key",
@@ -1507,6 +1589,16 @@ function RpcResponseDetail({ attrs }: DetailProps) {
         <div className="inspect-row">
           <span className="inspect-key">Correlation</span>
           <span className="inspect-val inspect-val--mono">{correlationKey}</span>
+        </div>
+      )}
+      {connection && (
+        <div className="inspect-row">
+          <span className="inspect-key">Connection</span>
+          <RelatedConnectionLink
+            connection={connection}
+            graph={graph}
+            onSelectNode={onSelectNode}
+          />
         </div>
       )}
       {elapsedNs != null && (

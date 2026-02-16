@@ -119,6 +119,11 @@ if [[ "${1:-}" == "--list" ]]; then
   exit 0
 fi
 
+if [[ "$#" -eq 0 ]]; then
+  list_examples
+  exit 0
+fi
+
 if [[ "$#" -ne 1 ]]; then
   usage
   exit 1

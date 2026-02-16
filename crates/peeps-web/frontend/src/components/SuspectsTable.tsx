@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef } from "react";
-import { WarningOctagon, CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { WarningOctagon, CaretLeft, CaretRight, Circle } from "@phosphor-icons/react";
+import { kindMeta, ProcessSwatch } from "./NodeCards";
 
 export interface SuspectItem {
   id: string;
+  kind: string;
   label: string;
   process: string;
   reason: string;
@@ -28,16 +30,31 @@ function formatElapsed(ns: number | null): string {
 function reasonLabel(reason: string): string {
   switch (reason) {
     case "needs_cycle":
-      return "cycle";
+      return "cycle detected";
     case "in_poll_stuck":
-      return "in-poll";
+      return "stuck in poll";
     case "pending_idle":
-      return "idle";
+      return "pending + idle";
     case "contended_wait":
       return "contended";
     default:
       return reason;
   }
+}
+
+function processLabel(process: string): string {
+  if (process.length <= 20) return process;
+  return `${process.slice(0, 12)}…${process.slice(-6)}`;
+}
+
+function kindLabel(kind: string): string {
+  return kindMeta[kind]?.displayName ?? kind;
+}
+
+function reasonTone(reason: string): "critical" | "warn" | "info" {
+  if (reason === "needs_cycle" || reason === "in_poll_stuck") return "critical";
+  if (reason === "contended_wait") return "warn";
+  return "info";
 }
 
 export function SuspectsTable({
@@ -117,26 +134,39 @@ export function SuspectsTable({
           No deadlock suspects in this snapshot.
         </div>
       ) : (
-        <div className="request-list" ref={listRef}>
+        <div className="suspect-list" ref={listRef}>
           {suspects.map((suspect) => (
             <button
               key={suspect.id}
               type="button"
-              className="request-card"
+              className="suspect-card"
               data-selected={suspect.id === selectedId}
+              data-tone={reasonTone(suspect.reason)}
               onClick={() => onSelect(suspect)}
             >
-              <div className="request-card-top">
-                <span className="request-card-main" title={`${suspect.label} • ${suspect.process}`}>
-                  {suspect.label}
-                  <span className="request-card-process-inline">{suspect.process}</span>
+              <div className="suspect-card-top">
+                <span className="suspect-kind-pill" title={kindLabel(suspect.kind)}>
+                  <span className="suspect-kind-icon">{kindMeta[suspect.kind]?.icon ?? <Circle size={12} weight="fill" />}</span>
+                  <span>{kindLabel(suspect.kind)}</span>
                 </span>
                 <span className="request-card-elapsed elapsed-hot">{formatElapsed(suspect.age_ns)}</span>
               </div>
-              <div className="request-card-bottom">
-                <span className="request-card-meta" title={suspect.reason}>
-                  {reasonLabel(suspect.reason)} • score {suspect.score}
+              <div className="suspect-card-title" title={`${suspect.label} • ${suspect.process}`}>
+                <span className="suspect-process-swatch">
+                  <ProcessSwatch process={suspect.process} size={12} />
                 </span>
+                <span className="request-card-main">
+                  {suspect.label}
+                </span>
+              </div>
+              <div className="suspect-card-bottom">
+                <span className="suspect-process-chip" title={suspect.process}>
+                  {processLabel(suspect.process)}
+                </span>
+                <span className="request-card-meta" title={suspect.reason}>
+                  {reasonLabel(suspect.reason)}
+                </span>
+                <span className="suspect-score">score {suspect.score}</span>
               </div>
             </button>
           ))}

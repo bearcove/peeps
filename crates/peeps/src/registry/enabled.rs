@@ -325,6 +325,7 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
     let mut remote_rx = 0u32;
     let mut requests = 0u32;
     let mut responses = 0u32;
+    let mut connections = 0u32;
     let mut join_sets = 0u32;
     let mut semaphores = 0u32;
     let mut once_cells = 0u32;
@@ -349,6 +350,7 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
             peeps_types::NodeKind::RemoteRx => remote_rx += 1,
             peeps_types::NodeKind::Request => requests += 1,
             peeps_types::NodeKind::Response => responses += 1,
+            peeps_types::NodeKind::Connection => connections += 1,
             peeps_types::NodeKind::JoinSet => join_sets += 1,
             peeps_types::NodeKind::Semaphore => semaphores += 1,
             peeps_types::NodeKind::OnceCell => once_cells += 1,
@@ -379,6 +381,7 @@ pub(crate) fn emit_graph() -> GraphSnapshot {
         remote_rx,
         requests,
         responses,
+        connections,
         join_sets,
         semaphores,
         once_cells,

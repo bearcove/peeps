@@ -11,6 +11,25 @@ struct RpcAttrs<'a> {
     meta: RawJson<'a>,
 }
 
+#[derive(Facet)]
+struct RpcMetaAttrs {
+    #[facet(rename = "rpc.connection")]
+    rpc_connection: Option<String>,
+}
+
+#[derive(Facet)]
+struct RpcEventAttrs {
+    #[facet(rename = "rpc.connection")]
+    rpc_connection: Option<String>,
+    meta: Option<RpcMetaAttrs>,
+}
+
+#[derive(Facet)]
+struct ConnectionAttrs<'a> {
+    #[facet(rename = "rpc.connection")]
+    rpc_connection: &'a str,
+}
+
 /// Record or update a request entity node.
 ///
 /// The node remains present until explicitly removed by wrapper code via
@@ -83,12 +102,42 @@ fn record(event: RpcEvent<'_>, kind: NodeKind) {
             crate::registry::touch_edge(&parent_id, event.entity_id);
         }
     }
+
+    if let Some(connection) = extract_connection(event.attrs_json) {
+        let connection_node_id = connection_node_id(&connection);
+        crate::registry::register_node(Node {
+            id: connection_node_id.clone(),
+            kind: NodeKind::Connection,
+            label: Some(connection.clone()),
+            attrs_json: connection_attrs_json(&connection),
+        });
+        crate::registry::touch_edge(event.entity_id, &connection_node_id);
+    }
 }
 
 fn attrs_json_with_meta(name: &str, meta_json: &str) -> String {
     let attrs = RpcAttrs {
         rpc_name: name,
         meta: RawJson::new(meta_json),
+    };
+    facet_json::to_string(&attrs).unwrap()
+}
+
+fn extract_connection(attrs_json: &str) -> Option<String> {
+    let attrs = facet_json::from_slice::<RpcEventAttrs>(attrs_json.as_bytes()).ok()?;
+    attrs
+        .rpc_connection
+        .or_else(|| attrs.meta.and_then(|meta| meta.rpc_connection))
+        .filter(|v| !v.is_empty())
+}
+
+fn connection_node_id(connection: &str) -> String {
+    format!("connection:{connection}")
+}
+
+fn connection_attrs_json(connection: &str) -> String {
+    let attrs = ConnectionAttrs {
+        rpc_connection: connection,
     };
     facet_json::to_string(&attrs).unwrap()
 }
