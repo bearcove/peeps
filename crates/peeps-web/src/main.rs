@@ -117,6 +117,19 @@ struct SqlResponse {
     row_count: u32,
 }
 
+#[derive(Facet)]
+struct SnapshotResponse {
+    entities: Vec<peeps_types::Entity>,
+    edges: Vec<SnapshotEdge>,
+}
+
+#[derive(Facet)]
+struct SnapshotEdge {
+    src_id: String,
+    dst_id: String,
+    kind: String,
+}
+
 #[derive(Facet, Debug)]
 struct Cli {
     #[facet(flatten)]
@@ -202,7 +215,8 @@ async fn run() -> Result<(), String> {
         .route("/api/cuts", post(api_trigger_cut))
         .route("/api/cuts/{cut_id}", get(api_cut_status))
         .route("/api/sql", post(api_sql))
-        .route("/api/query", post(api_query));
+        .route("/api/query", post(api_query))
+        .route("/api/snapshot", post(api_snapshot));
     if state.dev_proxy.is_some() {
         app = app.fallback(any(proxy_vite));
     }
@@ -368,6 +382,68 @@ async fn api_query(State(state): State<AppState>, body: Bytes) -> impl IntoRespo
             format!("query worker join error: {e}"),
         ),
     }
+}
+
+async fn api_snapshot(State(state): State<AppState>) -> impl IntoResponse {
+    let db_path = state.db_path.clone();
+    match tokio::task::spawn_blocking(move || snapshot_blocking(&db_path)).await {
+        Ok(Ok(resp)) => json_ok(&resp),
+        Ok(Err(err)) => json_error(StatusCode::INTERNAL_SERVER_ERROR, err),
+        Err(e) => json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("snapshot worker join error: {e}"),
+        ),
+    }
+}
+
+fn snapshot_blocking(db_path: &PathBuf) -> Result<SnapshotResponse, String> {
+    let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+
+    let entity_jsons: Vec<String> = {
+        let mut stmt = conn
+            .prepare("SELECT entity_json FROM entities")
+            .map_err(|e| format!("prepare entities: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("query entities: {e}"))?
+            .collect::<Result<_, _>>()
+            .map_err(|e| format!("read entity row: {e}"))?;
+        rows
+    };
+    let entities: Vec<peeps_types::Entity> = entity_jsons
+        .iter()
+        .map(|json| {
+            facet_json::from_slice(json.as_bytes()).map_err(|e| format!("parse entity: {e}"))
+        })
+        .collect::<Result<_, _>>()?;
+
+    let raw_edges: Vec<(String, String, String)> = {
+        let mut stmt = conn
+            .prepare("SELECT src_id, dst_id, kind_json FROM edges")
+            .map_err(|e| format!("prepare edges: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| format!("query edges: {e}"))?
+            .collect::<Result<_, _>>()
+            .map_err(|e| format!("read edge row: {e}"))?;
+        rows
+    };
+    let edges: Vec<SnapshotEdge> = raw_edges
+        .into_iter()
+        .map(|(src_id, dst_id, kind_json)| {
+            let kind: String = facet_json::from_slice(kind_json.as_bytes())
+                .map_err(|e| format!("parse kind: {e}"))?;
+            Ok(SnapshotEdge { src_id, dst_id, kind })
+        })
+        .collect::<Result<_, String>>()?;
+
+    Ok(SnapshotResponse { entities, edges })
 }
 
 fn parse_cli() -> Result<Cli, String> {
