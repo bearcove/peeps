@@ -119,7 +119,7 @@ fn next_opaque_id() -> CompactString {
 
     let counter = COUNTER.fetch_add(1, Ordering::Relaxed) & 0x0000_FFFF_FFFF_FFFF;
     let raw = ((prefix as u64) << 48) | counter;
-    PeepsHex2(raw).to_compact_string()
+    PeepsHex(raw).to_compact_string()
 }
 
 #[track_caller]
@@ -143,9 +143,9 @@ fn absolute_source_path(file: &str) -> PathBuf {
 
 /// `peeps-hex-2` formatter:
 /// lowercase hex with `a..f` remapped to `p,e,s,P,E,S`.
-struct PeepsHex2(u64);
+struct PeepsHex(u64);
 
-impl fmt::Display for PeepsHex2 {
+impl fmt::Display for PeepsHex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         const DIGITS: &[u8; 16] = b"0123456789pesPES";
         let mut out = [0u8; 16];
@@ -173,6 +173,9 @@ mod tests {
         let (path, _line) = source
             .rsplit_once(':')
             .expect("caller source should include :line");
-        assert!(Path::new(path).is_absolute(), "source path should be absolute: {source}");
+        assert!(
+            Path::new(path).is_absolute(),
+            "source path should be absolute: {source}"
+        );
     }
 }
