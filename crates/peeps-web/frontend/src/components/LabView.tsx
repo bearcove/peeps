@@ -87,7 +87,7 @@ export function LabView() {
   const tableRows = useMemo<DemoConnectionRow[]>(() => [
     {
       id: "conn-01",
-      healthLabel: "Healthy",
+      healthLabel: "OK",
       healthTone: "ok",
       connectionKind: "connection",
       connectionLabel: "example-roam-rpc-stuck-request: initiator→acceptor",
@@ -100,12 +100,12 @@ export function LabView() {
       lastSentBasis: "N",
       lastSentBasisLabel: "node created",
       lastSentBasisTime: "2026-02-17T10:05:12.000Z",
-      lastSentEventTime: "2026-02-17T10:05:10.000Z",
+      lastSentEventTime: "2026-02-17T10:05:18.000Z",
       lastSentTone: "ok",
     },
     {
       id: "conn-02",
-      healthLabel: "Warning",
+      healthLabel: "WARN",
       healthTone: "warn",
       connectionKind: "connection",
       connectionLabel: "vx-store · channel.v1.mpsc.send",
@@ -113,7 +113,7 @@ export function LabView() {
       lastRecvBasis: "P",
       lastRecvBasisLabel: "process started",
       lastRecvBasisTime: "2026-02-17T10:05:00.000Z",
-      lastRecvEventTime: "2026-02-17T10:04:38.000Z",
+      lastRecvEventTime: "2026-02-17T10:05:22.000Z",
       lastRecvTone: "warn",
       lastSentBasis: "N",
       lastSentBasisLabel: "connection opened",
@@ -123,7 +123,7 @@ export function LabView() {
     },
     {
       id: "conn-03",
-      healthLabel: "Critical",
+      healthLabel: "CRIT",
       healthTone: "crit",
       connectionKind: "request",
       connectionLabel: "example-roam-rpc-stuck-request · DemoRpc.sleepy_forever",
@@ -141,7 +141,7 @@ export function LabView() {
     },
     {
       id: "conn-04",
-      healthLabel: "Warning",
+      healthLabel: "WARN",
       healthTone: "warn",
       connectionKind: "resource",
       connectionLabel: "vxd · connection: initiator<->acceptor",
@@ -149,7 +149,7 @@ export function LabView() {
       lastRecvBasis: "P",
       lastRecvBasisLabel: "process started",
       lastRecvBasisTime: "2026-02-17T10:05:00.000Z",
-      lastRecvEventTime: "2026-02-17T10:03:30.000Z",
+      lastRecvEventTime: "2026-02-17T10:05:30.000Z",
       lastRecvTone: "warn",
       lastSentBasis: "N",
       lastSentBasisLabel: "resource created",
@@ -159,7 +159,7 @@ export function LabView() {
     },
     {
       id: "conn-05",
-      healthLabel: "Healthy",
+      healthLabel: "OK",
       healthTone: "ok",
       connectionKind: "connection",
       connectionLabel: "vx-vfsd · net.readable.wait",
@@ -178,7 +178,7 @@ export function LabView() {
   ], []);
 
   const tableColumns = useMemo<readonly Column<DemoConnectionRow>[]>(() => [
-    { key: "health", label: "Health", sortable: true, width: "60px", render: (row) => <Badge tone={row.healthTone}>{row.healthLabel}</Badge> },
+    { key: "health", label: "Health", sortable: true, width: "80px", render: (row) => <Badge tone={row.healthTone}>{row.healthLabel}</Badge> },
     { key: "connection", label: "Connection", sortable: true, width: "1fr", render: (row) => (
       <NodeChip
         kind={row.connectionKind}
@@ -443,9 +443,6 @@ export function LabView() {
               ]}
               aria-label="Mode switcher"
             />
-            <div className="ui-lab-hint">Mode: {segmentedMode}</div>
-          </div>
-          <div className="ui-section-stack">
             <SegmentedGroup
               value={segmentedSeverity}
               onChange={setSegmentedSeverity}
@@ -457,7 +454,6 @@ export function LabView() {
               ]}
               aria-label="Severity filter"
             />
-            <div className="ui-lab-hint">Severity: {segmentedSeverity}</div>
           </div>
         </Section>
 
@@ -506,29 +502,47 @@ export function LabView() {
         </Section>
 
         <Section title="Relative Timestamps" subtitle="P/N deltas with tooltip context">
-          <div className="ui-section-stack">
-            <RelativeTimestamp basis="P" basisLabel="6 seconds after process start" basisTime="2026-02-17T10:00:00.000Z" eventTime="2026-02-17T10:00:06.000Z" />
-            <RelativeTimestamp basis="P" basisLabel="2 minutes 30 seconds after process start" basisTime="2026-02-17T10:00:00.000Z" eventTime="2026-02-17T10:02:30.000Z" />
-            <RelativeTimestamp basis="N" basisLabel="node just created" basisTime="2026-02-17T10:00:30.000Z" eventTime="2026-02-17T10:00:30.000Z" tone="ok" />
-            <RelativeTimestamp basis="N" basisLabel="1m5s after node open" basisTime="2026-02-17T10:00:30.000Z" eventTime="2026-02-17T10:01:35.000Z" tone="warn" />
-            <RelativeTimestamp basis="N" basisLabel="stuck for 20 minutes" basisTime="2026-02-17T10:00:30.000Z" eventTime="2026-02-17T10:21:15.000Z" tone="crit" />
-            <RelativeTimestamp basis="N" basisLabel="sub-second timing check" basisTime="2026-02-17T10:00:30.000Z" eventTime="2026-02-17T10:00:30.145Z" />
-          </div>
+          <Row className="ui-relative-timestamp-group">
+            <div className="ui-relative-timestamp-item">
+              <RelativeTimestamp basis="P" basisLabel="6 seconds after process start" basisTime="2026-02-17T10:00:00.000Z" eventTime="2026-02-17T10:00:06.000Z" />
+              <span className="ui-relative-timestamp-caption">process start</span>
+            </div>
+            <div className="ui-relative-timestamp-item">
+              <RelativeTimestamp basis="P" basisLabel="2 minutes 30 seconds after process start" basisTime="2026-02-17T10:00:00.000Z" eventTime="2026-02-17T10:02:30.000Z" />
+              <span className="ui-relative-timestamp-caption">process start</span>
+            </div>
+            <div className="ui-relative-timestamp-item">
+              <RelativeTimestamp basis="N" basisLabel="node just created" basisTime="2026-02-17T10:00:30.000Z" eventTime="2026-02-17T10:00:30.000Z" tone="ok" />
+              <span className="ui-relative-timestamp-caption">node created</span>
+            </div>
+            <div className="ui-relative-timestamp-item">
+              <RelativeTimestamp basis="N" basisLabel="1m5s after node open" basisTime="2026-02-17T10:00:30.000Z" eventTime="2026-02-17T10:01:35.000Z" tone="warn" />
+              <span className="ui-relative-timestamp-caption">node-relative</span>
+            </div>
+            <div className="ui-relative-timestamp-item">
+              <RelativeTimestamp basis="N" basisLabel="stuck for 20 minutes" basisTime="2026-02-17T10:00:30.000Z" eventTime="2026-02-17T10:21:15.000Z" tone="crit" />
+              <span className="ui-relative-timestamp-caption">stuck 20m</span>
+            </div>
+            <div className="ui-relative-timestamp-item">
+              <RelativeTimestamp basis="N" basisLabel="sub-second timing check" basisTime="2026-02-17T10:00:30.000Z" eventTime="2026-02-17T10:00:30.145Z" />
+              <span className="ui-relative-timestamp-caption">sub-second</span>
+            </div>
+          </Row>
         </Section>
 
         <Section title="Duration Display" subtitle="Automatic semantic coloring by magnitude">
-          <div className="ui-section-stack">
+          <Row className="ui-duration-row">
             <DurationDisplay ms={200} />
             <DurationDisplay ms={6200} />
             <DurationDisplay ms={45000} />
             <DurationDisplay ms={150000} />
             <DurationDisplay ms={1245000} />
             <DurationDisplay ms={4320000} />
-          </div>
+          </Row>
         </Section>
 
         <Section title="Node Chips" subtitle="Inline clickable node/resource references">
-          <div className="ui-section-stack">
+          <Row>
             <NodeChip
               kind="connection"
               label="initiator→acceptor:acceptor←→initiator"
@@ -564,8 +578,8 @@ export function LabView() {
                 console.log("show generic chip context menu");
               }}
             />
+          </Row>
             <div className="ui-lab-hint">Left-click to navigate, right-click for actions</div>
-          </div>
         </Section>
 
         <Section title="Process Identicons" subtitle="Name-derived 5x5 process avatars">

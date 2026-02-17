@@ -3613,7 +3613,7 @@ body {
     display: inline-flex;
     border: 1px solid light-dark(#d2d2d7, #3a3a3e);
     border-radius: 3px;
-    background: light-dark(#f0f0f2, #1a1a1e);
+    background: light-dark(#e8e8ec, #161618);
     padding: 2px;
     gap: 2px;
 }
@@ -3632,7 +3632,12 @@ body {
 .ui-segmented-option--selected {
     background: light-dark(#fff, #2a2a2e);
     color: light-dark(#1d1d1f, #e5e5e7);
-    box-shadow: 0 1px 2px light-dark(rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.3));
+    box-shadow: 0 1px 3px light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.4));
+    border: 1px solid light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.06));
+}
+
+.ui-segmented-option:hover:not(.ui-segmented-option--selected) {
+    background: light-dark(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.04));
 }
 
 .ui-segmented-group--sm .ui-segmented-option {
@@ -3683,6 +3688,24 @@ body {
     color: light-dark(#721c24, #ff6b6b);
 }
 
+.ui-relative-timestamp-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.ui-relative-timestamp-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ui-relative-timestamp-caption {
+    color: light-dark(#6e6e73, #98989d);
+    font-size: 11px;
+}
+
 .ui-duration-display {
     display: inline;
     font-weight: 600;
@@ -3704,19 +3727,25 @@ body {
     color: light-dark(#721c24, #ff6b6b);
 }
 
+.ui-duration-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+}
+
 .ui-node-chip {
     display: inline-flex;
-    min-width: 0;
-    flex: 1 1 auto;
+    width: fit-content;
+    max-width: fit-content;
     align-items: center;
-    gap: 4px;
+    gap: 0;
     padding: 2px 8px;
     border-radius: 3px;
     border: 1px solid light-dark(#d2d2d7, #3a3a3e);
     background: light-dark(#f6f6f8, #222226);
     font-size: var(--font-size-sm);
     cursor: pointer;
-    max-width: 100%;
     text-decoration: none;
     color: inherit;
 }
@@ -3733,7 +3762,8 @@ body {
 }
 
 .ui-node-chip__sep {
-    margin-left: 4px;
+    margin-left: 0;
+    color: light-dark(#6e6e73, #98989d);
 }
 
 .ui-node-chip__label {
@@ -3893,6 +3923,11 @@ body {
 .ui-action-button--ghost {
     border: none;
     background: transparent;
+    color: light-dark(#44444a, #b8b8bf);
+}
+
+.ui-action-button--ghost:hover {
+    background: light-dark(#e8e8ec, #2a2a2e);
 }
 
 .ui-action-button--sm {
