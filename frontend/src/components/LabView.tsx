@@ -841,9 +841,9 @@ function MockInspectorPanel({
       <div className="mockup-inspector-header">
         <MagnifyingGlass size={14} weight="bold" />
         <span>Inspector</span>
-        <button className="mockup-inspector-collapse-btn" onClick={onToggleCollapse} title="Collapse inspector">
+        <ActionButton size="sm" onPress={onToggleCollapse} aria-label="Collapse inspector">
           <CaretRight size={14} weight="bold" />
-        </button>
+        </ActionButton>
       </div>
       <div className="mockup-inspector-body">
         {content}

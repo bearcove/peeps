@@ -86,7 +86,7 @@ export function SplitLayout({
   );
 
   const resizerWidth = rightCollapsed ? 0 : 10;
-  const colWidth = rightCollapsed ? 40 : rightWidth;
+  const colWidth = rightCollapsed ? 32 : rightWidth;
 
   return (
     <div

@@ -6,7 +6,7 @@ use peeps_types::{
     ChannelWaitStartedEvent, CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, EntityId, Event,
     EventKind, EventTarget, MpscChannelDetails, OneshotChannelDetails, OneshotState,
     PullChangesResponse, RequestEntity, ResponseEntity, ResponseStatus, Scope, ScopeBody, ScopeId,
-    SeqNo, StampedChange, StreamCursor, StreamId,
+    SeqNo, StampedChange, StreamCursor, StreamId, WatchChannelDetails,
 };
 use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
@@ -20,7 +20,7 @@ use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[cfg(feature = "dashboard")]
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 #[cfg(feature = "dashboard")]
 use tokio::time::{interval, MissedTickBehavior};
 
@@ -454,6 +454,33 @@ impl RuntimeDb {
             _ => return,
         }
 
+        if !changed {
+            return;
+        }
+        if let Some(entity_json) = facet_json::to_vec(entity).ok() {
+            self.push_change(InternalChange::UpsertEntity {
+                id: EntityId::new(id.as_str()),
+                entity_json,
+            });
+        }
+    }
+
+    fn update_watch_last_update(&mut self, id: &EntityId, last_update_at: Option<peeps_types::PTime>) {
+        let Some(entity) = self.entities.get_mut(id) else {
+            return;
+        };
+        let mut changed = false;
+        match &mut entity.body {
+            EntityBody::ChannelTx(endpoint) | EntityBody::ChannelRx(endpoint) => {
+                if let ChannelDetails::Watch(details) = &mut endpoint.details
+                    && details.last_update_at != last_update_at
+                {
+                    details.last_update_at = last_update_at;
+                    changed = true;
+                }
+            }
+            _ => return,
+        }
         if !changed {
             return;
         }
@@ -1053,6 +1080,34 @@ pub struct OneshotReceiver<T> {
     name: CompactString,
 }
 
+pub struct BroadcastSender<T> {
+    inner: broadcast::Sender<T>,
+    handle: EntityHandle,
+    channel: Arc<Mutex<BroadcastRuntimeState>>,
+    name: CompactString,
+}
+
+pub struct BroadcastReceiver<T> {
+    inner: broadcast::Receiver<T>,
+    handle: EntityHandle,
+    channel: Arc<Mutex<BroadcastRuntimeState>>,
+    name: CompactString,
+}
+
+pub struct WatchSender<T> {
+    inner: watch::Sender<T>,
+    handle: EntityHandle,
+    channel: Arc<Mutex<WatchRuntimeState>>,
+    name: CompactString,
+}
+
+pub struct WatchReceiver<T> {
+    inner: watch::Receiver<T>,
+    handle: EntityHandle,
+    channel: Arc<Mutex<WatchRuntimeState>>,
+    name: CompactString,
+}
+
 struct ChannelRuntimeState {
     tx_id: EntityId,
     rx_id: EntityId,
@@ -1070,6 +1125,26 @@ struct OneshotRuntimeState {
     tx_lifecycle: ChannelEndpointLifecycle,
     rx_lifecycle: ChannelEndpointLifecycle,
     state: OneshotState,
+}
+
+struct BroadcastRuntimeState {
+    tx_id: EntityId,
+    rx_id: EntityId,
+    tx_ref_count: u32,
+    rx_ref_count: u32,
+    capacity: u32,
+    tx_close_cause: Option<ChannelCloseCause>,
+    rx_close_cause: Option<ChannelCloseCause>,
+}
+
+struct WatchRuntimeState {
+    tx_id: EntityId,
+    rx_id: EntityId,
+    tx_ref_count: u32,
+    rx_ref_count: u32,
+    tx_close_cause: Option<ChannelCloseCause>,
+    rx_close_cause: Option<ChannelCloseCause>,
+    last_update_at: Option<peeps_types::PTime>,
 }
 
 enum ReceiverState {
@@ -1107,6 +1182,62 @@ impl<T> Clone for Sender<T> {
     fn clone(&self) -> Self {
         if let Ok(mut state) = self.channel.lock() {
             state.tx_ref_count = state.tx_ref_count.saturating_add(1);
+        }
+        Self {
+            inner: self.inner.clone(),
+            handle: self.handle.clone(),
+            channel: self.channel.clone(),
+            name: self.name.clone(),
+        }
+    }
+}
+
+impl<T> Clone for BroadcastSender<T> {
+    fn clone(&self) -> Self {
+        if let Ok(mut state) = self.channel.lock() {
+            state.tx_ref_count = state.tx_ref_count.saturating_add(1);
+        }
+        Self {
+            inner: self.inner.clone(),
+            handle: self.handle.clone(),
+            channel: self.channel.clone(),
+            name: self.name.clone(),
+        }
+    }
+}
+
+impl<T> Clone for BroadcastReceiver<T> {
+    fn clone(&self) -> Self {
+        if let Ok(mut state) = self.channel.lock() {
+            state.rx_ref_count = state.rx_ref_count.saturating_add(1);
+        }
+        Self {
+            inner: self.inner.resubscribe(),
+            handle: self.handle.clone(),
+            channel: self.channel.clone(),
+            name: self.name.clone(),
+        }
+    }
+}
+
+impl<T> Clone for WatchSender<T> {
+    fn clone(&self) -> Self {
+        if let Ok(mut state) = self.channel.lock() {
+            state.tx_ref_count = state.tx_ref_count.saturating_add(1);
+        }
+        Self {
+            inner: self.inner.clone(),
+            handle: self.handle.clone(),
+            channel: self.channel.clone(),
+            name: self.name.clone(),
+        }
+    }
+}
+
+impl<T> Clone for WatchReceiver<T> {
+    fn clone(&self) -> Self {
+        if let Ok(mut state) = self.channel.lock() {
+            state.rx_ref_count = state.rx_ref_count.saturating_add(1);
         }
         Self {
             inner: self.inner.clone(),
@@ -1211,6 +1342,82 @@ fn apply_oneshot_state(channel: &Arc<Mutex<OneshotRuntimeState>>) {
     if let Ok(mut db) = runtime_db().lock() {
         db.update_oneshot_endpoint_state(&tx_id, tx_lifecycle, state);
         db.update_oneshot_endpoint_state(&rx_id, rx_lifecycle, state);
+    }
+}
+
+fn sync_broadcast_state(
+    channel: &Arc<Mutex<BroadcastRuntimeState>>,
+) -> Option<(
+    EntityId,
+    EntityId,
+    Option<BufferState>,
+    ChannelEndpointLifecycle,
+    ChannelEndpointLifecycle,
+)> {
+    let state = channel.lock().ok()?;
+    let tx_lifecycle = match state.tx_close_cause {
+        Some(cause) => ChannelEndpointLifecycle::Closed(cause),
+        None => ChannelEndpointLifecycle::Open,
+    };
+    let rx_lifecycle = match state.rx_close_cause {
+        Some(cause) => ChannelEndpointLifecycle::Closed(cause),
+        None => ChannelEndpointLifecycle::Open,
+    };
+    Some((
+        EntityId::new(state.tx_id.as_str()),
+        EntityId::new(state.rx_id.as_str()),
+        Some(BufferState {
+            occupancy: 0,
+            capacity: Some(state.capacity),
+        }),
+        tx_lifecycle,
+        rx_lifecycle,
+    ))
+}
+
+fn apply_broadcast_state(channel: &Arc<Mutex<BroadcastRuntimeState>>) {
+    let Some((tx_id, rx_id, buffer, tx_lifecycle, rx_lifecycle)) = sync_broadcast_state(channel)
+    else {
+        return;
+    };
+    if let Ok(mut db) = runtime_db().lock() {
+        db.update_channel_endpoint_state(&tx_id, tx_lifecycle, buffer);
+        db.update_channel_endpoint_state(&rx_id, rx_lifecycle, buffer);
+    }
+}
+
+fn sync_watch_state(
+    channel: &Arc<Mutex<WatchRuntimeState>>,
+) -> Option<(EntityId, EntityId, ChannelEndpointLifecycle, ChannelEndpointLifecycle, Option<peeps_types::PTime>)>
+{
+    let state = channel.lock().ok()?;
+    let tx_lifecycle = match state.tx_close_cause {
+        Some(cause) => ChannelEndpointLifecycle::Closed(cause),
+        None => ChannelEndpointLifecycle::Open,
+    };
+    let rx_lifecycle = match state.rx_close_cause {
+        Some(cause) => ChannelEndpointLifecycle::Closed(cause),
+        None => ChannelEndpointLifecycle::Open,
+    };
+    Some((
+        EntityId::new(state.tx_id.as_str()),
+        EntityId::new(state.rx_id.as_str()),
+        tx_lifecycle,
+        rx_lifecycle,
+        state.last_update_at,
+    ))
+}
+
+fn apply_watch_state(channel: &Arc<Mutex<WatchRuntimeState>>) {
+    let Some((tx_id, rx_id, tx_lifecycle, rx_lifecycle, last_update_at)) = sync_watch_state(channel)
+    else {
+        return;
+    };
+    if let Ok(mut db) = runtime_db().lock() {
+        db.update_channel_endpoint_state(&tx_id, tx_lifecycle, None);
+        db.update_channel_endpoint_state(&rx_id, rx_lifecycle, None);
+        db.update_watch_last_update(&tx_id, last_update_at);
+        db.update_watch_last_update(&rx_id, last_update_at);
     }
 }
 
@@ -1571,6 +1778,94 @@ impl<T> Drop for OneshotReceiver<T> {
     }
 }
 
+impl<T> Drop for BroadcastSender<T> {
+    fn drop(&mut self) {
+        let mut emit_for_rx = None;
+        if let Ok(mut state) = self.channel.lock() {
+            state.tx_ref_count = state.tx_ref_count.saturating_sub(1);
+            if state.tx_ref_count == 0 {
+                if state.tx_close_cause.is_none() {
+                    state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                }
+                if state.rx_close_cause.is_none() {
+                    state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                    emit_for_rx = Some(EntityId::new(state.rx_id.as_str()));
+                }
+            }
+        }
+        apply_broadcast_state(&self.channel);
+        if let Some(rx_id) = emit_for_rx {
+            emit_channel_closed(&rx_id, ChannelCloseCause::SenderDropped);
+        }
+    }
+}
+
+impl<T> Drop for BroadcastReceiver<T> {
+    fn drop(&mut self) {
+        let mut emit_for_tx = None;
+        if let Ok(mut state) = self.channel.lock() {
+            state.rx_ref_count = state.rx_ref_count.saturating_sub(1);
+            if state.rx_ref_count == 0 {
+                if state.tx_close_cause.is_none() {
+                    state.tx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
+                    emit_for_tx = Some(EntityId::new(state.tx_id.as_str()));
+                }
+                if state.rx_close_cause.is_none() {
+                    state.rx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
+                }
+            }
+        }
+        apply_broadcast_state(&self.channel);
+        if let Some(tx_id) = emit_for_tx {
+            emit_channel_closed(&tx_id, ChannelCloseCause::ReceiverDropped);
+        }
+    }
+}
+
+impl<T> Drop for WatchSender<T> {
+    fn drop(&mut self) {
+        let mut emit_for_rx = None;
+        if let Ok(mut state) = self.channel.lock() {
+            state.tx_ref_count = state.tx_ref_count.saturating_sub(1);
+            if state.tx_ref_count == 0 {
+                if state.tx_close_cause.is_none() {
+                    state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                }
+                if state.rx_close_cause.is_none() {
+                    state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                    emit_for_rx = Some(EntityId::new(state.rx_id.as_str()));
+                }
+            }
+        }
+        apply_watch_state(&self.channel);
+        if let Some(rx_id) = emit_for_rx {
+            emit_channel_closed(&rx_id, ChannelCloseCause::SenderDropped);
+        }
+    }
+}
+
+impl<T> Drop for WatchReceiver<T> {
+    fn drop(&mut self) {
+        let mut emit_for_tx = None;
+        if let Ok(mut state) = self.channel.lock() {
+            state.rx_ref_count = state.rx_ref_count.saturating_sub(1);
+            if state.rx_ref_count == 0 {
+                if state.tx_close_cause.is_none() {
+                    state.tx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
+                    emit_for_tx = Some(EntityId::new(state.tx_id.as_str()));
+                }
+                if state.rx_close_cause.is_none() {
+                    state.rx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
+                }
+            }
+        }
+        apply_watch_state(&self.channel);
+        if let Some(tx_id) = emit_for_tx {
+            emit_channel_closed(&tx_id, ChannelCloseCause::ReceiverDropped);
+        }
+    }
+}
+
 impl<T> OneshotSender<T> {
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
@@ -1736,6 +2031,377 @@ pub fn oneshot<T>(name: impl Into<CompactString>) -> (OneshotSender<T>, OneshotR
         },
         OneshotReceiver {
             inner: Some(rx),
+            handle: rx_handle,
+            channel,
+            name,
+        },
+    )
+}
+
+impl<T: Clone> BroadcastSender<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub fn subscribe(&self) -> BroadcastReceiver<T> {
+        if let Ok(mut state) = self.channel.lock() {
+            state.rx_ref_count = state.rx_ref_count.saturating_add(1);
+        }
+        BroadcastReceiver {
+            inner: self.inner.subscribe(),
+            handle: self.handle.clone(),
+            channel: self.channel.clone(),
+            name: self.name.clone(),
+        }
+    }
+
+    pub fn send(&self, value: T) -> Result<usize, broadcast::error::SendError<T>> {
+        match self.inner.send(value) {
+            Ok(receivers) => {
+                if let Ok(event) = Event::channel_sent(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelSendEvent {
+                        outcome: ChannelSendOutcome::Ok,
+                        queue_len: None,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                Ok(receivers)
+            }
+            Err(err) => {
+                if let Ok(mut state) = self.channel.lock() {
+                    if state.tx_close_cause.is_none() {
+                        state.tx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
+                    }
+                    if state.rx_close_cause.is_none() {
+                        state.rx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
+                    }
+                }
+                apply_broadcast_state(&self.channel);
+                if let Ok(event) = Event::channel_sent(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelSendEvent {
+                        outcome: ChannelSendOutcome::Closed,
+                        queue_len: None,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                if let Ok(event) = Event::channel_closed(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelClosedEvent {
+                        cause: ChannelCloseCause::ReceiverDropped,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                Err(err)
+            }
+        }
+    }
+}
+
+impl<T: Clone> BroadcastReceiver<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub async fn recv(&mut self) -> Result<T, broadcast::error::RecvError> {
+        let result = instrument_future_on(
+            format!("{}.recv", self.name),
+            &self.handle,
+            self.inner.recv(),
+        )
+        .await;
+        match result {
+            Ok(value) => {
+                if let Ok(event) = Event::channel_received(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelReceiveEvent {
+                        outcome: ChannelReceiveOutcome::Ok,
+                        queue_len: None,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                Ok(value)
+            }
+            Err(err) => {
+                if let broadcast::error::RecvError::Closed = err {
+                    if let Ok(mut state) = self.channel.lock() {
+                        if state.tx_close_cause.is_none() {
+                            state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                        }
+                        if state.rx_close_cause.is_none() {
+                            state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                        }
+                    }
+                    apply_broadcast_state(&self.channel);
+                    if let Ok(event) = Event::channel_closed(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelClosedEvent {
+                            cause: ChannelCloseCause::SenderDropped,
+                        },
+                    ) && let Ok(mut db) = runtime_db().lock()
+                    {
+                        db.record_event(event);
+                    }
+                }
+                if let Ok(event) = Event::channel_received(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelReceiveEvent {
+                        outcome: ChannelReceiveOutcome::Empty,
+                        queue_len: None,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                Err(err)
+            }
+        }
+    }
+}
+
+impl<T: Clone> WatchSender<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub fn send(&self, value: T) -> Result<(), watch::error::SendError<T>> {
+        match self.inner.send(value) {
+            Ok(()) => {
+                let now = peeps_types::PTime::now();
+                if let Ok(mut state) = self.channel.lock() {
+                    state.last_update_at = Some(now);
+                }
+                apply_watch_state(&self.channel);
+                if let Ok(event) = Event::channel_sent(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelSendEvent {
+                        outcome: ChannelSendOutcome::Ok,
+                        queue_len: None,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                Ok(())
+            }
+            Err(err) => {
+                if let Ok(mut state) = self.channel.lock() {
+                    if state.tx_close_cause.is_none() {
+                        state.tx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
+                    }
+                    if state.rx_close_cause.is_none() {
+                        state.rx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
+                    }
+                }
+                apply_watch_state(&self.channel);
+                if let Ok(event) = Event::channel_sent(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelSendEvent {
+                        outcome: ChannelSendOutcome::Closed,
+                        queue_len: None,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                Err(err)
+            }
+        }
+    }
+
+    pub fn send_replace(&self, value: T) -> T {
+        let old = self.inner.send_replace(value);
+        let now = peeps_types::PTime::now();
+        if let Ok(mut state) = self.channel.lock() {
+            state.last_update_at = Some(now);
+        }
+        apply_watch_state(&self.channel);
+        old
+    }
+
+    pub fn subscribe(&self) -> WatchReceiver<T> {
+        if let Ok(mut state) = self.channel.lock() {
+            state.rx_ref_count = state.rx_ref_count.saturating_add(1);
+        }
+        WatchReceiver {
+            inner: self.inner.subscribe(),
+            handle: self.handle.clone(),
+            channel: self.channel.clone(),
+            name: self.name.clone(),
+        }
+    }
+}
+
+impl<T: Clone> WatchReceiver<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub async fn changed(&mut self) -> Result<(), watch::error::RecvError> {
+        let result = instrument_future_on(
+            format!("{}.changed", self.name),
+            &self.handle,
+            self.inner.changed(),
+        )
+        .await;
+        match result {
+            Ok(()) => {
+                if let Ok(event) = Event::channel_received(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelReceiveEvent {
+                        outcome: ChannelReceiveOutcome::Ok,
+                        queue_len: None,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                Ok(())
+            }
+            Err(err) => {
+                if let Ok(mut state) = self.channel.lock() {
+                    if state.tx_close_cause.is_none() {
+                        state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                    }
+                    if state.rx_close_cause.is_none() {
+                        state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                    }
+                }
+                apply_watch_state(&self.channel);
+                if let Ok(event) = Event::channel_received(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelReceiveEvent {
+                        outcome: ChannelReceiveOutcome::Closed,
+                        queue_len: None,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                Err(err)
+            }
+        }
+    }
+
+    pub fn borrow(&self) -> watch::Ref<'_, T> {
+        self.inner.borrow()
+    }
+
+    pub fn borrow_and_update(&mut self) -> watch::Ref<'_, T> {
+        self.inner.borrow_and_update()
+    }
+}
+
+pub fn broadcast<T: Clone>(
+    name: impl Into<CompactString>,
+    capacity: usize,
+) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
+    let name = name.into();
+    let (tx, rx) = broadcast::channel(capacity);
+    let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
+    let details = ChannelDetails::Broadcast(peeps_types::BroadcastChannelDetails {
+        buffer: Some(BufferState {
+            occupancy: 0,
+            capacity: Some(capacity_u32),
+        }),
+    });
+    let tx_handle = EntityHandle::new(
+        format!("{name}:tx"),
+        EntityBody::ChannelTx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details,
+        }),
+    );
+    let details = ChannelDetails::Broadcast(peeps_types::BroadcastChannelDetails {
+        buffer: Some(BufferState {
+            occupancy: 0,
+            capacity: Some(capacity_u32),
+        }),
+    });
+    let rx_handle = EntityHandle::new(
+        format!("{name}:rx"),
+        EntityBody::ChannelRx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details,
+        }),
+    );
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
+    let channel = Arc::new(Mutex::new(BroadcastRuntimeState {
+        tx_id: tx_handle.id().clone(),
+        rx_id: rx_handle.id().clone(),
+        tx_ref_count: 1,
+        rx_ref_count: 1,
+        capacity: capacity_u32,
+        tx_close_cause: None,
+        rx_close_cause: None,
+    }));
+    (
+        BroadcastSender {
+            inner: tx,
+            handle: tx_handle,
+            channel: channel.clone(),
+            name: name.clone(),
+        },
+        BroadcastReceiver {
+            inner: rx,
+            handle: rx_handle,
+            channel,
+            name,
+        },
+    )
+}
+
+pub fn watch<T: Clone>(name: impl Into<CompactString>, initial: T) -> (WatchSender<T>, WatchReceiver<T>) {
+    let name = name.into();
+    let (tx, rx) = watch::channel(initial);
+    let details = ChannelDetails::Watch(WatchChannelDetails {
+        last_update_at: None,
+    });
+    let tx_handle = EntityHandle::new(
+        format!("{name}:tx"),
+        EntityBody::ChannelTx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details,
+        }),
+    );
+    let details = ChannelDetails::Watch(WatchChannelDetails {
+        last_update_at: None,
+    });
+    let rx_handle = EntityHandle::new(
+        format!("{name}:rx"),
+        EntityBody::ChannelRx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details,
+        }),
+    );
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
+    let channel = Arc::new(Mutex::new(WatchRuntimeState {
+        tx_id: tx_handle.id().clone(),
+        rx_id: rx_handle.id().clone(),
+        tx_ref_count: 1,
+        rx_ref_count: 1,
+        tx_close_cause: None,
+        rx_close_cause: None,
+        last_update_at: None,
+    }));
+    (
+        WatchSender {
+            inner: tx,
+            handle: tx_handle,
+            channel: channel.clone(),
+            name: name.clone(),
+        },
+        WatchReceiver {
+            inner: rx,
             handle: rx_handle,
             channel,
             name,

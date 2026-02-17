@@ -4407,8 +4407,7 @@ body {
 .ui-split-layout--right-collapsed {
     grid-template-columns:
         minmax(0, 1fr)
-        0px
-        40px;
+        var(--split-right-width, 80px);
 }
 
 .ui-split-layout--right-collapsed .ui-split-left {
@@ -4421,6 +4420,7 @@ body {
 .ui-split-layout--right-collapsed .ui-split-right {
     position: relative;
     z-index: 1;
+    overflow: visible;
 }
 
 .ui-split-left {
@@ -4461,7 +4461,6 @@ body {
     flex-direction: column;
     height: 560px;
     border: 1px solid var(--border);
-    border-radius: 8px;
     overflow: hidden;
     background: var(--surface-bg);
 }
@@ -4606,20 +4605,29 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: flex-start;
     gap: 8px;
-    padding-top: 10px;
+    padding: 10px 4px;
     width: 100%;
     height: 100%;
     background: var(--surface-raised);
     border: none;
     border-left: 1px solid var(--border);
-    color: var(--text-secondary);
+    border-radius: 0;
+    color: var(--text-primary);
     cursor: pointer;
     font: inherit;
+    overflow: visible;
+    transition: background 120ms ease;
 }
 
 .mockup-inspector--collapsed:hover {
     background: var(--surface-hover);
+    color: var(--text-primary);
+}
+
+.mockup-inspector--collapsed:active {
+    background: var(--surface-sunken);
 }
 
 .mockup-inspector-collapsed-label {
@@ -4627,7 +4635,7 @@ body {
     text-orientation: mixed;
     font-size: 11px;
     font-weight: 700;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     letter-spacing: 0.04em;
 }
 
@@ -4639,28 +4647,13 @@ body {
     border-bottom: 1px solid var(--border-subtle);
     font-size: var(--font-size-sm);
     font-weight: 700;
+    line-height: 1;
     color: var(--text-primary);
     flex-shrink: 0;
 }
 
-.mockup-inspector-header .mockup-inspector-collapse-btn {
+.mockup-inspector-header .ui-action-button {
     margin-left: auto;
-}
-
-.mockup-inspector-collapse-btn {
-    display: grid;
-    place-items: center;
-    width: 22px;
-    height: 22px;
-    border: none;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-}
-
-.mockup-inspector-collapse-btn:hover {
-    background: var(--surface-hover);
 }
 
 .mockup-inspector-body {
