@@ -1,11 +1,12 @@
 use compact_str::CompactString;
 use peeps_types::{
-    CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, EntityId, Event, PullChangesResponse,
+    ChannelDetails, ChannelEndpointEntity, ChannelEndpointLifecycle, CutAck, CutId, Edge, EdgeKind,
+    Entity, EntityBody, EntityId, Event, OneshotChannelDetails, OneshotState, PullChangesResponse,
     RequestEntity, ResponseEntity, ResponseStatus, Scope, ScopeBody, SeqNo, StreamCursor, StreamId,
 };
 use std::future::Future;
 use std::sync::Once;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Clone, Debug, Default)]
 pub struct EntityRef;
@@ -101,6 +102,16 @@ pub struct Receiver<T> {
     handle: EntityHandle,
 }
 
+pub struct OneshotSender<T> {
+    inner: Option<oneshot::Sender<T>>,
+    handle: EntityHandle,
+}
+
+pub struct OneshotReceiver<T> {
+    inner: Option<oneshot::Receiver<T>>,
+    handle: EntityHandle,
+}
+
 impl<T> Clone for Sender<T> {
     fn clone(&self) -> Self {
         Self {
@@ -130,6 +141,29 @@ impl<T> Receiver<T> {
     }
 }
 
+impl<T> OneshotSender<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub fn send(mut self, value: T) -> Result<(), T> {
+        let Some(inner) = self.inner.take() else {
+            return Err(value);
+        };
+        inner.send(value)
+    }
+}
+
+impl<T> OneshotReceiver<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub async fn recv(mut self) -> Result<T, oneshot::error::RecvError> {
+        self.inner.take().expect("oneshot receiver consumed").await
+    }
+}
+
 pub fn channel<T>(_name: impl Into<CompactString>, capacity: usize) -> (Sender<T>, Receiver<T>) {
     let (tx, rx) = mpsc::channel(capacity);
     (
@@ -140,6 +174,40 @@ pub fn channel<T>(_name: impl Into<CompactString>, capacity: usize) -> (Sender<T
         Receiver {
             inner: rx,
             handle: EntityHandle,
+        },
+    )
+}
+
+pub fn oneshot<T>(name: impl Into<CompactString>) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    let name = name.into();
+    let (tx, rx) = oneshot::channel();
+    let tx_handle = EntityHandle::new(
+        format!("{name}:tx"),
+        EntityBody::ChannelTx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details: ChannelDetails::Oneshot(OneshotChannelDetails {
+                state: OneshotState::Pending,
+            }),
+        }),
+    );
+    let rx_handle = EntityHandle::new(
+        format!("{name}:rx"),
+        EntityBody::ChannelRx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details: ChannelDetails::Oneshot(OneshotChannelDetails {
+                state: OneshotState::Pending,
+            }),
+        }),
+    );
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
+    (
+        OneshotSender {
+            inner: Some(tx),
+            handle: tx_handle,
+        },
+        OneshotReceiver {
+            inner: Some(rx),
+            handle: rx_handle,
         },
     )
 }

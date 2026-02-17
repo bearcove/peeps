@@ -4,8 +4,9 @@ use peeps_types::{
     ChannelEndpointEntity, ChannelEndpointLifecycle, ChannelReceiveEvent, ChannelReceiveOutcome,
     ChannelSendEvent, ChannelSendOutcome, ChannelWaitEndedEvent, ChannelWaitKind,
     ChannelWaitStartedEvent, CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, EntityId, Event,
-    EventKind, EventTarget, MpscChannelDetails, PullChangesResponse, RequestEntity, ResponseEntity,
-    ResponseStatus, Scope, ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId,
+    EventKind, EventTarget, MpscChannelDetails, OneshotChannelDetails, OneshotState,
+    PullChangesResponse, RequestEntity, ResponseEntity, ResponseStatus, Scope, ScopeBody, ScopeId,
+    SeqNo, StampedChange, StreamCursor, StreamId,
 };
 use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
@@ -19,7 +20,7 @@ use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[cfg(feature = "dashboard")]
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 #[cfg(feature = "dashboard")]
 use tokio::time::{interval, MissedTickBehavior};
 
@@ -396,9 +397,56 @@ impl RuntimeDb {
                     endpoint.lifecycle = lifecycle;
                     changed = true;
                 }
-                if let ChannelDetails::Mpsc(details) = &mut endpoint.details {
-                    if details.buffer != buffer {
-                        details.buffer = buffer;
+                match &mut endpoint.details {
+                    ChannelDetails::Mpsc(details) => {
+                        if details.buffer != buffer {
+                            details.buffer = buffer;
+                            changed = true;
+                        }
+                    }
+                    ChannelDetails::Broadcast(details) => {
+                        if details.buffer != buffer {
+                            details.buffer = buffer;
+                            changed = true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => return,
+        }
+
+        if !changed {
+            return;
+        }
+        if let Some(entity_json) = facet_json::to_vec(entity).ok() {
+            self.push_change(InternalChange::UpsertEntity {
+                id: EntityId::new(id.as_str()),
+                entity_json,
+            });
+        }
+    }
+
+    fn update_oneshot_endpoint_state(
+        &mut self,
+        id: &EntityId,
+        lifecycle: ChannelEndpointLifecycle,
+        state: OneshotState,
+    ) {
+        let Some(entity) = self.entities.get_mut(id) else {
+            return;
+        };
+
+        let mut changed = false;
+        match &mut entity.body {
+            EntityBody::ChannelTx(endpoint) | EntityBody::ChannelRx(endpoint) => {
+                if endpoint.lifecycle != lifecycle {
+                    endpoint.lifecycle = lifecycle;
+                    changed = true;
+                }
+                if let ChannelDetails::Oneshot(details) = &mut endpoint.details {
+                    if details.state != state {
+                        details.state = state;
                         changed = true;
                     }
                 }
@@ -991,6 +1039,20 @@ pub struct Receiver<T> {
     name: CompactString,
 }
 
+pub struct OneshotSender<T> {
+    inner: Option<oneshot::Sender<T>>,
+    handle: EntityHandle,
+    channel: Arc<Mutex<OneshotRuntimeState>>,
+    name: CompactString,
+}
+
+pub struct OneshotReceiver<T> {
+    inner: Option<oneshot::Receiver<T>>,
+    handle: EntityHandle,
+    channel: Arc<Mutex<OneshotRuntimeState>>,
+    name: CompactString,
+}
+
 struct ChannelRuntimeState {
     tx_id: EntityId,
     rx_id: EntityId,
@@ -1000,6 +1062,14 @@ struct ChannelRuntimeState {
     capacity: Option<u32>,
     tx_close_cause: Option<ChannelCloseCause>,
     rx_close_cause: Option<ChannelCloseCause>,
+}
+
+struct OneshotRuntimeState {
+    tx_id: EntityId,
+    rx_id: EntityId,
+    tx_lifecycle: ChannelEndpointLifecycle,
+    rx_lifecycle: ChannelEndpointLifecycle,
+    state: OneshotState,
 }
 
 enum ReceiverState {
@@ -1111,6 +1181,36 @@ fn emit_channel_closed(target: &EntityId, cause: ChannelCloseCause) {
         if let Ok(mut db) = runtime_db().lock() {
             db.record_event(event);
         }
+    }
+}
+
+fn sync_oneshot_state(
+    channel: &Arc<Mutex<OneshotRuntimeState>>,
+) -> Option<(
+    EntityId,
+    EntityId,
+    OneshotState,
+    ChannelEndpointLifecycle,
+    ChannelEndpointLifecycle,
+)> {
+    let state = channel.lock().ok()?;
+    Some((
+        EntityId::new(state.tx_id.as_str()),
+        EntityId::new(state.rx_id.as_str()),
+        state.state,
+        state.tx_lifecycle,
+        state.rx_lifecycle,
+    ))
+}
+
+fn apply_oneshot_state(channel: &Arc<Mutex<OneshotRuntimeState>>) {
+    let Some((tx_id, rx_id, state, tx_lifecycle, rx_lifecycle)) = sync_oneshot_state(channel)
+    else {
+        return;
+    };
+    if let Ok(mut db) = runtime_db().lock() {
+        db.update_oneshot_endpoint_state(&tx_id, tx_lifecycle, state);
+        db.update_oneshot_endpoint_state(&rx_id, rx_lifecycle, state);
     }
 }
 
@@ -1420,6 +1520,222 @@ pub fn channel<T>(name: impl Into<CompactString>, capacity: usize) -> (Sender<T>
         },
         Receiver {
             inner: rx,
+            handle: rx_handle,
+            channel,
+            name,
+        },
+    )
+}
+
+impl<T> Drop for OneshotSender<T> {
+    fn drop(&mut self) {
+        if self.inner.is_none() {
+            return;
+        }
+        let mut emit_for_rx = None;
+        if let Ok(mut state) = self.channel.lock()
+            && matches!(state.state, OneshotState::Pending)
+        {
+            state.state = OneshotState::SenderDropped;
+            state.tx_lifecycle = ChannelEndpointLifecycle::Closed(ChannelCloseCause::SenderDropped);
+            state.rx_lifecycle = ChannelEndpointLifecycle::Closed(ChannelCloseCause::SenderDropped);
+            emit_for_rx = Some(EntityId::new(state.rx_id.as_str()));
+        }
+        apply_oneshot_state(&self.channel);
+        if let Some(rx_id) = emit_for_rx {
+            emit_channel_closed(&rx_id, ChannelCloseCause::SenderDropped);
+        }
+    }
+}
+
+impl<T> Drop for OneshotReceiver<T> {
+    fn drop(&mut self) {
+        if self.inner.is_none() {
+            return;
+        }
+        let mut emit_for_tx = None;
+        if let Ok(mut state) = self.channel.lock()
+            && matches!(state.state, OneshotState::Pending | OneshotState::Sent)
+        {
+            state.state = OneshotState::ReceiverDropped;
+            state.tx_lifecycle =
+                ChannelEndpointLifecycle::Closed(ChannelCloseCause::ReceiverDropped);
+            state.rx_lifecycle =
+                ChannelEndpointLifecycle::Closed(ChannelCloseCause::ReceiverDropped);
+            emit_for_tx = Some(EntityId::new(state.tx_id.as_str()));
+        }
+        apply_oneshot_state(&self.channel);
+        if let Some(tx_id) = emit_for_tx {
+            emit_channel_closed(&tx_id, ChannelCloseCause::ReceiverDropped);
+        }
+    }
+}
+
+impl<T> OneshotSender<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub fn send(mut self, value: T) -> Result<(), T> {
+        let Some(inner) = self.inner.take() else {
+            return Err(value);
+        };
+        match inner.send(value) {
+            Ok(()) => {
+                if let Ok(mut state) = self.channel.lock() {
+                    state.state = OneshotState::Sent;
+                    state.tx_lifecycle =
+                        ChannelEndpointLifecycle::Closed(ChannelCloseCause::SenderDropped);
+                }
+                apply_oneshot_state(&self.channel);
+                if let Ok(event) = Event::channel_sent(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelSendEvent {
+                        outcome: ChannelSendOutcome::Ok,
+                        queue_len: None,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                Ok(())
+            }
+            Err(value) => {
+                if let Ok(mut state) = self.channel.lock() {
+                    state.state = OneshotState::ReceiverDropped;
+                    state.tx_lifecycle =
+                        ChannelEndpointLifecycle::Closed(ChannelCloseCause::ReceiverDropped);
+                    state.rx_lifecycle =
+                        ChannelEndpointLifecycle::Closed(ChannelCloseCause::ReceiverDropped);
+                }
+                apply_oneshot_state(&self.channel);
+                if let Ok(event) = Event::channel_sent(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelSendEvent {
+                        outcome: ChannelSendOutcome::Closed,
+                        queue_len: None,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                if let Ok(event) = Event::channel_closed(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelClosedEvent {
+                        cause: ChannelCloseCause::ReceiverDropped,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                Err(value)
+            }
+        }
+    }
+}
+
+impl<T> OneshotReceiver<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub async fn recv(mut self) -> Result<T, oneshot::error::RecvError> {
+        let inner = self.inner.take().expect("oneshot receiver consumed");
+        let result = instrument_future_on(format!("{}.recv", self.name), &self.handle, inner).await;
+        match result {
+            Ok(value) => {
+                if let Ok(mut state) = self.channel.lock() {
+                    state.state = OneshotState::Received;
+                    state.rx_lifecycle =
+                        ChannelEndpointLifecycle::Closed(ChannelCloseCause::ReceiverDropped);
+                }
+                apply_oneshot_state(&self.channel);
+                if let Ok(event) = Event::channel_received(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelReceiveEvent {
+                        outcome: ChannelReceiveOutcome::Ok,
+                        queue_len: None,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                Ok(value)
+            }
+            Err(err) => {
+                if let Ok(mut state) = self.channel.lock() {
+                    state.state = OneshotState::SenderDropped;
+                    state.tx_lifecycle =
+                        ChannelEndpointLifecycle::Closed(ChannelCloseCause::SenderDropped);
+                    state.rx_lifecycle =
+                        ChannelEndpointLifecycle::Closed(ChannelCloseCause::SenderDropped);
+                }
+                apply_oneshot_state(&self.channel);
+                if let Ok(event) = Event::channel_received(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelReceiveEvent {
+                        outcome: ChannelReceiveOutcome::Closed,
+                        queue_len: None,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                if let Ok(event) = Event::channel_closed(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelClosedEvent {
+                        cause: ChannelCloseCause::SenderDropped,
+                    },
+                ) && let Ok(mut db) = runtime_db().lock()
+                {
+                    db.record_event(event);
+                }
+                Err(err)
+            }
+        }
+    }
+}
+
+pub fn oneshot<T>(name: impl Into<CompactString>) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    let name = name.into();
+    let (tx, rx) = oneshot::channel();
+    let details = ChannelDetails::Oneshot(OneshotChannelDetails {
+        state: OneshotState::Pending,
+    });
+    let tx_handle = EntityHandle::new(
+        format!("{name}:tx"),
+        EntityBody::ChannelTx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details,
+        }),
+    );
+    let details = ChannelDetails::Oneshot(OneshotChannelDetails {
+        state: OneshotState::Pending,
+    });
+    let rx_handle = EntityHandle::new(
+        format!("{name}:rx"),
+        EntityBody::ChannelRx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details,
+        }),
+    );
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
+    let channel = Arc::new(Mutex::new(OneshotRuntimeState {
+        tx_id: tx_handle.id().clone(),
+        rx_id: rx_handle.id().clone(),
+        tx_lifecycle: ChannelEndpointLifecycle::Open,
+        rx_lifecycle: ChannelEndpointLifecycle::Open,
+        state: OneshotState::Pending,
+    }));
+    (
+        OneshotSender {
+            inner: Some(tx),
+            handle: tx_handle,
+            channel: channel.clone(),
+            name: name.clone(),
+        },
+        OneshotReceiver {
+            inner: Some(rx),
             handle: rx_handle,
             channel,
             name,
