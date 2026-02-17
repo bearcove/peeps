@@ -76,7 +76,7 @@ export function LabView() {
           <div className="ui-typography-grid">
             <div className="ui-typo-card">
               <div className="ui-typo-kicker">UI font</div>
-              <div className="ui-typo-fontname ui-typo-ui">Manrope</div>
+              <div className="ui-typo-fontname ui-typo-ui">Inter</div>
               <div className="ui-typo-sample ui-typo-ui ui-typo-ui--xl">Take a snapshot</div>
               <div className="ui-typo-sample ui-typo-ui ui-typo-ui--md">Inspector, Graph, Timeline, Resources</div>
               <div className="ui-typo-sample ui-typo-ui ui-typo-ui--sm ui-typo-muted">
@@ -90,7 +90,7 @@ export function LabView() {
 
             <div className="ui-typo-card">
               <div className="ui-typo-kicker">Mono font</div>
-              <div className="ui-typo-fontname ui-typo-mono">Space Mono</div>
+              <div className="ui-typo-fontname ui-typo-mono">JetBrains Mono</div>
               <div className="ui-typo-sample ui-typo-mono ui-typo-mono--xl">request:01KHNGCY…</div>
               <div className="ui-typo-sample ui-typo-mono ui-typo-mono--md">connection: initiator-&gt;acceptor</div>
               <div className="ui-typo-sample ui-typo-mono ui-typo-mono--sm ui-typo-muted">
