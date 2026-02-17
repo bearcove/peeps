@@ -1,0 +1,168 @@
+:root {
+  color: #111827;
+  font-family: "Avenir Next", "Avenir", "Segoe UI", sans-serif;
+  background: radial-gradient(circle at top left, #eef6ff, #f9fafb 44%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.page {
+  margin: 0 auto;
+  max-width: 1400px;
+  padding: 1.5rem;
+}
+
+.topbar {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.topbar p {
+  margin: 0.4rem 0 0;
+  color: #475569;
+}
+
+.topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+button {
+  background: #111827;
+  border: 0;
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.6rem 0.9rem;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  color: #991b1b;
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.85rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 1rem;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.04);
+  padding: 1rem;
+}
+
+.card h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.75rem;
+}
+
+.flow-card {
+  grid-row: span 2;
+}
+
+.flow-wrap {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  height: 520px;
+  overflow: hidden;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.92rem;
+  padding: 0.5rem 0.45rem;
+  text-align: left;
+}
+
+th {
+  color: #475569;
+  font-weight: 700;
+}
+
+.sql-card {
+  grid-column: span 2;
+}
+
+.sql-table-wrap {
+  overflow-x: auto;
+}
+
+.kv {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+}
+
+.kv div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.kv dt {
+  color: #64748b;
+}
+
+.kv dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+@media (max-width: 1024px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .flow-card {
+    grid-row: auto;
+  }
+
+  .sql-card {
+    grid-column: auto;
+  }
+
+  .flow-wrap {
+    height: 420px;
+  }
+}

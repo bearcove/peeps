@@ -200,23 +200,23 @@ pub struct ChannelClosedEvent {
 
 #[derive(Facet)]
 pub struct ChannelWaitStartedEvent {
-    /// Wait type being started.
+    /// Wait reason being started.
     pub kind: ChannelWaitKind,
 }
 
 #[derive(Facet)]
 pub struct ChannelWaitEndedEvent {
-    /// Wait type that ended.
+    /// Wait reason that ended.
     pub kind: ChannelWaitKind,
     /// Observed wait duration in nanoseconds.
     pub wait_ns: u64,
 }
 
-#[derive(Facet)]
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
 pub enum ChannelWaitKind {
-    Send,
-    Receive,
+    SendFull,
+    ReceiveEmpty,
     Change,
 }

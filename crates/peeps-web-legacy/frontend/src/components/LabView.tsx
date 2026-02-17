@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -94,13 +94,13 @@ const MOCK_ENTITIES: MockEntityDef[] = [
   {
     id: "req_sleepy", name: "DemoRpc.sleepy_forever", kind: "request", bodyKind: "Request",
     body: { method: "DemoRpc.sleepy_forever", args_preview: "(no args)" },
-    source: "src/rpc/demo.rs:42", birthAgeMs: 1245000, inCycle: true,
+    source: "src/rpc/demo.rs:42", birthAgeMs: 1245000,
     meta: { level: "info", rpc_service: "DemoRpc", transport: "roam-tcp" },
   },
   {
     id: "resp_sleepy", name: "DemoRpc.sleepy_forever", kind: "response", bodyKind: "Response",
     body: { method: "DemoRpc.sleepy_forever", status: "error" },
-    source: "src/rpc/demo.rs:45", birthAgeMs: 1244800,
+    source: "src/rpc/demo.rs:45", birthAgeMs: 1244800, inCycle: true,
     meta: { level: "info", status_detail: "deadline exceeded" },
   },
   {
@@ -124,7 +124,7 @@ const MOCK_ENTITIES: MockEntityDef[] = [
   {
     id: "ch_tx", name: "mpsc.send", kind: "channel_tx", bodyKind: "ChannelTx",
     body: { lifecycle: "open", details: { kind: "mpsc", capacity: 128, queue_len: 0 } },
-    source: "src/dispatch.rs:67", birthAgeMs: 3590000, inCycle: true,
+    source: "src/dispatch.rs:67", birthAgeMs: 3590000,
     meta: { level: "debug" },
   },
   {
@@ -141,16 +141,53 @@ const MOCK_ENTITIES: MockEntityDef[] = [
   },
 ];
 
+// Edge semantics:
+// - "needs": causal dependency (A is blocked waiting for B). Only needs edges form deadlock cycles.
+// - "polls": non-blocking observation (A polls B without blocking).
+// - "rpc_link": structural request↔response pairing.
+// - "channel_link": structural channel tx↔rx pairing.
+// - "closed_by": closure/cancellation cause.
 const MOCK_EDGES: MockEdgeDef[] = [
-  { id: "e1", source: "req_sleepy", target: "lock_state", kind: "needs" },
+  // Deadlock cycle: resp_sleepy →needs→ lock_state →needs→ ch_rx →needs→ resp_sleepy
+  // The response handler needs the lock; the lock holder is blocked waiting for channel data;
+  // the channel receiver is blocked waiting for the response to complete.
+  { id: "e1", source: "resp_sleepy", target: "lock_state", kind: "needs" },
   { id: "e2", source: "lock_state", target: "ch_rx", kind: "needs" },
-  { id: "e3", source: "ch_rx", target: "req_sleepy", kind: "needs" },
+  { id: "e3", source: "ch_rx", target: "resp_sleepy", kind: "needs" },
+  // Structural pairings
   { id: "e4", source: "ch_tx", target: "ch_rx", kind: "channel_link" },
   { id: "e5", source: "req_sleepy", target: "resp_sleepy", kind: "rpc_link" },
   { id: "e6", source: "req_ping", target: "resp_ping", kind: "rpc_link" },
-  { id: "e7", source: "req_ping", target: "lock_state", kind: "needs" },
-  { id: "e8", source: "future_store", target: "req_sleepy", kind: "polls" },
+  // Non-blocking observations
+  { id: "e7", source: "req_ping", target: "lock_state", kind: "polls" },
+  { id: "e8", source: "future_store", target: "ch_rx", kind: "polls" },
 ];
+
+/** Validate edge definitions against entity kinds. */
+function validateEdges(entities: MockEntityDef[], edges: MockEdgeDef[]) {
+  const entityMap = new Map(entities.map((e) => [e.id, e]));
+  for (const edge of edges) {
+    const src = entityMap.get(edge.source);
+    const dst = entityMap.get(edge.target);
+    if (!src) console.error(`[validateEdges] unknown source "${edge.source}" in edge "${edge.id}"`);
+    if (!dst) console.error(`[validateEdges] unknown target "${edge.target}" in edge "${edge.id}"`);
+    if (!src || !dst) continue;
+
+    switch (edge.kind) {
+      case "rpc_link":
+        if (src.bodyKind !== "Request" || dst.bodyKind !== "Response")
+          console.error(`[validateEdges] rpc_link "${edge.id}" must be Request→Response, got ${src.bodyKind}→${dst.bodyKind}`);
+        break;
+      case "channel_link":
+        if (src.bodyKind !== "ChannelTx" || dst.bodyKind !== "ChannelRx")
+          console.error(`[validateEdges] channel_link "${edge.id}" must be ChannelTx→ChannelRx, got ${src.bodyKind}→${dst.bodyKind}`);
+        break;
+    }
+  }
+}
+
+// Run validation at module load time so bad edges are caught immediately.
+validateEdges(MOCK_ENTITIES, MOCK_EDGES);
 
 /** Measure actual rendered node dimensions by briefly inserting into the DOM. */
 function measureNodeDefs(defs: MockEntityDef[]): Map<string, { width: number; height: number }> {
@@ -197,15 +234,26 @@ function edgeStyle(kind: MockEdgeDef["kind"]) {
     case "closed_by":
       return { stroke: "light-dark(#e08614, #f0a840)", strokeWidth: 1.5 };
     case "channel_link":
-      return { stroke: "light-dark(#3b82f6, #60a5fa)", strokeWidth: 1.2, strokeDasharray: "6 3" };
+      return { stroke: "light-dark(#888, #666)", strokeWidth: 1, strokeDasharray: "6 3" };
     case "rpc_link":
-      return { stroke: "light-dark(#059669, #34d399)", strokeWidth: 1.2, strokeDasharray: "6 3" };
+      return { stroke: "light-dark(#888, #666)", strokeWidth: 1, strokeDasharray: "6 3" };
   }
 }
 
-function edgeMarkerSize(kind: MockEdgeDef["kind"]) {
+function edgeTooltip(kind: MockEdgeDef["kind"], sourceName: string, targetName: string): string {
+  switch (kind) {
+    case "needs": return `${sourceName} is blocked waiting for ${targetName}`;
+    case "polls": return `${sourceName} polls ${targetName} (non-blocking)`;
+    case "closed_by": return `${sourceName} was closed by ${targetName}`;
+    case "channel_link": return `Channel endpoint: ${sourceName} → ${targetName}`;
+    case "rpc_link": return `RPC pair: ${sourceName} → ${targetName}`;
+  }
+}
+
+function edgeMarkerSize(kind: MockEdgeDef["kind"]): number {
   return kind === "needs" ? 12 : 8;
 }
+
 
 type ElkPoint = { x: number; y: number };
 type LayoutResult = { nodes: Node[]; edges: Edge[] };
@@ -237,8 +285,9 @@ async function layoutMockGraph(
   );
 
   // Build a map of ELK's edge sections (route points)
+  // ELK returns sections on edges but the type defs don't include them
   const elkEdgeMap = new Map(
-    (result.edges ?? []).map((e) => [e.id, e.sections ?? []]),
+    (result.edges ?? []).map((e: any) => [e.id, e.sections ?? []]),
   );
 
   const nodes: Node[] = entityDefs.map((def) => ({
@@ -248,6 +297,7 @@ async function layoutMockGraph(
     data: { kind: def.kind, label: def.name, inCycle: def.inCycle ?? false, selected: false },
   }));
 
+  const entityNameMap = new Map(entityDefs.map((e) => [e.id, e.name]));
   const edges: Edge[] = edgeDefs.map((def) => {
     const sz = edgeMarkerSize(def.kind);
     const sections = elkEdgeMap.get(def.id) ?? [];
@@ -257,12 +307,14 @@ async function layoutMockGraph(
       if (section.bendPoints) points.push(...section.bendPoints);
       points.push(section.endPoint);
     }
+    const srcName = entityNameMap.get(def.source) ?? def.source;
+    const dstName = entityNameMap.get(def.target) ?? def.target;
     return {
       id: def.id,
       source: def.source,
       target: def.target,
       type: "elkrouted",
-      data: { points },
+      data: { points, tooltip: edgeTooltip(def.kind, srcName, dstName) },
       style: edgeStyle(def.kind),
       markerEnd: { type: MarkerType.ArrowClosed, width: sz, height: sz },
     };
@@ -290,41 +342,41 @@ function MockNodeComponent({ data }: { data: { kind: string; label: string; inCy
 
 /** Edge component that draws through ELK's computed route points. */
 function ElkRoutedEdge({ id, data, style, markerEnd }: EdgeProps) {
-  const points: ElkPoint[] = (data as any)?.points ?? [];
+  const edgeData = data as { points?: ElkPoint[]; tooltip?: string } | undefined;
+  const points = edgeData?.points ?? [];
   if (points.length < 2) return null;
 
   const [start, ...rest] = points;
-  // Build a smooth path through all points
   let d = `M ${start.x} ${start.y}`;
   if (rest.length === 1) {
-    // Straight line
     d += ` L ${rest[0].x} ${rest[0].y}`;
   } else {
-    // Smooth polyline: use quadratic curves through bend points
     for (let i = 0; i < rest.length - 1; i++) {
       const curr = rest[i];
       const next = rest[i + 1];
       if (i < rest.length - 2) {
-        // Mid-bend: curve through this point toward the midpoint to next
         const midX = (curr.x + next.x) / 2;
         const midY = (curr.y + next.y) / 2;
         d += ` Q ${curr.x} ${curr.y}, ${midX} ${midY}`;
       } else {
-        // Last segment: curve to final point
         d += ` Q ${curr.x} ${curr.y}, ${next.x} ${next.y}`;
       }
     }
   }
 
   return (
-    <path
-      id={id}
-      d={d}
-      style={style as React.CSSProperties}
-      markerEnd={markerEnd as string}
-      fill="none"
-      className="react-flow__edge-path"
-    />
+    <g>
+      {/* Invisible wider path for easier hover targeting */}
+      <path d={d} fill="none" stroke="transparent" strokeWidth={12} />
+      <path
+        id={id}
+        d={d}
+        style={style as React.CSSProperties}
+        markerEnd={markerEnd as string}
+        fill="none"
+        className="react-flow__edge-path"
+      />
+    </g>
   );
 }
 
@@ -333,15 +385,18 @@ const mockEdgeTypes = { elkrouted: ElkRoutedEdge };
 
 // ── Mock graph panel ──────────────────────────────────────────
 
+type EdgeTooltipState = { text: string; x: number; y: number } | null;
+
 function MockGraphPanel({ selectedEntityId, onSelectEntity }: { selectedEntityId?: string; onSelectEntity: (id: string) => void }) {
   const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
+  const [edgeTooltip, setEdgeTooltip] = useState<EdgeTooltipState>(null);
+  const flowContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const sizes = measureNodeDefs(MOCK_ENTITIES);
     layoutMockGraph(MOCK_ENTITIES, MOCK_EDGES, sizes).then(setLayout);
   }, []);
 
-  // Update selected state on nodes when selection changes
   const nodesWithSelection = useMemo(() =>
     layout.nodes.map((n) => ({
       ...n,
@@ -350,6 +405,31 @@ function MockGraphPanel({ selectedEntityId, onSelectEntity }: { selectedEntityId
     [layout.nodes, selectedEntityId],
   );
 
+  const getRelativePos = useCallback((event: React.MouseEvent) => {
+    const rect = flowContainerRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }, []);
+
+  const onEdgeMouseEnter = useCallback((event: React.MouseEvent, edge: Edge) => {
+    const text = (edge.data as any)?.tooltip;
+    if (!text) return;
+    const pos = getRelativePos(event);
+    if (!pos) return;
+    setEdgeTooltip({ text, ...pos });
+  }, [getRelativePos]);
+
+  const onEdgeMouseMove = useCallback((event: React.MouseEvent) => {
+    setEdgeTooltip((prev) => {
+      if (!prev) return null;
+      const rect = flowContainerRef.current?.getBoundingClientRect();
+      if (!rect) return prev;
+      return { ...prev, x: event.clientX - rect.left, y: event.clientY - rect.top };
+    });
+  }, []);
+
+  const onEdgeMouseLeave = useCallback(() => setEdgeTooltip(null), []);
+
   return (
     <div className="mockup-graph-panel">
       <div className="mockup-graph-toolbar">
@@ -357,12 +437,8 @@ function MockGraphPanel({ selectedEntityId, onSelectEntity }: { selectedEntityId
           <span className="mockup-graph-stat">{MOCK_ENTITIES.length} entities</span>
           <span className="mockup-graph-stat">{MOCK_EDGES.length} edges</span>
         </div>
-        <div className="mockup-graph-toolbar-right">
-          <span className="mockup-graph-level-label">Detail</span>
-          <Badge tone="neutral">info</Badge>
-        </div>
       </div>
-      <div className="mockup-graph-flow">
+      <div className="mockup-graph-flow" ref={flowContainerRef}>
         <ReactFlowProvider>
           <ReactFlow
             nodes={nodesWithSelection}
@@ -370,6 +446,9 @@ function MockGraphPanel({ selectedEntityId, onSelectEntity }: { selectedEntityId
             nodeTypes={mockNodeTypes}
             edgeTypes={mockEdgeTypes}
             onNodeClick={(_event, node) => onSelectEntity(node.id)}
+            onEdgeMouseEnter={onEdgeMouseEnter}
+            onEdgeMouseMove={onEdgeMouseMove}
+            onEdgeMouseLeave={onEdgeMouseLeave}
             fitView
             fitViewOptions={{ padding: 0.3, maxZoom: 1.2 }}
             proOptions={{ hideAttribution: true }}
@@ -384,6 +463,14 @@ function MockGraphPanel({ selectedEntityId, onSelectEntity }: { selectedEntityId
             <Controls showInteractive={false} />
           </ReactFlow>
         </ReactFlowProvider>
+        {edgeTooltip && (
+          <div
+            className="mockup-edge-tooltip"
+            style={{ left: edgeTooltip.x, top: edgeTooltip.y }}
+          >
+            {edgeTooltip.text}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -397,9 +484,6 @@ function EntityBodySection({ entity }: { entity: MockEntityDef }) {
     case "Request":
       return (
         <div className="mockup-inspector-section">
-          <KeyValueRow label="Method" icon={<PaperPlaneTilt size={12} weight="bold" />}>
-            <span className="mockup-inspector-mono">{body.method}</span>
-          </KeyValueRow>
           <KeyValueRow label="Args">
             <span className={`mockup-inspector-mono${body.args_preview === "(no args)" ? " mockup-inspector-muted" : ""}`}>
               {body.args_preview}
@@ -468,30 +552,30 @@ function EntityInspectorContent({ entity }: { entity: MockEntityDef }) {
     <>
       <div className="mockup-inspector-node-header">
         <span className="mockup-inspector-node-icon">{kindIcon(entity.kind, 16)}</span>
-        <div>
+        <div className="mockup-inspector-node-header-text">
           <div className="mockup-inspector-node-kind">{entity.bodyKind}</div>
           <div className="mockup-inspector-node-label">{entity.name}</div>
         </div>
-        <ActionButton size="sm">
-          <Crosshair size={12} weight="bold" />
-          focus
+        <ActionButton>
+          <Crosshair size={14} weight="bold" />
+          Focus
         </ActionButton>
       </div>
 
-      {entity.inCycle && (
-        <div className="mockup-inspector-alert mockup-inspector-alert--crit">
-          Part of <code>needs</code> cycle — possible deadlock
-        </div>
-      )}
+      {/* Fixed-height alert slot — always present to prevent layout shift */}
+      <div className="mockup-inspector-alert-slot">
+        {entity.inCycle && (
+          <div className="mockup-inspector-alert mockup-inspector-alert--crit">
+            Part of <code>needs</code> cycle — possible deadlock
+          </div>
+        )}
+      </div>
 
       <div className="mockup-inspector-section">
-        <KeyValueRow label="Source">
-          <NodeChip
-            icon={<FileRs size={12} weight="bold" />}
-            label={entity.source}
-            href="#"
-            title="Open in editor"
-          />
+        <KeyValueRow label="Source" icon={<FileRs size={12} weight="bold" />}>
+          <a className="mockup-inspector-source-link" href="#" title="Open in editor">
+            {entity.source}
+          </a>
         </KeyValueRow>
         <KeyValueRow label="Age" icon={<Timer size={12} weight="bold" />}>
           <DurationDisplay ms={entity.birthAgeMs} tone={entity.birthAgeMs > 600000 ? "crit" : entity.birthAgeMs > 60000 ? "warn" : undefined} />
@@ -592,25 +676,19 @@ function MetaTreeNode({ name, value, depth = 0 }: { name: string; value: MetaVal
 }
 
 function MockMetaSection({ meta }: { meta: Record<string, MetaValue> }) {
-  const [expanded, setExpanded] = useState(true);
   return (
     <div className="mockup-inspector-section">
       <div className="mockup-inspector-raw-head">
-        <span>Metadata ({Object.keys(meta).length})</span>
-        <ActionButton size="sm" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? "Collapse" : "Expand"}
-        </ActionButton>
+        <span>Metadata</span>
         <ActionButton size="sm">
           <CopySimple size={12} weight="bold" />
         </ActionButton>
       </div>
-      {expanded && (
-        <div className="mockup-meta-tree">
-          {Object.entries(meta).map(([k, v]) => (
-            <MetaTreeNode key={k} name={k} value={v} />
-          ))}
-        </div>
-      )}
+      <div className="mockup-meta-tree">
+        {Object.entries(meta).map(([k, v]) => (
+          <MetaTreeNode key={k} name={k} value={v} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -620,7 +698,7 @@ function MockMetaSection({ meta }: { meta: Record<string, MetaValue> }) {
 function DeadlockDetectorMockup() {
   const [inspectorWidth, setInspectorWidth] = useState(340);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
-  const [selectedEntityId, setSelectedEntityId] = useState<string | undefined>("req_sleepy");
+  const [selectedEntityId, setSelectedEntityId] = useState<string | undefined>("resp_sleepy");
   const selectedEntity = MOCK_ENTITIES.find((e) => e.id === selectedEntityId);
 
   return (

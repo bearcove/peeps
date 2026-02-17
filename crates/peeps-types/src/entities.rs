@@ -133,7 +133,7 @@ pub struct ChannelEndpointEntity {
     pub details: ChannelDetails,
 }
 
-#[derive(Facet)]
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
 pub enum ChannelEndpointLifecycle {
@@ -141,7 +141,7 @@ pub enum ChannelEndpointLifecycle {
     Closed(ChannelCloseCause),
 }
 
-#[derive(Facet)]
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
 pub enum ChannelCloseCause {
@@ -163,18 +163,22 @@ pub enum ChannelDetails {
 
 #[derive(Facet)]
 pub struct MpscChannelDetails {
-    /// Queue capacity for bounded channels; `None` means unbounded.
-    pub capacity: Option<u32>,
-    /// Current number of messages queued in this endpoint.
-    pub queue_len: u32,
+    /// Buffer state when observable for this endpoint.
+    pub buffer: Option<BufferState>,
 }
 
 #[derive(Facet)]
 pub struct BroadcastChannelDetails {
-    /// Ring-buffer capacity.
-    pub capacity: u32,
-    /// Current number of messages retained in the ring buffer.
-    pub queue_len: u32,
+    /// Buffer state when observable for this endpoint.
+    pub buffer: Option<BufferState>,
+}
+
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BufferState {
+    /// Current number of buffered items.
+    pub occupancy: u32,
+    /// Maximum buffered items when bounded; `None` means unbounded.
+    pub capacity: Option<u32>,
 }
 
 #[derive(Facet)]

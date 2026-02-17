@@ -121,6 +121,29 @@ Current rule:
 
 No other SQL "safety theater" constraints are enforced right now.
 
+### `POST /api/query`
+
+Runs a canonical named query pack maintained by the backend.
+
+Request JSON:
+
+```json
+{
+  "name": "blockers",
+  "limit": 50
+}
+```
+
+Response JSON is the same shape as `/api/sql`:
+
+```json
+{
+  "columns": ["waiter_id", "waiter_name", "blocked_on_id", "blocked_on_name", "kind_json"],
+  "rows": [],
+  "row_count": 0
+}
+```
+
 ## SQLite tables currently materialized
 
 These tables are written by ingest and available through `/api/sql`:
@@ -131,14 +154,17 @@ These tables are written by ingest and available through `/api/sql`:
 4. `stream_cursors`
 5. `delta_batches`
 6. `entities`
-7. `edges`
-8. `events`
+7. `scopes`
+8. `entity_scope_links`
+9. `edges`
+10. `events`
 
 Notes:
 
 1. `entities` / `edges` / `events` are materialized from delta stream changes.
 2. `delta_batches` stores raw batch payloads for traceability/replay work.
-3. scope materialization is not wired yet because scope changes are not emitted in the current delta stream.
+3. `scopes` are materialized from delta stream scope changes (`upsert_scope` / `remove_scope`).
+4. `entity_scope_links` is materialized from scope-membership delta changes.
 
 ## Cut flow in plain language
 
@@ -150,3 +176,16 @@ The shortest mental model:
 4. frontend polls `GET /api/cuts/{cut_id}` until `pending_connections == 0`
 
 This is exactly what `peeps-cli cut` does as one command.
+
+## Canonical query packs
+
+To reduce hand-written SQL in clients and agents, backend exposes these via `POST /api/query` and `peeps-cli query --name ...` consumes that endpoint:
+
+1. `blockers`
+2. `blocked-senders`
+3. `blocked-receivers`
+4. `stalled-sends`
+5. `channel-pressure`
+6. `channel-health`
+7. `scope-membership`
+8. `stale-blockers`

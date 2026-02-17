@@ -1,0 +1,12 @@
+{
+  "name": "peeps-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.29.3",
+  "scripts": {
+    "dev": "./scripts/dev",
+    "dev:frontend": "pnpm --dir frontend dev",
+    "dev:web": "cargo run -p peeps-web",
+    "build": "pnpm --dir frontend build",
+    "test": "pnpm --dir frontend test"
+  }
+}

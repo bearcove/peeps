@@ -28,6 +28,13 @@ struct SqlRequest {
     sql: CompactString,
 }
 
+#[derive(Facet)]
+struct QueryRequest {
+    name: CompactString,
+    #[facet(skip_unless_truthy)]
+    limit: Option<u32>,
+}
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("{err}");
@@ -223,72 +230,20 @@ fn run_query_pack(args: Vec<String>) -> Result<(), String> {
     let Some(name) = name else {
         return Err(format!("missing --name\n\n{}", query_usage()));
     };
-    let sql = query_sql(&name, limit)?;
-    run_sql(vec![
-        "--url".to_string(),
-        base_url,
-        "--query".to_string(),
-        sql,
-    ])
-}
-
-fn query_sql(name: &str, limit: u32) -> Result<String, String> {
-    match name {
-        "blockers" => Ok(format!(
-            "select \
-             e.src_id as waiter_id, \
-             json_extract(src.entity_json, '$.name') as waiter_name, \
-             e.dst_id as blocked_on_id, \
-             json_extract(dst.entity_json, '$.name') as blocked_on_name, \
-             e.kind_json \
-             from edges e \
-             left join entities src on src.conn_id = e.conn_id and src.stream_id = e.stream_id and src.entity_id = e.src_id \
-             left join entities dst on dst.conn_id = e.conn_id and dst.stream_id = e.stream_id and dst.entity_id = e.dst_id \
-             where e.kind_json = '\"needs\"' \
-             order by e.updated_at_ns desc \
-             limit {limit}"
-        )),
-        "stalled-sends" => Ok(format!(
-            "select \
-             f.entity_id as send_future_id, \
-             json_extract(f.entity_json, '$.name') as send_name, \
-             e.dst_id as waiting_on_entity_id, \
-             json_extract(ch.entity_json, '$.name') as waiting_on_name \
-             from edges e \
-             join entities f on f.conn_id = e.conn_id and f.stream_id = e.stream_id and f.entity_id = e.src_id \
-             left join entities ch on ch.conn_id = e.conn_id and ch.stream_id = e.stream_id and ch.entity_id = e.dst_id \
-             where e.kind_json = '\"needs\"' \
-               and json_extract(f.entity_json, '$.body') = 'future' \
-               and json_extract(f.entity_json, '$.name') like '%.send' \
-             order by e.updated_at_ns desc \
-             limit {limit}"
-        )),
-        "channel-health" => Ok(format!(
-            "select \
-             entity_id, \
-             json_extract(entity_json, '$.name') as name, \
-             coalesce( \
-               json_extract(entity_json, '$.body.channel_tx.lifecycle'), \
-               json_extract(entity_json, '$.body.channel_rx.lifecycle') \
-             ) as lifecycle, \
-             coalesce( \
-               json_extract(entity_json, '$.body.channel_tx.details.mpsc.capacity'), \
-               json_extract(entity_json, '$.body.channel_rx.details.mpsc.capacity') \
-             ) as capacity, \
-             coalesce( \
-               json_extract(entity_json, '$.body.channel_tx.details.mpsc.queue_len'), \
-               json_extract(entity_json, '$.body.channel_rx.details.mpsc.queue_len') \
-             ) as queue_len \
-             from entities \
-             where json_extract(entity_json, '$.body.channel_tx') is not null \
-                or json_extract(entity_json, '$.body.channel_rx') is not null \
-             order by name \
-             limit {limit}"
-        )),
-        _ => Err(format!(
-            "unknown query pack: {name}. expected one of: blockers, stalled-sends, channel-health"
-        )),
-    }
+    let req = QueryRequest {
+        name: CompactString::from(name),
+        limit: Some(limit),
+    };
+    let body = facet_json::to_string(&req).map_err(|e| format!("encode query request: {e}"))?;
+    let url = format!("{}/api/query", base_url.trim_end_matches('/'));
+    let response = http_post_json(&url, &body)?;
+    let pretty = facet_json::to_string_pretty(
+        &facet_json::from_str::<facet_value::Value>(&response)
+            .map_err(|e| format!("decode query response as json: {e}"))?,
+    )
+    .map_err(|e| format!("pretty query response: {e}"))?;
+    println!("{pretty}");
+    Ok(())
 }
 
 fn http_get_text(url: &str) -> Result<String, String> {
@@ -312,7 +267,7 @@ fn http_post_json(url: &str, body: &str) -> Result<String, String> {
 
 fn usage() -> String {
     format!(
-        "peeps-cli commands:\n  cut [--url URL] [--poll-ms N] [--timeout-ms N]\n  sql --query \"...\" [--url URL]\n  query --name <blockers|stalled-sends|channel-health> [--url URL]\n\n{}",
+        "peeps-cli commands:\n  cut [--url URL] [--poll-ms N] [--timeout-ms N]\n  sql --query \"...\" [--url URL]\n  query --name <blockers|blocked-senders|blocked-receivers|stalled-sends|channel-pressure|channel-health|scope-membership|stale-blockers> [--url URL]\n\n{}",
         defaults_usage()
     )
 }
@@ -333,7 +288,7 @@ fn sql_usage() -> String {
 
 fn query_usage() -> String {
     format!(
-        "peeps-cli query --name <blockers|stalled-sends|channel-health> [--url URL]\n\n{}",
+        "peeps-cli query --name <blockers|blocked-senders|blocked-receivers|stalled-sends|channel-pressure|channel-health|scope-membership|stale-blockers> [--url URL]\n\n{}",
         defaults_usage()
     )
 }

@@ -41,6 +41,16 @@ pub enum Change {
     RemoveEntity { id: EntityId },
     /// Remove scope in materialized state.
     RemoveScope { id: ScopeId },
+    /// Insert or replace entity-scope membership state.
+    UpsertEntityScopeLink {
+        entity_id: EntityId,
+        scope_id: ScopeId,
+    },
+    /// Remove entity-scope membership state.
+    RemoveEntityScopeLink {
+        entity_id: EntityId,
+        scope_id: ScopeId,
+    },
     /// Insert or replace edge state.
     UpsertEdge(Edge),
     /// Remove a specific edge in materialized state.

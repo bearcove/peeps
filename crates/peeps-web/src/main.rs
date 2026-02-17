@@ -86,13 +86,20 @@ struct SqlRequest {
 }
 
 #[derive(Facet)]
+struct QueryRequest {
+    name: CompactString,
+    #[facet(skip_unless_truthy)]
+    limit: Option<u32>,
+}
+
+#[derive(Facet)]
 struct SqlResponse {
     columns: Vec<CompactString>,
     rows: Vec<facet_value::Value>,
     row_count: u32,
 }
 
-const DB_SCHEMA_VERSION: i64 = 2;
+const DB_SCHEMA_VERSION: i64 = 3;
 
 #[tokio::main]
 async fn main() {
@@ -135,6 +142,7 @@ async fn main() {
         .route("/api/cuts", post(api_trigger_cut))
         .route("/api/cuts/{cut_id}", get(api_cut_status))
         .route("/api/sql", post(api_sql))
+        .route("/api/query", post(api_query))
         .with_state(state.clone());
 
     tokio::select! {
@@ -269,6 +277,30 @@ async fn api_sql(State(state): State<AppState>, body: Bytes) -> impl IntoRespons
         Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("sql worker join error: {e}"),
+        ),
+    }
+}
+
+async fn api_query(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {
+    let req: QueryRequest = match facet_json::from_slice(&body) {
+        Ok(req) => req,
+        Err(e) => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                format!("invalid request json: {e}"),
+            )
+        }
+    };
+
+    let db_path = state.db_path.clone();
+    let name = req.name.to_string();
+    let limit = req.limit.unwrap_or(50);
+    match tokio::task::spawn_blocking(move || query_named_blocking(&db_path, &name, limit)).await {
+        Ok(Ok(resp)) => json_ok(&resp),
+        Ok(Err(err)) => json_error(StatusCode::BAD_REQUEST, err),
+        Err(e) => json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("query worker join error: {e}"),
         ),
     }
 }
@@ -550,6 +582,146 @@ fn sql_query_blocking(db_path: &PathBuf, sql: &str) -> Result<SqlResponse, Strin
     })
 }
 
+fn query_named_blocking(db_path: &PathBuf, name: &str, limit: u32) -> Result<SqlResponse, String> {
+    let sql = named_query_sql(name, limit)?;
+    sql_query_blocking(db_path, &sql)
+}
+
+fn named_query_sql(name: &str, limit: u32) -> Result<String, String> {
+    match name {
+        "blockers" => Ok(format!(
+            "select \
+             e.src_id as waiter_id, \
+             json_extract(src.entity_json, '$.name') as waiter_name, \
+             e.dst_id as blocked_on_id, \
+             json_extract(dst.entity_json, '$.name') as blocked_on_name, \
+             e.kind_json \
+             from edges e \
+             left join entities src on src.conn_id = e.conn_id and src.stream_id = e.stream_id and src.entity_id = e.src_id \
+             left join entities dst on dst.conn_id = e.conn_id and dst.stream_id = e.stream_id and dst.entity_id = e.dst_id \
+             where e.kind_json = '\"needs\"' \
+             order by e.updated_at_ns desc \
+             limit {limit}"
+        )),
+        "blocked-senders" => Ok(format!(
+            "select \
+             f.entity_id as send_future_id, \
+             json_extract(f.entity_json, '$.name') as send_name, \
+             e.dst_id as waiting_on_entity_id, \
+             json_extract(ch.entity_json, '$.name') as waiting_on_name, \
+             e.updated_at_ns \
+             from edges e \
+             join entities f on f.conn_id = e.conn_id and f.stream_id = e.stream_id and f.entity_id = e.src_id \
+             left join entities ch on ch.conn_id = e.conn_id and ch.stream_id = e.stream_id and ch.entity_id = e.dst_id \
+             where e.kind_json = '\"needs\"' \
+               and json_extract(f.entity_json, '$.body') = 'future' \
+               and json_extract(f.entity_json, '$.name') like '%.send' \
+             order by e.updated_at_ns desc \
+             limit {limit}"
+        )),
+        "blocked-receivers" => Ok(format!(
+            "select \
+             f.entity_id as recv_future_id, \
+             json_extract(f.entity_json, '$.name') as recv_name, \
+             e.dst_id as waiting_on_entity_id, \
+             json_extract(ch.entity_json, '$.name') as waiting_on_name, \
+             e.updated_at_ns \
+             from edges e \
+             join entities f on f.conn_id = e.conn_id and f.stream_id = e.stream_id and f.entity_id = e.src_id \
+             left join entities ch on ch.conn_id = e.conn_id and ch.stream_id = e.stream_id and ch.entity_id = e.dst_id \
+             where e.kind_json = '\"needs\"' \
+               and json_extract(f.entity_json, '$.body') = 'future' \
+               and json_extract(f.entity_json, '$.name') like '%.recv' \
+             order by e.updated_at_ns desc \
+             limit {limit}"
+        )),
+        "stalled-sends" => Ok(format!(
+            "select \
+             f.entity_id as send_future_id, \
+             json_extract(f.entity_json, '$.name') as send_name, \
+             e.dst_id as waiting_on_entity_id, \
+             json_extract(ch.entity_json, '$.name') as waiting_on_name \
+             from edges e \
+             join entities f on f.conn_id = e.conn_id and f.stream_id = e.stream_id and f.entity_id = e.src_id \
+             left join entities ch on ch.conn_id = e.conn_id and ch.stream_id = e.stream_id and ch.entity_id = e.dst_id \
+             where e.kind_json = '\"needs\"' \
+               and json_extract(f.entity_json, '$.body') = 'future' \
+               and json_extract(f.entity_json, '$.name') like '%.send' \
+             order by e.updated_at_ns desc \
+             limit {limit}"
+        )),
+        "channel-pressure" => Ok(format!(
+            "select \
+             entity_id, \
+             json_extract(entity_json, '$.name') as name, \
+             coalesce(json_extract(entity_json, '$.body.channel_tx.details.mpsc.buffer.capacity'), json_extract(entity_json, '$.body.channel_rx.details.mpsc.buffer.capacity')) as capacity, \
+             coalesce(json_extract(entity_json, '$.body.channel_tx.details.mpsc.buffer.occupancy'), json_extract(entity_json, '$.body.channel_rx.details.mpsc.buffer.occupancy')) as occupancy, \
+             case \
+               when coalesce(json_extract(entity_json, '$.body.channel_tx.details.mpsc.buffer.capacity'), json_extract(entity_json, '$.body.channel_rx.details.mpsc.buffer.capacity')) > 0 \
+               then cast(coalesce(json_extract(entity_json, '$.body.channel_tx.details.mpsc.buffer.occupancy'), json_extract(entity_json, '$.body.channel_rx.details.mpsc.buffer.occupancy')) as real) / \
+                    cast(coalesce(json_extract(entity_json, '$.body.channel_tx.details.mpsc.buffer.capacity'), json_extract(entity_json, '$.body.channel_rx.details.mpsc.buffer.capacity')) as real) \
+               else null \
+             end as utilization \
+             from entities \
+             where json_extract(entity_json, '$.body.channel_tx.details.mpsc') is not null \
+                or json_extract(entity_json, '$.body.channel_rx.details.mpsc') is not null \
+             order by utilization desc, name asc \
+             limit {limit}"
+        )),
+        "channel-health" => Ok(format!(
+            "select \
+             entity_id, \
+             json_extract(entity_json, '$.name') as name, \
+             coalesce( \
+               json_extract(entity_json, '$.body.channel_tx.lifecycle'), \
+               json_extract(entity_json, '$.body.channel_rx.lifecycle') \
+             ) as lifecycle, \
+             coalesce( \
+               json_extract(entity_json, '$.body.channel_tx.details.mpsc.buffer.capacity'), \
+               json_extract(entity_json, '$.body.channel_rx.details.mpsc.buffer.capacity') \
+             ) as capacity, \
+             coalesce( \
+               json_extract(entity_json, '$.body.channel_tx.details.mpsc.buffer.occupancy'), \
+               json_extract(entity_json, '$.body.channel_rx.details.mpsc.buffer.occupancy') \
+             ) as occupancy \
+             from entities \
+             where json_extract(entity_json, '$.body.channel_tx') is not null \
+                or json_extract(entity_json, '$.body.channel_rx') is not null \
+             order by name \
+             limit {limit}"
+        )),
+        "scope-membership" => Ok(format!(
+            "select \
+             l.scope_id, \
+             json_extract(s.scope_json, '$.name') as scope_name, \
+             l.entity_id, \
+             json_extract(e.entity_json, '$.name') as entity_name \
+             from entity_scope_links l \
+             left join scopes s on s.conn_id = l.conn_id and s.stream_id = l.stream_id and s.scope_id = l.scope_id \
+             left join entities e on e.conn_id = l.conn_id and e.stream_id = l.stream_id and e.entity_id = l.entity_id \
+             order by scope_name asc, entity_name asc \
+             limit {limit}"
+        )),
+        "stale-blockers" => Ok(format!(
+            "select \
+             e.src_id as waiter_id, \
+             json_extract(src.entity_json, '$.name') as waiter_name, \
+             e.dst_id as blocked_on_id, \
+             json_extract(dst.entity_json, '$.name') as blocked_on_name, \
+             e.updated_at_ns \
+             from edges e \
+             left join entities src on src.conn_id = e.conn_id and src.stream_id = e.stream_id and src.entity_id = e.src_id \
+             left join entities dst on dst.conn_id = e.conn_id and dst.stream_id = e.stream_id and dst.entity_id = e.dst_id \
+             where e.kind_json = '\"needs\"' \
+             order by e.updated_at_ns asc \
+             limit {limit}"
+        )),
+        _ => Err(format!(
+            "unknown query pack: {name}. expected one of: blockers, blocked-senders, blocked-receivers, stalled-sends, channel-pressure, channel-health, scope-membership, stale-blockers"
+        )),
+    }
+}
+
 fn init_sqlite(db_path: &PathBuf) -> Result<(), String> {
     let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
     conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")
@@ -584,6 +756,7 @@ fn reset_managed_schema(conn: &Connection) -> Result<(), String> {
         DROP TABLE IF EXISTS edges;
         DROP TABLE IF EXISTS entities;
         DROP TABLE IF EXISTS scopes;
+        DROP TABLE IF EXISTS entity_scope_links;
         DROP TABLE IF EXISTS delta_batches;
         DROP TABLE IF EXISTS stream_cursors;
         DROP TABLE IF EXISTS cut_acks;
@@ -655,6 +828,15 @@ fn managed_schema_sql() -> &'static str {
         scope_json TEXT NOT NULL,
         updated_at_ns INTEGER NOT NULL,
         PRIMARY KEY (conn_id, stream_id, scope_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS entity_scope_links (
+        conn_id INTEGER NOT NULL,
+        stream_id TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        scope_id TEXT NOT NULL,
+        updated_at_ns INTEGER NOT NULL,
+        PRIMARY KEY (conn_id, stream_id, entity_id, scope_id)
     );
 
     CREATE TABLE IF NOT EXISTS edges (
@@ -854,12 +1036,36 @@ fn persist_delta_batch_blocking(
                 )
                 .map_err(|e| format!("upsert scope: {e}"))?;
             }
+            Change::UpsertEntityScopeLink {
+                entity_id,
+                scope_id,
+            } => {
+                tx.execute(
+                    "INSERT INTO entity_scope_links (conn_id, stream_id, entity_id, scope_id, updated_at_ns)
+                     VALUES (?1, ?2, ?3, ?4, ?5)
+                     ON CONFLICT(conn_id, stream_id, entity_id, scope_id) DO UPDATE SET
+                       updated_at_ns = excluded.updated_at_ns",
+                    params![
+                        to_i64_u64(conn_id),
+                        batch.stream_id.0.as_str(),
+                        entity_id.as_str(),
+                        scope_id.as_str(),
+                        received_at_ns
+                    ],
+                )
+                .map_err(|e| format!("upsert entity_scope_link: {e}"))?;
+            }
             Change::RemoveEntity { id } => {
                 tx.execute(
                     "DELETE FROM entities WHERE conn_id = ?1 AND stream_id = ?2 AND entity_id = ?3",
                     params![to_i64_u64(conn_id), batch.stream_id.0.as_str(), id.as_str()],
                 )
                 .map_err(|e| format!("delete entity: {e}"))?;
+                tx.execute(
+                    "DELETE FROM entity_scope_links WHERE conn_id = ?1 AND stream_id = ?2 AND entity_id = ?3",
+                    params![to_i64_u64(conn_id), batch.stream_id.0.as_str(), id.as_str()],
+                )
+                .map_err(|e| format!("delete entity_scope_links for entity: {e}"))?;
                 tx.execute(
                     "DELETE FROM edges
                      WHERE conn_id = ?1 AND stream_id = ?2 AND (src_id = ?3 OR dst_id = ?3)",
@@ -873,6 +1079,27 @@ fn persist_delta_batch_blocking(
                     params![to_i64_u64(conn_id), batch.stream_id.0.as_str(), id.as_str()],
                 )
                 .map_err(|e| format!("delete scope: {e}"))?;
+                tx.execute(
+                    "DELETE FROM entity_scope_links WHERE conn_id = ?1 AND stream_id = ?2 AND scope_id = ?3",
+                    params![to_i64_u64(conn_id), batch.stream_id.0.as_str(), id.as_str()],
+                )
+                .map_err(|e| format!("delete entity_scope_links for scope: {e}"))?;
+            }
+            Change::RemoveEntityScopeLink {
+                entity_id,
+                scope_id,
+            } => {
+                tx.execute(
+                    "DELETE FROM entity_scope_links
+                     WHERE conn_id = ?1 AND stream_id = ?2 AND entity_id = ?3 AND scope_id = ?4",
+                    params![
+                        to_i64_u64(conn_id),
+                        batch.stream_id.0.as_str(),
+                        entity_id.as_str(),
+                        scope_id.as_str()
+                    ],
+                )
+                .map_err(|e| format!("delete entity_scope_link: {e}"))?;
             }
             Change::UpsertEdge(edge) => {
                 let kind_json = facet_json::to_string(&edge.kind)

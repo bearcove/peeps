@@ -1,8 +1,11 @@
 use compact_str::CompactString;
 use peeps_types::{
-    Change, ChannelDetails, ChannelEndpointEntity, ChannelEndpointLifecycle, CutAck, CutId, Edge,
-    EdgeKind, Entity, EntityBody, EntityId, Event, EventKind, EventTarget, MpscChannelDetails,
-    PullChangesResponse, Scope, ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId,
+    BufferState, Change, ChannelCloseCause, ChannelClosedEvent, ChannelDetails,
+    ChannelEndpointEntity, ChannelEndpointLifecycle, ChannelReceiveEvent, ChannelReceiveOutcome,
+    ChannelSendEvent, ChannelSendOutcome, ChannelWaitEndedEvent, ChannelWaitKind,
+    ChannelWaitStartedEvent, CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, EntityId, Event,
+    EventKind, EventTarget, MpscChannelDetails, PullChangesResponse, Scope, ScopeBody, ScopeId,
+    SeqNo, StampedChange, StreamCursor, StreamId,
 };
 use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
@@ -11,6 +14,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::task::{Context, Poll};
 #[cfg(feature = "dashboard")]
 use std::time::Duration;
+use std::time::Instant;
 #[cfg(feature = "dashboard")]
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[cfg(feature = "dashboard")]
@@ -28,6 +32,7 @@ const MAX_EVENTS: usize = 16_384;
 const MAX_CHANGES_BEFORE_COMPACT: usize = 65_536;
 const COMPACT_TARGET_CHANGES: usize = 8_192;
 const DEFAULT_STREAM_ID_PREFIX: &str = "proc";
+static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
 #[cfg(feature = "dashboard")]
 const DASHBOARD_PUSH_MAX_CHANGES: u32 = 2048;
 #[cfg(feature = "dashboard")]
@@ -46,8 +51,13 @@ pub fn init(process_name: &str) {
 }
 
 fn ensure_process_scope(process_name: &str) {
-    static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
     PROCESS_SCOPE.get_or_init(|| ScopeHandle::new(process_name, ScopeBody::Process));
+}
+
+fn current_process_scope_id() -> Option<ScopeId> {
+    PROCESS_SCOPE
+        .get()
+        .map(|scope| ScopeId::new(scope.id().as_str()))
 }
 
 #[cfg(feature = "dashboard")]
@@ -225,6 +235,7 @@ struct RuntimeDb {
     compacted_before_seq_no: Option<SeqNo>,
     entities: BTreeMap<EntityId, Entity>,
     scopes: BTreeMap<ScopeId, Scope>,
+    entity_scope_links: BTreeMap<(EntityId, ScopeId), ()>,
     edges: BTreeMap<EdgeKey, Edge>,
     events: VecDeque<Event>,
     changes: VecDeque<InternalStampedChange>,
@@ -239,6 +250,7 @@ impl RuntimeDb {
             compacted_before_seq_no: None,
             entities: BTreeMap::new(),
             scopes: BTreeMap::new(),
+            entity_scope_links: BTreeMap::new(),
             edges: BTreeMap::new(),
             events: VecDeque::with_capacity(max_events.min(256)),
             changes: VecDeque::new(),
@@ -265,6 +277,7 @@ impl RuntimeDb {
         let mut keep_seq: BTreeMap<SeqNo, ()> = BTreeMap::new();
         let mut seen_entities: BTreeMap<EntityId, ()> = BTreeMap::new();
         let mut seen_scopes: BTreeMap<ScopeId, ()> = BTreeMap::new();
+        let mut seen_entity_scope_links: BTreeMap<(EntityId, ScopeId), ()> = BTreeMap::new();
         let mut seen_edges: BTreeMap<EdgeKey, ()> = BTreeMap::new();
 
         for stamped in self.changes.iter().rev() {
@@ -281,6 +294,23 @@ impl RuntimeDb {
                 InternalChange::UpsertScope { id, .. } | InternalChange::RemoveScope { id } => {
                     if !seen_scopes.contains_key(id) {
                         seen_scopes.insert(ScopeId::new(id.as_str()), ());
+                        keep_seq.insert(stamped.seq_no, ());
+                    }
+                }
+                InternalChange::UpsertEntityScopeLink {
+                    entity_id,
+                    scope_id,
+                }
+                | InternalChange::RemoveEntityScopeLink {
+                    entity_id,
+                    scope_id,
+                } => {
+                    let key = (
+                        EntityId::new(entity_id.as_str()),
+                        ScopeId::new(scope_id.as_str()),
+                    );
+                    if !seen_entity_scope_links.contains_key(&key) {
+                        seen_entity_scope_links.insert(key, ());
                         keep_seq.insert(stamped.seq_no, ());
                     }
                 }
@@ -326,6 +356,9 @@ impl RuntimeDb {
         let entity_json = facet_json::to_vec(&entity).ok();
         self.entities
             .insert(EntityId::new(entity.id.as_str()), entity);
+        if let Some(scope_id) = current_process_scope_id() {
+            self.link_entity_to_scope(&entity_id, &scope_id);
+        }
         if let Some(entity_json) = entity_json {
             self.push_change(InternalChange::UpsertEntity {
                 id: entity_id,
@@ -346,9 +379,59 @@ impl RuntimeDb {
         }
     }
 
+    fn update_channel_endpoint_state(
+        &mut self,
+        id: &EntityId,
+        lifecycle: ChannelEndpointLifecycle,
+        buffer: Option<BufferState>,
+    ) {
+        let Some(entity) = self.entities.get_mut(id) else {
+            return;
+        };
+
+        let mut changed = false;
+        match &mut entity.body {
+            EntityBody::ChannelTx(endpoint) | EntityBody::ChannelRx(endpoint) => {
+                if endpoint.lifecycle != lifecycle {
+                    endpoint.lifecycle = lifecycle;
+                    changed = true;
+                }
+                if let ChannelDetails::Mpsc(details) = &mut endpoint.details {
+                    if details.buffer != buffer {
+                        details.buffer = buffer;
+                        changed = true;
+                    }
+                }
+            }
+            _ => return,
+        }
+
+        if !changed {
+            return;
+        }
+        if let Some(entity_json) = facet_json::to_vec(entity).ok() {
+            self.push_change(InternalChange::UpsertEntity {
+                id: EntityId::new(id.as_str()),
+                entity_json,
+            });
+        }
+    }
+
     fn remove_entity(&mut self, id: &EntityId) {
         if self.entities.remove(id).is_none() {
             return;
+        }
+        let mut links_to_remove = Vec::new();
+        for (entity_scope, _) in &self.entity_scope_links {
+            if &entity_scope.0 == id {
+                links_to_remove.push((
+                    EntityId::new(entity_scope.0.as_str()),
+                    ScopeId::new(entity_scope.1.as_str()),
+                ));
+            }
+        }
+        for (entity_id, scope_id) in links_to_remove {
+            self.unlink_entity_from_scope(&entity_id, &scope_id);
         }
         let mut removed_edges: Vec<(EntityId, EntityId, EdgeKind)> = Vec::new();
         self.edges.retain(|k, _| {
@@ -374,8 +457,55 @@ impl RuntimeDb {
         if self.scopes.remove(id).is_none() {
             return;
         }
+        let mut links_to_remove = Vec::new();
+        for (entity_scope, _) in &self.entity_scope_links {
+            if &entity_scope.1 == id {
+                links_to_remove.push((
+                    EntityId::new(entity_scope.0.as_str()),
+                    ScopeId::new(entity_scope.1.as_str()),
+                ));
+            }
+        }
+        for (entity_id, scope_id) in links_to_remove {
+            self.unlink_entity_from_scope(&entity_id, &scope_id);
+        }
         self.push_change(InternalChange::RemoveScope {
             id: ScopeId::new(id.as_str()),
+        });
+    }
+
+    fn link_entity_to_scope(&mut self, entity_id: &EntityId, scope_id: &ScopeId) {
+        let key = (
+            EntityId::new(entity_id.as_str()),
+            ScopeId::new(scope_id.as_str()),
+        );
+        if self.entity_scope_links.contains_key(&key) {
+            return;
+        }
+        self.entity_scope_links.insert(
+            (
+                EntityId::new(entity_id.as_str()),
+                ScopeId::new(scope_id.as_str()),
+            ),
+            (),
+        );
+        self.push_change(InternalChange::UpsertEntityScopeLink {
+            entity_id: EntityId::new(entity_id.as_str()),
+            scope_id: ScopeId::new(scope_id.as_str()),
+        });
+    }
+
+    fn unlink_entity_from_scope(&mut self, entity_id: &EntityId, scope_id: &ScopeId) {
+        let key = (
+            EntityId::new(entity_id.as_str()),
+            ScopeId::new(scope_id.as_str()),
+        );
+        if self.entity_scope_links.remove(&key).is_none() {
+            return;
+        }
+        self.push_change(InternalChange::RemoveEntityScopeLink {
+            entity_id: EntityId::new(entity_id.as_str()),
+            scope_id: ScopeId::new(scope_id.as_str()),
         });
     }
 
@@ -511,6 +641,14 @@ enum InternalChange {
     RemoveScope {
         id: ScopeId,
     },
+    UpsertEntityScopeLink {
+        entity_id: EntityId,
+        scope_id: ScopeId,
+    },
+    RemoveEntityScopeLink {
+        entity_id: EntityId,
+        scope_id: ScopeId,
+    },
     UpsertEdge {
         src: EntityId,
         dst: EntityId,
@@ -548,6 +686,20 @@ impl InternalStampedChange {
             }),
             InternalChange::RemoveScope { id } => Some(Change::RemoveScope {
                 id: ScopeId::new(id.as_str()),
+            }),
+            InternalChange::UpsertEntityScopeLink {
+                entity_id,
+                scope_id,
+            } => Some(Change::UpsertEntityScopeLink {
+                entity_id: EntityId::new(entity_id.as_str()),
+                scope_id: ScopeId::new(scope_id.as_str()),
+            }),
+            InternalChange::RemoveEntityScopeLink {
+                entity_id,
+                scope_id,
+            } => Some(Change::RemoveEntityScopeLink {
+                entity_id: EntityId::new(entity_id.as_str()),
+                scope_id: ScopeId::new(scope_id.as_str()),
             }),
             InternalChange::UpsertEdge { edge_json, .. } => {
                 let edge = facet_json::from_slice::<Edge>(edge_json).ok()?;
@@ -695,21 +847,180 @@ impl EntityHandle {
 pub struct Sender<T> {
     inner: mpsc::Sender<T>,
     handle: EntityHandle,
+    channel: Arc<Mutex<ChannelRuntimeState>>,
     name: CompactString,
 }
 
 pub struct Receiver<T> {
     inner: mpsc::Receiver<T>,
     handle: EntityHandle,
+    channel: Arc<Mutex<ChannelRuntimeState>>,
     name: CompactString,
+}
+
+struct ChannelRuntimeState {
+    tx_id: EntityId,
+    rx_id: EntityId,
+    tx_ref_count: u32,
+    rx_state: ReceiverState,
+    queue_len: u32,
+    capacity: Option<u32>,
+    tx_close_cause: Option<ChannelCloseCause>,
+    rx_close_cause: Option<ChannelCloseCause>,
+}
+
+enum ReceiverState {
+    Alive,
+    Dropped,
+}
+
+impl ChannelRuntimeState {
+    fn tx_lifecycle(&self) -> ChannelEndpointLifecycle {
+        match self.tx_close_cause {
+            Some(cause) => ChannelEndpointLifecycle::Closed(cause),
+            None => ChannelEndpointLifecycle::Open,
+        }
+    }
+
+    fn rx_lifecycle(&self) -> ChannelEndpointLifecycle {
+        match self.rx_close_cause {
+            Some(cause) => ChannelEndpointLifecycle::Closed(cause),
+            None => ChannelEndpointLifecycle::Open,
+        }
+    }
+
+    fn is_send_full(&self) -> bool {
+        self.capacity
+            .map(|capacity| self.queue_len >= capacity)
+            .unwrap_or(false)
+    }
+
+    fn is_receive_empty(&self) -> bool {
+        self.queue_len == 0
+    }
 }
 
 impl<T> Clone for Sender<T> {
     fn clone(&self) -> Self {
+        if let Ok(mut state) = self.channel.lock() {
+            state.tx_ref_count = state.tx_ref_count.saturating_add(1);
+        }
         Self {
             inner: self.inner.clone(),
             handle: self.handle.clone(),
+            channel: self.channel.clone(),
             name: self.name.clone(),
+        }
+    }
+}
+
+fn sync_channel_state(
+    channel: &Arc<Mutex<ChannelRuntimeState>>,
+) -> Option<(
+    EntityId,
+    EntityId,
+    Option<BufferState>,
+    ChannelEndpointLifecycle,
+    ChannelEndpointLifecycle,
+)> {
+    let state = channel.lock().ok()?;
+    Some((
+        EntityId::new(state.tx_id.as_str()),
+        EntityId::new(state.rx_id.as_str()),
+        Some(BufferState {
+            occupancy: state.queue_len,
+            capacity: state.capacity,
+        }),
+        state.tx_lifecycle(),
+        state.rx_lifecycle(),
+    ))
+}
+
+fn apply_channel_state(channel: &Arc<Mutex<ChannelRuntimeState>>) {
+    let Some((tx_id, rx_id, buffer, tx_lifecycle, rx_lifecycle)) = sync_channel_state(channel)
+    else {
+        return;
+    };
+    if let Ok(mut db) = runtime_db().lock() {
+        db.update_channel_endpoint_state(&tx_id, tx_lifecycle, buffer);
+        db.update_channel_endpoint_state(&rx_id, rx_lifecycle, buffer);
+    }
+}
+
+fn emit_channel_wait_started(target: &EntityId, kind: ChannelWaitKind) {
+    if let Ok(event) = Event::channel_wait_started(
+        EventTarget::Entity(target.clone()),
+        &ChannelWaitStartedEvent { kind },
+    ) {
+        if let Ok(mut db) = runtime_db().lock() {
+            db.record_event(event);
+        }
+    }
+}
+
+fn emit_channel_wait_ended(target: &EntityId, kind: ChannelWaitKind, started: Instant) {
+    let wait_ns = started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+    if let Ok(event) = Event::channel_wait_ended(
+        EventTarget::Entity(target.clone()),
+        &ChannelWaitEndedEvent { kind, wait_ns },
+    ) {
+        if let Ok(mut db) = runtime_db().lock() {
+            db.record_event(event);
+        }
+    }
+}
+
+fn emit_channel_closed(target: &EntityId, cause: ChannelCloseCause) {
+    if let Ok(event) = Event::channel_closed(
+        EventTarget::Entity(target.clone()),
+        &ChannelClosedEvent { cause },
+    ) {
+        if let Ok(mut db) = runtime_db().lock() {
+            db.record_event(event);
+        }
+    }
+}
+
+impl<T> Drop for Sender<T> {
+    fn drop(&mut self) {
+        let mut emit_for_rx = None;
+        if let Ok(mut state) = self.channel.lock() {
+            state.tx_ref_count = state.tx_ref_count.saturating_sub(1);
+            if state.tx_ref_count == 0 {
+                if state.tx_close_cause.is_none() {
+                    state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                }
+                if state.rx_close_cause.is_none() {
+                    state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                    emit_for_rx = Some(EntityId::new(state.rx_id.as_str()));
+                }
+            }
+        }
+        apply_channel_state(&self.channel);
+        if let Some(rx_id) = emit_for_rx {
+            emit_channel_closed(&rx_id, ChannelCloseCause::SenderDropped);
+        }
+    }
+}
+
+impl<T> Drop for Receiver<T> {
+    fn drop(&mut self) {
+        let mut emit_for_tx = None;
+        if let Ok(mut state) = self.channel.lock() {
+            if matches!(state.rx_state, ReceiverState::Alive) {
+                state.rx_state = ReceiverState::Dropped;
+                if state.tx_close_cause.is_none() {
+                    state.tx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
+                    emit_for_tx = Some(EntityId::new(state.tx_id.as_str()));
+                }
+                if state.rx_close_cause.is_none() {
+                    state.rx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
+                }
+            }
+        }
+        apply_channel_state(&self.channel);
+        if let Some(tx_id) = emit_for_tx {
+            emit_channel_closed(&tx_id, ChannelCloseCause::ReceiverDropped);
         }
     }
 }
@@ -720,12 +1031,102 @@ impl<T> Sender<T> {
     }
 
     pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
-        instrument_future_on(
+        let wait_kind = self.channel.lock().ok().and_then(|state| {
+            if state.is_send_full() {
+                if let Ok(event) = Event::channel_sent(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelSendEvent {
+                        outcome: ChannelSendOutcome::Full,
+                        queue_len: Some(state.queue_len),
+                    },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                Some(ChannelWaitKind::SendFull)
+            } else {
+                None
+            }
+        });
+        let wait_started = wait_kind.map(|kind| {
+            emit_channel_wait_started(self.handle.id(), kind);
+            Instant::now()
+        });
+
+        let result = instrument_future_on(
             format!("{}.send", self.name),
             &self.handle,
             self.inner.send(value),
         )
-        .await
+        .await;
+
+        if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
+            emit_channel_wait_ended(self.handle.id(), kind, started);
+        }
+
+        match result {
+            Ok(()) => {
+                let queue_len = if let Ok(mut state) = self.channel.lock() {
+                    state.queue_len = state.queue_len.saturating_add(1);
+                    state.queue_len
+                } else {
+                    0
+                };
+                apply_channel_state(&self.channel);
+                if let Ok(event) = Event::channel_sent(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelSendEvent {
+                        outcome: ChannelSendOutcome::Ok,
+                        queue_len: Some(queue_len),
+                    },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                Ok(())
+            }
+            Err(err) => {
+                let (queue_len, close_cause) = if let Ok(mut state) = self.channel.lock() {
+                    if state.tx_close_cause.is_none() {
+                        state.tx_close_cause = Some(ChannelCloseCause::ReceiverClosed);
+                    }
+                    if state.rx_close_cause.is_none() {
+                        state.rx_close_cause = Some(ChannelCloseCause::ReceiverClosed);
+                    }
+                    (
+                        state.queue_len,
+                        state
+                            .tx_close_cause
+                            .unwrap_or(ChannelCloseCause::ReceiverClosed),
+                    )
+                } else {
+                    (0, ChannelCloseCause::ReceiverClosed)
+                };
+                apply_channel_state(&self.channel);
+                if let Ok(event) = Event::channel_sent(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelSendEvent {
+                        outcome: ChannelSendOutcome::Closed,
+                        queue_len: Some(queue_len),
+                    },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                if let Ok(event) = Event::channel_closed(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelClosedEvent { cause: close_cause },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                Err(err)
+            }
+        }
     }
 }
 
@@ -735,22 +1136,115 @@ impl<T> Receiver<T> {
     }
 
     pub async fn recv(&mut self) -> Option<T> {
-        instrument_future_on(
+        let wait_kind = self.channel.lock().ok().and_then(|state| {
+            if state.is_receive_empty() {
+                if let Ok(event) = Event::channel_received(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelReceiveEvent {
+                        outcome: ChannelReceiveOutcome::Empty,
+                        queue_len: Some(state.queue_len),
+                    },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                Some(ChannelWaitKind::ReceiveEmpty)
+            } else {
+                None
+            }
+        });
+        let wait_started = wait_kind.map(|kind| {
+            emit_channel_wait_started(self.handle.id(), kind);
+            Instant::now()
+        });
+
+        let result = instrument_future_on(
             format!("{}.recv", self.name),
             &self.handle,
             self.inner.recv(),
         )
-        .await
+        .await;
+
+        if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
+            emit_channel_wait_ended(self.handle.id(), kind, started);
+        }
+
+        match result {
+            Some(value) => {
+                let queue_len = if let Ok(mut state) = self.channel.lock() {
+                    state.queue_len = state.queue_len.saturating_sub(1);
+                    state.queue_len
+                } else {
+                    0
+                };
+                apply_channel_state(&self.channel);
+                if let Ok(event) = Event::channel_received(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelReceiveEvent {
+                        outcome: ChannelReceiveOutcome::Ok,
+                        queue_len: Some(queue_len),
+                    },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                Some(value)
+            }
+            None => {
+                let (queue_len, close_cause) = if let Ok(mut state) = self.channel.lock() {
+                    if state.tx_close_cause.is_none() {
+                        state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                    }
+                    if state.rx_close_cause.is_none() {
+                        state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                    }
+                    (
+                        state.queue_len,
+                        state
+                            .rx_close_cause
+                            .unwrap_or(ChannelCloseCause::SenderDropped),
+                    )
+                } else {
+                    (0, ChannelCloseCause::SenderDropped)
+                };
+                apply_channel_state(&self.channel);
+                if let Ok(event) = Event::channel_received(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelReceiveEvent {
+                        outcome: ChannelReceiveOutcome::Closed,
+                        queue_len: Some(queue_len),
+                    },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                if let Ok(event) = Event::channel_closed(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelClosedEvent { cause: close_cause },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                None
+            }
+        }
     }
 }
 
 pub fn channel<T>(name: impl Into<CompactString>, capacity: usize) -> (Sender<T>, Receiver<T>) {
     let name = name.into();
     let (tx, rx) = mpsc::channel(capacity);
+    let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
 
     let details = ChannelDetails::Mpsc(MpscChannelDetails {
-        capacity: Some(capacity.min(u32::MAX as usize) as u32),
-        queue_len: 0,
+        buffer: Some(BufferState {
+            occupancy: 0,
+            capacity: Some(capacity_u32),
+        }),
     });
     let tx_handle = EntityHandle::new(
         format!("{name}:tx"),
@@ -760,8 +1254,10 @@ pub fn channel<T>(name: impl Into<CompactString>, capacity: usize) -> (Sender<T>
         }),
     );
     let details = ChannelDetails::Mpsc(MpscChannelDetails {
-        capacity: Some(capacity.min(u32::MAX as usize) as u32),
-        queue_len: 0,
+        buffer: Some(BufferState {
+            occupancy: 0,
+            capacity: Some(capacity_u32),
+        }),
     });
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
@@ -771,16 +1267,28 @@ pub fn channel<T>(name: impl Into<CompactString>, capacity: usize) -> (Sender<T>
         }),
     );
     tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
+    let channel = Arc::new(Mutex::new(ChannelRuntimeState {
+        tx_id: tx_handle.id().clone(),
+        rx_id: rx_handle.id().clone(),
+        tx_ref_count: 1,
+        rx_state: ReceiverState::Alive,
+        queue_len: 0,
+        capacity: Some(capacity_u32),
+        tx_close_cause: None,
+        rx_close_cause: None,
+    }));
 
     (
         Sender {
             inner: tx,
             handle: tx_handle,
+            channel: channel.clone(),
             name: name.clone(),
         },
         Receiver {
             inner: rx,
             handle: rx_handle,
+            channel,
             name,
         },
     )

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+(
+  cd "$ROOT_DIR"
+  cargo run -p peeps-web
+) &
+backend_pid=$!
+
+(
+  cd "$ROOT_DIR/frontend"
+  pnpm dev
+) &
+frontend_pid=$!
+
+cleanup() {
+  for pid in "$frontend_pid" "$backend_pid"; do
+    if kill -0 "$pid" >/dev/null 2>&1; then
+      kill "$pid" >/dev/null 2>&1 || true
+    fi
+  done
+
+  wait "$frontend_pid" >/dev/null 2>&1 || true
+  wait "$backend_pid" >/dev/null 2>&1 || true
+}
+
+trap cleanup EXIT INT TERM
+
+wait -n "$backend_pid" "$frontend_pid"

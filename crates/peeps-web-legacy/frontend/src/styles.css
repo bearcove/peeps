@@ -4546,6 +4546,7 @@ body {
 .mockup-graph-flow {
     flex: 1;
     min-height: 0;
+    position: relative;
 }
 
 .mockup-graph-flow .react-flow {
@@ -4570,6 +4571,28 @@ body {
 
 .mockup-graph-flow .react-flow__controls-button:last-child {
     border-bottom: none;
+}
+
+/* Re-enable pointer events on edges so SVG <title> tooltips work */
+.mockup-graph-flow .react-flow__edge {
+    pointer-events: auto;
+}
+
+/* Edge tooltip */
+.mockup-edge-tooltip {
+    position: absolute;
+    pointer-events: none;
+    z-index: 10;
+    transform: translate(-50%, calc(-100% - 10px));
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    line-height: 1.4;
+    white-space: nowrap;
+    background: light-dark(#1a1a2e, #e8e8f0);
+    color: light-dark(#e8e8f0, #1a1a2e);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 /* Inspector panel */
@@ -4660,6 +4683,11 @@ body {
     padding: 4px 0;
 }
 
+.mockup-inspector-node-header-text {
+    flex: 1;
+    min-width: 0;
+}
+
 .mockup-inspector-node-icon {
     display: grid;
     place-items: center;
@@ -4686,7 +4714,14 @@ body {
     color: var(--text-primary);
 }
 
+.mockup-inspector-alert-slot {
+    min-height: 32px;
+    display: flex;
+    align-items: stretch;
+}
+
 .mockup-inspector-alert {
+    flex: 1;
     font-size: 11px;
     padding: 6px 8px;
     border-radius: 4px;
@@ -4860,4 +4895,17 @@ body {
     text-align: center;
     color: var(--text-tertiary);
     font-size: 12px;
+}
+
+/* ── Source link style ───────────────────────────────────── */
+
+.mockup-inspector-source-link {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: light-dark(#1a5fb4, #7aadff);
+    text-decoration: none;
+}
+
+.mockup-inspector-source-link:hover {
+    text-decoration: underline;
 }
