@@ -1,3 +1,12 @@
+//! SQLite projection helpers for `peeps-types` snapshots.
+//!
+//! This crate intentionally handles the canonical four snapshot tables:
+//! `entities`, `scopes`, `edges`, and `events`.
+//!
+//! Additional query-oriented relationship tables (for example entity<->scope
+//! membership/link tables) should stay normalized at the SQLite layer instead
+//! of being modeled as arrays in JSON fields.
+
 use compact_str::CompactString;
 use peeps_types::{Edge, Entity, Event, Scope, Snapshot};
 use rusqlite::types::{Value as SqlValue, ValueRef};
@@ -173,6 +182,9 @@ pub fn encode_snapshot_batch(snapshot: &Snapshot) -> Result<EncodedSnapshotBatch
 
 #[derive(Debug, Clone)]
 pub struct SnapshotTableNames {
+    // Core snapshot projection tables.
+    // Keep this focused on canonical model rows; relationship/index helper
+    // tables (entity_scope_links, etc.) are managed separately by callers.
     pub entities: CompactString,
     pub scopes: CompactString,
     pub edges: CompactString,
