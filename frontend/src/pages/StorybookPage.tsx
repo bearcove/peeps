@@ -31,7 +31,6 @@ import { ProcessIdenticon } from "../ui/primitives/ProcessIdenticon";
 import { Table, type Column } from "../ui/primitives/Table";
 import { ActionButton } from "../ui/primitives/ActionButton";
 import { kindIcon } from "../nodeKindSpec";
-import { DeadlockDetectorApp, MOCK_ENTITIES, MOCK_EDGES } from "./DeadlockDetectorPage";
 
 type DemoTone = "neutral" | "ok" | "warn" | "crit";
 type DemoConnectionRow = {
@@ -338,10 +337,6 @@ export function StorybookPage() {
     <Panel variant="lab">
       <PanelHeader title="Lab" hint="Primitives and tone language" />
       <div className="lab-body">
-        <Section title="Deadlock Detector" subtitle="Full app layout mockup with resizable inspector" wide>
-          <DeadlockDetectorApp entityDefs={MOCK_ENTITIES} edgeDefs={MOCK_EDGES} />
-        </Section>
-
         <Section title="UI font — Manrope" subtitle="UI font in the sizes we actually use" wide>
           <div className="ui-typo-card">
             <div className="ui-typo-sample ui-typo-ui ui-typo-ui--xl">Take a snapshot</div>

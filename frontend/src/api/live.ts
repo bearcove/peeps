@@ -2,7 +2,7 @@ import type { ApiClient } from "./client";
 import type {
   ConnectionsResponse,
   CutStatusResponse,
-  SqlResponse,
+  SnapshotResponse,
   TriggerCutResponse,
 } from "./types";
 
@@ -46,10 +46,10 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 
 export function createLiveApiClient(): ApiClient {
   return {
-    fetchConnections: () => getJson<ConnectionsResponse>('/api/connections'),
-    triggerCut: () => postJson<TriggerCutResponse>('/api/cuts', {}),
+    fetchConnections: () => getJson<ConnectionsResponse>("/api/connections"),
+    triggerCut: () => postJson<TriggerCutResponse>("/api/cuts", {}),
     fetchCutStatus: (cutId: string) =>
       getJson<CutStatusResponse>(`/api/cuts/${encodeURIComponent(cutId)}`),
-    runSql: (sql: string) => postJson<SqlResponse>('/api/sql', { sql }),
+    fetchSnapshot: () => postJson<SnapshotResponse>("/api/snapshot", {}),
   };
 }

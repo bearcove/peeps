@@ -25,7 +25,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 #[cfg(feature = "dashboard")]
-use tokio::time::{interval, MissedTickBehavior};
+use tokio::time::MissedTickBehavior;
 
 #[cfg(feature = "dashboard")]
 use peeps_wire::{
@@ -123,7 +123,7 @@ async fn run_dashboard_session(addr: &str, process_name: CompactString) -> Resul
     write_client_message(&mut writer, &handshake).await?;
 
     let mut cursor = SeqNo::ZERO;
-    let mut ticker = interval(Duration::from_millis(DASHBOARD_PUSH_INTERVAL_MS));
+    let mut ticker = tokio::time::interval(Duration::from_millis(DASHBOARD_PUSH_INTERVAL_MS));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     loop {
@@ -207,6 +207,21 @@ where
     F::Output: Send + 'static,
 {
     tokio::spawn(instrument_future_named(name, fut))
+}
+
+pub fn spawn_blocking_tracked<F, T>(
+    name: impl Into<CompactString>,
+    f: F,
+) -> tokio::task::JoinHandle<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    let handle = EntityHandle::new(name, EntityBody::Future);
+    tokio::task::spawn_blocking(move || {
+        let _hold = handle;
+        f()
+    })
 }
 
 pub fn sleep(duration: std::time::Duration, label: impl Into<String>) -> impl Future<Output = ()> {
@@ -3471,8 +3486,17 @@ macro_rules! peep {
     ($fut:expr, $name:expr $(,)?) => {{
         $crate::instrument_future_named($name, $fut)
     }};
-    ($fut:expr, $name:expr, $meta:tt $(,)?) => {{
-        let _ = &$meta;
+    ($fut:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?} $(,)?) => {{
+        let _ = ($((&$k, &$v)),*);
         $crate::instrument_future_named($name, $fut)
+    }};
+    ($fut:expr, $name:expr, level = $($rest:tt)*) => {{
+        compile_error!("`level=` is deprecated");
+    }};
+    ($fut:expr, $name:expr, kind = $($rest:tt)*) => {{
+        compile_error!("`kind=` is deprecated");
+    }};
+    ($fut:expr, $name:expr, $($rest:tt)+) => {{
+        compile_error!("invalid `peep!` arguments");
     }};
 }

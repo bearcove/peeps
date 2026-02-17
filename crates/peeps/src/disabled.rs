@@ -898,6 +898,14 @@ where
     tokio::spawn(fut)
 }
 
+pub fn spawn_blocking_tracked<F, T>(_: impl Into<CompactString>, f: F) -> tokio::task::JoinHandle<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+}
+
 pub fn sleep(duration: std::time::Duration, _label: impl Into<String>) -> impl Future<Output = ()> {
     tokio::time::sleep(duration)
 }
@@ -1025,8 +1033,17 @@ macro_rules! peep {
     ($fut:expr, $name:expr $(,)?) => {{
         $crate::instrument_future_named($name, $fut)
     }};
-    ($fut:expr, $name:expr, $meta:tt $(,)?) => {{
-        let _ = &$meta;
+    ($fut:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?} $(,)?) => {{
+        let _ = ($((&$k, &$v)),*);
         $crate::instrument_future_named($name, $fut)
+    }};
+    ($fut:expr, $name:expr, level = $($rest:tt)*) => {{
+        compile_error!("`level=` is deprecated");
+    }};
+    ($fut:expr, $name:expr, kind = $($rest:tt)*) => {{
+        compile_error!("`kind=` is deprecated");
+    }};
+    ($fut:expr, $name:expr, $($rest:tt)+) => {{
+        compile_error!("invalid `peep!` arguments");
     }};
 }

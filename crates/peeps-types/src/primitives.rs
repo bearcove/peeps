@@ -32,6 +32,7 @@ fn ptime_anchor() -> &'static Instant {
 
 /// process start time + N milliseconds
 #[derive(Facet, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[facet(transparent)]
 pub struct PTime(u64);
 
 impl PTime {
@@ -47,14 +48,17 @@ impl PTime {
 
 /// Opaque textual entity identifier suitable for wire formats and JS runtimes.
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[facet(transparent)]
 pub struct EntityId(pub(crate) CompactString);
 
 /// Opaque textual scope identifier suitable for wire formats and JS runtimes.
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[facet(transparent)]
 pub struct ScopeId(pub(crate) CompactString);
 
 /// Opaque textual event identifier suitable for wire formats and JS runtimes.
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[facet(transparent)]
 pub struct EventId(pub(crate) CompactString);
 
 impl EntityId {

@@ -1,9 +1,9 @@
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import { DeadlockDetectorPage } from "./pages/DeadlockDetectorPage";
+import { App } from "./App";
 import { StorybookPage } from "./pages/StorybookPage";
 
 const router = createBrowserRouter([
-  { path: "/", element: <DeadlockDetectorPage /> },
+  { path: "/", element: <App /> },
   { path: "/storybook", element: <StorybookPage /> },
 ]);
 

@@ -1,377 +1,1029 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Edge, Node } from "@xyflow/react";
-import { Background, Controls, MiniMap, ReactFlow } from "@xyflow/react";
-import ELK from "elkjs/lib/elk.bundled.js";
-import type {
-  ConnectedProcessInfo,
-  ConnectionsResponse,
-  CutStatusResponse,
-  SqlResponse,
-} from "./api/types";
+import React, { useCallback, useMemo, useState } from "react";
+import {
+  ReactFlow,
+  ReactFlowProvider,
+  Handle,
+  Position,
+  Background,
+  BackgroundVariant,
+  Controls,
+  MarkerType,
+  type Node,
+  type Edge,
+  type EdgeProps,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import ELK from "elkjs/lib/elk-api.js";
+import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
+import {
+  CaretDown,
+  CaretLeft,
+  CaretRight,
+  Camera,
+  Aperture,
+  CheckCircle,
+  CircleNotch,
+  CopySimple,
+  FileRs,
+  LinkSimple,
+  MagnifyingGlass,
+  PaperPlaneTilt,
+  Timer,
+  Crosshair,
+} from "@phosphor-icons/react";
+import { SplitLayout } from "./ui/layout/SplitLayout";
+import { Badge } from "./ui/primitives/Badge";
+import { KeyValueRow } from "./ui/primitives/KeyValueRow";
+import { DurationDisplay } from "./ui/primitives/DurationDisplay";
+import { ActionButton } from "./ui/primitives/ActionButton";
+import { kindIcon, kindDisplayName } from "./nodeKindSpec";
 import { apiClient, apiMode } from "./api";
+import type { EntityBody, SnapshotEdgeKind, SnapshotResponse } from "./api/types";
 
-interface FlowNodeData extends Record<string, unknown> {
-  label: string;
-  detail: string;
+// ── Display types ──────────────────────────────────────────────
+
+type Tone = "ok" | "warn" | "crit" | "neutral";
+
+type MetaValue = string | number | boolean | null | MetaValue[] | { [key: string]: MetaValue };
+
+export type EntityDef = {
+  id: string;
+  name: string;
+  kind: string;
+  body: EntityBody;
+  source: string;
+  birth: number;
+  meta: Record<string, MetaValue>;
+  inCycle: boolean;
+  status: { label: string; tone: Tone };
+  stat?: string;
+};
+
+export type EdgeDef = {
+  id: string;
+  source: string;
+  target: string;
+  kind: SnapshotEdgeKind;
+};
+
+// ── Snapshot conversion ────────────────────────────────────────
+
+function bodyToKind(body: EntityBody): string {
+  return typeof body === "string" ? body : Object.keys(body)[0];
 }
 
-const elk = new ELK();
-
-const FLOW_NODE_WIDTH = 210;
-const FLOW_NODE_HEIGHT = 64;
-const CONNECTION_POLL_MS = 1000;
-const CUT_STATUS_POLL_MS = 600;
-const WEBSOCKET_URL = import.meta.env.VITE_PEEPS_WS_URL ?? "ws://127.0.0.1:9119";
-const isLabMode = apiMode === "lab";
-
-function buildFlowGraph(
-  connections: ConnectedProcessInfo[],
-  cutStatus: CutStatusResponse | null,
-): { nodes: Node<FlowNodeData>[]; edges: Edge[] } {
-  if (connections.length === 0) {
-    return {
-      nodes: [
-        {
-          id: "waiting",
-          data: {
-            label: "No live connections",
-            detail: "Run an instrumented process with PEEPS_DASHBOARD=127.0.0.1:9119",
-          },
-          position: { x: 0, y: 0 },
-          style: { width: FLOW_NODE_WIDTH },
-        },
-      ],
-      edges: [],
-    };
+function deriveStatus(body: EntityBody): { label: string; tone: Tone } {
+  if (typeof body === "string") return { label: "polling", tone: "neutral" };
+  if ("request" in body) return { label: "in_flight", tone: "warn" };
+  if ("response" in body) {
+    const s = body.response.status;
+    if (s === "ok") return { label: "ok", tone: "ok" };
+    if (s === "error") return { label: "error", tone: "crit" };
+    if (s === "cancelled") return { label: "cancelled", tone: "neutral" };
+    return { label: "pending", tone: "warn" };
   }
+  if ("lock" in body) return { label: "held", tone: "crit" };
+  if ("channel_tx" in body || "channel_rx" in body) {
+    const ep = "channel_tx" in body ? body.channel_tx : body.channel_rx;
+    return ep.lifecycle === "open"
+      ? { label: "open", tone: "ok" }
+      : { label: "closed", tone: "neutral" };
+  }
+  if ("semaphore" in body) {
+    const { max_permits, handed_out_permits } = body.semaphore;
+    const available = max_permits - handed_out_permits;
+    return { label: `${available}/${max_permits} permits`, tone: handed_out_permits > 0 ? "warn" : "ok" };
+  }
+  if ("notify" in body) return { label: "waiting", tone: "neutral" };
+  if ("once_cell" in body) {
+    const s = body.once_cell.state;
+    if (s === "initialized") return { label: "initialized", tone: "ok" };
+    if (s === "initializing") return { label: "initializing", tone: "warn" };
+    return { label: "empty", tone: "neutral" };
+  }
+  if ("command" in body) return { label: "running", tone: "neutral" };
+  if ("file_op" in body) return { label: body.file_op.op, tone: "ok" };
+  if ("net_connect" in body || "net_accept" in body || "net_read" in body || "net_write" in body) {
+    return { label: "connected", tone: "ok" };
+  }
+  return { label: "unknown", tone: "neutral" };
+}
 
-  const nodes: Node<FlowNodeData>[] = connections.map((proc) => ({
-    id: `conn:${proc.conn_id}`,
-    data: {
-      label: proc.process_name,
-      detail: `conn ${proc.conn_id} | pid ${proc.pid}`,
-    },
-    position: { x: 0, y: 0 },
-    style: { width: FLOW_NODE_WIDTH },
-  }));
-  const edges: Edge[] = [];
-
-  if (cutStatus) {
-    const cutNodeId = `cut:${cutStatus.cut_id}`;
-    nodes.push({
-      id: cutNodeId,
-      data: {
-        label: cutStatus.cut_id,
-        detail: `${cutStatus.acked_connections} acked, ${cutStatus.pending_connections} pending`,
-      },
-      position: { x: 0, y: 0 },
-      style: { width: FLOW_NODE_WIDTH, borderColor: "#5b21b6" },
-    });
-
-    const pending = new Set(cutStatus.pending_conn_ids);
-    for (const proc of connections) {
-      const pendingEdge = pending.has(proc.conn_id);
-      edges.push({
-        id: `${cutNodeId}->conn:${proc.conn_id}`,
-        source: cutNodeId,
-        target: `conn:${proc.conn_id}`,
-        label: pendingEdge ? "pending" : "acked",
-        type: "smoothstep",
-        animated: pendingEdge,
-        style: pendingEdge ? { stroke: "#f59e0b" } : { stroke: "#10b981" },
-      });
+function deriveStat(body: EntityBody): string | undefined {
+  if (typeof body === "string") return undefined;
+  if ("semaphore" in body) {
+    const { max_permits, handed_out_permits } = body.semaphore;
+    return `${max_permits - handed_out_permits}/${max_permits}`;
+  }
+  if ("channel_tx" in body || "channel_rx" in body) {
+    const ep = "channel_tx" in body ? body.channel_tx : body.channel_rx;
+    if ("mpsc" in ep.details && ep.details.mpsc.buffer) {
+      const { occupancy, capacity } = ep.details.mpsc.buffer;
+      return `${occupancy}/${capacity ?? "∞"}`;
     }
   }
+  if ("notify" in body) {
+    return body.notify.waiter_count > 0 ? `${body.notify.waiter_count} waiters` : undefined;
+  }
+  if ("once_cell" in body) {
+    return body.once_cell.waiter_count > 0 ? `${body.once_cell.waiter_count} waiter` : undefined;
+  }
+  return undefined;
+}
+
+function detectCycleNodes(entities: SnapshotResponse["entities"], edges: SnapshotResponse["edges"]): Set<string> {
+  const adj = new Map<string, string[]>();
+  for (const e of edges) {
+    if (e.kind !== "needs") continue;
+    if (!adj.has(e.src_id)) adj.set(e.src_id, []);
+    adj.get(e.src_id)!.push(e.dst_id);
+  }
+
+  const inCycle = new Set<string>();
+  const color = new Map<string, "gray" | "black">();
+
+  function dfs(id: string, stack: string[]) {
+    color.set(id, "gray");
+    stack.push(id);
+    for (const neighbor of adj.get(id) ?? []) {
+      if (color.get(neighbor) === "gray") {
+        const start = stack.indexOf(neighbor);
+        for (const n of stack.slice(start)) inCycle.add(n);
+      } else if (!color.has(neighbor)) {
+        dfs(neighbor, stack);
+      }
+    }
+    stack.pop();
+    color.set(id, "black");
+  }
+
+  for (const entity of entities) {
+    if (!color.has(entity.id)) dfs(entity.id, []);
+  }
+  return inCycle;
+}
+
+function convertSnapshot(snapshot: SnapshotResponse): { entities: EntityDef[]; edges: EdgeDef[] } {
+  const cycleNodes = detectCycleNodes(snapshot.entities, snapshot.edges);
+  const entities: EntityDef[] = snapshot.entities.map((e) => ({
+    ...e,
+    meta: e.meta as Record<string, MetaValue>,
+    kind: bodyToKind(e.body),
+    inCycle: cycleNodes.has(e.id),
+    status: deriveStatus(e.body),
+    stat: deriveStat(e.body),
+  }));
+  const edges: EdgeDef[] = snapshot.edges.map((e, i) => ({
+    id: `e${i}-${e.src_id}-${e.dst_id}-${e.kind}`,
+    source: e.src_id,
+    target: e.dst_id,
+    kind: e.kind,
+  }));
+  return { entities, edges };
+}
+
+// ── ELK layout ────────────────────────────────────────────────
+
+const elk = new ELK({ workerUrl: elkWorkerUrl });
+
+const elkOptions = {
+  "elk.algorithm": "layered",
+  "elk.direction": "DOWN",
+  "elk.spacing.nodeNode": "24",
+  "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+  "elk.padding": "[top=24,left=24,bottom=24,right=24]",
+  "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+};
+
+function measureNodeDefs(defs: EntityDef[]): Map<string, { width: number; height: number }> {
+  const container = document.createElement("div");
+  container.style.cssText = "position:fixed;top:-9999px;left:-9999px;visibility:hidden;pointer-events:none;display:flex;flex-direction:column;align-items:flex-start;gap:4px;";
+  document.body.appendChild(container);
+
+  const elements: { id: string; el: HTMLDivElement }[] = [];
+  for (const def of defs) {
+    const el = document.createElement("div");
+    el.className = `mockup-node${def.inCycle ? " mockup-node--cycle" : ""}`;
+
+    const icon = document.createElement("span");
+    icon.className = "mockup-node-icon";
+    icon.style.cssText = "display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex-shrink:0;";
+    el.appendChild(icon);
+
+    const content = document.createElement("div");
+    content.className = "mockup-node-content";
+
+    const mainRow = document.createElement("div");
+    mainRow.className = "mockup-node-main";
+    const label = document.createElement("span");
+    label.className = "mockup-node-label";
+    label.textContent = def.name;
+    mainRow.appendChild(label);
+    content.appendChild(mainRow);
+
+    const details = document.createElement("div");
+    details.className = "mockup-node-details";
+    const badgeEl = document.createElement("span");
+    badgeEl.className = "badge badge--neutral";
+    badgeEl.textContent = def.status.label;
+    details.appendChild(badgeEl);
+    const dot1 = document.createElement("span");
+    dot1.className = "mockup-node-dot";
+    dot1.textContent = "·";
+    details.appendChild(dot1);
+    const ageEl = document.createElement("span");
+    ageEl.className = "ui-duration-display";
+    ageEl.textContent = "00m00s";
+    details.appendChild(ageEl);
+    if (def.stat) {
+      const dot2 = document.createElement("span");
+      dot2.className = "mockup-node-dot";
+      dot2.textContent = "·";
+      details.appendChild(dot2);
+      const statEl = document.createElement("span");
+      statEl.className = "mockup-node-stat";
+      statEl.textContent = def.stat;
+      details.appendChild(statEl);
+    }
+    content.appendChild(details);
+    el.appendChild(content);
+    container.appendChild(el);
+    elements.push({ id: def.id, el });
+  }
+
+  const sizes = new Map<string, { width: number; height: number }>();
+  for (const { id, el } of elements) {
+    sizes.set(id, { width: el.offsetWidth, height: el.offsetHeight });
+  }
+  document.body.removeChild(container);
+  return sizes;
+}
+
+function edgeStyle(kind: EdgeDef["kind"]) {
+  switch (kind) {
+    case "needs":
+      return { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 };
+    case "polls":
+      return { stroke: "light-dark(#8e7cc3, #b4a7d6)", strokeWidth: 1.2, strokeDasharray: "2 3" };
+    case "closed_by":
+      return { stroke: "light-dark(#e08614, #f0a840)", strokeWidth: 1.5 };
+    case "channel_link":
+      return { stroke: "light-dark(#888, #666)", strokeWidth: 1, strokeDasharray: "6 3" };
+    case "rpc_link":
+      return { stroke: "light-dark(#888, #666)", strokeWidth: 1, strokeDasharray: "6 3" };
+  }
+}
+
+function edgeTooltip(kind: EdgeDef["kind"], sourceName: string, targetName: string): string {
+  switch (kind) {
+    case "needs": return `${sourceName} is blocked waiting for ${targetName}`;
+    case "polls": return `${sourceName} polls ${targetName} (non-blocking)`;
+    case "closed_by": return `${sourceName} was closed by ${targetName}`;
+    case "channel_link": return `Channel endpoint: ${sourceName} → ${targetName}`;
+    case "rpc_link": return `RPC pair: ${sourceName} → ${targetName}`;
+  }
+}
+
+function edgeMarkerSize(kind: EdgeDef["kind"]): number {
+  return kind === "needs" ? 12 : 8;
+}
+
+type ElkPoint = { x: number; y: number };
+type LayoutResult = { nodes: Node[]; edges: Edge[] };
+
+async function layoutGraph(
+  entityDefs: EntityDef[],
+  edgeDefs: EdgeDef[],
+  nodeSizes: Map<string, { width: number; height: number }>,
+): Promise<LayoutResult> {
+  const nodeIds = new Set(entityDefs.map((n) => n.id));
+  const validEdges = edgeDefs.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+
+  const result = await elk.layout({
+    id: "root",
+    layoutOptions: elkOptions,
+    children: entityDefs.map((n) => {
+      const sz = nodeSizes.get(n.id);
+      return { id: n.id, width: sz?.width || 150, height: sz?.height || 36 };
+    }),
+    edges: validEdges.map((e) => ({
+      id: e.id,
+      sources: [e.source],
+      targets: [e.target],
+    })),
+  });
+
+  const posMap = new Map(
+    (result.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]),
+  );
+  const elkEdgeMap = new Map(
+    (result.edges ?? []).map((e: any) => [e.id, e.sections ?? []]),
+  );
+
+  const nodes: Node[] = entityDefs.map((def) => ({
+    id: def.id,
+    type: "mockNode",
+    position: posMap.get(def.id) ?? { x: 0, y: 0 },
+    data: {
+      kind: def.kind,
+      label: def.name,
+      inCycle: def.inCycle,
+      selected: false,
+      status: def.status,
+      birth: def.birth,
+      stat: def.stat,
+    },
+  }));
+
+  const entityNameMap = new Map(entityDefs.map((e) => [e.id, e.name]));
+  const edges: Edge[] = validEdges.map((def) => {
+    const sz = edgeMarkerSize(def.kind);
+    const sections = elkEdgeMap.get(def.id) ?? [];
+    const points: ElkPoint[] = [];
+    for (const section of sections) {
+      points.push(section.startPoint);
+      if (section.bendPoints) points.push(...section.bendPoints);
+      points.push(section.endPoint);
+    }
+    const srcName = entityNameMap.get(def.source) ?? def.source;
+    const dstName = entityNameMap.get(def.target) ?? def.target;
+    return {
+      id: def.id,
+      source: def.source,
+      target: def.target,
+      type: "elkrouted",
+      data: { points, tooltip: edgeTooltip(def.kind, srcName, dstName) },
+      style: edgeStyle(def.kind),
+      markerEnd: { type: MarkerType.ArrowClosed, width: sz, height: sz },
+    };
+  });
 
   return { nodes, edges };
 }
 
-async function layoutGraph(
-  nodes: Node<FlowNodeData>[],
-  edges: Edge[],
-): Promise<{ nodes: Node<FlowNodeData>[]; edges: Edge[] }> {
-  const layout = await elk.layout({
-    id: "root",
-    layoutOptions: {
-      "elk.algorithm": "layered",
-      "elk.direction": "DOWN",
-      "elk.layered.spacing.nodeNodeBetweenLayers": "84",
-      "elk.spacing.nodeNode": "36",
-    },
-    children: nodes.map((node) => ({
-      id: node.id,
-      width: FLOW_NODE_WIDTH,
-      height: FLOW_NODE_HEIGHT,
-    })),
-    edges: edges.map((edge) => ({
-      id: edge.id,
-      sources: [edge.source],
-      targets: [edge.target],
-    })),
-  });
+// ── Custom node component ──────────────────────────────────────
 
-  const positionById = new Map((layout.children ?? []).map((child) => [child.id, child]));
-  return {
-    nodes: nodes.map((node) => {
-      const pos = positionById.get(node.id);
-      return {
-        ...node,
-        position: {
-          x: pos?.x ?? 0,
-          y: pos?.y ?? 0,
-        },
-      };
-    }),
-    edges,
-  };
+const hiddenHandle: React.CSSProperties = {
+  opacity: 0, width: 0, height: 0, minWidth: 0, minHeight: 0,
+  position: "absolute", top: "50%", left: "50%", pointerEvents: "none",
+};
+
+type MockNodeData = {
+  kind: string;
+  label: string;
+  inCycle: boolean;
+  selected: boolean;
+  status: { label: string; tone: Tone };
+  birth: number;
+  stat?: string;
+};
+
+function MockNodeComponent({ data }: { data: MockNodeData }) {
+  return (
+    <>
+      <Handle type="target" position={Position.Top} style={hiddenHandle} />
+      <Handle type="source" position={Position.Bottom} style={hiddenHandle} />
+      <div className={`mockup-node${data.inCycle ? " mockup-node--cycle" : ""}${data.selected ? " mockup-node--selected" : ""}`}>
+        <span className="mockup-node-icon">{kindIcon(data.kind, 18)}</span>
+        <div className="mockup-node-content">
+          <div className="mockup-node-main">
+            <span className="mockup-node-label">{data.label}</span>
+          </div>
+          <div className="mockup-node-details">
+            <Badge tone={data.status.tone}>{data.status.label}</Badge>
+            <span className="mockup-node-dot">&middot;</span>
+            <DurationDisplay ms={data.birth} />
+            {data.stat && (
+              <>
+                <span className="mockup-node-dot">&middot;</span>
+                <span className="mockup-node-stat">{data.stat}</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
 }
 
-function toCellText(value: unknown): string {
-  if (value === null) return "null";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return JSON.stringify(value);
-}
+function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
+  const edgeData = data as { points?: ElkPoint[]; tooltip?: string } | undefined;
+  const points = edgeData?.points ?? [];
+  if (points.length < 2) return null;
 
-function toRowCells(row: unknown): unknown[] {
-  if (Array.isArray(row)) return row;
-  return [row];
-}
-
-export function App() {
-  const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
-  const [cutStatus, setCutStatus] = useState<CutStatusResponse | null>(null);
-  const [sqlPreview, setSqlPreview] = useState<SqlResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busyCut, setBusyCut] = useState(false);
-  const [busySql, setBusySql] = useState(false);
-  const [flow, setFlow] = useState<{ nodes: Node<FlowNodeData>[]; edges: Edge[] }>({
-    nodes: [],
-    edges: [],
-  });
-
-  const refreshConnections = useCallback(async () => {
-    const next = await apiClient.fetchConnections();
-    setConnections(next);
-  }, []);
-
-  const refreshSqlPreview = useCallback(async () => {
-    setBusySql(true);
-    setError(null);
-    try {
-    const response = await apiClient.runSql(
-      "SELECT conn_id, process_name, pid, connected_at_ns, disconnected_at_ns " +
-        "FROM connections ORDER BY connected_at_ns DESC LIMIT 8",
-    );
-      setSqlPreview(response);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusySql(false);
-    }
-  }, []);
-
-  const runCut = useCallback(async () => {
-    setBusyCut(true);
-    setError(null);
-    try {
-    const triggered = await apiClient.triggerCut();
-    const status = await apiClient.fetchCutStatus(triggered.cut_id);
-      setCutStatus(status);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusyCut(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-
-    const poll = async () => {
-      try {
-        await refreshConnections();
-      } catch (err) {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : String(err));
+  const [start, ...rest] = points;
+  let d = `M ${start.x} ${start.y}`;
+  if (rest.length === 1) {
+    d += ` L ${rest[0].x} ${rest[0].y}`;
+  } else {
+    for (let i = 0; i < rest.length - 1; i++) {
+      const curr = rest[i];
+      const next = rest[i + 1];
+      if (i < rest.length - 2) {
+        const midX = (curr.x + next.x) / 2;
+        const midY = (curr.y + next.y) / 2;
+        d += ` Q ${curr.x} ${curr.y}, ${midX} ${midY}`;
+      } else {
+        d += ` Q ${curr.x} ${curr.y}, ${next.x} ${next.y}`;
       }
-    };
-
-    void poll();
-    const timer = window.setInterval(() => {
-      void poll();
-    }, CONNECTION_POLL_MS);
-
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [refreshConnections]);
-
-  useEffect(() => {
-    if (!cutStatus || cutStatus.pending_connections === 0) {
-      return;
     }
-
-    let active = true;
-
-    const poll = async () => {
-      try {
-        const next = await apiClient.fetchCutStatus(cutStatus.cut_id);
-        if (!active) return;
-        setCutStatus(next);
-      } catch (err) {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    };
-
-    void poll();
-    const timer = window.setInterval(() => {
-      void poll();
-    }, CUT_STATUS_POLL_MS);
-
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [cutStatus?.cut_id, cutStatus?.pending_connections]);
-
-  useEffect(() => {
-    if (connections === null) return;
-    const seed = buildFlowGraph(connections.processes, cutStatus);
-    let active = true;
-    layoutGraph(seed.nodes, seed.edges)
-      .then((next) => {
-        if (!active) return;
-        setFlow(next);
-      })
-      .catch((err: unknown) => {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : String(err));
-      });
-    return () => {
-      active = false;
-    };
-  }, [connections, cutStatus]);
-
-  const connectionRows = useMemo(() => connections?.processes ?? [], [connections]);
+  }
 
   return (
-    <div className="page">
-      <header className="topbar">
-        <div>
-          <h1>Peeps Frontend Scaffold</h1>
-          <p>
-            With `peeps-web --dev`, the backend proxies this frontend from Vite while `/api` stays
-            in peeps-web. Ingest remains direct on `{WEBSOCKET_URL}`.
-          </p>
-          {isLabMode && (
-            <p className="lab-note">
-              Lab mode is active (`VITE_PEEPS_API_MODE=lab`). All `/api` calls are handled locally
-              so you can develop the React tree without the backend.
-            </p>
-          )}
-        </div>
-        <div className="topbar-actions">
-          <button type="button" onClick={runCut} disabled={busyCut}>
-            {busyCut ? "Triggering cut..." : "Trigger cut"}
-          </button>
-          <button type="button" onClick={refreshSqlPreview} disabled={busySql}>
-            {busySql ? "Refreshing SQL..." : "Refresh SQL preview"}
-          </button>
-        </div>
-      </header>
+    <g>
+      <path d={d} fill="none" stroke="transparent" strokeWidth={14} style={{ cursor: "pointer", pointerEvents: "all" }} />
+      {selected && (
+        <>
+          <path d={d} fill="none" stroke="var(--accent, #3b82f6)" strokeWidth={10} strokeLinecap="round" opacity={0.18} className="mockup-edge-glow" />
+          <path d={d} fill="none" stroke="var(--accent, #3b82f6)" strokeWidth={5} strokeLinecap="round" opacity={0.45} />
+        </>
+      )}
+      <path
+        id={id}
+        d={d}
+        style={{
+          ...(style as React.CSSProperties),
+          ...(selected ? { stroke: "var(--accent, #3b82f6)", strokeWidth: 2.5 } : {}),
+        }}
+        markerEnd={markerEnd as string}
+        fill="none"
+        className="react-flow__edge-path"
+      />
+    </g>
+  );
+}
 
-      {error && <div className="error">{error}</div>}
+const mockNodeTypes = { mockNode: MockNodeComponent };
+const mockEdgeTypes = { elkrouted: ElkRoutedEdge };
 
-      <section className="grid">
-        <article className="card flow-card">
-          <h2>Live Topology</h2>
-          <div className="flow-wrap">
-            <ReactFlow<Node<FlowNodeData>, Edge> nodes={flow.nodes} edges={flow.edges} fitView>
-              <Background />
-              <Controls />
-              <MiniMap />
-            </ReactFlow>
+// ── Graph panel ────────────────────────────────────────────────
+
+type GraphSelection = { kind: "entity"; id: string } | { kind: "edge"; id: string } | null;
+type SnapPhase = "idle" | "cutting" | "loading" | "ready" | "error";
+
+const GRAPH_EMPTY_MESSAGES: Record<SnapPhase, string> = {
+  idle: "Take a snapshot to see the current state",
+  cutting: "Waiting for all processes to sync…",
+  loading: "Loading snapshot data…",
+  ready: "No entities in snapshot",
+  error: "Snapshot failed",
+};
+
+function GraphPanel({
+  entityDefs,
+  edgeDefs,
+  snapPhase,
+  selection,
+  onSelect,
+}: {
+  entityDefs: EntityDef[];
+  edgeDefs: EdgeDef[];
+  snapPhase: SnapPhase;
+  selection: GraphSelection;
+  onSelect: (sel: GraphSelection) => void;
+}) {
+  const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
+
+  React.useEffect(() => {
+    if (entityDefs.length === 0) return;
+    const sizes = measureNodeDefs(entityDefs);
+    layoutGraph(entityDefs, edgeDefs, sizes).then(setLayout).catch(console.error);
+  }, [entityDefs, edgeDefs]);
+
+  const nodesWithSelection = useMemo(() =>
+    layout.nodes.map((n) => ({
+      ...n,
+      data: { ...n.data, selected: selection?.kind === "entity" && n.id === selection.id },
+    })),
+    [layout.nodes, selection],
+  );
+
+  const edgesWithSelection = useMemo(() =>
+    layout.edges.map((e) => ({
+      ...e,
+      selected: selection?.kind === "edge" && e.id === selection.id,
+    })),
+    [layout.edges, selection],
+  );
+
+  if (entityDefs.length === 0) {
+    return (
+      <div className="mockup-graph-panel">
+        <div className="mockup-graph-empty">
+          {snapPhase === "cutting" || snapPhase === "loading"
+            ? <><CircleNotch size={16} weight="bold" className="spinning" /> {GRAPH_EMPTY_MESSAGES[snapPhase]}</>
+            : GRAPH_EMPTY_MESSAGES[snapPhase]
+          }
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mockup-graph-panel">
+      <div className="mockup-graph-toolbar">
+        <div className="mockup-graph-toolbar-left">
+          <span className="mockup-graph-stat">{entityDefs.length} entities</span>
+          <span className="mockup-graph-stat">{edgeDefs.length} edges</span>
+        </div>
+      </div>
+      <div className="mockup-graph-flow">
+        <ReactFlowProvider>
+          <ReactFlow
+            nodes={nodesWithSelection}
+            edges={edgesWithSelection}
+            nodeTypes={mockNodeTypes}
+            edgeTypes={mockEdgeTypes}
+            onNodeClick={(_event, node) => onSelect({ kind: "entity", id: node.id })}
+            onEdgeClick={(_event, edge) => onSelect({ kind: "edge", id: edge.id })}
+            onPaneClick={() => onSelect(null)}
+            fitView
+            fitViewOptions={{ padding: 0.3, maxZoom: 1.2 }}
+            proOptions={{ hideAttribution: true }}
+            minZoom={0.3}
+            maxZoom={3}
+            panOnDrag
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable
+          >
+            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+            <Controls showInteractive={false} />
+          </ReactFlow>
+        </ReactFlowProvider>
+      </div>
+    </div>
+  );
+}
+
+// ── Inspector ──────────────────────────────────────────────────
+
+function EntityBodySection({ entity }: { entity: EntityDef }) {
+  const { body } = entity;
+
+  if (typeof body === "string") {
+    return (
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Body">
+          <span className="mockup-inspector-mono mockup-inspector-muted">Future (no body fields)</span>
+        </KeyValueRow>
+      </div>
+    );
+  }
+
+  if ("request" in body) {
+    return (
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Args">
+          <span className={`mockup-inspector-mono${body.request.args_preview === "(no args)" ? " mockup-inspector-muted" : ""}`}>
+            {body.request.args_preview}
+          </span>
+        </KeyValueRow>
+      </div>
+    );
+  }
+
+  if ("response" in body) {
+    return (
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Method" icon={<PaperPlaneTilt size={12} weight="bold" />}>
+          <span className="mockup-inspector-mono">{body.response.method}</span>
+        </KeyValueRow>
+        <KeyValueRow label="Status">
+          <Badge tone={body.response.status === "ok" ? "ok" : body.response.status === "error" ? "crit" : "warn"}>
+            {body.response.status}
+          </Badge>
+        </KeyValueRow>
+      </div>
+    );
+  }
+
+  if ("lock" in body) {
+    return (
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Lock kind">
+          <span className="mockup-inspector-mono">{body.lock.kind}</span>
+        </KeyValueRow>
+      </div>
+    );
+  }
+
+  if ("channel_tx" in body || "channel_rx" in body) {
+    const ep = "channel_tx" in body ? body.channel_tx : body.channel_rx;
+    const lc = ep.lifecycle;
+    const lifecycleLabel = typeof lc === "string" ? lc : `closed (${Object.values(lc)[0]})`;
+    const lifecycleTone: Tone = lc === "open" ? "ok" : "neutral";
+    const channelKind = "mpsc" in ep.details ? "mpsc"
+      : "broadcast" in ep.details ? "broadcast"
+      : "watch" in ep.details ? "watch"
+      : "oneshot";
+    const mpscBuffer = "mpsc" in ep.details ? ep.details.mpsc.buffer : null;
+    return (
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Lifecycle">
+          <Badge tone={lifecycleTone}>{lifecycleLabel}</Badge>
+        </KeyValueRow>
+        <KeyValueRow label="Channel kind">
+          <span className="mockup-inspector-mono">{channelKind}</span>
+        </KeyValueRow>
+        {mpscBuffer && (
+          <>
+            <KeyValueRow label="Capacity">
+              <span className="mockup-inspector-mono">{mpscBuffer.capacity ?? "∞"}</span>
+            </KeyValueRow>
+            <KeyValueRow label="Queue length">
+              <span className="mockup-inspector-mono">{mpscBuffer.occupancy}</span>
+            </KeyValueRow>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if ("semaphore" in body) {
+    const { max_permits, handed_out_permits } = body.semaphore;
+    return (
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Permits available">
+          <span className="mockup-inspector-mono">{max_permits - handed_out_permits} / {max_permits}</span>
+        </KeyValueRow>
+      </div>
+    );
+  }
+
+  if ("notify" in body) {
+    return (
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Waiters">
+          <span className="mockup-inspector-mono">{body.notify.waiter_count}</span>
+        </KeyValueRow>
+      </div>
+    );
+  }
+
+  if ("once_cell" in body) {
+    return (
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="State">
+          <Badge tone={body.once_cell.state === "initialized" ? "ok" : "warn"}>
+            {body.once_cell.state}
+          </Badge>
+        </KeyValueRow>
+        {body.once_cell.waiter_count > 0 && (
+          <KeyValueRow label="Waiters">
+            <span className="mockup-inspector-mono">{body.once_cell.waiter_count}</span>
+          </KeyValueRow>
+        )}
+      </div>
+    );
+  }
+
+  if ("command" in body) {
+    return (
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Program">
+          <span className="mockup-inspector-mono">{body.command.program}</span>
+        </KeyValueRow>
+        <KeyValueRow label="Args">
+          <span className="mockup-inspector-mono">{body.command.args.join(" ") || "(none)"}</span>
+        </KeyValueRow>
+      </div>
+    );
+  }
+
+  if ("file_op" in body) {
+    return (
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Operation">
+          <span className="mockup-inspector-mono">{body.file_op.op}</span>
+        </KeyValueRow>
+        <KeyValueRow label="Path">
+          <span className="mockup-inspector-mono">{body.file_op.path}</span>
+        </KeyValueRow>
+      </div>
+    );
+  }
+
+  for (const netKey of ["net_connect", "net_accept", "net_read", "net_write"] as const) {
+    if (netKey in body) {
+      const net = (body as Record<string, { addr: string }>)[netKey];
+      return (
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="Address">
+            <span className="mockup-inspector-mono">{net.addr}</span>
+          </KeyValueRow>
+        </div>
+      );
+    }
+  }
+
+  return null;
+}
+
+function EntityInspectorContent({ entity }: { entity: EntityDef }) {
+  return (
+    <>
+      <div className="mockup-inspector-node-header">
+        <span className="mockup-inspector-node-icon">{kindIcon(entity.kind, 16)}</span>
+        <div className="mockup-inspector-node-header-text">
+          <div className="mockup-inspector-node-kind">{kindDisplayName(entity.kind)}</div>
+          <div className="mockup-inspector-node-label">{entity.name}</div>
+        </div>
+        <ActionButton>
+          <Crosshair size={14} weight="bold" />
+          Focus
+        </ActionButton>
+      </div>
+
+      <div className="mockup-inspector-alert-slot">
+        {entity.inCycle && (
+          <div className="mockup-inspector-alert mockup-inspector-alert--crit">
+            Part of <code>needs</code> cycle — possible deadlock
           </div>
-        </article>
+        )}
+      </div>
 
-        <article className="card">
-          <h2>Connections ({connections?.connected_processes ?? 0})</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Conn</th>
-                <th>Process</th>
-                <th>PID</th>
-              </tr>
-            </thead>
-            <tbody>
-              {connectionRows.map((proc) => (
-                <tr key={proc.conn_id}>
-                  <td>{proc.conn_id}</td>
-                  <td>{proc.process_name}</td>
-                  <td>{proc.pid}</td>
-                </tr>
-              ))}
-              {connectionRows.length === 0 && (
-                <tr>
-                  <td colSpan={3}>No active connections yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </article>
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Source" icon={<FileRs size={12} weight="bold" />}>
+          <a className="mockup-inspector-source-link" href="#" title="Open in editor">
+            {entity.source}
+          </a>
+        </KeyValueRow>
+        <KeyValueRow label="Age" icon={<Timer size={12} weight="bold" />}>
+          <DurationDisplay ms={entity.birth} tone={entity.birth > 600000 ? "crit" : entity.birth > 60000 ? "warn" : undefined} />
+        </KeyValueRow>
+      </div>
 
-        <article className="card">
-          <h2>Latest Cut</h2>
-          {!cutStatus && <p>No cut has been requested yet.</p>}
-          {cutStatus && (
-            <dl className="kv">
-              <div>
-                <dt>ID</dt>
-                <dd>{cutStatus.cut_id}</dd>
-              </div>
-              <div>
-                <dt>Acked</dt>
-                <dd>{cutStatus.acked_connections}</dd>
-              </div>
-              <div>
-                <dt>Pending</dt>
-                <dd>{cutStatus.pending_connections}</dd>
-              </div>
-            </dl>
-          )}
-        </article>
+      <EntityBodySection entity={entity} />
+      <MetaSection meta={entity.meta} />
+    </>
+  );
+}
 
-        <article className="card sql-card">
-          <h2>SQL Preview</h2>
-          {!sqlPreview && <p>Run a read-only SQL query preview against the peeps-web SQLite store.</p>}
-          {sqlPreview && (
-            <div className="sql-table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    {sqlPreview.columns.map((column) => (
-                      <th key={column}>{column}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sqlPreview.rows.map((row, index) => (
-                    <tr key={`row-${index}`}>
-                      {toRowCells(row).map((cell, cellIndex) => (
-                        <td key={`cell-${index}-${cellIndex}`}>{toCellText(cell)}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </article>
-      </section>
+const EDGE_KIND_LABELS: Record<EdgeDef["kind"], string> = {
+  needs: "Causal dependency",
+  polls: "Non-blocking observation",
+  closed_by: "Closure cause",
+  channel_link: "Channel pairing",
+  rpc_link: "RPC pairing",
+};
+
+function EdgeInspectorContent({ edge, entityDefs }: { edge: EdgeDef; entityDefs: EntityDef[] }) {
+  const srcEntity = entityDefs.find((e) => e.id === edge.source);
+  const dstEntity = entityDefs.find((e) => e.id === edge.target);
+  const tooltip = edgeTooltip(edge.kind, srcEntity?.name ?? edge.source, dstEntity?.name ?? edge.target);
+  const isStructural = edge.kind === "rpc_link" || edge.kind === "channel_link";
+
+  return (
+    <>
+      <div className="mockup-inspector-node-header">
+        <span className={`mockup-inspector-node-icon${isStructural ? "" : " mockup-inspector-node-icon--causal"}`}>
+          <LinkSimple size={16} weight="bold" />
+        </span>
+        <div className="mockup-inspector-node-header-text">
+          <div className="mockup-inspector-node-kind">{edge.kind}</div>
+          <div className="mockup-inspector-node-label">{EDGE_KIND_LABELS[edge.kind]}</div>
+        </div>
+      </div>
+
+      <div className="mockup-inspector-alert-slot" />
+
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="From" icon={srcEntity ? kindIcon(srcEntity.kind, 12) : undefined}>
+          <span className="mockup-inspector-mono">{srcEntity?.name ?? edge.source}</span>
+        </KeyValueRow>
+        <KeyValueRow label="To" icon={dstEntity ? kindIcon(dstEntity.kind, 12) : undefined}>
+          <span className="mockup-inspector-mono">{dstEntity?.name ?? edge.target}</span>
+        </KeyValueRow>
+      </div>
+
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Meaning">
+          <span className="mockup-inspector-mono">{tooltip}</span>
+        </KeyValueRow>
+        <KeyValueRow label="Type">
+          <Badge tone={isStructural ? "neutral" : edge.kind === "needs" ? "crit" : "warn"}>
+            {isStructural ? "structural" : "causal"}
+          </Badge>
+        </KeyValueRow>
+      </div>
+    </>
+  );
+}
+
+function InspectorPanel({
+  collapsed,
+  onToggleCollapse,
+  selection,
+  entityDefs,
+  edgeDefs,
+}: {
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  selection: GraphSelection;
+  entityDefs: EntityDef[];
+  edgeDefs: EdgeDef[];
+}) {
+  if (collapsed) {
+    return (
+      <button
+        className="mockup-inspector mockup-inspector--collapsed"
+        onClick={onToggleCollapse}
+        title="Expand inspector"
+      >
+        <CaretLeft size={14} weight="bold" />
+        <span className="mockup-inspector-collapsed-label">Inspector</span>
+      </button>
+    );
+  }
+
+  let content: React.ReactNode;
+  if (selection?.kind === "entity") {
+    const entity = entityDefs.find((e) => e.id === selection.id);
+    content = entity ? <EntityInspectorContent entity={entity} /> : null;
+  } else if (selection?.kind === "edge") {
+    const edge = edgeDefs.find((e) => e.id === selection.id);
+    content = edge ? <EdgeInspectorContent edge={edge} entityDefs={entityDefs} /> : null;
+  } else {
+    content = <div className="mockup-inspector-empty">Select an entity or edge</div>;
+  }
+
+  return (
+    <div className="mockup-inspector">
+      <div className="mockup-inspector-header">
+        <MagnifyingGlass size={14} weight="bold" />
+        <span>Inspector</span>
+        <ActionButton size="sm" onPress={onToggleCollapse} aria-label="Collapse inspector">
+          <CaretRight size={14} weight="bold" />
+        </ActionButton>
+      </div>
+      <div className="mockup-inspector-body">
+        {content}
+      </div>
+    </div>
+  );
+}
+
+function MetaTreeNode({ name, value, depth = 0 }: { name: string; value: MetaValue; depth?: number }) {
+  const [expanded, setExpanded] = useState(depth < 1);
+  const isObject = value !== null && typeof value === "object" && !Array.isArray(value);
+  const isArray = Array.isArray(value);
+  const isExpandable = isObject || isArray;
+
+  if (!isExpandable) {
+    return (
+      <div className="mockup-meta-leaf" style={{ paddingLeft: depth * 14 }}>
+        <span className="mockup-meta-key">{name}</span>
+        <span className={`mockup-meta-value mockup-meta-value--${typeof value}`}>
+          {value === null ? "null" : typeof value === "string" ? `"${value}"` : String(value)}
+        </span>
+      </div>
+    );
+  }
+
+  const entries = isArray
+    ? (value as MetaValue[]).map((v, i) => [String(i), v] as const)
+    : Object.entries(value as Record<string, MetaValue>);
+
+  return (
+    <div className="mockup-meta-branch">
+      <button
+        className="mockup-meta-toggle"
+        style={{ paddingLeft: depth * 14 }}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <CaretDown
+          size={10}
+          weight="bold"
+          style={{ transform: expanded ? undefined : "rotate(-90deg)", transition: "transform 0.15s" }}
+        />
+        <span className="mockup-meta-key">{name}</span>
+        <span className="mockup-meta-hint">
+          {isArray ? `[${entries.length}]` : `{${entries.length}}`}
+        </span>
+      </button>
+      {expanded && entries.map(([k, v]) => (
+        <MetaTreeNode key={k} name={k} value={v} depth={depth + 1} />
+      ))}
+    </div>
+  );
+}
+
+function MetaSection({ meta }: { meta: Record<string, MetaValue> | null }) {
+  if (!meta || Object.keys(meta).length === 0) return null;
+  return (
+    <div className="mockup-inspector-section">
+      <div className="mockup-inspector-raw-head">
+        <span>Metadata</span>
+        <ActionButton size="sm">
+          <CopySimple size={12} weight="bold" />
+        </ActionButton>
+      </div>
+      <div className="mockup-meta-tree">
+        {Object.entries(meta).map(([k, v]) => (
+          <MetaTreeNode key={k} name={k} value={v} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Snapshot state machine ─────────────────────────────────────
+
+type SnapshotState =
+  | { phase: "idle" }
+  | { phase: "cutting" }
+  | { phase: "loading" }
+  | { phase: "ready"; entities: EntityDef[]; edges: EdgeDef[] }
+  | { phase: "error"; message: string };
+
+// ── App ────────────────────────────────────────────────────────
+
+export function App() {
+  const [snap, setSnap] = useState<SnapshotState>({ phase: "idle" });
+  const [inspectorWidth, setInspectorWidth] = useState(340);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [selection, setSelection] = useState<GraphSelection>(null);
+
+  const entities = snap.phase === "ready" ? snap.entities : [];
+  const edges = snap.phase === "ready" ? snap.edges : [];
+
+  const takeSnapshot = useCallback(async () => {
+    setSnap({ phase: "cutting" });
+    setSelection(null);
+    try {
+      const triggered = await apiClient.triggerCut();
+      let status = await apiClient.fetchCutStatus(triggered.cut_id);
+      while (status.pending_connections > 0) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 600));
+        status = await apiClient.fetchCutStatus(triggered.cut_id);
+      }
+      setSnap({ phase: "loading" });
+      const snapshot = await apiClient.fetchSnapshot();
+      const converted = convertSnapshot(snapshot);
+      setSnap({ phase: "ready", ...converted });
+    } catch (err) {
+      setSnap({ phase: "error", message: err instanceof Error ? err.message : String(err) });
+    }
+  }, []);
+
+  const isBusy = snap.phase === "cutting" || snap.phase === "loading";
+
+  const buttonLabel =
+    snap.phase === "cutting" ? "Syncing…"
+    : snap.phase === "loading" ? "Loading…"
+    : "Take Snapshot";
+
+  return (
+    <div className="mockup-app">
+      <div className="mockup-header">
+        <Aperture size={16} weight="bold" />
+        <span className="mockup-header-title">peeps</span>
+        {apiMode === "lab" ? (
+          <span className="mockup-header-badge">mock data</span>
+        ) : snap.phase === "ready" ? (
+          <span className="mockup-header-badge mockup-header-badge--active">
+            <CheckCircle size={12} weight="bold" />
+            snapshot
+          </span>
+        ) : null}
+        {snap.phase === "error" && (
+          <span className="mockup-header-error">{snap.message}</span>
+        )}
+        <span className="mockup-header-spacer" />
+        <ActionButton variant="primary" onPress={takeSnapshot} isDisabled={isBusy}>
+          {isBusy
+            ? <CircleNotch size={14} weight="bold" />
+            : <Camera size={14} weight="bold" />
+          }
+          {buttonLabel}
+        </ActionButton>
+      </div>
+      <SplitLayout
+        left={
+          <GraphPanel
+            entityDefs={entities}
+            edgeDefs={edges}
+            snapPhase={snap.phase}
+            selection={selection}
+            onSelect={setSelection}
+          />
+        }
+        right={
+          <InspectorPanel
+            collapsed={inspectorCollapsed}
+            onToggleCollapse={() => setInspectorCollapsed((v) => !v)}
+            selection={selection}
+            entityDefs={entities}
+            edgeDefs={edges}
+          />
+        }
+        rightWidth={inspectorWidth}
+        onRightWidthChange={setInspectorWidth}
+        rightMinWidth={260}
+        rightMaxWidth={600}
+        rightCollapsed={inspectorCollapsed}
+      />
     </div>
   );
 }
