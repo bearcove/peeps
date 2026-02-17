@@ -802,6 +802,7 @@ dependencies = [
  "facet-value",
  "peeps-sqlite-facet",
  "peeps-types",
+ "peeps-wire",
  "tokio",
 ]
 
@@ -856,6 +857,22 @@ dependencies = [
  "facet-value",
  "inventory",
  "ulid",
+]
+
+[[package]]
+name = "peeps-web"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "compact_str",
+ "facet",
+ "facet-json",
+ "peeps-types",
+ "peeps-wire",
+ "rusqlite",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

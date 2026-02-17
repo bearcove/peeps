@@ -9,14 +9,173 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::task::{Context, Poll};
+#[cfg(feature = "dashboard")]
+use std::time::Duration;
+#[cfg(feature = "dashboard")]
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+#[cfg(feature = "dashboard")]
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+#[cfg(feature = "dashboard")]
+use tokio::time::{interval, MissedTickBehavior};
+
+#[cfg(feature = "dashboard")]
+use peeps_wire::{
+    decode_server_message_default, encode_client_message_default, ClientMessage, ServerMessage,
+};
 
 const MAX_EVENTS: usize = 16_384;
 const MAX_CHANGES_BEFORE_COMPACT: usize = 65_536;
 const COMPACT_TARGET_CHANGES: usize = 8_192;
 const DEFAULT_STREAM_ID_PREFIX: &str = "proc";
+#[cfg(feature = "dashboard")]
+const DASHBOARD_PUSH_MAX_CHANGES: u32 = 2048;
+#[cfg(feature = "dashboard")]
+const DASHBOARD_PUSH_INTERVAL_MS: u64 = 100;
+#[cfg(feature = "dashboard")]
+const DASHBOARD_RECONNECT_DELAY_MS: u64 = 500;
 
-pub fn init(_process_name: &str) {}
+pub fn init(process_name: &str) {
+    #[cfg(feature = "dashboard")]
+    init_dashboard_push_loop(process_name);
+
+    #[cfg(not(feature = "dashboard"))]
+    let _ = process_name;
+}
+
+#[cfg(feature = "dashboard")]
+fn init_dashboard_push_loop(process_name: &str) {
+    static STARTED: OnceLock<()> = OnceLock::new();
+    if STARTED.set(()).is_err() {
+        return;
+    }
+
+    let Some(addr) = std::env::var("PEEPS_DASHBOARD")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    else {
+        return;
+    };
+
+    let process_name = CompactString::from(process_name);
+
+    if tokio::runtime::Handle::try_current().is_ok() {
+        tokio::spawn(async move {
+            run_dashboard_push_loop(addr, process_name).await;
+        });
+        return;
+    }
+
+    std::thread::spawn(move || {
+        if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            rt.block_on(async move {
+                run_dashboard_push_loop(addr, process_name).await;
+            });
+        }
+    });
+}
+
+#[cfg(feature = "dashboard")]
+async fn run_dashboard_push_loop(addr: String, process_name: CompactString) {
+    loop {
+        let connected = run_dashboard_session(&addr, process_name.clone()).await;
+        let _ = connected;
+        tokio::time::sleep(Duration::from_millis(DASHBOARD_RECONNECT_DELAY_MS)).await;
+    }
+}
+
+#[cfg(feature = "dashboard")]
+async fn run_dashboard_session(addr: &str, process_name: CompactString) -> Result<(), String> {
+    let stream = TcpStream::connect(addr)
+        .await
+        .map_err(|e| format!("dashboard connect: {e}"))?;
+    let (mut reader, mut writer) = stream.into_split();
+
+    let handshake = ClientMessage::Handshake(peeps_wire::Handshake {
+        process_name: process_name.clone(),
+        pid: std::process::id(),
+    });
+    write_client_message(&mut writer, &handshake).await?;
+
+    let mut cursor = SeqNo::ZERO;
+    let mut ticker = interval(Duration::from_millis(DASHBOARD_PUSH_INTERVAL_MS));
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {
+                let requested_from = cursor;
+                let batch = pull_changes_since(cursor, DASHBOARD_PUSH_MAX_CHANGES);
+                let cursor_shifted = batch.from_seq_no > requested_from || batch.next_seq_no > requested_from;
+                if !batch.changes.is_empty() || batch.truncated || cursor_shifted {
+                    let next = batch.next_seq_no;
+                    write_client_message(&mut writer, &ClientMessage::DeltaBatch(batch)).await?;
+                    cursor = next.max(cursor);
+                } else {
+                    cursor = batch.next_seq_no.max(cursor);
+                }
+            }
+            inbound = read_server_message(&mut reader) => {
+                let Some(message) = inbound? else {
+                    return Ok(());
+                };
+                match message {
+                    ServerMessage::CutRequest(request) => {
+                        let ack = ack_cut(request.cut_id.0.clone());
+                        write_client_message(&mut writer, &ClientMessage::CutAck(ack)).await?;
+                    }
+                    ServerMessage::SnapshotRequest(_) => {}
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "dashboard")]
+async fn write_client_message(
+    writer: &mut tokio::net::tcp::OwnedWriteHalf,
+    message: &ClientMessage,
+) -> Result<(), String> {
+    let frame = encode_client_message_default(message)
+        .map_err(|e| format!("encode client message: {e}"))?;
+    writer
+        .write_all(&frame)
+        .await
+        .map_err(|e| format!("write frame: {e}"))?;
+    Ok(())
+}
+
+#[cfg(feature = "dashboard")]
+async fn read_server_message(
+    reader: &mut tokio::net::tcp::OwnedReadHalf,
+) -> Result<Option<ServerMessage>, String> {
+    let mut len_buf = [0u8; 4];
+    if let Err(e) = reader.read_exact(&mut len_buf).await {
+        if e.kind() == std::io::ErrorKind::UnexpectedEof {
+            return Ok(None);
+        }
+        return Err(format!("read frame len: {e}"));
+    }
+    let payload_len = u32::from_be_bytes(len_buf) as usize;
+    if payload_len > peeps_wire::DEFAULT_MAX_FRAME_BYTES {
+        return Err(format!("server frame too large: {payload_len}"));
+    }
+    let mut payload = vec![0u8; payload_len];
+    reader
+        .read_exact(&mut payload)
+        .await
+        .map_err(|e| format!("read frame payload: {e}"))?;
+    let mut framed = Vec::with_capacity(4 + payload_len);
+    framed.extend_from_slice(&len_buf);
+    framed.extend_from_slice(&payload);
+    let message = decode_server_message_default(&framed)
+        .map_err(|e| format!("decode server message: {e}"))?;
+    Ok(Some(message))
+}
 
 pub fn spawn_tracked<F>(
     name: impl Into<CompactString>,

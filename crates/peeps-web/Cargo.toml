@@ -1,19 +1,17 @@
 [package]
-name = "peeps"
+name = "peeps-web"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[features]
-default = []
-diagnostics = []
-dashboard = []
-
 [dependencies]
+axum.workspace = true
 compact_str.workspace = true
+facet.workspace = true
 facet-json.workspace = true
-facet-value.workspace = true
 peeps-types.workspace = true
 peeps-wire.workspace = true
-peeps-sqlite-facet.workspace = true
+rusqlite.workspace = true
 tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

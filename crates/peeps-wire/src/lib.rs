@@ -1,6 +1,6 @@
 use compact_str::CompactString;
 use facet::Facet;
-use peeps_types::{CutAck, CutRequest, Snapshot};
+use peeps_types::{CutAck, CutRequest, PullChangesResponse, Snapshot};
 use std::fmt;
 
 pub const DEFAULT_MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
@@ -150,6 +150,7 @@ pub struct ClientError {
 pub enum ClientMessage {
     Handshake(Handshake),
     SnapshotReply(SnapshotReply),
+    DeltaBatch(PullChangesResponse),
     CutAck(CutAck),
     Error(ClientError),
 }
