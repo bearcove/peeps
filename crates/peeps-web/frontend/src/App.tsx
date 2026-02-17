@@ -16,6 +16,7 @@ import { GraphView } from "./components/GraphView";
 import { ResourcesPanel } from "./components/ResourcesPanel";
 import { Inspector } from "./components/Inspector";
 import { TimelineView } from "./components/TimelineView";
+import { LabView, type LabTone } from "./components/LabView";
 import { isResourceKind } from "./resourceKinds";
 import type {
   TakeSnapshotResponse,
@@ -48,7 +49,7 @@ const SNAPSHOT_POLL_INTERVAL_MS = 250;
 const SNAPSHOT_FINALIZATION_WAIT_BUDGET_MS = 6_000;
 type DetailLevel = "info" | "debug" | "trace";
 const DETAIL_LEVELS: DetailLevel[] = ["info", "debug", "trace"];
-type InvestigationMode = "graph" | "timeline" | "resources";
+type InvestigationMode = "graph" | "timeline" | "resources" | "lab";
 const INSPECTOR_WIDTH_MIN = 260;
 const INSPECTOR_WIDTH_MAX = 720;
 
@@ -75,8 +76,13 @@ function parseDetailLevel(value: string | null): DetailLevel {
 }
 
 function parseInvestigationMode(value: string | null): InvestigationMode {
-  if (value === "timeline" || value === "resources") return value;
+  if (value === "timeline" || value === "resources" || value === "lab") return value;
   return "graph";
+}
+
+function parseLabTone(value: string | null): LabTone {
+  if (value === "ok" || value === "warn" || value === "crit") return value;
+  return "neutral";
 }
 
 function normalizeProcessParam(value: string | null): string | null {
@@ -85,13 +91,14 @@ function normalizeProcessParam(value: string | null): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function readRouteState(): { mode: InvestigationMode; resourceProcess: string | null } {
+function readRouteState(): { mode: InvestigationMode; resourceProcess: string | null; labTone: LabTone } {
   const params = new URLSearchParams(window.location.search);
   const mode = parseInvestigationMode(params.get("mode"));
   const resourceKind = params.get("resource_kind");
   const resourceProcess =
     resourceKind === "process" ? normalizeProcessParam(params.get("resource_process")) : null;
-  return { mode, resourceProcess };
+  const labTone = parseLabTone(params.get("lab_tone"));
+  return { mode, resourceProcess, labTone };
 }
 
 function detailLevelRank(level: DetailLevel): number {
@@ -532,6 +539,7 @@ export function App() {
   const [resourcesProcessFilter, setResourcesProcessFilter] = useState<string | null>(
     initialRoute.resourceProcess,
   );
+  const [labTone, setLabTone] = useState<LabTone>(initialRoute.labTone);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [filteredNodeId, setFilteredNodeId] = useState<string | null>(null);
@@ -609,6 +617,13 @@ export function App() {
       params.delete("resource_kind");
       params.delete("resource_process");
     }
+
+    if (investigationMode === "lab") {
+      params.set("lab_tone", labTone);
+    } else {
+      params.delete("lab_tone");
+    }
+
     const nextSearch = params.toString();
     const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
     const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -624,13 +639,14 @@ export function App() {
       hasHydratedRouteRef.current = true;
     }
     sessionStorage.setItem("peeps-investigation-mode", investigationMode);
-  }, [investigationMode, resourcesProcessFilter]);
+  }, [investigationMode, resourcesProcessFilter, labTone]);
 
   useEffect(() => {
     const onPopState = () => {
       const route = readRouteState();
       setInvestigationMode(route.mode);
       setResourcesProcessFilter(route.resourceProcess);
+      setLabTone(route.labTone);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -1252,6 +1268,13 @@ export function App() {
             >
               Resources
             </button>
+            <button
+              className={`btn ${investigationMode === "lab" ? "btn--primary" : ""}`}
+              type="button"
+              onClick={() => handleSetMode("lab")}
+            >
+              Lab
+            </button>
           </div>
           <div
             className={[
@@ -1329,7 +1352,7 @@ export function App() {
                 onRefresh={handleRefreshTimeline}
                 onSelectEvent={handleSelectTimelineEvent}
               />
-            ) : (
+            ) : investigationMode === "resources" ? (
               <ResourcesPanel
                 graph={enrichedGraph}
                 snapshotCapturedAtNs={snapshot?.captured_at_ns ?? null}
@@ -1344,6 +1367,8 @@ export function App() {
                 fullHeight
                 allowCollapse={false}
               />
+            ) : (
+              <LabView tone={labTone} onToneChange={setLabTone} />
             )}
             {!rightCollapsed && (
               <div

@@ -1,5 +1,5 @@
 +++
-title = "Inspector Contract"
+title = "Canonical Fields"
 weight = 8
 +++
 

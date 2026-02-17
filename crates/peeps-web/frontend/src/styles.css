@@ -2971,6 +2971,97 @@ body {
     margin-right: 4px;
 }
 
+/* ── Lab Panel ────────────────────────────────────────────── */
+
+.panel--lab {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.lab-header-hint {
+    margin-left: auto;
+    margin-right: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    color: light-dark(#8e8e93, #8f8f95);
+}
+
+.lab-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.lab-section {
+    border: 1px solid light-dark(#ececf1, #2a2a2e);
+    border-radius: 12px;
+    background: light-dark(#ffffff, #1a1a1e);
+    padding: 12px;
+    box-shadow: 0 6px 14px light-dark(rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.35));
+}
+
+.lab-section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 11px;
+    font-weight: 800;
+    color: light-dark(#3a3a3f, #d0d0d6);
+    margin-bottom: 8px;
+}
+
+.lab-section-subhead {
+    font-size: 10px;
+    font-weight: 600;
+    color: light-dark(#8e8e93, #8f8f95);
+}
+
+.lab-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.lab-tone-btn {
+    text-transform: uppercase;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.lab-counter {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
+    background: light-dark(#f6f6fa, #232329);
+    color: light-dark(#5f6368, #bfc1c6);
+}
+
+.lab-counter--warn {
+    color: light-dark(#856404, #ffc107);
+    background: light-dark(#fff3cd, #3a2f1a);
+    border-color: light-dark(#f0d58a, #5a4a2a);
+}
+
+.lab-counter--crit {
+    color: light-dark(#721c24, #ff6b6b);
+    background: light-dark(#f8d7da, #3a1a1a);
+    border-color: light-dark(#f1b0b7, #5a2a2a);
+}
+
 /* ── Timeline Panel ───────────────────────────────────────── */
 
 .panel--timeline {
