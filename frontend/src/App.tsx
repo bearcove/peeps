@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
+  useReactFlow,
   Handle,
   Position,
   Background,
@@ -519,18 +520,73 @@ const GRAPH_EMPTY_MESSAGES: Record<SnapPhase, string> = {
   error: "Snapshot failed",
 };
 
+function GraphFlow({
+  nodes,
+  edges,
+  onSelect,
+}: {
+  nodes: Node[];
+  edges: Edge[];
+  onSelect: (sel: GraphSelection) => void;
+}) {
+  const { fitView } = useReactFlow();
+
+  useEffect(() => {
+    fitView({ padding: 0.3, maxZoom: 1.2, duration: 300 });
+  }, [nodes, edges, fitView]);
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      nodeTypes={mockNodeTypes}
+      edgeTypes={mockEdgeTypes}
+      onNodeClick={(_event, node) => onSelect({ kind: "entity", id: node.id })}
+      onEdgeClick={(_event, edge) => onSelect({ kind: "edge", id: edge.id })}
+      onPaneClick={() => onSelect(null)}
+      proOptions={{ hideAttribution: true }}
+      minZoom={0.3}
+      maxZoom={3}
+      panOnDrag
+      nodesDraggable={false}
+      nodesConnectable={false}
+      elementsSelectable
+    >
+      <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+      <Controls showInteractive={false} />
+    </ReactFlow>
+  );
+}
+
+function getConnectedSubgraph(entityId: string, entities: EntityDef[], edges: EdgeDef[]): { entities: EntityDef[]; edges: EdgeDef[] } {
+  const connectedEdges = edges.filter((e) => e.source === entityId || e.target === entityId);
+  const connectedIds = new Set([entityId]);
+  for (const e of connectedEdges) {
+    connectedIds.add(e.source);
+    connectedIds.add(e.target);
+  }
+  return {
+    entities: entities.filter((e) => connectedIds.has(e.id)),
+    edges: connectedEdges,
+  };
+}
+
 function GraphPanel({
   entityDefs,
   edgeDefs,
   snapPhase,
   selection,
   onSelect,
+  focusedEntityId,
+  onExitFocus,
 }: {
   entityDefs: EntityDef[];
   edgeDefs: EdgeDef[];
   snapPhase: SnapPhase;
   selection: GraphSelection;
   onSelect: (sel: GraphSelection) => void;
+  focusedEntityId: string | null;
+  onExitFocus: () => void;
 }) {
   const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
 
@@ -585,30 +641,22 @@ function GraphPanel({
           <span className="mockup-graph-stat">{entityDefs.length} entities</span>
           <span className="mockup-graph-stat">{edgeDefs.length} edges</span>
         </div>
+        {focusedEntityId && (
+          <div className="mockup-graph-toolbar-right">
+            <ActionButton onPress={onExitFocus}>
+              <Crosshair size={14} weight="bold" />
+              Exit Focus
+            </ActionButton>
+          </div>
+        )}
       </div>
       <div className="mockup-graph-flow">
         <ReactFlowProvider>
-          <ReactFlow
+          <GraphFlow
             nodes={nodesWithSelection}
             edges={edgesWithSelection}
-            nodeTypes={mockNodeTypes}
-            edgeTypes={mockEdgeTypes}
-            onNodeClick={(_event, node) => onSelect({ kind: "entity", id: node.id })}
-            onEdgeClick={(_event, edge) => onSelect({ kind: "edge", id: edge.id })}
-            onPaneClick={() => onSelect(null)}
-            fitView
-            fitViewOptions={{ padding: 0.3, maxZoom: 1.2 }}
-            proOptions={{ hideAttribution: true }}
-            minZoom={0.3}
-            maxZoom={3}
-            panOnDrag
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable
-          >
-            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-            <Controls showInteractive={false} />
-          </ReactFlow>
+            onSelect={onSelect}
+          />
         </ReactFlowProvider>
       </div>
     </div>
@@ -781,7 +829,7 @@ function EntityBodySection({ entity }: { entity: EntityDef }) {
   return null;
 }
 
-function EntityInspectorContent({ entity }: { entity: EntityDef }) {
+function EntityInspectorContent({ entity, onFocus }: { entity: EntityDef; onFocus: (id: string) => void }) {
   const ageTone: Tone = entity.ageMs > 600_000 ? "crit" : entity.ageMs > 60_000 ? "warn" : "neutral";
 
   return (
@@ -792,7 +840,7 @@ function EntityInspectorContent({ entity }: { entity: EntityDef }) {
           <div className="mockup-inspector-node-kind">{kindDisplayName(entity.kind)}</div>
           <div className="mockup-inspector-node-label">{entity.name}</div>
         </div>
-        <ActionButton>
+        <ActionButton onPress={() => onFocus(entity.id)}>
           <Crosshair size={14} weight="bold" />
           Focus
         </ActionButton>
@@ -896,12 +944,14 @@ function InspectorPanel({
   selection,
   entityDefs,
   edgeDefs,
+  onFocusEntity,
 }: {
   collapsed: boolean;
   onToggleCollapse: () => void;
   selection: GraphSelection;
   entityDefs: EntityDef[];
   edgeDefs: EdgeDef[];
+  onFocusEntity: (id: string) => void;
 }) {
   if (collapsed) {
     return (
@@ -919,7 +969,7 @@ function InspectorPanel({
   let content: React.ReactNode;
   if (selection?.kind === "entity") {
     const entity = entityDefs.find((e) => e.id === selection.id);
-    content = entity ? <EntityInspectorContent entity={entity} /> : null;
+    content = entity ? <EntityInspectorContent entity={entity} onFocus={onFocusEntity} /> : null;
   } else if (selection?.kind === "edge") {
     const edge = edgeDefs.find((e) => e.id === selection.id);
     content = edge ? <EdgeInspectorContent edge={edge} entityDefs={entityDefs} /> : null;
@@ -1077,13 +1127,20 @@ export function App() {
   const [selection, setSelection] = useState<GraphSelection>(null);
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
+  const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
 
-  const entities = snap.phase === "ready" ? snap.entities : [];
-  const edges = snap.phase === "ready" ? snap.edges : [];
+  const allEntities = snap.phase === "ready" ? snap.entities : [];
+  const allEdges = snap.phase === "ready" ? snap.edges : [];
+
+  const { entities, edges } = useMemo(() => {
+    if (!focusedEntityId) return { entities: allEntities, edges: allEdges };
+    return getConnectedSubgraph(focusedEntityId, allEntities, allEdges);
+  }, [focusedEntityId, allEntities, allEdges]);
 
   const takeSnapshot = useCallback(async () => {
     setSnap({ phase: "cutting" });
     setSelection(null);
+    setFocusedEntityId(null);
     try {
       const triggered = await apiClient.triggerCut();
       let status = await apiClient.fetchCutStatus(triggered.cut_id);
@@ -1108,6 +1165,20 @@ export function App() {
       }
     }).catch(console.error);
   }, [takeSnapshot]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && focusedEntityId) {
+        setFocusedEntityId(null);
+      } else if (e.key === "f" || e.key === "F") {
+        if (selection?.kind === "entity") {
+          setFocusedEntityId(selection.id);
+        }
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [focusedEntityId, selection]);
 
   const isBusy = snap.phase === "cutting" || snap.phase === "loading";
 
@@ -1162,6 +1233,8 @@ export function App() {
             snapPhase={snap.phase}
             selection={selection}
             onSelect={setSelection}
+            focusedEntityId={focusedEntityId}
+            onExitFocus={() => setFocusedEntityId(null)}
           />
         }
         right={
@@ -1169,8 +1242,9 @@ export function App() {
             collapsed={inspectorCollapsed}
             onToggleCollapse={() => setInspectorCollapsed((v) => !v)}
             selection={selection}
-            entityDefs={entities}
-            edgeDefs={edges}
+            entityDefs={allEntities}
+            edgeDefs={allEdges}
+            onFocusEntity={setFocusedEntityId}
           />
         }
         rightWidth={inspectorWidth}

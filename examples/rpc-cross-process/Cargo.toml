@@ -7,7 +7,7 @@ publish = false
 [workspace]
 
 [dependencies]
-peeps = { path = "../../crates/peeps", features = ["diagnostics", "dashboard"] }
+peeps = { path = "../../crates/peeps", features = ["diagnostics"] }
 tokio = { version = "1.49", features = [
   "io-util",
   "macros",

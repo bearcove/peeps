@@ -128,8 +128,8 @@ pub struct SnapshotRequest {
 #[derive(Facet)]
 pub struct SnapshotReply {
     pub snapshot_id: i64,
-    pub process_name: CompactString,
-    pub pid: u32,
+    /// Process-relative milliseconds at the moment the process assembled this snapshot.
+    pub ptime_now_ms: u64,
     #[facet(skip_unless_truthy)]
     pub snapshot: Option<Snapshot>,
 }

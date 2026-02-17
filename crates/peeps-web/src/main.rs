@@ -18,12 +18,13 @@ use figue as args;
 use peeps_types::Change;
 use peeps_wire::{
     decode_client_message_default, encode_server_message_default, ClientMessage, ServerMessage,
+    SnapshotRequest,
 };
 use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::process::Child;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, Mutex, Notify};
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
@@ -48,8 +49,10 @@ struct ProxiedResponse {
 struct ServerState {
     next_conn_id: u64,
     next_cut_id: u64,
+    next_snapshot_id: i64,
     connections: HashMap<u64, ConnectedProcess>,
     cuts: BTreeMap<String, CutState>,
+    pending_snapshots: HashMap<i64, SnapshotPending>,
 }
 
 struct ConnectedProcess {
@@ -62,6 +65,12 @@ struct CutState {
     requested_at_ns: i64,
     pending_conn_ids: BTreeSet<u64>,
     acks: BTreeMap<u64, peeps_types::CutAck>,
+}
+
+struct SnapshotPending {
+    pending_conn_ids: BTreeSet<u64>,
+    replies: HashMap<u64, peeps_wire::SnapshotReply>,
+    notify: Arc<Notify>,
 }
 
 #[derive(Facet)]
@@ -117,17 +126,41 @@ struct SqlResponse {
     row_count: u32,
 }
 
+/// Top-level response for POST /api/snapshot.
+/// Contains one envelope per connected process.
 #[derive(Facet)]
-struct SnapshotResponse {
-    entities: Vec<peeps_types::Entity>,
-    edges: Vec<SnapshotEdge>,
+struct SnapshotCutResponse {
+    /// Wall-clock milliseconds (Unix epoch) when this cut was assembled server-side.
+    captured_at_unix_ms: i64,
+    /// Processes that replied within the timeout window.
+    processes: Vec<ProcessSnapshotView>,
+    /// Processes that were connected when the snapshot was requested but did not
+    /// reply before the timeout. Includes name and pid so the frontend can show
+    /// the process name and offer OS-level sampling (e.g. `sample <pid>`).
+    timed_out_processes: Vec<TimedOutProcess>,
 }
 
+/// Per-process envelope inside a snapshot cut.
 #[derive(Facet)]
-struct SnapshotEdge {
-    src_id: String,
-    dst_id: String,
-    kind: String,
+struct ProcessSnapshotView {
+    /// Transport-assigned connection id — the stable process identity on this server.
+    process_id: u64,
+    process_name: String,
+    pid: u32,
+    /// Process-relative milliseconds captured by the instrumented process at snapshot time.
+    ptime_now_ms: u64,
+    snapshot: peeps_types::Snapshot,
+}
+
+/// A process that was connected but did not reply to the snapshot request in time.
+#[derive(Facet)]
+struct TimedOutProcess {
+    /// Transport-assigned connection id.
+    process_id: u64,
+    /// Self-reported name from the handshake.
+    process_name: String,
+    /// OS process id — use this to run `sample <pid>` or `spindump <pid>`.
+    pid: u32,
 }
 
 #[derive(Facet, Debug)]
@@ -183,8 +216,10 @@ async fn run() -> Result<(), String> {
         inner: Arc::new(Mutex::new(ServerState {
             next_conn_id: 1,
             next_cut_id: 1,
+            next_snapshot_id: 1,
             connections: HashMap::new(),
             cuts: BTreeMap::new(),
+            pending_snapshots: HashMap::new(),
         })),
         db_path: Arc::new(db_path),
         dev_proxy,
@@ -385,65 +420,133 @@ async fn api_query(State(state): State<AppState>, body: Bytes) -> impl IntoRespo
 }
 
 async fn api_snapshot(State(state): State<AppState>) -> impl IntoResponse {
-    let db_path = state.db_path.clone();
-    match tokio::task::spawn_blocking(move || snapshot_blocking(&db_path)).await {
-        Ok(Ok(resp)) => json_ok(&resp),
-        Ok(Err(err)) => json_error(StatusCode::INTERNAL_SERVER_ERROR, err),
-        Err(e) => json_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("snapshot worker join error: {e}"),
-        ),
+    const SNAPSHOT_TIMEOUT_MS: u64 = 5000;
+
+    // Assign a snapshot id and register a pending entry before sending requests,
+    // so replies that arrive before we start waiting are not lost.
+    let snapshot_id;
+    let notify;
+    let txs: Vec<(u64, mpsc::Sender<Vec<u8>>)>;
+    {
+        let mut guard = state.inner.lock().await;
+        snapshot_id = guard.next_snapshot_id;
+        guard.next_snapshot_id += 1;
+
+        txs = guard
+            .connections
+            .iter()
+            .map(|(id, conn)| (*id, conn.tx.clone()))
+            .collect();
+
+        notify = Arc::new(Notify::new());
+        if !txs.is_empty() {
+            let pending_conn_ids: BTreeSet<u64> = txs.iter().map(|(id, _)| *id).collect();
+            guard.pending_snapshots.insert(
+                snapshot_id,
+                SnapshotPending {
+                    pending_conn_ids,
+                    replies: HashMap::new(),
+                    notify: notify.clone(),
+                },
+            );
+        }
     }
-}
 
-fn snapshot_blocking(db_path: &PathBuf) -> Result<SnapshotResponse, String> {
-    let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+    if txs.is_empty() {
+        return json_ok(&SnapshotCutResponse {
+            captured_at_unix_ms: now_ms(),
+            processes: vec![],
+            timed_out_processes: vec![],
+        });
+    }
 
-    let entity_jsons: Vec<String> = {
-        let mut stmt = conn
-            .prepare("SELECT entity_json FROM entities")
-            .map_err(|e| format!("prepare entities: {e}"))?;
-        let rows = stmt
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(|e| format!("query entities: {e}"))?
-            .collect::<Result<_, _>>()
-            .map_err(|e| format!("read entity row: {e}"))?;
-        rows
+    let request_frame = match encode_server_message_default(&ServerMessage::SnapshotRequest(
+        SnapshotRequest {
+            snapshot_id,
+            timeout_ms: SNAPSHOT_TIMEOUT_MS as i64,
+        },
+    )) {
+        Ok(frame) => frame,
+        Err(e) => {
+            state.inner.lock().await.pending_snapshots.remove(&snapshot_id);
+            return json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("encode snapshot request: {e}"),
+            );
+        }
     };
-    let entities: Vec<peeps_types::Entity> = entity_jsons
-        .iter()
-        .map(|json| {
-            facet_json::from_slice(json.as_bytes()).map_err(|e| format!("parse entity: {e}"))
-        })
-        .collect::<Result<_, _>>()?;
 
-    let raw_edges: Vec<(String, String, String)> = {
-        let mut stmt = conn
-            .prepare("SELECT src_id, dst_id, kind_json FROM edges")
-            .map_err(|e| format!("prepare edges: {e}"))?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                ))
-            })
-            .map_err(|e| format!("query edges: {e}"))?
-            .collect::<Result<_, _>>()
-            .map_err(|e| format!("read edge row: {e}"))?;
-        rows
+    for (_, tx) in &txs {
+        if let Err(e) = tx.try_send(request_frame.clone()) {
+            debug!(%e, "failed to send snapshot request to connection");
+        }
+    }
+
+    // Wait for all replies or timeout.
+    let _ =
+        tokio::time::timeout(Duration::from_millis(SNAPSHOT_TIMEOUT_MS), notify.notified()).await;
+
+    // Collect whatever arrived.
+    let captured_at_unix_ms = now_ms();
+    let (pending, conn_info) = {
+        let mut guard = state.inner.lock().await;
+        let pending = guard.pending_snapshots.remove(&snapshot_id);
+        let conn_info: HashMap<u64, (String, u32)> = guard
+            .connections
+            .iter()
+            .map(|(id, conn)| (*id, (conn.process_name.clone(), conn.pid)))
+            .collect();
+        (pending, conn_info)
     };
-    let edges: Vec<SnapshotEdge> = raw_edges
-        .into_iter()
-        .map(|(src_id, dst_id, kind_json)| {
-            let kind: String = facet_json::from_slice(kind_json.as_bytes())
-                .map_err(|e| format!("parse kind: {e}"))?;
-            Ok(SnapshotEdge { src_id, dst_id, kind })
-        })
-        .collect::<Result<_, String>>()?;
 
-    Ok(SnapshotResponse { entities, edges })
+    let (processes, timed_out_processes) = match pending {
+        None => (vec![], vec![]),
+        Some(p) => {
+            let processes = p
+                .replies
+                .into_iter()
+                .filter_map(|(conn_id, reply)| {
+                    let snapshot = reply.snapshot?;
+                    let (process_name, pid) = conn_info
+                        .get(&conn_id)
+                        .map(|(name, pid)| (name.clone(), *pid))
+                        .unwrap_or_else(|| (format!("unknown-{conn_id}"), 0));
+                    Some(ProcessSnapshotView {
+                        process_id: conn_id,
+                        process_name,
+                        pid,
+                        ptime_now_ms: reply.ptime_now_ms,
+                        snapshot,
+                    })
+                })
+                .collect();
+
+            // Any conn_id still in pending_conn_ids did not reply in time.
+            let timed_out_processes = p
+                .pending_conn_ids
+                .into_iter()
+                .map(|conn_id| {
+                    let (process_name, pid) = conn_info
+                        .get(&conn_id)
+                        .map(|(name, pid)| (name.clone(), *pid))
+                        .unwrap_or_else(|| (format!("unknown-{conn_id}"), 0));
+                    TimedOutProcess {
+                        process_id: conn_id,
+                        process_name,
+                        pid,
+                    }
+                })
+                .collect();
+
+            (processes, timed_out_processes)
+        }
+    };
+
+    json_ok(&SnapshotCutResponse {
+        captured_at_unix_ms,
+        processes,
+        timed_out_processes,
+    })
 }
 
 fn parse_cli() -> Result<Cli, String> {
@@ -825,13 +928,29 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
 
     let read_result = read_messages(conn_id, &mut reader, &state).await;
 
-    {
+    let to_notify: Vec<Arc<Notify>> = {
         let mut guard = state.inner.lock().await;
         guard.connections.remove(&conn_id);
         for cut in guard.cuts.values_mut() {
             cut.pending_conn_ids.remove(&conn_id);
             cut.acks.remove(&conn_id);
         }
+        guard
+            .pending_snapshots
+            .values_mut()
+            .filter_map(|pending| {
+                if pending.pending_conn_ids.remove(&conn_id)
+                    && pending.pending_conn_ids.is_empty()
+                {
+                    Some(pending.notify.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    };
+    for notify in to_notify {
+        notify.notify_one();
     }
     if let Err(e) = persist_connection_closed(state.db_path.clone(), conn_id).await {
         warn!(conn_id, %e, "failed to persist connection close");
@@ -895,10 +1014,27 @@ async fn read_messages(
                 debug!(
                     conn_id,
                     snapshot_id = reply.snapshot_id,
-                    process_name = %reply.process_name,
                     has_snapshot = reply.snapshot.is_some(),
                     "received snapshot reply"
                 );
+                let notify_opt = {
+                    let mut guard = state.inner.lock().await;
+                    if let Some(pending) = guard.pending_snapshots.get_mut(&reply.snapshot_id) {
+                        pending.pending_conn_ids.remove(&conn_id);
+                        pending.replies.insert(conn_id, reply);
+                        if pending.pending_conn_ids.is_empty() {
+                            Some(pending.notify.clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        debug!(conn_id, snapshot_id = reply.snapshot_id, "snapshot reply for unknown id");
+                        None
+                    }
+                };
+                if let Some(notify) = notify_opt {
+                    notify.notify_one();
+                }
             }
             ClientMessage::DeltaBatch(batch) => {
                 if let Err(e) = persist_delta_batch(state.db_path.clone(), conn_id, batch).await {
@@ -996,6 +1132,13 @@ fn now_nanos() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos().min(i64::MAX as u128) as i64)
+        .unwrap_or(0)
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis().min(i64::MAX as u128) as i64)
         .unwrap_or(0)
 }
 

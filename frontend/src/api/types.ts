@@ -80,26 +80,52 @@ export interface SnapshotEntity {
 
 export type SnapshotEdgeKind = "needs" | "polls" | "closed_by" | "channel_link" | "rpc_link";
 
+export interface SnapshotScope {
+  id: string;
+  birth: number;
+  source: string;
+  name: string;
+}
+
+export interface SnapshotEvent {
+  id: string;
+  at: number;
+}
+
 export interface SnapshotEdge {
   /** Process-local entity ID. */
-  src_id: string;
+  src: string;
   /** Process-local entity ID. */
-  dst_id: string;
+  dst: string;
   kind: SnapshotEdgeKind;
+}
+
+export interface ProcessSnapshot {
+  entities: SnapshotEntity[];
+  scopes: SnapshotScope[];
+  edges: SnapshotEdge[];
+  events: SnapshotEvent[];
 }
 
 /** Per-process snapshot data. All times are process-relative (PTime in ms) unless noted. */
 export interface ProcessSnapshotView {
-  process_id: string;
+  process_id: number;
   process_name: string;
-  /** Unix epoch ms of when this snapshot was captured (wall clock). */
-  captured_at_unix_ms: number;
+  pid: number;
   /** Process-relative time (ms since process start) at the capture moment. */
   ptime_now_ms: number;
-  entities: SnapshotEntity[];
-  edges: SnapshotEdge[];
+  snapshot: ProcessSnapshot;
+}
+
+export interface TimedOutProcess {
+  process_id: number;
+  process_name: string;
+  pid: number;
 }
 
 export interface SnapshotCutResponse {
+  /** Unix epoch ms of when this snapshot was captured (wall clock). */
+  captured_at_unix_ms: number;
   processes: ProcessSnapshotView[];
+  timed_out_processes: TimedOutProcess[];
 }

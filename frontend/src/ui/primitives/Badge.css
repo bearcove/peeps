@@ -1,0 +1,57 @@
+/* ── Badges ──────────────────────────────────────────────── */
+
+.badge {
+    font-size: var(--font-size-sm);
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--surface-sunken);
+}
+
+.badge--neutral {
+    color: var(--text-secondary);
+    background: var(--surface-sunken);
+}
+
+.badge--ok {
+    color: light-dark(#155724, #75b798);
+    background: light-dark(#d4edda, #1f3d2b);
+}
+
+.badge--warn {
+    color: light-dark(#856404, #ffc107);
+    background: light-dark(#fff3cd, #3a2f1a);
+}
+
+.badge--crit {
+    color: light-dark(#721c24, #ff6b6b);
+    background: light-dark(#f8d7da, #3a1a1a);
+}
+
+.badge--count {
+    min-width: 28px;
+    text-align: center;
+    border-radius: 999px;
+    padding: 1px 8px;
+    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+}
+
+/* ── Waiter badge ────────────────────────────────────────── */
+
+.waiter-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    padding: 0 4px;
+    border-radius: 2px;
+}
+
+.waiter-badge--active {
+    color: light-dark(#721c24, #ff6b6b);
+    background: light-dark(#f8d7da, #3a1a1a);
+}

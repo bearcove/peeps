@@ -1,0 +1,111 @@
+/* ── Filter Menu ─────────────────────────────────────── */
+
+.ui-filter-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--surface-raised);
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    color: inherit;
+    user-select: none;
+    cursor: pointer;
+}
+
+.ui-filter-trigger--active {
+    border-color: light-dark(#4a7dff, #6b9aff);
+    background: light-dark(#eef3ff, #1a2340);
+    color: light-dark(#2956b2, #8bb4ff);
+}
+
+.ui-filter-trigger[data-focused],
+.ui-filter-trigger[data-focus-visible],
+.ui-filter-trigger[data-pressed] {
+    box-shadow: 0 0 0 2px var(--focus-ring);
+    border-color: light-dark(#a09888, #665e52);
+}
+
+.ui-filter-trigger--active[data-focused],
+.ui-filter-trigger--active[data-focus-visible],
+.ui-filter-trigger--active[data-pressed] {
+    border-color: light-dark(#4a7dff, #6b9aff);
+    box-shadow: 0 0 0 2px light-dark(rgba(74, 125, 255, 0.25), rgba(107, 154, 255, 0.25));
+}
+
+.ui-filter-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 0 4px;
+    border-radius: 2px;
+    background: light-dark(rgba(74, 125, 255, 0.15), rgba(107, 154, 255, 0.15));
+}
+
+.ui-filter-caret {
+    transition: transform 0.15s ease;
+}
+
+.ui-filter-caret--open {
+    transform: rotate(180deg);
+}
+
+.ui-filter-popover {
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--surface-raised);
+    box-shadow: 0 6px 16px light-dark(rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0.40));
+    padding: 3px;
+    z-index: 20;
+}
+
+.ui-filter-dialog {
+    outline: none;
+}
+
+.ui-filter-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.ui-filter-item {
+    border-radius: 2px;
+}
+
+.ui-filter-item:hover {
+    background: var(--surface-hover);
+}
+
+.ui-filter-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    cursor: default;
+    font-size: var(--font-size-sm);
+    outline: none;
+}
+
+.ui-filter-item-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 16px;
+    color: var(--text-secondary);
+}
+
+.ui-filter-item-label {
+    flex: 1;
+    font-weight: 500;
+}
+
+.ui-filter-item-meta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: auto;
+}

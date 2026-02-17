@@ -1,0 +1,62 @@
+/* ── SplitLayout Primitive ─────────────────────────────────── */
+
+.ui-split-layout {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns:
+        minmax(0, 1fr)
+        var(--split-resizer-width, 10px)
+        var(--split-right-width, 320px);
+    /* No overflow:hidden here — it creates stacking issues with collapsed panels */
+}
+
+.ui-split-layout--right-collapsed {
+    grid-template-columns:
+        minmax(0, 1fr)
+        var(--split-right-width, 80px);
+}
+
+.ui-split-layout--right-collapsed .ui-split-left {
+    /* Prevent left panel (e.g. ReactFlow) from overlapping the collapsed right column */
+    overflow: hidden;
+    position: relative;
+    z-index: 0;
+}
+
+.ui-split-layout--right-collapsed .ui-split-right {
+    position: relative;
+    z-index: 1;
+    overflow: visible;
+}
+
+.ui-split-left {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.ui-split-right {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.ui-split-resizer {
+    width: var(--split-resizer-width, 10px);
+    cursor: col-resize;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    background: var(--surface-sunken);
+    transition: background 120ms ease;
+}
+
+.ui-split-resizer:hover,
+.ui-split-resizer:focus-visible {
+    background: light-dark(#e4efff, #24364f);
+    outline: none;
+}
+
+.ui-split-layout--dragging .ui-split-resizer {
+    background: light-dark(#d0e3ff, #2d4466);
+}

@@ -16,18 +16,15 @@ use std::io;
 use std::pin::Pin;
 use std::process::{ExitStatus, Output, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
-#[cfg(feature = "dashboard")]
+use peeps_types::PTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-#[cfg(feature = "dashboard")]
 use tokio::net::TcpStream;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
-#[cfg(feature = "dashboard")]
 use tokio::time::MissedTickBehavior;
 
-#[cfg(feature = "dashboard")]
 use peeps_wire::{
     decode_server_message_default, encode_client_message_default, ClientMessage, ServerMessage,
 };
@@ -37,21 +34,14 @@ const MAX_CHANGES_BEFORE_COMPACT: usize = 65_536;
 const COMPACT_TARGET_CHANGES: usize = 8_192;
 const DEFAULT_STREAM_ID_PREFIX: &str = "proc";
 static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
-#[cfg(feature = "dashboard")]
 const DASHBOARD_PUSH_MAX_CHANGES: u32 = 2048;
-#[cfg(feature = "dashboard")]
 const DASHBOARD_PUSH_INTERVAL_MS: u64 = 100;
-#[cfg(feature = "dashboard")]
 const DASHBOARD_RECONNECT_DELAY_MS: u64 = 500;
 
+#[track_caller]
 pub fn init(process_name: &str) {
     ensure_process_scope(process_name);
-
-    #[cfg(feature = "dashboard")]
     init_dashboard_push_loop(process_name);
-
-    #[cfg(not(feature = "dashboard"))]
-    let _ = process_name;
 }
 
 fn ensure_process_scope(process_name: &str) {
@@ -64,7 +54,6 @@ fn current_process_scope_id() -> Option<ScopeId> {
         .map(|scope| ScopeId::new(scope.id().as_str()))
 }
 
-#[cfg(feature = "dashboard")]
 fn init_dashboard_push_loop(process_name: &str) {
     static STARTED: OnceLock<()> = OnceLock::new();
     if STARTED.set(()).is_err() {
@@ -100,7 +89,6 @@ fn init_dashboard_push_loop(process_name: &str) {
     });
 }
 
-#[cfg(feature = "dashboard")]
 async fn run_dashboard_push_loop(addr: String, process_name: CompactString) {
     loop {
         let connected = run_dashboard_session(&addr, process_name.clone()).await;
@@ -109,7 +97,6 @@ async fn run_dashboard_push_loop(addr: String, process_name: CompactString) {
     }
 }
 
-#[cfg(feature = "dashboard")]
 async fn run_dashboard_session(addr: &str, process_name: CompactString) -> Result<(), String> {
     let stream = TcpStream::connect(addr)
         .await
@@ -149,14 +136,17 @@ async fn run_dashboard_session(addr: &str, process_name: CompactString) -> Resul
                         let ack = ack_cut(request.cut_id.0.clone());
                         write_client_message(&mut writer, &ClientMessage::CutAck(ack)).await?;
                     }
-                    ServerMessage::SnapshotRequest(_) => {}
+                    ServerMessage::SnapshotRequest(request) => {
+                        let reply = build_snapshot_reply(request.snapshot_id);
+                        write_client_message(&mut writer, &ClientMessage::SnapshotReply(reply))
+                            .await?;
+                    }
                 }
             }
         }
     }
 }
 
-#[cfg(feature = "dashboard")]
 async fn write_client_message(
     writer: &mut tokio::net::tcp::OwnedWriteHalf,
     message: &ClientMessage,
@@ -170,7 +160,70 @@ async fn write_client_message(
     Ok(())
 }
 
-#[cfg(feature = "dashboard")]
+fn build_snapshot_reply(snapshot_id: i64) -> peeps_wire::SnapshotReply {
+    // Capture process-relative now before locking the db, so the timestamp
+    // represents the moment this snapshot was requested.
+    let ptime_now_ms = PTime::now().as_millis();
+
+    let (entity_bytes, scope_bytes, edge_bytes, event_bytes): (
+        Vec<Vec<u8>>,
+        Vec<Vec<u8>>,
+        Vec<Vec<u8>>,
+        Vec<Vec<u8>>,
+    ) = {
+        let Ok(db) = runtime_db().lock() else {
+            return peeps_wire::SnapshotReply {
+                snapshot_id,
+                ptime_now_ms,
+                snapshot: None,
+            };
+        };
+        (
+            db.entities
+                .values()
+                .filter_map(|e| facet_json::to_vec(e).ok())
+                .collect(),
+            db.scopes
+                .values()
+                .filter_map(|s| facet_json::to_vec(s).ok())
+                .collect(),
+            db.edges
+                .values()
+                .filter_map(|e| facet_json::to_vec(e).ok())
+                .collect(),
+            db.events
+                .iter()
+                .filter_map(|e| facet_json::to_vec(e).ok())
+                .collect(),
+        )
+    };
+
+    let snapshot = peeps_types::Snapshot {
+        entities: entity_bytes
+            .iter()
+            .filter_map(|b| facet_json::from_slice(b).ok())
+            .collect(),
+        scopes: scope_bytes
+            .iter()
+            .filter_map(|b| facet_json::from_slice(b).ok())
+            .collect(),
+        edges: edge_bytes
+            .iter()
+            .filter_map(|b| facet_json::from_slice(b).ok())
+            .collect(),
+        events: event_bytes
+            .iter()
+            .filter_map(|b| facet_json::from_slice(b).ok())
+            .collect(),
+    };
+
+    peeps_wire::SnapshotReply {
+        snapshot_id,
+        ptime_now_ms,
+        snapshot: Some(snapshot),
+    }
+}
+
 async fn read_server_message(
     reader: &mut tokio::net::tcp::OwnedReadHalf,
 ) -> Result<Option<ServerMessage>, String> {
@@ -198,6 +251,7 @@ async fn read_server_message(
     Ok(Some(message))
 }
 
+#[track_caller]
 pub fn spawn_tracked<F>(
     name: impl Into<CompactString>,
     fut: F,
@@ -209,6 +263,7 @@ where
     tokio::spawn(instrument_future_named(name, fut))
 }
 
+#[track_caller]
 pub fn spawn_blocking_tracked<F, T>(
     name: impl Into<CompactString>,
     f: F,
@@ -224,6 +279,7 @@ where
     })
 }
 
+#[track_caller]
 pub fn sleep(duration: std::time::Duration, label: impl Into<String>) -> impl Future<Output = ()> {
     instrument_future_named(label.into(), tokio::time::sleep(duration))
 }
@@ -239,9 +295,9 @@ where
     tokio::time::timeout(duration, instrument_future_named(label.into(), future)).await
 }
 
-fn runtime_db() -> &'static Mutex<RuntimeDb> {
-    static DB: OnceLock<Mutex<RuntimeDb>> = OnceLock::new();
-    DB.get_or_init(|| Mutex::new(RuntimeDb::new(runtime_stream_id(), MAX_EVENTS)))
+fn runtime_db() -> &'static StdMutex<RuntimeDb> {
+    static DB: OnceLock<StdMutex<RuntimeDb>> = OnceLock::new();
+    DB.get_or_init(|| StdMutex::new(RuntimeDb::new(runtime_stream_id(), MAX_EVENTS)))
 }
 
 fn runtime_stream_id() -> StreamId {
@@ -947,11 +1003,13 @@ pub struct EntityRef {
 }
 
 impl EntityRef {
+    #[track_caller]
     pub fn id(&self) -> &EntityId {
         &self.id
     }
 }
 
+#[track_caller]
 pub fn entity_ref_from_wire(id: impl Into<CompactString>) -> EntityRef {
     EntityRef {
         id: EntityId::new(id.into()),
@@ -964,6 +1022,7 @@ pub struct ScopeRef {
 }
 
 impl ScopeRef {
+    #[track_caller]
     pub fn id(&self) -> &ScopeId {
         &self.id
     }
@@ -987,6 +1046,7 @@ pub struct ScopeHandle {
 }
 
 impl ScopeHandle {
+    #[track_caller]
     pub fn new(name: impl Into<CompactString>, body: ScopeBody) -> Self {
         let scope = Scope::builder(name, body)
             .build(&())
@@ -1002,10 +1062,12 @@ impl ScopeHandle {
         }
     }
 
+    #[track_caller]
     pub fn id(&self) -> &ScopeId {
         &self.inner.id
     }
 
+    #[track_caller]
     pub fn scope_ref(&self) -> ScopeRef {
         ScopeRef {
             id: ScopeId::new(self.inner.id.as_str()),
@@ -1031,6 +1093,7 @@ pub struct EntityHandle {
 }
 
 impl EntityHandle {
+    #[track_caller]
     pub fn new(name: impl Into<CompactString>, body: EntityBody) -> Self {
         let entity = Entity::builder(name, body)
             .build(&())
@@ -1046,22 +1109,26 @@ impl EntityHandle {
         }
     }
 
+    #[track_caller]
     pub fn id(&self) -> &EntityId {
         &self.inner.id
     }
 
+    #[track_caller]
     pub fn entity_ref(&self) -> EntityRef {
         EntityRef {
             id: EntityId::new(self.inner.id.as_str()),
         }
     }
 
+    #[track_caller]
     pub fn link_to(&self, target: &EntityRef, kind: EdgeKind) {
         if let Ok(mut db) = runtime_db().lock() {
             db.upsert_edge(self.id(), target.id(), kind);
         }
     }
 
+    #[track_caller]
     pub fn link_to_handle(&self, target: &EntityHandle, kind: EdgeKind) {
         self.link_to(&target.entity_ref(), kind);
     }
@@ -1073,18 +1140,22 @@ pub struct RpcRequestHandle {
 }
 
 impl RpcRequestHandle {
+    #[track_caller]
     pub fn id(&self) -> &EntityId {
         self.handle.id()
     }
 
+    #[track_caller]
     pub fn id_for_wire(&self) -> CompactString {
         CompactString::from(self.handle.id().as_str())
     }
 
+    #[track_caller]
     pub fn entity_ref(&self) -> EntityRef {
         self.handle.entity_ref()
     }
 
+    #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
@@ -1096,14 +1167,17 @@ pub struct RpcResponseHandle {
 }
 
 impl RpcResponseHandle {
+    #[track_caller]
     pub fn id(&self) -> &EntityId {
         self.handle.id()
     }
 
+    #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
 
+    #[track_caller]
     pub fn set_status(&self, status: ResponseStatus) {
         let mut changed = false;
         if let Ok(mut db) = runtime_db().lock() {
@@ -1123,19 +1197,23 @@ impl RpcResponseHandle {
         }
     }
 
+    #[track_caller]
     pub fn mark_ok(&self) {
         self.set_status(ResponseStatus::Ok);
     }
 
+    #[track_caller]
     pub fn mark_error(&self) {
         self.set_status(ResponseStatus::Error);
     }
 
+    #[track_caller]
     pub fn mark_cancelled(&self) {
         self.set_status(ResponseStatus::Cancelled);
     }
 }
 
+#[track_caller]
 pub fn rpc_request(
     method: impl Into<CompactString>,
     args_preview: impl Into<CompactString>,
@@ -1150,6 +1228,7 @@ pub fn rpc_request(
     }
 }
 
+#[track_caller]
 pub fn rpc_response(method: impl Into<CompactString>) -> RpcResponseHandle {
     let method = method.into();
     let body = EntityBody::Response(ResponseEntity {
@@ -1161,6 +1240,7 @@ pub fn rpc_response(method: impl Into<CompactString>) -> RpcResponseHandle {
     }
 }
 
+#[track_caller]
 pub fn rpc_response_for(
     method: impl Into<CompactString>,
     request: &EntityRef,
@@ -1175,38 +1255,42 @@ pub fn rpc_response_for(
 pub struct Sender<T> {
     inner: mpsc::Sender<T>,
     handle: EntityHandle,
-    channel: Arc<Mutex<ChannelRuntimeState>>,
+    channel: Arc<StdMutex<ChannelRuntimeState>>,
     name: CompactString,
 }
 
 pub struct Receiver<T> {
     inner: mpsc::Receiver<T>,
     handle: EntityHandle,
-    channel: Arc<Mutex<ChannelRuntimeState>>,
+    channel: Arc<StdMutex<ChannelRuntimeState>>,
     name: CompactString,
 }
 
 pub struct UnboundedSender<T> {
     inner: mpsc::UnboundedSender<T>,
     handle: EntityHandle,
+    channel: Arc<StdMutex<ChannelRuntimeState>>,
+    name: CompactString,
 }
 
 pub struct UnboundedReceiver<T> {
     inner: mpsc::UnboundedReceiver<T>,
     handle: EntityHandle,
+    channel: Arc<StdMutex<ChannelRuntimeState>>,
+    name: CompactString,
 }
 
 pub struct OneshotSender<T> {
     inner: Option<oneshot::Sender<T>>,
     handle: EntityHandle,
-    channel: Arc<Mutex<OneshotRuntimeState>>,
+    channel: Arc<StdMutex<OneshotRuntimeState>>,
     name: CompactString,
 }
 
 pub struct OneshotReceiver<T> {
     inner: Option<oneshot::Receiver<T>>,
     handle: EntityHandle,
-    channel: Arc<Mutex<OneshotRuntimeState>>,
+    channel: Arc<StdMutex<OneshotRuntimeState>>,
     name: CompactString,
 }
 
@@ -1214,14 +1298,14 @@ pub struct BroadcastSender<T> {
     inner: broadcast::Sender<T>,
     handle: EntityHandle,
     receiver_handle: EntityHandle,
-    channel: Arc<Mutex<BroadcastRuntimeState>>,
+    channel: Arc<StdMutex<BroadcastRuntimeState>>,
     name: CompactString,
 }
 
 pub struct BroadcastReceiver<T> {
     inner: broadcast::Receiver<T>,
     handle: EntityHandle,
-    channel: Arc<Mutex<BroadcastRuntimeState>>,
+    channel: Arc<StdMutex<BroadcastRuntimeState>>,
     name: CompactString,
 }
 
@@ -1229,14 +1313,14 @@ pub struct WatchSender<T> {
     inner: watch::Sender<T>,
     handle: EntityHandle,
     receiver_handle: EntityHandle,
-    channel: Arc<Mutex<WatchRuntimeState>>,
+    channel: Arc<StdMutex<WatchRuntimeState>>,
     name: CompactString,
 }
 
 pub struct WatchReceiver<T> {
     inner: watch::Receiver<T>,
     handle: EntityHandle,
-    channel: Arc<Mutex<WatchRuntimeState>>,
+    channel: Arc<StdMutex<WatchRuntimeState>>,
     name: CompactString,
 }
 
@@ -1377,9 +1461,14 @@ impl<T> Clone for Sender<T> {
 
 impl<T> Clone for UnboundedSender<T> {
     fn clone(&self) -> Self {
+        if let Ok(mut state) = self.channel.lock() {
+            state.tx_ref_count = state.tx_ref_count.saturating_add(1);
+        }
         Self {
             inner: self.inner.clone(),
             handle: self.handle.clone(),
+            channel: self.channel.clone(),
+            name: self.name.clone(),
         }
     }
 }
@@ -1443,7 +1532,7 @@ impl<T> Clone for WatchReceiver<T> {
 }
 
 fn sync_channel_state(
-    channel: &Arc<Mutex<ChannelRuntimeState>>,
+    channel: &Arc<StdMutex<ChannelRuntimeState>>,
 ) -> Option<(
     EntityId,
     EntityId,
@@ -1464,7 +1553,7 @@ fn sync_channel_state(
     ))
 }
 
-fn apply_channel_state(channel: &Arc<Mutex<ChannelRuntimeState>>) {
+fn apply_channel_state(channel: &Arc<StdMutex<ChannelRuntimeState>>) {
     let Some((tx_id, rx_id, buffer, tx_lifecycle, rx_lifecycle)) = sync_channel_state(channel)
     else {
         return;
@@ -1510,7 +1599,7 @@ fn emit_channel_closed(target: &EntityId, cause: ChannelCloseCause) {
 }
 
 fn sync_oneshot_state(
-    channel: &Arc<Mutex<OneshotRuntimeState>>,
+    channel: &Arc<StdMutex<OneshotRuntimeState>>,
 ) -> Option<(
     EntityId,
     EntityId,
@@ -1528,7 +1617,7 @@ fn sync_oneshot_state(
     ))
 }
 
-fn apply_oneshot_state(channel: &Arc<Mutex<OneshotRuntimeState>>) {
+fn apply_oneshot_state(channel: &Arc<StdMutex<OneshotRuntimeState>>) {
     let Some((tx_id, rx_id, state, tx_lifecycle, rx_lifecycle)) = sync_oneshot_state(channel)
     else {
         return;
@@ -1540,7 +1629,7 @@ fn apply_oneshot_state(channel: &Arc<Mutex<OneshotRuntimeState>>) {
 }
 
 fn sync_broadcast_state(
-    channel: &Arc<Mutex<BroadcastRuntimeState>>,
+    channel: &Arc<StdMutex<BroadcastRuntimeState>>,
 ) -> Option<(
     EntityId,
     EntityId,
@@ -1569,7 +1658,7 @@ fn sync_broadcast_state(
     ))
 }
 
-fn apply_broadcast_state(channel: &Arc<Mutex<BroadcastRuntimeState>>) {
+fn apply_broadcast_state(channel: &Arc<StdMutex<BroadcastRuntimeState>>) {
     let Some((tx_id, rx_id, buffer, tx_lifecycle, rx_lifecycle)) = sync_broadcast_state(channel)
     else {
         return;
@@ -1581,7 +1670,7 @@ fn apply_broadcast_state(channel: &Arc<Mutex<BroadcastRuntimeState>>) {
 }
 
 fn sync_watch_state(
-    channel: &Arc<Mutex<WatchRuntimeState>>,
+    channel: &Arc<StdMutex<WatchRuntimeState>>,
 ) -> Option<(
     EntityId,
     EntityId,
@@ -1607,7 +1696,7 @@ fn sync_watch_state(
     ))
 }
 
-fn apply_watch_state(channel: &Arc<Mutex<WatchRuntimeState>>) {
+fn apply_watch_state(channel: &Arc<StdMutex<WatchRuntimeState>>) {
     let Some((tx_id, rx_id, tx_lifecycle, rx_lifecycle, last_update_at)) =
         sync_watch_state(channel)
     else {
@@ -1665,20 +1754,67 @@ impl<T> Drop for Receiver<T> {
     }
 }
 
+impl<T> Drop for UnboundedSender<T> {
+    fn drop(&mut self) {
+        let mut emit_for_rx = None;
+        if let Ok(mut state) = self.channel.lock() {
+            state.tx_ref_count = state.tx_ref_count.saturating_sub(1);
+            if state.tx_ref_count == 0 {
+                if state.tx_close_cause.is_none() {
+                    state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                }
+                if state.rx_close_cause.is_none() {
+                    state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                    emit_for_rx = Some(EntityId::new(state.rx_id.as_str()));
+                }
+            }
+        }
+        apply_channel_state(&self.channel);
+        if let Some(rx_id) = emit_for_rx {
+            emit_channel_closed(&rx_id, ChannelCloseCause::SenderDropped);
+        }
+    }
+}
+
+impl<T> Drop for UnboundedReceiver<T> {
+    fn drop(&mut self) {
+        let mut emit_for_tx = None;
+        if let Ok(mut state) = self.channel.lock() {
+            if matches!(state.rx_state, ReceiverState::Alive) {
+                state.rx_state = ReceiverState::Dropped;
+                if state.tx_close_cause.is_none() {
+                    state.tx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
+                    emit_for_tx = Some(EntityId::new(state.tx_id.as_str()));
+                }
+                if state.rx_close_cause.is_none() {
+                    state.rx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
+                }
+            }
+        }
+        apply_channel_state(&self.channel);
+        if let Some(tx_id) = emit_for_tx {
+            emit_channel_closed(&tx_id, ChannelCloseCause::ReceiverDropped);
+        }
+    }
+}
+
 impl<T> Sender<T> {
+    #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
 
+    #[track_caller]
     pub fn try_send(&self, value: T) -> Result<(), mpsc::error::TrySendError<T>> {
         self.inner.try_send(value)
     }
 
+    #[track_caller]
     pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
     }
 
-    pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
+        pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
         let wait_kind = self.channel.lock().ok().and_then(|state| {
             if state.is_send_full() {
                 if let Ok(event) = Event::channel_sent(
@@ -1779,11 +1915,12 @@ impl<T> Sender<T> {
 }
 
 impl<T> Receiver<T> {
+    #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
 
-    pub async fn recv(&mut self) -> Option<T> {
+        pub async fn recv(&mut self) -> Option<T> {
         let wait_kind = self.channel.lock().ok().and_then(|state| {
             if state.is_receive_empty() {
                 if let Ok(event) = Event::channel_received(
@@ -1884,29 +2021,190 @@ impl<T> Receiver<T> {
 }
 
 impl<T> UnboundedSender<T> {
+    #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
 
+    #[track_caller]
     pub fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
-        self.inner.send(value)
+        match self.inner.send(value) {
+            Ok(()) => {
+                let queue_len = if let Ok(mut state) = self.channel.lock() {
+                    state.queue_len = state.queue_len.saturating_add(1);
+                    state.queue_len
+                } else {
+                    0
+                };
+                apply_channel_state(&self.channel);
+                if let Ok(event) = Event::channel_sent(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelSendEvent {
+                        outcome: ChannelSendOutcome::Ok,
+                        queue_len: Some(queue_len),
+                    },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                Ok(())
+            }
+            Err(err) => {
+                let (queue_len, close_cause) = if let Ok(mut state) = self.channel.lock() {
+                    if state.tx_close_cause.is_none() {
+                        state.tx_close_cause = Some(ChannelCloseCause::ReceiverClosed);
+                    }
+                    if state.rx_close_cause.is_none() {
+                        state.rx_close_cause = Some(ChannelCloseCause::ReceiverClosed);
+                    }
+                    (
+                        state.queue_len,
+                        state
+                            .tx_close_cause
+                            .unwrap_or(ChannelCloseCause::ReceiverClosed),
+                    )
+                } else {
+                    (0, ChannelCloseCause::ReceiverClosed)
+                };
+                apply_channel_state(&self.channel);
+                if let Ok(event) = Event::channel_sent(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelSendEvent {
+                        outcome: ChannelSendOutcome::Closed,
+                        queue_len: Some(queue_len),
+                    },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                if let Ok(event) = Event::channel_closed(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelClosedEvent { cause: close_cause },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                Err(err)
+            }
+        }
     }
 
+    #[track_caller]
     pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
     }
 }
 
 impl<T> UnboundedReceiver<T> {
+    #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
 
-    pub async fn recv(&mut self) -> Option<T> {
-        self.inner.recv().await
+        pub async fn recv(&mut self) -> Option<T> {
+        let wait_kind = self.channel.lock().ok().and_then(|state| {
+            if state.is_receive_empty() {
+                if let Ok(event) = Event::channel_received(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelReceiveEvent {
+                        outcome: ChannelReceiveOutcome::Empty,
+                        queue_len: Some(state.queue_len),
+                    },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                Some(ChannelWaitKind::ReceiveEmpty)
+            } else {
+                None
+            }
+        });
+        let wait_started = wait_kind.map(|kind| {
+            emit_channel_wait_started(self.handle.id(), kind);
+            Instant::now()
+        });
+
+        let result = instrument_future_on(
+            format!("{}.recv", self.name),
+            &self.handle,
+            self.inner.recv(),
+        )
+        .await;
+
+        if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
+            emit_channel_wait_ended(self.handle.id(), kind, started);
+        }
+
+        match result {
+            Some(value) => {
+                let queue_len = if let Ok(mut state) = self.channel.lock() {
+                    state.queue_len = state.queue_len.saturating_sub(1);
+                    state.queue_len
+                } else {
+                    0
+                };
+                apply_channel_state(&self.channel);
+                if let Ok(event) = Event::channel_received(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelReceiveEvent {
+                        outcome: ChannelReceiveOutcome::Ok,
+                        queue_len: Some(queue_len),
+                    },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                Some(value)
+            }
+            None => {
+                let (queue_len, close_cause) = if let Ok(mut state) = self.channel.lock() {
+                    if state.tx_close_cause.is_none() {
+                        state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                    }
+                    if state.rx_close_cause.is_none() {
+                        state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                    }
+                    (
+                        state.queue_len,
+                        state
+                            .rx_close_cause
+                            .unwrap_or(ChannelCloseCause::SenderDropped),
+                    )
+                } else {
+                    (0, ChannelCloseCause::SenderDropped)
+                };
+                apply_channel_state(&self.channel);
+                if let Ok(event) = Event::channel_received(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelReceiveEvent {
+                        outcome: ChannelReceiveOutcome::Closed,
+                        queue_len: Some(queue_len),
+                    },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                if let Ok(event) = Event::channel_closed(
+                    EventTarget::Entity(self.handle.id().clone()),
+                    &ChannelClosedEvent { cause: close_cause },
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
+                }
+                None
+            }
+        }
     }
 }
 
+#[track_caller]
 pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
     let name: CompactString = name.into().into();
     let (tx, rx) = mpsc::channel(capacity);
@@ -1939,7 +2237,7 @@ pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Recei
         }),
     );
     tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
-    let channel = Arc::new(Mutex::new(ChannelRuntimeState {
+    let channel = Arc::new(StdMutex::new(ChannelRuntimeState {
         tx_id: tx_handle.id().clone(),
         rx_id: rx_handle.id().clone(),
         tx_ref_count: 1,
@@ -1966,20 +2264,59 @@ pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Recei
     )
 }
 
+#[track_caller]
 pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     let name: CompactString = name.into().into();
     let (tx, rx) = mpsc::unbounded_channel();
-    let tx_handle = EntityHandle::new(format!("{name}:tx"), EntityBody::Future);
-    let rx_handle = EntityHandle::new(format!("{name}:rx"), EntityBody::Future);
+    let details = ChannelDetails::Mpsc(MpscChannelDetails {
+        buffer: Some(BufferState {
+            occupancy: 0,
+            capacity: None,
+        }),
+    });
+    let tx_handle = EntityHandle::new(
+        format!("{name}:tx"),
+        EntityBody::ChannelTx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details,
+        }),
+    );
+    let details = ChannelDetails::Mpsc(MpscChannelDetails {
+        buffer: Some(BufferState {
+            occupancy: 0,
+            capacity: None,
+        }),
+    });
+    let rx_handle = EntityHandle::new(
+        format!("{name}:rx"),
+        EntityBody::ChannelRx(ChannelEndpointEntity {
+            lifecycle: ChannelEndpointLifecycle::Open,
+            details,
+        }),
+    );
     tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
+    let channel = Arc::new(StdMutex::new(ChannelRuntimeState {
+        tx_id: tx_handle.id().clone(),
+        rx_id: rx_handle.id().clone(),
+        tx_ref_count: 1,
+        rx_state: ReceiverState::Alive,
+        queue_len: 0,
+        capacity: None,
+        tx_close_cause: None,
+        rx_close_cause: None,
+    }));
     (
         UnboundedSender {
             inner: tx,
             handle: tx_handle,
+            channel: channel.clone(),
+            name: name.clone(),
         },
         UnboundedReceiver {
             inner: rx,
             handle: rx_handle,
+            channel,
+            name,
         },
     )
 }
@@ -2119,10 +2456,12 @@ impl<T> Drop for WatchReceiver<T> {
 }
 
 impl<T> OneshotSender<T> {
+    #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
 
+    #[track_caller]
     pub fn send(mut self, value: T) -> Result<(), T> {
         let Some(inner) = self.inner.take() else {
             return Err(value);
@@ -2185,11 +2524,12 @@ impl<T> OneshotSender<T> {
 }
 
 impl<T> OneshotReceiver<T> {
+    #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
 
-    pub async fn recv(mut self) -> Result<T, oneshot::error::RecvError> {
+        pub async fn recv(mut self) -> Result<T, oneshot::error::RecvError> {
         let inner = self.inner.take().expect("oneshot receiver consumed");
         let result = instrument_future_on(format!("{}.recv", self.name), &self.handle, inner).await;
         match result {
@@ -2249,6 +2589,7 @@ impl<T> OneshotReceiver<T> {
     }
 }
 
+#[track_caller]
 pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
     let name: CompactString = name.into().into();
     let (tx, rx) = oneshot::channel();
@@ -2273,7 +2614,7 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
         }),
     );
     tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
-    let channel = Arc::new(Mutex::new(OneshotRuntimeState {
+    let channel = Arc::new(StdMutex::new(OneshotRuntimeState {
         tx_id: tx_handle.id().clone(),
         rx_id: rx_handle.id().clone(),
         tx_lifecycle: ChannelEndpointLifecycle::Open,
@@ -2296,15 +2637,18 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
     )
 }
 
+#[track_caller]
 pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
     oneshot(name)
 }
 
 impl<T: Clone> BroadcastSender<T> {
+    #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
 
+    #[track_caller]
     pub fn subscribe(&self) -> BroadcastReceiver<T> {
         if let Ok(mut state) = self.channel.lock() {
             state.rx_ref_count = state.rx_ref_count.saturating_add(1);
@@ -2317,6 +2661,7 @@ impl<T: Clone> BroadcastSender<T> {
         }
     }
 
+    #[track_caller]
     pub fn send(&self, value: T) -> Result<usize, broadcast::error::SendError<T>> {
         match self.inner.send(value) {
             Ok(receivers) => {
@@ -2371,11 +2716,12 @@ impl<T: Clone> BroadcastSender<T> {
 }
 
 impl<T: Clone> BroadcastReceiver<T> {
+    #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
 
-    pub async fn recv(&mut self) -> Result<T, broadcast::error::RecvError> {
+        pub async fn recv(&mut self) -> Result<T, broadcast::error::RecvError> {
         let result = instrument_future_on(
             format!("{}.recv", self.name),
             &self.handle,
@@ -2437,10 +2783,12 @@ impl<T: Clone> BroadcastReceiver<T> {
 }
 
 impl<T: Clone> WatchSender<T> {
+    #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
 
+    #[track_caller]
     pub fn send(&self, value: T) -> Result<(), watch::error::SendError<T>> {
         match self.inner.send(value) {
             Ok(()) => {
@@ -2488,6 +2836,7 @@ impl<T: Clone> WatchSender<T> {
         }
     }
 
+    #[track_caller]
     pub fn send_replace(&self, value: T) -> T {
         let old = self.inner.send_replace(value);
         let now = peeps_types::PTime::now();
@@ -2498,6 +2847,7 @@ impl<T: Clone> WatchSender<T> {
         old
     }
 
+    #[track_caller]
     pub fn subscribe(&self) -> WatchReceiver<T> {
         if let Ok(mut state) = self.channel.lock() {
             state.rx_ref_count = state.rx_ref_count.saturating_add(1);
@@ -2512,11 +2862,12 @@ impl<T: Clone> WatchSender<T> {
 }
 
 impl<T: Clone> WatchReceiver<T> {
+    #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
 
-    pub async fn changed(&mut self) -> Result<(), watch::error::RecvError> {
+        pub async fn changed(&mut self) -> Result<(), watch::error::RecvError> {
         let result = instrument_future_on(
             format!("{}.changed", self.name),
             &self.handle,
@@ -2564,19 +2915,23 @@ impl<T: Clone> WatchReceiver<T> {
         }
     }
 
+    #[track_caller]
     pub fn borrow(&self) -> watch::Ref<'_, T> {
         self.inner.borrow()
     }
 
+    #[track_caller]
     pub fn borrow_and_update(&mut self) -> watch::Ref<'_, T> {
         self.inner.borrow_and_update()
     }
 
+    #[track_caller]
     pub fn has_changed(&self) -> Result<bool, watch::error::RecvError> {
         self.inner.has_changed()
     }
 }
 
+#[track_caller]
 pub fn broadcast<T: Clone>(
     name: impl Into<CompactString>,
     capacity: usize,
@@ -2611,7 +2966,7 @@ pub fn broadcast<T: Clone>(
         }),
     );
     tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
-    let channel = Arc::new(Mutex::new(BroadcastRuntimeState {
+    let channel = Arc::new(StdMutex::new(BroadcastRuntimeState {
         tx_id: tx_handle.id().clone(),
         rx_id: rx_handle.id().clone(),
         tx_ref_count: 1,
@@ -2637,6 +2992,7 @@ pub fn broadcast<T: Clone>(
     )
 }
 
+#[track_caller]
 pub fn watch<T: Clone>(
     name: impl Into<CompactString>,
     initial: T,
@@ -2664,7 +3020,7 @@ pub fn watch<T: Clone>(
         }),
     );
     tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
-    let channel = Arc::new(Mutex::new(WatchRuntimeState {
+    let channel = Arc::new(StdMutex::new(WatchRuntimeState {
         tx_id: tx_handle.id().clone(),
         rx_id: rx_handle.id().clone(),
         tx_ref_count: 1,
@@ -2690,6 +3046,7 @@ pub fn watch<T: Clone>(
     )
 }
 
+#[track_caller]
 pub fn watch_channel<T: Clone>(
     name: impl Into<CompactString>,
     initial: T,
@@ -2698,6 +3055,7 @@ pub fn watch_channel<T: Clone>(
 }
 
 impl Notify {
+    #[track_caller]
     pub fn new(name: impl Into<String>) -> Self {
         let name = name.into();
         let handle = EntityHandle::new(name, EntityBody::Notify(NotifyEntity { waiter_count: 0 }));
@@ -2708,7 +3066,7 @@ impl Notify {
         }
     }
 
-    pub async fn notified(&self) {
+        pub async fn notified(&self) {
         let waiters = self
             .waiter_count
             .fetch_add(1, Ordering::Relaxed)
@@ -2728,16 +3086,19 @@ impl Notify {
         }
     }
 
+    #[track_caller]
     pub fn notify_one(&self) {
         self.inner.notify_one();
     }
 
+    #[track_caller]
     pub fn notify_waiters(&self) {
         self.inner.notify_waiters();
     }
 }
 
 impl<T> OnceCell<T> {
+    #[track_caller]
     pub fn new(name: impl Into<String>) -> Self {
         let handle = EntityHandle::new(
             name.into(),
@@ -2753,15 +3114,17 @@ impl<T> OnceCell<T> {
         }
     }
 
+    #[track_caller]
     pub fn get(&self) -> Option<&T> {
         self.inner.get()
     }
 
+    #[track_caller]
     pub fn initialized(&self) -> bool {
         self.inner.initialized()
     }
 
-    pub async fn get_or_init<F, Fut>(&self, f: F) -> &T
+        pub async fn get_or_init<F, Fut>(&self, f: F) -> &T
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = T>,
@@ -2799,7 +3162,7 @@ impl<T> OnceCell<T> {
         result
     }
 
-    pub async fn get_or_try_init<F, Fut, E>(&self, f: F) -> Result<&T, E>
+        pub async fn get_or_try_init<F, Fut, E>(&self, f: F) -> Result<&T, E>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<T, E>>,
@@ -2837,6 +3200,7 @@ impl<T> OnceCell<T> {
         result
     }
 
+    #[track_caller]
     pub fn set(&self, value: T) -> Result<(), T> {
         let result = self.inner.set(value).map_err(|e| match e {
             tokio::sync::SetError::AlreadyInitializedError(v) => v,
@@ -2861,6 +3225,7 @@ impl<T> OnceCell<T> {
 }
 
 impl Semaphore {
+    #[track_caller]
     pub fn new(name: impl Into<String>, permits: usize) -> Self {
         let max_permits = permits.min(u32::MAX as usize) as u32;
         let handle = EntityHandle::new(
@@ -2877,18 +3242,22 @@ impl Semaphore {
         }
     }
 
+    #[track_caller]
     pub fn available_permits(&self) -> usize {
         self.inner.available_permits()
     }
 
+    #[track_caller]
     pub fn close(&self) {
         self.inner.close();
     }
 
+    #[track_caller]
     pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
     }
 
+    #[track_caller]
     pub fn add_permits(&self, n: usize) {
         self.inner.add_permits(n);
         let delta = n.min(u32::MAX as usize) as u32;
@@ -2899,7 +3268,7 @@ impl Semaphore {
         self.sync_state(max);
     }
 
-    pub async fn acquire(
+        pub async fn acquire(
         &self,
     ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
         let permit =
@@ -2908,7 +3277,7 @@ impl Semaphore {
         Ok(permit)
     }
 
-    pub async fn acquire_many(
+        pub async fn acquire_many(
         &self,
         n: u32,
     ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
@@ -2922,7 +3291,7 @@ impl Semaphore {
         Ok(permit)
     }
 
-    pub async fn acquire_owned(
+        pub async fn acquire_owned(
         &self,
     ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
         let permit = instrument_future_on(
@@ -2935,7 +3304,7 @@ impl Semaphore {
         Ok(permit)
     }
 
-    pub async fn acquire_many_owned(
+        pub async fn acquire_many_owned(
         &self,
         n: u32,
     ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
@@ -2949,6 +3318,7 @@ impl Semaphore {
         Ok(permit)
     }
 
+    #[track_caller]
     pub fn try_acquire(
         &self,
     ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
@@ -2957,6 +3327,7 @@ impl Semaphore {
         Ok(permit)
     }
 
+    #[track_caller]
     pub fn try_acquire_many(
         &self,
         n: u32,
@@ -2966,6 +3337,7 @@ impl Semaphore {
         Ok(permit)
     }
 
+    #[track_caller]
     pub fn try_acquire_owned(
         &self,
     ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
@@ -2974,6 +3346,7 @@ impl Semaphore {
         Ok(permit)
     }
 
+    #[track_caller]
     pub fn try_acquire_many_owned(
         &self,
         n: u32,
@@ -2993,6 +3366,7 @@ impl Semaphore {
 }
 
 impl Command {
+    #[track_caller]
     pub fn new(program: impl AsRef<OsStr>) -> Self {
         let program = CompactString::from(program.as_ref().to_string_lossy().as_ref());
         Self {
@@ -3003,6 +3377,7 @@ impl Command {
         }
     }
 
+    #[track_caller]
     pub fn arg(&mut self, arg: impl AsRef<OsStr>) -> &mut Self {
         let arg = arg.as_ref().to_owned();
         self.args
@@ -3011,6 +3386,7 @@ impl Command {
         self
     }
 
+    #[track_caller]
     pub fn args(&mut self, args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> &mut Self {
         let args: Vec<OsString> = args.into_iter().map(|a| a.as_ref().to_owned()).collect();
         for arg in &args {
@@ -3021,6 +3397,7 @@ impl Command {
         self
     }
 
+    #[track_caller]
     pub fn env(&mut self, key: impl AsRef<OsStr>, val: impl AsRef<OsStr>) -> &mut Self {
         let key = key.as_ref().to_owned();
         let val = val.as_ref().to_owned();
@@ -3033,6 +3410,7 @@ impl Command {
         self
     }
 
+    #[track_caller]
     pub fn envs(
         &mut self,
         vars: impl IntoIterator<Item = (impl AsRef<OsStr>, impl AsRef<OsStr>)>,
@@ -3052,12 +3430,14 @@ impl Command {
         self
     }
 
+    #[track_caller]
     pub fn env_clear(&mut self) -> &mut Self {
         self.env.clear();
         self.inner.env_clear();
         self
     }
 
+    #[track_caller]
     pub fn env_remove(&mut self, key: impl AsRef<OsStr>) -> &mut Self {
         let key = key.as_ref().to_owned();
         let key_prefix = format!("{}=", key.to_string_lossy());
@@ -3067,31 +3447,37 @@ impl Command {
         self
     }
 
+    #[track_caller]
     pub fn current_dir(&mut self, dir: impl AsRef<std::path::Path>) -> &mut Self {
         self.inner.current_dir(dir);
         self
     }
 
+    #[track_caller]
     pub fn stdin(&mut self, cfg: impl Into<Stdio>) -> &mut Self {
         self.inner.stdin(cfg);
         self
     }
 
+    #[track_caller]
     pub fn stdout(&mut self, cfg: impl Into<Stdio>) -> &mut Self {
         self.inner.stdout(cfg);
         self
     }
 
+    #[track_caller]
     pub fn stderr(&mut self, cfg: impl Into<Stdio>) -> &mut Self {
         self.inner.stderr(cfg);
         self
     }
 
+    #[track_caller]
     pub fn kill_on_drop(&mut self, kill_on_drop: bool) -> &mut Self {
         self.inner.kill_on_drop(kill_on_drop);
         self
     }
 
+    #[track_caller]
     pub fn spawn(&mut self) -> io::Result<Child> {
         let child = self.inner.spawn()?;
         let handle = EntityHandle::new(self.entity_name(), self.entity_body());
@@ -3101,16 +3487,17 @@ impl Command {
         })
     }
 
-    pub async fn status(&mut self) -> io::Result<ExitStatus> {
+        pub async fn status(&mut self) -> io::Result<ExitStatus> {
         let handle = EntityHandle::new(self.entity_name(), self.entity_body());
         instrument_future_on("command.status", &handle, self.inner.status()).await
     }
 
-    pub async fn output(&mut self) -> io::Result<Output> {
+        pub async fn output(&mut self) -> io::Result<Output> {
         let handle = EntityHandle::new(self.entity_name(), self.entity_body());
         instrument_future_on("command.output", &handle, self.inner.output()).await
     }
 
+    #[track_caller]
     pub fn as_std(&self) -> &std::process::Command {
         self.inner.as_std()
     }
@@ -3124,10 +3511,12 @@ impl Command {
         self
     }
 
+    #[track_caller]
     pub fn into_inner(self) -> tokio::process::Command {
         self.inner
     }
 
+    #[track_caller]
     pub fn into_inner_with_diagnostics(self) -> (tokio::process::Command, CommandDiagnostics) {
         let diag = CommandDiagnostics {
             program: self.program.clone(),
@@ -3151,6 +3540,7 @@ impl Command {
 }
 
 impl Child {
+    #[track_caller]
     pub fn from_tokio_with_diagnostics(
         child: tokio::process::Child,
         diag: CommandDiagnostics,
@@ -3176,17 +3566,18 @@ impl Child {
         self.inner.as_mut().expect("child already consumed")
     }
 
+    #[track_caller]
     pub fn id(&self) -> Option<u32> {
         self.inner().id()
     }
 
-    pub async fn wait(&mut self) -> io::Result<ExitStatus> {
+        pub async fn wait(&mut self) -> io::Result<ExitStatus> {
         let handle = self.handle.clone();
         let wait_fut = self.inner_mut().wait();
         instrument_future_on("command.wait", &handle, wait_fut).await
     }
 
-    pub async fn wait_with_output(mut self) -> io::Result<Output> {
+        pub async fn wait_with_output(mut self) -> io::Result<Output> {
         let child = self.inner.take().expect("child already consumed");
         instrument_future_on(
             "command.wait_with_output",
@@ -3196,34 +3587,42 @@ impl Child {
         .await
     }
 
+    #[track_caller]
     pub fn start_kill(&mut self) -> io::Result<()> {
         self.inner_mut().start_kill()
     }
 
+    #[track_caller]
     pub fn kill(&mut self) -> io::Result<()> {
         self.start_kill()
     }
 
+    #[track_caller]
     pub fn stdin(&mut self) -> &mut Option<tokio::process::ChildStdin> {
         &mut self.inner_mut().stdin
     }
 
+    #[track_caller]
     pub fn stdout(&mut self) -> &mut Option<tokio::process::ChildStdout> {
         &mut self.inner_mut().stdout
     }
 
+    #[track_caller]
     pub fn stderr(&mut self) -> &mut Option<tokio::process::ChildStderr> {
         &mut self.inner_mut().stderr
     }
 
+    #[track_caller]
     pub fn take_stdin(&mut self) -> Option<tokio::process::ChildStdin> {
         self.inner_mut().stdin.take()
     }
 
+    #[track_caller]
     pub fn take_stdout(&mut self) -> Option<tokio::process::ChildStdout> {
         self.inner_mut().stdout.take()
     }
 
+    #[track_caller]
     pub fn take_stderr(&mut self) -> Option<tokio::process::ChildStderr> {
         self.inner_mut().stderr.take()
     }
@@ -3233,6 +3632,7 @@ impl<T> JoinSet<T>
 where
     T: Send + 'static,
 {
+    #[track_caller]
     pub fn named(name: impl Into<String>) -> Self {
         let name = name.into();
         let handle = EntityHandle::new(format!("joinset.{name}"), EntityBody::Future);
@@ -3242,10 +3642,12 @@ where
         }
     }
 
+    #[track_caller]
     pub fn with_name(name: impl Into<String>) -> Self {
         Self::named(name)
     }
 
+    #[track_caller]
     pub fn spawn<F>(&mut self, label: &'static str, future: F)
     where
         F: Future<Output = T> + Send + 'static,
@@ -3255,19 +3657,22 @@ where
             .spawn(async move { instrument_future_on(label, &joinset_handle, future).await });
     }
 
+    #[track_caller]
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
 
+    #[track_caller]
     pub fn len(&self) -> usize {
         self.inner.len()
     }
 
+    #[track_caller]
     pub fn abort_all(&mut self) {
         self.inner.abort_all();
     }
 
-    pub async fn join_next(&mut self) -> Option<Result<T, tokio::task::JoinError>> {
+        pub async fn join_next(&mut self) -> Option<Result<T, tokio::task::JoinError>> {
         let handle = self.handle.clone();
         let fut = self.inner.join_next();
         instrument_future_on("joinset.join_next", &handle, fut).await
@@ -3275,23 +3680,27 @@ where
 }
 
 impl DiagnosticInterval {
-    pub async fn tick(&mut self) -> tokio::time::Instant {
+        pub async fn tick(&mut self) -> tokio::time::Instant {
         instrument_future_on("interval.tick", &self.handle, self.inner.tick()).await
     }
 
+    #[track_caller]
     pub fn reset(&mut self) {
         self.inner.reset();
     }
 
+    #[track_caller]
     pub fn period(&self) -> Duration {
         self.inner.period()
     }
 
+    #[track_caller]
     pub fn set_missed_tick_behavior(&mut self, behavior: tokio::time::MissedTickBehavior) {
         self.inner.set_missed_tick_behavior(behavior);
     }
 }
 
+#[track_caller]
 pub fn interval(period: Duration) -> DiagnosticInterval {
     let label = format!("interval({}ms)", period.as_millis());
     DiagnosticInterval {
@@ -3300,6 +3709,7 @@ pub fn interval(period: Duration) -> DiagnosticInterval {
     }
 }
 
+#[track_caller]
 pub fn interval_at(start: tokio::time::Instant, period: Duration) -> DiagnosticInterval {
     let label = format!("interval({}ms)", period.as_millis());
     DiagnosticInterval {
@@ -3315,6 +3725,7 @@ pub trait SnapshotSink {
     fn event(&mut self, event: &Event);
 }
 
+#[track_caller]
 pub fn write_snapshot_to<S>(sink: &mut S)
 where
     S: SnapshotSink,
@@ -3336,6 +3747,7 @@ where
     }
 }
 
+#[track_caller]
 pub fn pull_changes_since(from_seq_no: SeqNo, max_changes: u32) -> PullChangesResponse {
     let stream_id = runtime_stream_id();
     let Ok(db) = runtime_db().lock() else {
@@ -3351,6 +3763,7 @@ pub fn pull_changes_since(from_seq_no: SeqNo, max_changes: u32) -> PullChangesRe
     db.pull_changes_since(from_seq_no, max_changes)
 }
 
+#[track_caller]
 pub fn current_cursor() -> StreamCursor {
     let stream_id = runtime_stream_id();
     let Ok(db) = runtime_db().lock() else {
@@ -3362,6 +3775,7 @@ pub fn current_cursor() -> StreamCursor {
     db.current_cursor()
 }
 
+#[track_caller]
 pub fn ack_cut(cut_id: impl Into<CompactString>) -> CutAck {
     CutAck {
         cut_id: CutId(cut_id.into()),
@@ -3451,6 +3865,21 @@ where
     }
 }
 
+impl<F> Drop for InstrumentedFuture<F> {
+    fn drop(&mut self) {
+        let Some(target) = &self.target else {
+            return;
+        };
+        let Some(kind) = self.current_edge else {
+            return;
+        };
+        if let Ok(mut db) = runtime_db().lock() {
+            db.remove_edge(self.future_handle.id(), target.id(), kind);
+        }
+    }
+}
+
+#[track_caller]
 pub fn instrument_future_named<F>(name: impl Into<CompactString>, fut: F) -> InstrumentedFuture<F>
 where
     F: Future,
@@ -3459,6 +3888,7 @@ where
     InstrumentedFuture::new(fut, handle, None)
 }
 
+#[track_caller]
 pub fn instrument_future_on<F>(
     name: impl Into<CompactString>,
     on: &EntityHandle,
@@ -3499,4 +3929,123 @@ macro_rules! peep {
     ($fut:expr, $name:expr, $($rest:tt)+) => {{
         compile_error!("invalid `peep!` arguments");
     }};
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+    use std::task::{Context, Poll, Wake, Waker};
+
+    struct NoopWake;
+
+    impl Wake for NoopWake {
+        fn wake(self: Arc<Self>) {}
+    }
+
+    struct PendingOnceThenReady {
+        pending: bool,
+    }
+
+    impl Future for PendingOnceThenReady {
+        type Output = ();
+
+        fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+            if self.pending {
+                self.pending = false;
+                Poll::Pending
+            } else {
+                Poll::Ready(())
+            }
+        }
+    }
+
+    struct AlwaysPending;
+
+    impl Future for AlwaysPending {
+        type Output = ();
+
+        fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+            Poll::Pending
+        }
+    }
+
+    fn test_guard() -> std::sync::MutexGuard<'static, ()> {
+        static GUARD: OnceLock<StdMutex<()>> = OnceLock::new();
+        GUARD
+            .get_or_init(|| StdMutex::new(()))
+            .lock()
+            .expect("test guard mutex poisoned")
+    }
+
+    fn reset_runtime_db_for_test() {
+        let mut db = runtime_db().lock().expect("runtime db lock should be available");
+        *db = RuntimeDb::new(runtime_stream_id(), MAX_EVENTS);
+    }
+
+    fn edge_exists(src: &EntityId, dst: &EntityId, kind: EdgeKind) -> bool {
+        let db = runtime_db().lock().expect("runtime db lock should be available");
+        db.edges.contains_key(&EdgeKey {
+            src: EntityId::new(src.as_str()),
+            dst: EntityId::new(dst.as_str()),
+            kind,
+        })
+    }
+
+    fn entity_exists(id: &EntityId) -> bool {
+        let db = runtime_db().lock().expect("runtime db lock should be available");
+        db.entities.contains_key(id)
+    }
+
+    #[test]
+    fn instrumented_future_promotes_polls_to_needs_and_clears_on_ready() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let target = EntityHandle::new("test.target.transition", EntityBody::Future);
+        let fut = instrument_future_on(
+            "test.future.transition",
+            &target,
+            PendingOnceThenReady { pending: true },
+        );
+        let fut_id = EntityId::new(fut.future_handle.id().as_str());
+
+        let waker = Waker::from(Arc::new(NoopWake));
+        let mut cx = Context::from_waker(&waker);
+        let mut fut = Box::pin(fut);
+
+        assert!(matches!(fut.as_mut().poll(&mut cx), Poll::Pending));
+        assert!(edge_exists(&fut_id, target.id(), EdgeKind::Needs));
+        assert!(!edge_exists(&fut_id, target.id(), EdgeKind::Polls));
+
+        assert!(matches!(fut.as_mut().poll(&mut cx), Poll::Ready(())));
+        assert!(!edge_exists(&fut_id, target.id(), EdgeKind::Needs));
+        assert!(!edge_exists(&fut_id, target.id(), EdgeKind::Polls));
+    }
+
+    #[test]
+    fn dropping_pending_instrumented_future_clears_edge_without_entity_teardown() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let target = EntityHandle::new("test.target.drop", EntityBody::Future);
+        let fut = instrument_future_on("test.future.drop", &target, AlwaysPending);
+        let fut_handle = fut.future_handle.clone();
+        let fut_id = EntityId::new(fut_handle.id().as_str());
+
+        let waker = Waker::from(Arc::new(NoopWake));
+        let mut cx = Context::from_waker(&waker);
+        let mut fut = Box::pin(fut);
+
+        assert!(matches!(fut.as_mut().poll(&mut cx), Poll::Pending));
+        assert!(edge_exists(&fut_id, target.id(), EdgeKind::Needs));
+        assert!(entity_exists(&fut_id));
+
+        drop(fut);
+        assert!(entity_exists(&fut_id));
+        assert!(!edge_exists(&fut_id, target.id(), EdgeKind::Needs));
+        assert!(!edge_exists(&fut_id, target.id(), EdgeKind::Polls));
+    }
 }

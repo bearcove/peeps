@@ -4,7 +4,15 @@
       "mcp__acp__Write",
       "mcp__acp__Bash",
       "mcp__acp__Edit",
-      "Bash(fd:*)"
+      "Bash(fd:*)",
+      "Bash(pnpm exec tsc:*)",
+      "Bash(pnpm check:*)",
+      "Bash(pnpm build:*)",
+      "Bash(cargo check:*)",
+      "Bash(npx tsc:*)",
+      "Bash(xargs:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)"
     ]
   }
 }

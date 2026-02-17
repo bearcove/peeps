@@ -48,7 +48,7 @@ Protocol debugging:
 Enable dashboard push in your app:
 
 ```toml
-peeps = { git = "https://github.com/bearcove/peeps", branch = "main", features = ["dashboard"] }
+peeps = { git = "https://github.com/bearcove/peeps", branch = "main", features = ["diagnostics"] }
 ```
 
 Run your app with:
