@@ -24,6 +24,7 @@ backtrace = "0.3"
 compact_str = "0.9"
 inventory = "0.3"
 facet = { git = "https://github.com/facet-rs/facet", branch = "main", features = ["compact_str"] }
+facet-format = { git = "https://github.com/facet-rs/facet", branch = "main" }
 facet-value = { git = "https://github.com/facet-rs/facet", branch = "main" }
 facet-json = { git = "https://github.com/facet-rs/facet", branch = "main" }
 libc = "0.2"

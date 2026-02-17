@@ -4,98 +4,49 @@ weight = 2
 insert_anchor_links = "heading"
 +++
 
-This page is schema-first reference for the canonical payload shapes used by peeps snapshots.
+The schema source of truth is the Rust model in `crates/peeps-types/src/new_model.rs`.
 
-## Schema
+This page is intentionally thin and points to those types directly.
 
-Snapshots are per-process envelopes containing `nodes`, `edges`, and optional `events`.
+## Canonical Types
 
-```json
-{
-  "process_name": "worker",
-  "proc_key": "worker@1234",
-  "nodes": [],
-  "edges": [],
-  "events": []
-}
-```
+1. `Snapshot`: point-in-time graph payload
+2. `Entity`: runtime object tracked over time
+3. `Scope`: execution container (`process`, `thread`, `task`)
+4. `Edge`: causal relationship (`entity -> entity`)
+5. `Event`: point-in-time record targeting either an entity or a scope
 
-## Canonical Node Payload
+## Snapshot Shape
 
-```json
-{
-  "id": "request:01J...",
-  "kind": "request",
-  "label": "DemoRpc.sleepy_forever",
-  "attrs_json": "{\"created_at\":1700000000000000000,\"source\":\"/srv/app.rs:42\",\"method\":\"DemoRpc.sleepy_forever\",\"correlation\":\"1\",\"status\":\"in_flight\"}"
-}
-```
+`Snapshot` now contains only graph data:
 
-Notes:
+1. `entities: Vec<Entity>`
+2. `scopes: Vec<Scope>`
+3. `edges: Vec<Edge>`
+4. `events: Vec<Event>`
 
-- `id` is globally unique per logical entity.
-- `kind` is one of the canonical node kinds (`future`, `lock`, `tx`, `rx`, `request`, `response`, etc.).
-- `attrs_json` must include `created_at` and `source` for inspector compatibility.
-- `method` and `correlation` are optional canonical fields in `attrs_json`.
+`process_name` and `proc_key` are not part of the snapshot payload. Process identity is established in protocol handshake/session context.
 
-## Canonical Inspector Fields
+## Identity and References
 
-Inspector common fields read only:
+1. Entity identity uses `EntityId`.
+2. Scope identity uses `ScopeId`.
+3. Causal edges reference entities only.
+4. Events use `EventTarget` (`Entity` or `Scope`).
 
-- `created_at` (required, Unix epoch ns)
-- `source` (required)
-- `method` (optional)
-- `correlation` (optional)
+## State Modeling Rules
 
-Node identity and process come from envelope fields:
+Canonical model rules (as reflected in `new_model.rs`):
 
-- `id` (required)
-- `process` (required)
+1. Prefer enums over booleans, including binary concepts.
+2. Use multiple enums for independent axes.
+3. Keep counts numeric.
+4. Do not store trivially derived state.
+5. Put transitions/details in events; keep snapshot fields for current facts.
 
-Timeline origin uses:
+## SQL Translation (Current Direction)
 
-1. `created_at` if present and sane for the event window
-2. first timeline event timestamp otherwise
-
-Sanity guard:
-
-- if `created_at > first_event_ts`, use first event
-- if `first_event_ts - created_at > 30 days`, use first event
-
-## Canonical Edge Payload
-
-```json
-{
-  "src": "future:01J...",
-  "dst": "lock:01J...",
-  "kind": "needs",
-  "attrs_json": "{}"
-}
-```
-
-Notes:
-
-- `src` and `dst` refer to node IDs.
-- `kind` is one of `needs`, `touches`, `spawned`, `closed_by`.
-- `attrs_json` is reserved for edge metadata and may be empty.
-
-## Canonical Event Payload
-
-```json
-{
-  "id": "event:01J...",
-  "ts_ns": 1700000000123456789,
-  "proc_key": "worker@1234",
-  "entity_id": "response:01J...",
-  "name": "rpc.response.sent",
-  "parent_entity_id": "request:01J...",
-  "attrs_json": "{\"request.id\":\"1\",\"request.method\":\"DemoRpc.sleepy_forever\",\"rpc.connection\":\"initiator<->acceptor\"}"
-}
-```
-
-Notes:
-
-- `entity_id` points to the node the event is about.
-- `name` is the canonical event type field.
-- `parent_entity_id` is optional and captures immediate causal parent when known.
-- `attrs_json` is event-specific detail; keep key naming stable and queryable.
+1. `entities` table for `Entity`
+2. `scopes` table for `Scope`
+3. `edges` table for causal entity links
+4. `events` table for append-only records with typed target (`entity`/`scope`)

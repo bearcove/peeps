@@ -17,6 +17,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+type MetaSerializeError = facet_format::SerializeError<facet_value::ToValueError>;
+
 ////////////////////////////////////////////////////////////////////////////////////
 // Timestamps
 ////////////////////////////////////////////////////////////////////////////////////
@@ -40,8 +42,47 @@ impl PTime {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
+// Snapshots
+////////////////////////////////////////////////////////////////////////////////////
+
+/// A snapshot is a point-in-time process envelope of graph state.
+#[derive(Facet)]
+pub struct Snapshot {
+    /// Runtime entities present in this snapshot.
+    pub entities: Vec<Entity>,
+    /// Execution scopes present in this snapshot.
+    pub scopes: Vec<Scope>,
+    /// Causal entity-to-entity edges present in this snapshot.
+    pub edges: Vec<Edge>,
+    /// Point-in-time events captured for this snapshot.
+    pub events: Vec<Event>,
+}
+
+////////////////////////////////////////////////////////////////////////////////////
 // Scopes
 ////////////////////////////////////////////////////////////////////////////////////
+
+/// A scope groups execution context over time (for example process/thread/task).
+#[derive(Facet)]
+pub struct Scope {
+    /// Opaque scope identifier.
+    pub id: ScopeId,
+
+    /// When we first started tracking this scope.
+    pub birth: PTime,
+
+    /// Creation/discovery site in source code as `{absolute_path}:{line}`.
+    pub source: CompactString,
+
+    /// Human-facing name for this scope.
+    pub name: CompactString,
+
+    /// More specific info about the scope.
+    pub body: ScopeBody,
+
+    /// Extensible metadata for optional, non-canonical context.
+    pub meta: facet_value::Value,
+}
 
 ////////////////////////////////////////////////////////////////////////////////////
 // Entities
@@ -75,8 +116,35 @@ pub struct Entity {
 }
 
 /// Opaque textual entity identifier suitable for wire formats and JS runtimes.
-#[derive(Facet)]
+#[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityId(CompactString);
+
+/// Opaque textual scope identifier suitable for wire formats and JS runtimes.
+#[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ScopeId(CompactString);
+
+impl Scope {
+    /// Starts building a scope from required semantic fields.
+    pub fn builder(name: impl Into<CompactString>, body: ScopeBody) -> ScopeBuilder {
+        ScopeBuilder {
+            name: name.into(),
+            body,
+        }
+    }
+
+    /// Convenience constructor that accepts typed meta and builds immediately.
+    #[track_caller]
+    pub fn new<M>(
+        name: impl Into<CompactString>,
+        body: ScopeBody,
+        meta: &M,
+    ) -> Result<Self, MetaSerializeError>
+    where
+        M: for<'facet> Facet<'facet>,
+    {
+        Scope::builder(name, body).build(meta)
+    }
+}
 
 impl Entity {
     /// Starts building an entity from required semantic fields.
@@ -93,7 +161,7 @@ impl Entity {
         name: impl Into<CompactString>,
         body: EntityBody,
         meta: &M,
-    ) -> Result<Self, facet_value::ToValueError>
+    ) -> Result<Self, MetaSerializeError>
     where
         M: for<'facet> Facet<'facet>,
     {
@@ -110,7 +178,7 @@ pub struct EntityBuilder {
 impl EntityBuilder {
     /// Finalizes the entity with typed meta converted into `facet_value::Value`.
     #[track_caller]
-    pub fn build<M>(self, meta: &M) -> Result<Entity, facet_value::ToValueError>
+    pub fn build<M>(self, meta: &M) -> Result<Entity, MetaSerializeError>
     where
         M: for<'facet> Facet<'facet>,
     {
@@ -125,7 +193,43 @@ impl EntityBuilder {
     }
 }
 
+/// Builder for `Scope` that auto-fills runtime identity and creation metadata.
+pub struct ScopeBuilder {
+    name: CompactString,
+    body: ScopeBody,
+}
+
+impl ScopeBuilder {
+    /// Finalizes the scope with typed meta converted into `facet_value::Value`.
+    #[track_caller]
+    pub fn build<M>(self, meta: &M) -> Result<Scope, MetaSerializeError>
+    where
+        M: for<'facet> Facet<'facet>,
+    {
+        Ok(Scope {
+            id: next_scope_id(),
+            birth: PTime::now(),
+            name: self.name,
+            source: caller_source(),
+            body: self.body,
+            meta: facet_value::to_value(meta)?,
+        })
+    }
+}
+
 fn next_entity_id() -> EntityId {
+    EntityId(next_opaque_id())
+}
+
+fn next_scope_id() -> ScopeId {
+    ScopeId(next_opaque_id())
+}
+
+fn next_event_id() -> EventId {
+    EventId(next_opaque_id())
+}
+
+fn next_opaque_id() -> CompactString {
     static PROCESS_PREFIX: OnceLock<u16> = OnceLock::new();
     static COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -140,7 +244,7 @@ fn next_entity_id() -> EntityId {
 
     let counter = COUNTER.fetch_add(1, Ordering::Relaxed) & 0x0000_FFFF_FFFF_FFFF;
     let raw = ((prefix as u64) << 48) | counter;
-    EntityId(PeepsHex2(raw).to_compact_string())
+    PeepsHex2(raw).to_compact_string()
 }
 
 #[track_caller]
@@ -164,6 +268,15 @@ impl fmt::Display for PeepsHex2 {
         // SAFETY: DIGITS only contains ASCII bytes.
         f.write_str(unsafe { std::str::from_utf8_unchecked(&out) })
     }
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum ScopeBody {
+    Process,
+    Thread,
+    Task,
 }
 
 /// Typed payload for each entity kind.
@@ -255,10 +368,19 @@ pub struct WatchChannelDetails {
 
 #[derive(Facet)]
 pub struct OneshotChannelDetails {
-    /// Whether the oneshot value has been sent.
-    pub sent: bool,
-    /// Whether the oneshot value has been received.
-    pub received: bool,
+    /// Current oneshot lifecycle state.
+    pub state: OneshotState,
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum OneshotState {
+    Pending,
+    Sent,
+    Received,
+    SenderDropped,
+    ReceiverDropped,
 }
 
 #[derive(Facet)]
@@ -279,8 +401,17 @@ pub struct NotifyEntity {
 pub struct OnceCellEntity {
     /// Number of tasks currently waiting for initialization.
     pub waiter_count: u32,
-    /// Whether the cell has already been initialized.
-    pub initialized: bool,
+    /// Current once-cell lifecycle state.
+    pub state: OnceCellState,
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum OnceCellState {
+    Empty,
+    Initializing,
+    Initialized,
 }
 
 #[derive(Facet)]
@@ -352,9 +483,106 @@ pub enum ResponseStatus {
 // Edges
 ////////////////////////////////////////////////////////////////////////////////////
 
+/// Causal relationship between two entities.
+#[derive(Facet)]
+pub struct Edge {
+    /// Source entity in the causal relationship.
+    pub src: EntityId,
+    /// Destination entity in the causal relationship.
+    pub dst: EntityId,
+    /// Causal edge kind.
+    pub kind: EdgeKind,
+    /// Extensible metadata for optional edge context.
+    pub meta: facet_value::Value,
+}
+
+impl Edge {
+    /// Builds a causal edge with typed metadata.
+    pub fn new<M>(
+        src: EntityId,
+        dst: EntityId,
+        kind: EdgeKind,
+        meta: &M,
+    ) -> Result<Self, MetaSerializeError>
+    where
+        M: for<'facet> Facet<'facet>,
+    {
+        Ok(Self {
+            src,
+            dst,
+            kind,
+            meta: facet_value::to_value(meta)?,
+        })
+    }
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum EdgeKind {
+    Needs,
+    ClosedBy,
+}
+
 ////////////////////////////////////////////////////////////////////////////////////
 // Events
 ////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Facet)]
-pub struct Event {}
+pub struct Event {
+    /// Opaque event identifier.
+    pub id: EventId,
+    /// Event timestamp.
+    pub at: PTime,
+    /// Event source site as `{absolute_path}:{line}`.
+    pub source: CompactString,
+    /// Event target (entity or scope).
+    pub target: EventTarget,
+    /// Event kind.
+    pub kind: EventKind,
+    /// Extensible metadata for optional event details.
+    pub meta: facet_value::Value,
+}
+
+impl Event {
+    /// Builds an event with typed metadata and auto-generated id/timestamp/source.
+    #[track_caller]
+    pub fn new<M>(
+        target: EventTarget,
+        kind: EventKind,
+        meta: &M,
+    ) -> Result<Self, MetaSerializeError>
+    where
+        M: for<'facet> Facet<'facet>,
+    {
+        Ok(Self {
+            id: next_event_id(),
+            at: PTime::now(),
+            source: caller_source(),
+            target,
+            kind,
+            meta: facet_value::to_value(meta)?,
+        })
+    }
+}
+
+#[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EventId(CompactString);
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum EventTarget {
+    Entity(EntityId),
+    Scope(ScopeId),
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum EventKind {
+    StateChanged,
+    ChannelSent,
+    ChannelReceived,
+    ChannelClosed,
+}
