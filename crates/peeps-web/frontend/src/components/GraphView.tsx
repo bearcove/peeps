@@ -132,11 +132,11 @@ function graphToFlowElements(graph: SnapshotGraph): { nodes: Node<NodeData>[]; e
                 : { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
         label: isDimmed ? undefined : isClosedBy ? "closed_by" : isSpawned ? "spawned" : isTouches ? "touches" : undefined,
         labelStyle: isClosedBy
-          ? { fontSize: 9, fill: "light-dark(#e74c3c, #ff6b6b)" }
+          ? { fontSize: 12, fill: "light-dark(#e74c3c, #ff6b6b)" }
           : isSpawned
-            ? { fontSize: 9, fill: "light-dark(#8e7cc3, #b4a7d6)" }
+            ? { fontSize: 12, fill: "light-dark(#8e7cc3, #b4a7d6)" }
             : isTouches
-              ? { fontSize: 9, fill: "light-dark(#a1a1a6, #636366)" }
+              ? { fontSize: 12, fill: "light-dark(#a1a1a6, #636366)" }
               : undefined,
       };
     });
