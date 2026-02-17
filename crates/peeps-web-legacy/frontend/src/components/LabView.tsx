@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
+  Handle,
+  Position,
   Background,
   BackgroundVariant,
   Controls,
@@ -55,121 +57,139 @@ import { Table, type Column } from "../ui/primitives/Table";
 import { ActionButton } from "../ui/primitives/ActionButton";
 import { kindIcon } from "../nodeKindSpec";
 
+// ── ELK layout engine (same as real app) ──────────────────────
+
+const elk = new ELK({ workerUrl: elkWorkerUrl });
+
+const elkOptions = {
+  "elk.algorithm": "layered",
+  "elk.direction": "DOWN",
+  "elk.spacing.nodeNode": "24",
+  "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+  "elk.padding": "[top=24,left=24,bottom=24,right=24]",
+};
+
 // ── Mock data for the deadlock detector mockup ────────────────
 
-const MOCK_NODES: Node[] = [
-  {
-    id: "future:store.incoming.recv",
-    type: "default",
-    position: { x: 50, y: 30 },
-    data: { label: "store.incoming.recv" },
-    style: { background: "light-dark(#e8f5e9, #1b3a1b)", border: "1px solid light-dark(#a5d6a7, #2e6b2e)", borderRadius: 8, fontSize: 11, padding: "6px 10px", fontFamily: "var(--font-mono)" },
-  },
-  {
-    id: "request:demorpc.sleepy",
-    type: "default",
-    position: { x: 250, y: 30 },
-    data: { label: "DemoRpc.sleepy_forever" },
-    style: { background: "light-dark(#ffebee, #3a1b1b)", border: "2px solid light-dark(#ef9a9a, #8b2e2e)", borderRadius: 8, fontSize: 11, padding: "6px 10px", fontFamily: "var(--font-mono)" },
-  },
-  {
-    id: "request:demorpc.ping",
-    type: "default",
-    position: { x: 250, y: 130 },
-    data: { label: "DemoRpc.ping" },
-    style: { background: "light-dark(#fff3e0, #3a2e1b)", border: "1px solid light-dark(#ffcc80, #8b6b2e)", borderRadius: 8, fontSize: 11, padding: "6px 10px", fontFamily: "var(--font-mono)" },
-  },
-  {
-    id: "mutex:global_state",
-    type: "default",
-    position: { x: 50, y: 230 },
-    data: { label: "Mutex<GlobalState>" },
-    style: { background: "light-dark(#ffebee, #3a1b1b)", border: "2px solid light-dark(#ef9a9a, #8b2e2e)", borderRadius: 8, fontSize: 11, padding: "6px 10px", fontFamily: "var(--font-mono)" },
-  },
-  {
-    id: "channel:mpsc.tx",
-    type: "default",
-    position: { x: 250, y: 230 },
-    data: { label: "mpsc.send" },
-    style: { background: "light-dark(#e3f2fd, #1b2a3a)", border: "1px solid light-dark(#90caf9, #2e5b8b)", borderRadius: 8, fontSize: 11, padding: "6px 10px", fontFamily: "var(--font-mono)" },
-  },
-  {
-    id: "channel:mpsc.rx",
-    type: "default",
-    position: { x: 450, y: 230 },
-    data: { label: "mpsc.recv" },
-    style: { background: "light-dark(#fff3e0, #3a2e1b)", border: "1px solid light-dark(#ffcc80, #8b6b2e)", borderRadius: 8, fontSize: 11, padding: "6px 10px", fontFamily: "var(--font-mono)" },
-  },
-  {
-    id: "connection:initiator",
-    type: "default",
-    position: { x: 450, y: 30 },
-    data: { label: "initiator->acceptor" },
-    style: { background: "light-dark(#f3e5f5, #2a1b3a)", border: "1px solid light-dark(#ce93d8, #6b2e8b)", borderRadius: 8, fontSize: 11, padding: "6px 10px", fontFamily: "var(--font-mono)" },
-  },
+type MockNodeDef = {
+  id: string;
+  kind: string;
+  label: string;
+  inCycle?: boolean;
+};
+
+const MOCK_NODE_DEFS: MockNodeDef[] = [
+  { id: "future:store.incoming.recv", kind: "future", label: "store.incoming.recv" },
+  { id: "request:demorpc.sleepy", kind: "request", label: "DemoRpc.sleepy_forever", inCycle: true },
+  { id: "request:demorpc.ping", kind: "request", label: "DemoRpc.ping" },
+  { id: "mutex:global_state", kind: "mutex", label: "Mutex<GlobalState>", inCycle: true },
+  { id: "channel:mpsc.tx", kind: "channel_tx", label: "mpsc.send", inCycle: true },
+  { id: "channel:mpsc.rx", kind: "channel_rx", label: "mpsc.recv", inCycle: true },
+  { id: "connection:initiator", kind: "connection", label: "initiator\u2192acceptor" },
 ];
 
-const MOCK_EDGES: Edge[] = [
-  {
-    id: "e1",
-    source: "request:demorpc.sleepy",
-    target: "mutex:global_state",
-    label: "needs",
-    style: { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 },
-    markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
-  },
-  {
-    id: "e2",
-    source: "mutex:global_state",
-    target: "channel:mpsc.tx",
-    label: "needs",
-    style: { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 },
-    markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
-  },
-  {
-    id: "e3",
-    source: "channel:mpsc.tx",
-    target: "channel:mpsc.rx",
-    style: { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
-    markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10 },
-  },
-  {
-    id: "e4",
-    source: "channel:mpsc.rx",
-    target: "request:demorpc.sleepy",
-    label: "needs",
-    style: { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 },
-    markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
-  },
-  {
-    id: "e5",
-    source: "request:demorpc.ping",
-    target: "mutex:global_state",
-    label: "needs",
-    style: { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
-    markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10 },
-  },
-  {
-    id: "e6",
-    source: "future:store.incoming.recv",
-    target: "request:demorpc.sleepy",
-    label: "spawned",
-    style: { stroke: "light-dark(#8e7cc3, #b4a7d6)", strokeWidth: 1.2, strokeDasharray: "2 3" },
-    labelStyle: { fontSize: 10, fill: "light-dark(#8e7cc3, #b4a7d6)" },
-    markerEnd: { type: MarkerType.ArrowClosed, width: 8, height: 8 },
-  },
-  {
-    id: "e7",
-    source: "request:demorpc.sleepy",
-    target: "connection:initiator",
-    style: { stroke: "light-dark(#a1a1a6, #636366)", strokeWidth: 1, strokeDasharray: "4 3" },
-    markerEnd: { type: MarkerType.ArrowClosed, width: 8, height: 8 },
-  },
+const MOCK_NODE_WIDTH = 180;
+const MOCK_NODE_HEIGHT = 40;
+
+function makeMockNodes(defs: MockNodeDef[]): Node[] {
+  return defs.map((d) => ({
+    id: d.id,
+    type: "mockNode",
+    position: { x: 0, y: 0 },
+    data: { kind: d.kind, label: d.label, inCycle: d.inCycle ?? false },
+  }));
+}
+
+type MockEdgeDef = {
+  id: string;
+  source: string;
+  target: string;
+  rel: "needs" | "spawned" | "touches" | "default";
+};
+
+const MOCK_EDGE_DEFS: MockEdgeDef[] = [
+  { id: "e1", source: "request:demorpc.sleepy", target: "mutex:global_state", rel: "needs" },
+  { id: "e2", source: "mutex:global_state", target: "channel:mpsc.tx", rel: "needs" },
+  { id: "e3", source: "channel:mpsc.tx", target: "channel:mpsc.rx", rel: "default" },
+  { id: "e4", source: "channel:mpsc.rx", target: "request:demorpc.sleepy", rel: "needs" },
+  { id: "e5", source: "request:demorpc.ping", target: "mutex:global_state", rel: "default" },
+  { id: "e6", source: "future:store.incoming.recv", target: "request:demorpc.sleepy", rel: "spawned" },
+  { id: "e7", source: "request:demorpc.sleepy", target: "connection:initiator", rel: "touches" },
 ];
+
+function makeMockEdges(defs: MockEdgeDef[]): Edge[] {
+  return defs.map((d) => {
+    const isNeeds = d.rel === "needs";
+    const isSpawned = d.rel === "spawned";
+    const isTouches = d.rel === "touches";
+    return {
+      id: d.id,
+      source: d.source,
+      target: d.target,
+      style: isNeeds
+        ? { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 }
+        : isSpawned
+          ? { stroke: "light-dark(#8e7cc3, #b4a7d6)", strokeWidth: 1.2, strokeDasharray: "2 3" }
+          : isTouches
+            ? { stroke: "light-dark(#a1a1a6, #636366)", strokeWidth: 1, strokeDasharray: "4 3" }
+            : { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
+      markerEnd: { type: MarkerType.ArrowClosed, width: isNeeds ? 12 : isSpawned ? 8 : 10, height: isNeeds ? 12 : isSpawned ? 8 : 10 },
+    };
+  });
+}
+
+async function layoutMockGraph(nodes: Node[], edges: Edge[]): Promise<Node[]> {
+  const result = await elk.layout({
+    id: "root",
+    layoutOptions: elkOptions,
+    children: nodes.map((n) => ({
+      id: n.id,
+      width: MOCK_NODE_WIDTH,
+      height: MOCK_NODE_HEIGHT,
+    })),
+    edges: edges.map((e) => ({
+      id: e.id,
+      sources: [e.source],
+      targets: [e.target],
+    })),
+  });
+  const posMap = new Map(
+    (result.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]),
+  );
+  return nodes.map((node) => ({
+    ...node,
+    position: posMap.get(node.id) ?? { x: 0, y: 0 },
+  }));
+}
+
+// ── Custom node component for mockup ─────────────────────────
+
+function MockNodeComponent({ data }: { data: { kind: string; label: string; inCycle: boolean } }) {
+  return (
+    <>
+      <Handle type="target" position={Position.Top} style={{ visibility: "hidden" }} />
+      <div className={`mockup-node${data.inCycle ? " mockup-node--cycle" : ""}`}>
+        <span className="mockup-node-icon">{kindIcon(data.kind, 14)}</span>
+        <span className="mockup-node-label">{data.label}</span>
+      </div>
+      <Handle type="source" position={Position.Bottom} style={{ visibility: "hidden" }} />
+    </>
+  );
+}
+
+const mockNodeTypes = { mockNode: MockNodeComponent };
 
 // ── Mock graph panel ──────────────────────────────────────────
 
 function MockGraphPanel() {
+  const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
+  const edges = useMemo(() => makeMockEdges(MOCK_EDGE_DEFS), []);
+
+  useEffect(() => {
+    const rawNodes = makeMockNodes(MOCK_NODE_DEFS);
+    layoutMockGraph(rawNodes, edges).then(setLayoutedNodes);
+  }, [edges]);
+
   return (
     <div className="mockup-graph-panel">
       <div className="mockup-graph-toolbar">
@@ -188,8 +208,9 @@ function MockGraphPanel() {
       <div className="mockup-graph-flow">
         <ReactFlowProvider>
           <ReactFlow
-            nodes={MOCK_NODES}
-            edges={MOCK_EDGES}
+            nodes={layoutedNodes}
+            edges={edges}
+            nodeTypes={mockNodeTypes}
             fitView
             fitViewOptions={{ padding: 0.3, maxZoom: 1.2 }}
             proOptions={{ hideAttribution: true }}
@@ -220,12 +241,14 @@ function MockInspectorPanel({
 }) {
   if (collapsed) {
     return (
-      <div className="mockup-inspector mockup-inspector--collapsed">
-        <button className="mockup-inspector-collapse-btn" onClick={onToggleCollapse} title="Expand inspector">
-          <CaretLeft size={14} weight="bold" />
-        </button>
+      <button
+        className="mockup-inspector mockup-inspector--collapsed"
+        onClick={onToggleCollapse}
+        title="Expand inspector"
+      >
+        <CaretLeft size={14} weight="bold" />
         <span className="mockup-inspector-collapsed-label">Inspector</span>
-      </div>
+      </button>
     );
   }
 

@@ -60,4 +60,4 @@ Queries are read-mostly and always keyed by snapshot ID so investigations do not
 
 Instrumentation should emit canonical facts and non-derivable lifecycle states. Shared derived analysis (for example deadlock-risk heuristics) belongs in backend query logic so all clients get the same answer. UI-only presentation derivations can stay in the frontend.
 
-For exact payload contracts and canonical fields, see [Schema](/architecture/schema/).
+For exact payload contracts and canonical fields, see [Schema](/architecture/schema/). For HTTP/backend contracts that frontend workers can build against, see [API](/architecture/api/).

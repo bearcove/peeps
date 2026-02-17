@@ -4401,7 +4401,7 @@ body {
         minmax(0, 1fr)
         var(--split-resizer-width, 10px)
         var(--split-right-width, 320px);
-    overflow: hidden;
+    /* No overflow:hidden here — it creates stacking issues with collapsed panels */
 }
 
 .ui-split-layout--right-collapsed {
@@ -4409,6 +4409,18 @@ body {
         minmax(0, 1fr)
         0px
         40px;
+}
+
+.ui-split-layout--right-collapsed .ui-split-left {
+    /* Prevent left panel (e.g. ReactFlow) from overlapping the collapsed right column */
+    overflow: hidden;
+    position: relative;
+    z-index: 0;
+}
+
+.ui-split-layout--right-collapsed .ui-split-right {
+    position: relative;
+    z-index: 1;
 }
 
 .ui-split-left {
@@ -4555,10 +4567,19 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    padding-top: 8px;
-    width: 40px;
+    padding-top: 10px;
+    width: 100%;
+    height: 100%;
     background: var(--surface-raised);
+    border: none;
     border-left: 1px solid var(--border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font: inherit;
+}
+
+.mockup-inspector--collapsed:hover {
+    background: var(--surface-hover);
 }
 
 .mockup-inspector-collapsed-label {
@@ -4700,4 +4721,42 @@ body {
     font-weight: 700;
     color: var(--text-secondary);
     padding: 4px 0;
+}
+
+/* ── Mockup graph nodes ───────────────────────────────────── */
+
+.mockup-node {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+}
+
+.mockup-node--cycle {
+    border: 2px solid light-dark(#d7263d, #ff6b81);
+    background: light-dark(#fff5f5, #2a1414);
+}
+
+.mockup-node-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+}
+
+.mockup-node--cycle .mockup-node-icon {
+    color: light-dark(#d7263d, #ff6b81);
+}
+
+.mockup-node-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }

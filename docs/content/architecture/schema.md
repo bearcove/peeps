@@ -8,6 +8,8 @@ The schema source of truth is the Rust model in `crates/peeps-types/src/new_mode
 
 This page is intentionally thin and points to those types directly.
 
+For HTTP endpoints and current SQLite ingestion tables, see [API](/architecture/api/).
+
 ## Canonical Types
 
 1. `Snapshot`: point-in-time graph payload

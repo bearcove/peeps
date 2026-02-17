@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "crates/peeps",
+  "crates/peeps-cli",
   "crates/peeps-web",
   "crates/peeps-types",
   "crates/peeps-wire",
@@ -46,6 +47,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1.49", features = ["full"] }
 axum = { version = "0.8", features = ["ws"] }
 rusqlite = { version = "0.32", features = ["bundled", "hooks"] }
+ureq = "2.12"
 rust-embed = "8"
 mime_guess = "2"
 ulid = "1"
