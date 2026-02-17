@@ -23,6 +23,10 @@ impl PTime {
         let elapsed_ms = ptime_anchor().elapsed().as_millis().min(u64::MAX as u128) as u64;
         Self(elapsed_ms)
     }
+
+    pub fn as_millis(&self) -> u64 {
+        self.0
+    }
 }
 
 /// Opaque textual entity identifier suitable for wire formats and JS runtimes.
@@ -36,6 +40,24 @@ pub struct ScopeId(pub(crate) CompactString);
 /// Opaque textual event identifier suitable for wire formats and JS runtimes.
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EventId(pub(crate) CompactString);
+
+impl EntityId {
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl ScopeId {
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl EventId {
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
 
 pub(crate) fn next_entity_id() -> EntityId {
     EntityId(next_opaque_id())

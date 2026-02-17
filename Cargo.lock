@@ -813,6 +813,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "peeps-sqlite-facet"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "facet-json",
+ "facet-value",
+ "peeps-types",
+ "rusqlite",
+]
+
+[[package]]
 name = "peeps-types"
 version = "0.1.0"
 dependencies = [
@@ -849,6 +860,16 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "peeps-wire"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "facet",
+ "facet-json",
+ "peeps-types",
 ]
 
 [[package]]

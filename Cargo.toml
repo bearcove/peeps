@@ -2,6 +2,8 @@
 resolver = "2"
 members = [
   "crates/peeps-types",
+  "crates/peeps-wire",
+  "crates/peeps-sqlite-facet",
   "crates/peeps-legacy",
   "crates/peeps-types-legacy",
   "crates/peeps-web-legacy",
@@ -17,6 +19,8 @@ repository = "https://github.com/bearcove/peeps"
 [workspace.dependencies]
 # Internal
 peeps-types = { path = "crates/peeps-types" }
+peeps-wire = { path = "crates/peeps-wire" }
+peeps-sqlite-facet = { path = "crates/peeps-sqlite-facet" }
 peeps-legacy = { path = "crates/peeps-legacy" }
 peeps-types-legacy = { path = "crates/peeps-types-legacy" }
 peeps-web-legacy = { path = "crates/peeps-web-legacy" }
@@ -37,6 +41,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1.49", features = ["full"] }
 axum = { version = "0.8", features = ["ws"] }
+rusqlite = { version = "0.32", features = ["bundled", "hooks"] }
 rust-embed = "8"
 mime_guess = "2"
 ulid = "1"
