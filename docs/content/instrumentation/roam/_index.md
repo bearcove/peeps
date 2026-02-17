@@ -20,4 +20,4 @@ In practice, this gives you explicit request/response handoff points and connect
 
 That is the part single-process executor views cannot reconstruct on their own.
 
-Canonical payload shapes are documented in [Schema](/architecture/reference/schema/).
+Canonical payload shapes are documented in [Schema](/architecture/schema/).

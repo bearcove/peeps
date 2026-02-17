@@ -26,4 +26,4 @@ Practically, this is what Tokio instrumentation gives you:
 - where time is the blocker versus I/O or contention (`sleep`/`timeout` vs lock/channel/system waits)
 - where work left process memory and entered external boundaries (commands, file ops, net readiness/connectivity)
 
-Canonical payload shapes for these nodes and their edges/events are in [Schema](/architecture/reference/schema/).
+Canonical payload shapes for these nodes and their edges/events are in [Schema](/architecture/schema/).
