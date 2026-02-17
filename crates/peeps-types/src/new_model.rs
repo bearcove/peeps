@@ -51,28 +51,41 @@ pub struct Entity {
     /// Opaque entity identifier.
     pub id: EntityId,
 
+    /// When we first started tracking this entity
+    pub birth: PTime,
+
+    /// Human-facing name for this entity.
+    pub name: CompactString,
+
+    /// Instrumentation verbosity level for this entity.
+    pub level: EntityLevel,
+
     /// Creation site in source code as `{absolute_path}:{line}`.
     /// Example: `/Users/amos/bearcove/peeps/crates/peeps/src/sync/channels.rs:1043`
     // [FIXME] Note that this is a good candidate to optimize for later by just keeping a registry of all
     // the files we've ever seen. And then this becomes a tuple of numbers instead of being this
     // very long string.
-    pub source: String,
-
-    /// Human-facing label for this entity.
-    pub label: String,
-
-    /// Extensible metadata for optional, non-canonical context.
-    pub meta: facet_value::Value,
-
-    /// When we first started tracking this entity
-    pub birth: PTime,
+    pub source: CompactString,
 
     /// More specific info about the entity (depending on its kind)
     pub body: EntityBody,
+
+    /// Extensible metadata for optional, non-canonical context.
+    pub meta: facet_value::Value,
 }
 
+/// Opaque textual entity identifier suitable for wire formats and JS runtimes.
 #[derive(Facet)]
 pub struct EntityId(CompactString);
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum EntityLevel {
+    Info,
+    Debug,
+    Trace,
+}
 
 /// Typed payload for each entity kind.
 ///
@@ -109,6 +122,7 @@ pub enum EntityBody {
 
 #[derive(Facet)]
 pub struct LockEntity {
+    /// Kind of lock primitive.
     pub kind: LockKind,
 }
 
@@ -123,6 +137,7 @@ pub enum LockKind {
 
 #[derive(Facet)]
 pub struct ChannelEndpointEntity {
+    /// Channel-kind-specific runtime details.
     pub details: ChannelDetails,
 }
 
@@ -139,23 +154,37 @@ pub enum ChannelDetails {
 
 #[derive(Facet)]
 pub struct MpscChannelDetails {
-    pub bounded: bool,
+    /// Queue capacity for bounded channels; `None` means unbounded.
     pub capacity: Option<u32>,
+    /// Current number of messages queued in this endpoint.
+    pub queue_len: u32,
 }
 
 #[derive(Facet)]
 pub struct BroadcastChannelDetails {
+    /// Ring-buffer capacity.
     pub capacity: u32,
+    /// Current number of messages retained in the ring buffer.
+    pub queue_len: u32,
 }
 
 #[derive(Facet)]
-pub struct WatchChannelDetails {}
+pub struct WatchChannelDetails {
+    /// Last update timestamp observed for this watch channel.
+    pub last_update_at: Option<PTime>,
+}
 
 #[derive(Facet)]
-pub struct OneshotChannelDetails {}
+pub struct OneshotChannelDetails {
+    /// Whether the oneshot value has been sent.
+    pub sent: bool,
+    /// Whether the oneshot value has been received.
+    pub received: bool,
+}
 
 #[derive(Facet)]
 pub struct SemaphoreEntity {
+    /// Total permits configured for this semaphore.
     pub max_permits: u32,
     /// Current number of permits acquired and not yet released.
     pub handed_out_permits: u32,
@@ -163,26 +192,34 @@ pub struct SemaphoreEntity {
 
 #[derive(Facet)]
 pub struct NotifyEntity {
+    /// Number of tasks currently waiting on this notify.
     pub waiter_count: u32,
 }
 
 #[derive(Facet)]
 pub struct OnceCellEntity {
+    /// Number of tasks currently waiting for initialization.
     pub waiter_count: u32,
+    /// Whether the cell has already been initialized.
+    pub initialized: bool,
 }
 
 #[derive(Facet)]
 pub struct CommandEntity {
-    pub program: String,
-    pub args: Vec<String>,
+    /// Executable path or program name.
+    pub program: CompactString,
+    /// Command-line arguments.
+    pub args: Vec<CompactString>,
     /// Environment entries in `KEY=VALUE` form.
-    pub env: Vec<String>,
+    pub env: Vec<CompactString>,
 }
 
 #[derive(Facet)]
 pub struct FileOpEntity {
+    /// File operation type.
     pub op: FileOpKind,
-    pub path: String,
+    /// Absolute or process-relative file path.
+    pub path: CompactString,
 }
 
 #[derive(Facet)]
@@ -201,7 +238,8 @@ pub enum FileOpKind {
 
 #[derive(Facet)]
 pub struct NetEntity {
-    pub addr: String,
+    /// Endpoint address string (for example `127.0.0.1:8080`).
+    pub addr: CompactString,
 }
 
 /// Correlation token for RPC is the request entity id propagated in metadata.
@@ -209,15 +247,15 @@ pub struct NetEntity {
 #[derive(Facet)]
 pub struct RequestEntity {
     /// RPC method name.
-    pub method: String,
+    pub method: CompactString,
     /// Stable, human-oriented preview of request arguments.
-    pub args_preview: String,
+    pub args_preview: CompactString,
 }
 
 #[derive(Facet)]
 pub struct ResponseEntity {
     /// RPC method name this response belongs to.
-    pub method: String,
+    pub method: CompactString,
     /// Canonical response outcome.
     pub status: ResponseStatus,
 }
