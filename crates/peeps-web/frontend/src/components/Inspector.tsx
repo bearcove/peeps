@@ -1593,21 +1593,21 @@ function ConnectionDetail({ attrs }: DetailProps) {
       </div>
       <div className="inspect-row">
         <span className="inspect-key">Opened</span>
-        <span className="inspect-val inspect-val--mono">{formatOptionalTimestampNs(openedAtNs)}</span>
+        <span className="inspect-val">{formatOptionalTimestampNs(openedAtNs)}</span>
       </div>
       <div className="inspect-row">
         <span className="inspect-key">Closed</span>
-        <span className="inspect-val inspect-val--mono">{formatOptionalTimestampNs(closedAtNs)}</span>
+        <span className="inspect-val">{formatOptionalTimestampNs(closedAtNs)}</span>
       </div>
       <div className="inspect-row">
         <span className="inspect-key">Last frame recv</span>
-        <span className="inspect-val inspect-val--mono">
+        <span className="inspect-val">
           {formatOptionalTimestampNs(lastFrameRecvAtNs)}
         </span>
       </div>
       <div className="inspect-row">
         <span className="inspect-key">Last frame sent</span>
-        <span className="inspect-val inspect-val--mono">
+        <span className="inspect-val">
           {formatOptionalTimestampNs(lastFrameSentAtNs)}
         </span>
       </div>

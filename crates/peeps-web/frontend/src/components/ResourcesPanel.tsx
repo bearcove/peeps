@@ -849,8 +849,8 @@ export function ResourcesPanel({
                         {duplexRow.health}
                       </span>
                     </span>
-                    <span className="resources-cell-mono resources-duplex-label">{duplexRow.duplexLabel}</span>
-                    <div className="resources-cell-mono resources-duplex-summary">
+                    <span className="resources-duplex-label">{duplexRow.duplexLabel}</span>
+                    <div className="resources-duplex-summary">
                       {problematicLegs.length > 0 ? (
                         <div className="resources-topbar-processes">
                               {problematicLegs.map((leg) => {
@@ -896,9 +896,11 @@ export function ResourcesPanel({
                                     )}
                                   </div>
                                   <div className="resources-topbar-chip-meta">
-                                    {`proc: ${leg.procKey || "—"}`}
+                                    {"proc: "}
+                                    <span className="resources-ident-mono">{leg.procKey || "—"}</span>
                                     {` • status: ${leg.isMissing ? "missing-leg" : leg.snapshotStatus}`}
-                                    {leg.pid == null ? " • pid: —" : ` • pid: ${leg.pid}`}
+                                    {" • pid: "}
+                                    <span className="resources-ident-mono">{leg.pid == null ? "—" : leg.pid}</span>
                                     {` • req: ${leg.pendingRequests} / resp: ${leg.pendingResponses}`}
                                   </div>
                                   {(leg.command || leg.cmdArgsPreview) && (
@@ -1030,10 +1032,10 @@ export function ResourcesPanel({
                         </button>
                       </div>
                     </div>
-                    <span className="resources-cell-mono resources-mini-value">{duplexRow.pendingRequests}</span>
-                    <span className="resources-cell-mono resources-mini-value">{duplexRow.pendingResponses}</span>
-                    <span className="resources-cell-mono resources-mini-value">{formatAge(duplexRow.lastRecvAgeNs)}</span>
-                    <span className="resources-cell-mono resources-mini-value">{formatAge(duplexRow.lastSentAgeNs)}</span>
+                    <span className="resources-mini-value">{duplexRow.pendingRequests}</span>
+                    <span className="resources-mini-value">{duplexRow.pendingResponses}</span>
+                    <span className="resources-mini-value">{formatAge(duplexRow.lastRecvAgeNs)}</span>
+                    <span className="resources-mini-value">{formatAge(duplexRow.lastSentAgeNs)}</span>
                   </div>
                   <div className="resources-duplex-legs">
                     {duplexRow.legs.map((leg) => {
@@ -1073,8 +1075,8 @@ export function ResourcesPanel({
                               {leg.health}
                             </span>
                           </span>
-                          <span className="resources-cell-mono resources-leg-label">{leg.legLabel}</span>
-                          <span className="resources-cell-mono">
+                          <span className="resources-leg-label">{leg.legLabel}</span>
+                          <span>
                             <span
                               className={`resources-process-status resources-process-status--${statusClass}`}
                             >
@@ -1082,8 +1084,10 @@ export function ResourcesPanel({
                             </span>
                             <span className="resources-process-metadata">
                               {`status: ${leg.snapshotStatus}`}
-                              {` • proc: ${leg.procKey || "—"}`}
-                              {leg.pid == null ? " • pid: —" : ` • pid: ${leg.pid}`}
+                              {" • proc: "}
+                              <span className="resources-ident-mono">{leg.procKey || "—"}</span>
+                              {" • pid: "}
+                              <span className="resources-ident-mono">{leg.pid == null ? "—" : leg.pid}</span>
                               {leg.errorText && ` • ${leg.errorText}`}
                             </span>
                             {leg.command && (
@@ -1201,8 +1205,8 @@ export function ResourcesPanel({
                               Resp {leg.pendingResponses}
                             </button>
                           </div>
-                          <span className="resources-cell-mono">{formatAge(leg.lastRecvAgeNs)}</span>
-                          <span className="resources-cell-mono">{formatAge(leg.lastSentAgeNs)}</span>
+                          <span>{formatAge(leg.lastRecvAgeNs)}</span>
+                          <span>{formatAge(leg.lastSentAgeNs)}</span>
                         </div>
                       );
                     })}

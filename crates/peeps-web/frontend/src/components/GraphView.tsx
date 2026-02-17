@@ -28,6 +28,8 @@ const elkOptions = {
 };
 
 const nodeTypes = { peeps: PeepsNode };
+const GRAPH_FIT_PADDING = 0.15;
+const GRAPH_FIT_MAX_ZOOM = 1.1;
 
 // Use ELK's worker-based API (off main thread). Avoid nesting ELK inside our own Worker.
 const elk = new ELK({ workerUrl: elkWorkerUrl });
@@ -231,7 +233,9 @@ function GraphFlow({
     layoutElements(n, e).then(({ nodes: ln, edges: le }) => {
       setNodes(ln);
       setEdges(le);
-      window.requestAnimationFrame(() => fitView({ padding: 0.15 }));
+      window.requestAnimationFrame(() =>
+        fitView({ padding: GRAPH_FIT_PADDING, maxZoom: GRAPH_FIT_MAX_ZOOM }),
+      );
     });
   }, [graph, setNodes, setEdges, fitView]);
 
@@ -282,6 +286,7 @@ function GraphFlow({
       onEdgeClick={onEdgeClick}
       nodeTypes={nodeTypes}
       fitView
+      fitViewOptions={{ padding: GRAPH_FIT_PADDING, maxZoom: GRAPH_FIT_MAX_ZOOM }}
       proOptions={{ hideAttribution: true }}
       minZoom={0.1}
       maxZoom={4}

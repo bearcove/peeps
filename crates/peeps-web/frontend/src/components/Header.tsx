@@ -317,7 +317,7 @@ export function Header({
                       const disabled = proc.pid == null;
                       return (
                         <tr key={proc.proc_key} className={`snapshot-process-table__row ${proc.responded ? "" : "snapshot-process-table__row--missing"}`}>
-                          <td className="snapshot-process-table__mono">{proc.process}</td>
+                          <td>{proc.process}</td>
                           <td className="snapshot-process-table__mono">{proc.proc_key}</td>
                           <td className="snapshot-process-table__mono">{proc.pid == null ? "—" : proc.pid}</td>
                           <td>
