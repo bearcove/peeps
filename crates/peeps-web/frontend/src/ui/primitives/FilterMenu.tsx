@@ -1,5 +1,5 @@
 import type React from "react";
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import {
   Button,
   Dialog,
@@ -76,11 +76,20 @@ export function FilterMenu({
             {items.map((item) => {
               const checked = !hiddenIds.has(item.id);
               return (
-                <li key={item.id} className="ui-filter-item">
+                <li
+                  key={item.id}
+                  className="ui-filter-item"
+                  onPointerDownCapture={(e) => {
+                    if (e.altKey) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSolo(item.id);
+                    }
+                  }}
+                >
                   <FilterCheckbox
                     checked={checked}
                     onToggle={() => onToggle(item.id)}
-                    onSolo={() => onSolo(item.id)}
                     icon={item.icon}
                     label={item.label}
                     meta={item.meta}
@@ -98,36 +107,23 @@ export function FilterMenu({
 function FilterCheckbox({
   checked,
   onToggle,
-  onSolo,
   icon,
   label,
   meta,
 }: {
   checked: boolean;
   onToggle: () => void;
-  onSolo: () => void;
   icon?: React.ReactNode;
   label: React.ReactNode;
   meta?: React.ReactNode;
 }) {
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.altKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        onSolo();
-      }
-    },
-    [onSolo],
-  );
-
   return (
     <AriaCheckbox
       className="ui-checkbox ui-filter-checkbox"
       isSelected={checked}
       onChange={onToggle}
     >
-      <span className="ui-checkbox-box" aria-hidden="true" onClick={handleClick}>
+      <span className="ui-checkbox-box" aria-hidden="true">
         <Check size={11} weight="bold" className="ui-checkbox-icon" />
       </span>
       {icon && (
