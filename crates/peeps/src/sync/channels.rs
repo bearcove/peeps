@@ -339,6 +339,10 @@ impl<T> Receiver<T> {
             "{}",
         );
     }
+
+    pub fn node_id(&self) -> &str {
+        &self.info.rx_node_id
+    }
 }
 
 #[track_caller]
@@ -478,6 +482,10 @@ impl<T> UnboundedReceiver<T> {
             format!(r#"{{"ok":{},"bounded":false}}"#, result.is_some()),
         );
         result
+    }
+
+    pub fn node_id(&self) -> &str {
+        &self.info.rx_node_id
     }
 
     pub fn try_recv(&mut self) -> Result<T, tokio::sync::mpsc::error::TryRecvError> {

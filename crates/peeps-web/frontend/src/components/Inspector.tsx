@@ -39,6 +39,7 @@ import {
   getCorrelation,
   getCreatedAtNs,
   getMethod,
+  type InspectorProcessAction,
   getSource,
   resolveTimelineOriginNs,
 } from "./inspectorShared";
@@ -62,6 +63,7 @@ interface InspectorProps {
   filteredNodeId: string | null;
   onFocusNode: (nodeId: string | null) => void;
   onSelectNode: (nodeId: string) => void;
+  onProcessAction?: (action: InspectorProcessAction, process: string) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -212,6 +214,7 @@ export function Inspector({
   filteredNodeId,
   onFocusNode,
   onSelectNode,
+  onProcessAction,
   collapsed,
   onToggleCollapse,
 }: InspectorProps) {
@@ -251,6 +254,7 @@ export function Inspector({
               filteredNodeId={filteredNodeId}
               onFocusNode={onFocusNode}
               onSelectNode={onSelectNode}
+              onProcessAction={onProcessAction}
             />
           )
         ) : (
@@ -548,6 +552,7 @@ function NodeDetail({
   filteredNodeId,
   onFocusNode,
   onSelectNode,
+  onProcessAction,
 }: {
   snapshotId: number | null;
   snapshotCapturedAtNs: number | null;
@@ -556,6 +561,7 @@ function NodeDetail({
   filteredNodeId: string | null;
   onFocusNode: (nodeId: string | null) => void;
   onSelectNode: (nodeId: string) => void;
+  onProcessAction?: (action: InspectorProcessAction, process: string) => void;
 }) {
   const channelKind =
     node.kind === "tx" ||
@@ -751,7 +757,7 @@ function NodeDetail({
         </div>
       )}
 
-      <CommonInspectorFields id={node.id} process={node.process} attrs={node.attrs} />
+      <CommonInspectorFields id={node.id} process={node.process} attrs={node.attrs} onProcessAction={onProcessAction} />
 
       {(uniqueBlockers.length > 0 || uniqueDependents.length > 0) && (
         <div className="inspect-section">

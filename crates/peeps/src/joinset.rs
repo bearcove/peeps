@@ -1,5 +1,7 @@
 use std::future::Future;
 
+use facet::Facet;
+
 /// Diagnostic wrapper around `tokio::task::JoinSet`.
 ///
 /// JoinSet is a first-class resource node so spawned tasks can be attached as
@@ -9,30 +11,58 @@ use std::future::Future;
 /// - joinset `touches` child (on poll, via auto-emit in stack::push)
 pub struct JoinSet<T> {
     node_id: String,
+    name: String,
     inner: tokio::task::JoinSet<T>,
+}
+
+#[derive(Facet)]
+struct JoinSetNodeAttrs {
+    #[facet(skip_unless_truthy)]
+    name: Option<String>,
+    #[facet(skip_unless_truthy)]
+    cancelled: Option<bool>,
+    #[facet(skip_unless_truthy)]
+    close_cause: Option<String>,
+}
+
+fn joinset_attrs_json(name: Option<&str>, cancelled: bool, close_cause: Option<&str>) -> String {
+    facet_json::to_string(&JoinSetNodeAttrs {
+        name: name.map(str::to_string),
+        cancelled: cancelled.then_some(true),
+        close_cause: close_cause.map(str::to_string),
+    })
+    .expect("failed to build JoinSet attrs json")
 }
 
 impl<T> JoinSet<T>
 where
     T: Send + 'static,
 {
-    pub fn new() -> Self {
+    /// Create a named joinset for friendlier frontend display.
+    pub fn named(name: impl Into<String>) -> Self {
         let node_id = peeps_types::new_node_id("joinset");
+        let name = name.into();
         #[cfg(feature = "diagnostics")]
         {
             crate::registry::register_node(peeps_types::Node {
                 id: node_id.clone(),
                 kind: peeps_types::NodeKind::JoinSet,
-                label: Some("joinset".to_string()),
-                attrs_json: "{}".to_string(),
+                label: Some(name.clone()),
+                attrs_json: joinset_attrs_json(Some(&name), false, None),
             });
             // Parent touches joinset (historical interaction, not a blocking dependency).
             crate::stack::with_top(|src| crate::registry::touch_edge(src, &node_id));
         }
         Self {
             node_id,
+            name,
             inner: tokio::task::JoinSet::new(),
         }
+    }
+
+    /// Compatibility alias for named constructors.
+    pub fn with_name(name: impl Into<String>) -> Self {
+        Self::named(name)
     }
 
     pub fn spawn<F>(&mut self, label: &'static str, future: F)
@@ -66,23 +96,14 @@ where
             crate::registry::register_node(peeps_types::Node {
                 id: self.node_id.clone(),
                 kind: peeps_types::NodeKind::JoinSet,
-                label: Some("joinset (aborted)".to_string()),
-                attrs_json: r#"{"cancelled":true,"close_cause":"abort_all"}"#.to_string(),
+                label: Some(self.name.clone()),
+                attrs_json: joinset_attrs_json(Some(&self.name), true, Some("abort_all")),
             });
         }
     }
 
     pub async fn join_next(&mut self) -> Option<Result<T, tokio::task::JoinError>> {
         self.inner.join_next().await
-    }
-}
-
-impl<T> Default for JoinSet<T>
-where
-    T: Send + 'static,
-{
-    fn default() -> Self {
-        Self::new()
     }
 }
 

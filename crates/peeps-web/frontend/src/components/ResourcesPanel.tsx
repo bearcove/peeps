@@ -31,6 +31,10 @@ interface ResourcesPanelProps {
   onSelectNode: (nodeId: string) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
+  processFilter?: string | null;
+  onClearProcessFilter?: () => void;
+  fullHeight?: boolean;
+  allowCollapse?: boolean;
 }
 
 interface DuplexLegRow {
@@ -361,6 +365,10 @@ export function ResourcesPanel({
   onSelectNode,
   collapsed,
   onToggleCollapse,
+  processFilter = null,
+  onClearProcessFilter,
+  fullHeight = false,
+  allowCollapse = true,
 }: ResourcesPanelProps) {
   const [sortKey, setSortKey] = useState<SortKey>("pending");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -553,8 +561,16 @@ export function ResourcesPanel({
   }, [graph, sortDir, sortKey, snapshotCapturedAtNs, pendingNodeRefs, processLookup]);
 
   const visibleRows = useMemo(
-    () => rows.filter((row) => isSevere(row, severityFilter)),
-    [rows, severityFilter],
+    () =>
+      rows.filter(
+        (row) =>
+          isSevere(row, severityFilter) &&
+          (processFilter == null ||
+            row.endpointA === processFilter ||
+            row.endpointB === processFilter ||
+            row.legs.some((leg) => leg.process === processFilter)),
+      ),
+    [processFilter, rows, severityFilter],
   );
 
   const summary = useMemo(() => {
@@ -686,7 +702,7 @@ export function ResourcesPanel({
     window.setTimeout(() => setDebugMessage(null), 1600);
   }
 
-  if (collapsed) {
+  if (collapsed && allowCollapse) {
     return (
       <div className="panel panel--resources-collapsed">
         <button className="panel-collapse-btn" onClick={onToggleCollapse} title="Expand panel">
@@ -698,7 +714,7 @@ export function ResourcesPanel({
   }
 
   return (
-    <div className="panel panel--resources">
+    <div className={`panel panel--resources${fullHeight ? " panel--resources-full" : ""}`}>
       <div className="panel-header">
         <Plugs size={14} weight="bold" /> Resources ({summary.total})
         <button
@@ -711,9 +727,11 @@ export function ResourcesPanel({
           {copiedResources ? <Check size={12} weight="bold" /> : <CopySimple size={12} weight="bold" />}
           {copiedResources ? "Copied" : "Copy JSON"}
         </button>
-        <button className="panel-collapse-btn" onClick={onToggleCollapse} title="Collapse panel">
-          <CaretLeft size={14} weight="bold" />
-        </button>
+        {allowCollapse && (
+          <button className="panel-collapse-btn" onClick={onToggleCollapse} title="Collapse panel">
+            <CaretLeft size={14} weight="bold" />
+          </button>
+        )}
       </div>
 
       <div className="resources-summary-row">
@@ -722,6 +740,20 @@ export function ResourcesPanel({
         <span className="resources-chip resources-chip--crit">critical {summary.criticalCount}</span>
         {debugMessage && <span className="resources-debug-message">{debugMessage}</span>}
       </div>
+
+      {processFilter && (
+        <div className="resources-filter-row resources-filter-row--process">
+          <span className="resources-chip resources-chip--process">process {processFilter}</span>
+          <button
+            type="button"
+            className="resources-filter-btn"
+            onClick={onClearProcessFilter}
+            disabled={!onClearProcessFilter}
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       <div className="resources-filter-row">
         <button
@@ -750,7 +782,11 @@ export function ResourcesPanel({
       {rows.length === 0 ? (
         <div className="resources-empty">No connection resources in this snapshot.</div>
       ) : visibleRows.length === 0 ? (
-        <div className="resources-empty">No connections match this health filter.</div>
+        <div className="resources-empty">
+          {processFilter
+            ? `No connections match this filter for process ${processFilter}.`
+            : "No connections match this health filter."}
+        </div>
       ) : (
         <div className="resources-table-wrap">
           <div className="resources-row-grid resources-row-grid--header">

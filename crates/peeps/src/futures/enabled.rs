@@ -287,6 +287,7 @@ where
     let child_id = node_id.clone();
     crate::stack::with_top(|parent_node_id| {
         crate::registry::spawn_edge(parent_node_id, &child_id);
+        crate::registry::touch_edge(parent_node_id, &child_id);
     });
 
     PeepableFuture {
@@ -422,6 +423,7 @@ pub fn timeout<F: Future>(
     let child_id = node_id.clone();
     crate::stack::with_top(|parent_node_id| {
         crate::registry::spawn_edge(parent_node_id, &child_id);
+        crate::registry::touch_edge(parent_node_id, &child_id);
     });
 
     PeepableFuture {

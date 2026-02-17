@@ -886,13 +886,22 @@ function JoinSetCard({ data }: NodeProps<Node<NodeData>>) {
   const { label, process, attrs } = data;
   const cancelled = attr(attrs, "cancelled");
   const closeCause = attr(attrs, "close_cause");
+  const name = attr(attrs, "name");
   const isCancelled = cancelled === "true";
+
+  const prettyName = name
+    ? name
+        .split(/[\s_-]+/)
+        .filter(Boolean)
+        .map((segment) => `${segment[0]?.toUpperCase()}${segment.slice(1)}`)
+        .join(" ")
+    : label;
 
   return (
     <CardShell
       kind="joinset"
       process={process}
-      label={label}
+      label={prettyName}
       icon={<Stack size={14} weight="bold" />}
       stateClass={isCancelled ? "card--danger-border" : undefined}
     >
@@ -902,6 +911,12 @@ function JoinSetCard({ data }: NodeProps<Node<NodeData>>) {
           variant={isCancelled ? "crit" : "ok"}
         />
       </div>
+      {name && name !== prettyName && (
+        <div className="card-row">
+          <span className="card-dim">raw</span>
+          <span className="card-val-truncate" title={name}>{name}</span>
+        </div>
+      )}
       {closeCause && (
         <div className="card-row">
           <span className="card-dim">cause</span>

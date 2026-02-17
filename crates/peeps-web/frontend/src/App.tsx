@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Cpu, Camera, WarningCircle } from "@phosphor-icons/react";
 import {
   fetchConnections,
@@ -48,7 +48,7 @@ const SNAPSHOT_POLL_INTERVAL_MS = 250;
 const SNAPSHOT_FINALIZATION_WAIT_BUDGET_MS = 6_000;
 type DetailLevel = "info" | "debug" | "trace";
 const DETAIL_LEVELS: DetailLevel[] = ["info", "debug", "trace"];
-type InvestigationMode = "graph" | "timeline";
+type InvestigationMode = "graph" | "timeline" | "resources";
 const INSPECTOR_WIDTH_MIN = 260;
 const INSPECTOR_WIDTH_MAX = 720;
 
@@ -72,6 +72,26 @@ function firstString(attrs: Record<string, unknown>, keys: string[]): string | u
 
 function parseDetailLevel(value: string | null): DetailLevel {
   return value === "debug" || value === "trace" ? value : "info";
+}
+
+function parseInvestigationMode(value: string | null): InvestigationMode {
+  if (value === "timeline" || value === "resources") return value;
+  return "graph";
+}
+
+function normalizeProcessParam(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function readRouteState(): { mode: InvestigationMode; resourceProcess: string | null } {
+  const params = new URLSearchParams(window.location.search);
+  const mode = parseInvestigationMode(params.get("mode"));
+  const resourceKind = params.get("resource_kind");
+  const resourceProcess =
+    resourceKind === "process" ? normalizeProcessParam(params.get("resource_process")) : null;
+  return { mode, resourceProcess };
 }
 
 function detailLevelRank(level: DetailLevel): number {
@@ -495,6 +515,7 @@ function applyDeadlockFocus(
 }
 
 export function App() {
+  const initialRoute = readRouteState();
   const [snapshot, setSnapshot] = useState<JumpNowResponse | null>(null);
   const [graph, setGraph] = useState<SnapshotGraph | null>(null);
   const [loading, setLoading] = useState(false);
@@ -505,8 +526,12 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [processDebugMessage, setProcessDebugMessage] = useState<string | null>(null);
   const [investigationMode, setInvestigationMode] = useState<InvestigationMode>(() => {
-    return sessionStorage.getItem("peeps-investigation-mode") === "timeline" ? "timeline" : "graph";
+    if (initialRoute.mode !== "graph") return initialRoute.mode;
+    return parseInvestigationMode(sessionStorage.getItem("peeps-investigation-mode"));
   });
+  const [resourcesProcessFilter, setResourcesProcessFilter] = useState<string | null>(
+    initialRoute.resourceProcess,
+  );
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [filteredNodeId, setFilteredNodeId] = useState<string | null>(null);
@@ -570,7 +595,45 @@ export function App() {
 
   const handleSetMode = useCallback((mode: InvestigationMode) => {
     setInvestigationMode(mode);
-    sessionStorage.setItem("peeps-investigation-mode", mode);
+  }, []);
+
+  const hasHydratedRouteRef = useRef(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("mode", investigationMode);
+    if (investigationMode === "resources" && resourcesProcessFilter) {
+      params.set("resource_kind", "process");
+      params.set("resource_process", resourcesProcessFilter);
+    } else {
+      params.delete("resource_kind");
+      params.delete("resource_process");
+    }
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (currentUrl === nextUrl) {
+      hasHydratedRouteRef.current = true;
+      sessionStorage.setItem("peeps-investigation-mode", investigationMode);
+      return;
+    }
+    if (hasHydratedRouteRef.current) {
+      window.history.pushState(null, "", nextUrl);
+    } else {
+      window.history.replaceState(null, "", nextUrl);
+      hasHydratedRouteRef.current = true;
+    }
+    sessionStorage.setItem("peeps-investigation-mode", investigationMode);
+  }, [investigationMode, resourcesProcessFilter]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const route = readRouteState();
+      setInvestigationMode(route.mode);
+      setResourcesProcessFilter(route.resourceProcess);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
   const waitForSnapshotFinalization = useCallback(
@@ -898,6 +961,29 @@ export function App() {
     });
   }, [allProcesses]);
 
+  const handleInspectorProcessAction = useCallback(
+    (action: "show_only" | "hide" | "open_resources", process: string) => {
+      if (!process) return;
+      if (action === "show_only") {
+        setInvestigationMode("graph");
+        setHiddenProcesses(new Set(allProcesses.filter((p) => p !== process)));
+        return;
+      }
+      if (action === "hide") {
+        setInvestigationMode("graph");
+        setHiddenProcesses((prev) => {
+          const next = new Set(prev);
+          next.add(process);
+          return next;
+        });
+        return;
+      }
+      setResourcesProcessFilter(process);
+      setInvestigationMode("resources");
+    },
+    [allProcesses],
+  );
+
   const hasActiveFilters =
     hiddenKinds.size > 0 ||
     hiddenProcesses.size > 0 ||
@@ -1159,6 +1245,13 @@ export function App() {
             >
               Timeline (spike)
             </button>
+            <button
+              className={`btn ${investigationMode === "resources" ? "btn--primary" : ""}`}
+              type="button"
+              onClick={() => handleSetMode("resources")}
+            >
+              Resources
+            </button>
           </div>
           <div
             className={[
@@ -1221,7 +1314,7 @@ export function App() {
                   onToggleCollapse={toggleResourcesCollapsed}
                 />
               </div>
-            ) : (
+            ) : investigationMode === "timeline" ? (
               <TimelineView
                 events={timelineEvents}
                 loading={timelineLoading}
@@ -1235,6 +1328,21 @@ export function App() {
                 onWindowSecondsChange={handleTimelineWindowChange}
                 onRefresh={handleRefreshTimeline}
                 onSelectEvent={handleSelectTimelineEvent}
+              />
+            ) : (
+              <ResourcesPanel
+                graph={enrichedGraph}
+                snapshotCapturedAtNs={snapshot?.captured_at_ns ?? null}
+                snapshotId={snapshot?.snapshot_id ?? null}
+                snapshotProcesses={snapshotProcesses}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={handleSelectGraphNode}
+                collapsed={false}
+                onToggleCollapse={() => {}}
+                processFilter={resourcesProcessFilter}
+                onClearProcessFilter={() => setResourcesProcessFilter(null)}
+                fullHeight
+                allowCollapse={false}
               />
             )}
             {!rightCollapsed && (
@@ -1261,6 +1369,7 @@ export function App() {
               filteredNodeId={filteredNodeId}
               onFocusNode={setFilteredNodeId}
               onSelectNode={handleSelectGraphNode}
+              onProcessAction={handleInspectorProcessAction}
               collapsed={rightCollapsed}
               onToggleCollapse={toggleRight}
             />

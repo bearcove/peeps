@@ -1,6 +1,7 @@
 import { ArrowSquareOut } from "@phosphor-icons/react";
 
 const THIRTY_DAYS_NS = 30 * 24 * 60 * 60 * 1_000_000_000;
+export type InspectorProcessAction = "show_only" | "hide" | "open_resources";
 
 function parseFiniteNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -98,10 +99,12 @@ export function CommonInspectorFields({
   id,
   process,
   attrs,
+  onProcessAction,
 }: {
   id: string;
   process: string;
   attrs: Record<string, unknown>;
+  onProcessAction?: (action: InspectorProcessAction, process: string) => void;
 }) {
   const method = getMethod(attrs);
   const correlation = getCorrelation(attrs);
@@ -119,7 +122,40 @@ export function CommonInspectorFields({
       </div>
       <div className="inspect-row" data-testid="common-field-process">
         <span className="inspect-key">Process</span>
-        <span className="inspect-val">{process}</span>
+        {onProcessAction ? (
+          <span className="inspect-val inspect-process-menu-wrap">
+            <details className="inspect-process-menu">
+              <summary className="inspect-process-chip" aria-label={`Process actions for ${process}`}>
+                {process}
+              </summary>
+              <div className="inspect-process-dropdown">
+                <button
+                  type="button"
+                  className="inspect-process-action"
+                  onClick={() => onProcessAction("show_only", process)}
+                >
+                  Show only this process
+                </button>
+                <button
+                  type="button"
+                  className="inspect-process-action"
+                  onClick={() => onProcessAction("hide", process)}
+                >
+                  Hide this process
+                </button>
+                <button
+                  type="button"
+                  className="inspect-process-action"
+                  onClick={() => onProcessAction("open_resources", process)}
+                >
+                  Open in Resources
+                </button>
+              </div>
+            </details>
+          </span>
+        ) : (
+          <span className="inspect-val">{process}</span>
+        )}
       </div>
       {method && (
         <div className="inspect-row" data-testid="common-field-method">
