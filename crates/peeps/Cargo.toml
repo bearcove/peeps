@@ -13,3 +13,4 @@ compact_str.workspace = true
 facet-json.workspace = true
 facet-value.workspace = true
 peeps-types.workspace = true
+peeps-sqlite-facet.workspace = true

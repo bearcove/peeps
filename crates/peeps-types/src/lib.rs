@@ -10,12 +10,14 @@
 //! In short: events happen to entities, entities are connected by edges,
 //! and entities live inside scopes.
 
+pub(crate) mod diff;
 pub(crate) mod edges;
 pub(crate) mod entities;
 pub(crate) mod primitives;
 pub(crate) mod scopes;
 pub(crate) mod snapshots;
 
+pub use diff::*;
 pub use edges::*;
 pub use entities::*;
 pub use primitives::*;

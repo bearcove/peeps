@@ -800,6 +800,7 @@ dependencies = [
  "compact_str",
  "facet-json",
  "facet-value",
+ "peeps-sqlite-facet",
  "peeps-types",
 ]
 
