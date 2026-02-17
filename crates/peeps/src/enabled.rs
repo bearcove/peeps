@@ -1284,7 +1284,6 @@ pub struct OneshotSender<T> {
     inner: Option<oneshot::Sender<T>>,
     handle: EntityHandle,
     channel: Arc<StdMutex<OneshotRuntimeState>>,
-    name: CompactString,
 }
 
 pub struct OneshotReceiver<T> {
@@ -2626,7 +2625,6 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
             inner: Some(tx),
             handle: tx_handle,
             channel: channel.clone(),
-            name: name.clone(),
         },
         OneshotReceiver {
             inner: Some(rx),
@@ -3997,6 +3995,31 @@ mod tests {
     fn entity_exists(id: &EntityId) -> bool {
         let db = runtime_db().lock().expect("runtime db lock should be available");
         db.entities.contains_key(id)
+    }
+
+    #[test]
+    fn instrument_future_named_uses_caller_source() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let marker_line = line!() + 1;
+        let fut = instrument_future_named("test.future.source", std::future::ready(()));
+        let fut_id = EntityId::new(fut.future_handle.id().as_str());
+        let source = {
+            let db = runtime_db().lock().expect("runtime db lock should be available");
+            db.entities
+                .get(&fut_id)
+                .expect("future entity should exist")
+                .source
+                .clone()
+        };
+
+        assert!(
+            source.ends_with(&format!(":{}", marker_line)),
+            "expected caller line {}, got source {}",
+            marker_line,
+            source
+        );
     }
 
     #[test]
