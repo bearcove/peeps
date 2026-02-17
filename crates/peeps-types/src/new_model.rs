@@ -12,8 +12,9 @@
 
 use compact_str::CompactString;
 use facet::Facet;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 ////////////////////////////////////////////////////////////////////////////////////
 // Timestamps
@@ -54,12 +55,6 @@ pub struct Entity {
     /// When we first started tracking this entity
     pub birth: PTime,
 
-    /// Human-facing name for this entity.
-    pub name: CompactString,
-
-    /// Instrumentation verbosity level for this entity.
-    pub level: EntityLevel,
-
     /// Creation site in source code as `{absolute_path}:{line}`.
     /// Example: `/Users/amos/bearcove/peeps/crates/peeps/src/sync/channels.rs:1043`
     // [FIXME] Note that this is a good candidate to optimize for later by just keeping a registry of all
@@ -67,10 +62,14 @@ pub struct Entity {
     // very long string.
     pub source: CompactString,
 
+    /// Human-facing name for this entity.
+    pub name: CompactString,
+
     /// More specific info about the entity (depending on its kind)
     pub body: EntityBody,
 
     /// Extensible metadata for optional, non-canonical context.
+    /// Convention: `meta.level` may be `info`, `debug`, or `trace` for UI filtering.
     pub meta: facet_value::Value,
 }
 
@@ -78,13 +77,75 @@ pub struct Entity {
 #[derive(Facet)]
 pub struct EntityId(CompactString);
 
-#[derive(Facet)]
-#[repr(u8)]
-#[facet(rename_all = "snake_case")]
-pub enum EntityLevel {
-    Info,
-    Debug,
-    Trace,
+impl Entity {
+    /// Starts building an entity from required semantic fields.
+    pub fn builder(name: impl Into<CompactString>, body: EntityBody) -> EntityBuilder {
+        EntityBuilder {
+            name: name.into(),
+            body,
+        }
+    }
+
+    /// Convenience constructor that accepts typed meta and builds immediately.
+    #[track_caller]
+    pub fn new<M>(
+        name: impl Into<CompactString>,
+        body: EntityBody,
+        meta: &M,
+    ) -> Result<Self, facet_value::ToValueError>
+    where
+        M: for<'facet> Facet<'facet>,
+    {
+        Entity::builder(name, body).build(meta)
+    }
+}
+
+/// Builder for `Entity` that auto-fills runtime identity and creation metadata.
+pub struct EntityBuilder {
+    name: CompactString,
+    body: EntityBody,
+}
+
+impl EntityBuilder {
+    /// Finalizes the entity with typed meta converted into `facet_value::Value`.
+    #[track_caller]
+    pub fn build<M>(self, meta: &M) -> Result<Entity, facet_value::ToValueError>
+    where
+        M: for<'facet> Facet<'facet>,
+    {
+        Ok(Entity {
+            id: next_entity_id(),
+            birth: PTime::now(),
+            name: self.name,
+            source: caller_source(),
+            body: self.body,
+            meta: facet_value::to_value(meta)?,
+        })
+    }
+}
+
+fn next_entity_id() -> EntityId {
+    static PROCESS_PREFIX: OnceLock<u16> = OnceLock::new();
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+
+    let prefix = *PROCESS_PREFIX.get_or_init(|| {
+        let pid = std::process::id() as u64;
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0);
+        ((seed ^ pid) & 0xFFFF) as u16
+    });
+
+    let counter = COUNTER.fetch_add(1, Ordering::Relaxed) & 0x0000_FFFF_FFFF_FFFF;
+    let raw = ((prefix as u64) << 48) | counter;
+    EntityId(CompactString::from(format!("{raw:016x}")))
+}
+
+#[track_caller]
+fn caller_source() -> CompactString {
+    let location = std::panic::Location::caller();
+    CompactString::from(format!("{}:{}", location.file(), location.line()))
 }
 
 /// Typed payload for each entity kind.
