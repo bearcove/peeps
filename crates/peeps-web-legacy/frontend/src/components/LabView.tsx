@@ -32,8 +32,6 @@ import {
   CaretLeft,
   CaretRight,
   Crosshair,
-  Hash,
-  Users,
 } from "@phosphor-icons/react";
 import { Panel } from "../ui/layout/Panel";
 import { PanelHeader } from "../ui/layout/PanelHeader";
@@ -73,25 +71,89 @@ const elkOptions = {
 
 // ── Mock data for the deadlock detector mockup ────────────────
 
-type MockNodeDef = {
+type MockEntityDef = {
   id: string;
-  kind: string;
-  label: string;
+  name: string;
+  kind: string; // for icon lookup — "request", "mutex", "channel_tx", etc.
+  bodyKind: string; // EntityBody variant name
+  body: Record<string, any>; // body-specific fields for inspector
+  source: string;
+  birthAgeMs: number; // age in ms for display
+  meta: Record<string, MetaValue>;
   inCycle?: boolean;
 };
 
-const MOCK_NODE_DEFS: MockNodeDef[] = [
-  { id: "future:store.incoming.recv", kind: "future", label: "store.incoming.recv" },
-  { id: "request:demorpc.sleepy", kind: "request", label: "DemoRpc.sleepy_forever", inCycle: true },
-  { id: "request:demorpc.ping", kind: "request", label: "DemoRpc.ping" },
-  { id: "mutex:global_state", kind: "mutex", label: "Mutex<GlobalState>", inCycle: true },
-  { id: "channel:mpsc.tx", kind: "channel_tx", label: "mpsc.send", inCycle: true },
-  { id: "channel:mpsc.rx", kind: "channel_rx", label: "mpsc.recv", inCycle: true },
-  { id: "connection:initiator", kind: "connection", label: "initiator\u2192acceptor" },
+type MockEdgeDef = {
+  id: string;
+  source: string;
+  target: string;
+  kind: "needs" | "polls" | "closed_by" | "channel_link" | "rpc_link";
+};
+
+const MOCK_ENTITIES: MockEntityDef[] = [
+  {
+    id: "req_sleepy", name: "DemoRpc.sleepy_forever", kind: "request", bodyKind: "Request",
+    body: { method: "DemoRpc.sleepy_forever", args_preview: "(no args)" },
+    source: "src/rpc/demo.rs:42", birthAgeMs: 1245000, inCycle: true,
+    meta: { level: "info", rpc_service: "DemoRpc", transport: "roam-tcp" },
+  },
+  {
+    id: "resp_sleepy", name: "DemoRpc.sleepy_forever", kind: "response", bodyKind: "Response",
+    body: { method: "DemoRpc.sleepy_forever", status: "error" },
+    source: "src/rpc/demo.rs:45", birthAgeMs: 1244800,
+    meta: { level: "info", status_detail: "deadline exceeded" },
+  },
+  {
+    id: "req_ping", name: "DemoRpc.ping", kind: "request", bodyKind: "Request",
+    body: { method: "DemoRpc.ping", args_preview: "{ ttl: 30 }" },
+    source: "src/rpc/demo.rs:18", birthAgeMs: 820000,
+    meta: { level: "info", rpc_service: "DemoRpc", transport: "roam-tcp" },
+  },
+  {
+    id: "resp_ping", name: "DemoRpc.ping", kind: "response", bodyKind: "Response",
+    body: { method: "DemoRpc.ping", status: "ok" },
+    source: "src/rpc/demo.rs:20", birthAgeMs: 819500,
+    meta: { level: "info" },
+  },
+  {
+    id: "lock_state", name: "Mutex<GlobalState>", kind: "mutex", bodyKind: "Lock",
+    body: { kind: "mutex" },
+    source: "src/state.rs:12", birthAgeMs: 3600000, inCycle: true,
+    meta: { level: "debug" },
+  },
+  {
+    id: "ch_tx", name: "mpsc.send", kind: "channel_tx", bodyKind: "ChannelTx",
+    body: { lifecycle: "open", details: { kind: "mpsc", capacity: 128, queue_len: 0 } },
+    source: "src/dispatch.rs:67", birthAgeMs: 3590000, inCycle: true,
+    meta: { level: "debug" },
+  },
+  {
+    id: "ch_rx", name: "mpsc.recv", kind: "channel_rx", bodyKind: "ChannelRx",
+    body: { lifecycle: "open", details: { kind: "mpsc", capacity: 128, queue_len: 0 } },
+    source: "src/dispatch.rs:68", birthAgeMs: 3590000, inCycle: true,
+    meta: { level: "debug" },
+  },
+  {
+    id: "future_store", name: "store.incoming.recv", kind: "future", bodyKind: "Future",
+    body: {},
+    source: "src/store.rs:104", birthAgeMs: 2100000,
+    meta: { level: "trace", poll_count: 847 },
+  },
+];
+
+const MOCK_EDGES: MockEdgeDef[] = [
+  { id: "e1", source: "req_sleepy", target: "lock_state", kind: "needs" },
+  { id: "e2", source: "lock_state", target: "ch_rx", kind: "needs" },
+  { id: "e3", source: "ch_rx", target: "req_sleepy", kind: "needs" },
+  { id: "e4", source: "ch_tx", target: "ch_rx", kind: "channel_link" },
+  { id: "e5", source: "req_sleepy", target: "resp_sleepy", kind: "rpc_link" },
+  { id: "e6", source: "req_ping", target: "resp_ping", kind: "rpc_link" },
+  { id: "e7", source: "req_ping", target: "lock_state", kind: "needs" },
+  { id: "e8", source: "future_store", target: "req_sleepy", kind: "polls" },
 ];
 
 /** Measure actual rendered node dimensions by briefly inserting into the DOM. */
-function measureNodeDefs(defs: MockNodeDef[]): Map<string, { width: number; height: number }> {
+function measureNodeDefs(defs: MockEntityDef[]): Map<string, { width: number; height: number }> {
   const container = document.createElement("div");
   container.style.cssText = "position:fixed;top:-9999px;left:-9999px;visibility:hidden;pointer-events:none;display:flex;flex-direction:column;align-items:flex-start;gap:4px;";
   document.body.appendChild(container);
@@ -107,7 +169,7 @@ function measureNodeDefs(defs: MockNodeDef[]): Map<string, { width: number; heig
     icon.style.cssText = "display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;flex-shrink:0;";
     const label = document.createElement("span");
     label.className = "mockup-node-label";
-    label.textContent = def.label;
+    label.textContent = def.name;
     el.appendChild(icon);
     el.appendChild(label);
     container.appendChild(el);
@@ -126,52 +188,37 @@ function measureNodeDefs(defs: MockNodeDef[]): Map<string, { width: number; heig
   return sizes;
 }
 
-type MockEdgeDef = {
-  id: string;
-  source: string;
-  target: string;
-  rel: "needs" | "spawned" | "touches" | "default";
-};
-
-const MOCK_EDGE_DEFS: MockEdgeDef[] = [
-  { id: "e1", source: "request:demorpc.sleepy", target: "mutex:global_state", rel: "needs" },
-  { id: "e2", source: "mutex:global_state", target: "channel:mpsc.tx", rel: "needs" },
-  { id: "e3", source: "channel:mpsc.tx", target: "channel:mpsc.rx", rel: "default" },
-  { id: "e4", source: "channel:mpsc.rx", target: "request:demorpc.sleepy", rel: "needs" },
-  { id: "e5", source: "request:demorpc.ping", target: "mutex:global_state", rel: "default" },
-  { id: "e6", source: "future:store.incoming.recv", target: "request:demorpc.sleepy", rel: "spawned" },
-  { id: "e7", source: "request:demorpc.sleepy", target: "connection:initiator", rel: "touches" },
-];
-
-function edgeStyle(rel: MockEdgeDef["rel"]) {
-  switch (rel) {
+function edgeStyle(kind: MockEdgeDef["kind"]) {
+  switch (kind) {
     case "needs":
       return { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 };
-    case "spawned":
+    case "polls":
       return { stroke: "light-dark(#8e7cc3, #b4a7d6)", strokeWidth: 1.2, strokeDasharray: "2 3" };
-    case "touches":
-      return { stroke: "light-dark(#a1a1a6, #636366)", strokeWidth: 1, strokeDasharray: "4 3" };
-    default:
-      return { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 };
+    case "closed_by":
+      return { stroke: "light-dark(#e08614, #f0a840)", strokeWidth: 1.5 };
+    case "channel_link":
+      return { stroke: "light-dark(#3b82f6, #60a5fa)", strokeWidth: 1.2, strokeDasharray: "6 3" };
+    case "rpc_link":
+      return { stroke: "light-dark(#059669, #34d399)", strokeWidth: 1.2, strokeDasharray: "6 3" };
   }
 }
 
-function edgeMarkerSize(rel: MockEdgeDef["rel"]) {
-  return rel === "needs" ? 12 : rel === "spawned" ? 8 : 10;
+function edgeMarkerSize(kind: MockEdgeDef["kind"]) {
+  return kind === "needs" ? 12 : 8;
 }
 
 type ElkPoint = { x: number; y: number };
 type LayoutResult = { nodes: Node[]; edges: Edge[] };
 
 async function layoutMockGraph(
-  nodeDefs: MockNodeDef[],
+  entityDefs: MockEntityDef[],
   edgeDefs: MockEdgeDef[],
   nodeSizes: Map<string, { width: number; height: number }>,
 ): Promise<LayoutResult> {
   const result = await elk.layout({
     id: "root",
     layoutOptions: elkOptions,
-    children: nodeDefs.map((n) => {
+    children: entityDefs.map((n) => {
       const sz = nodeSizes.get(n.id);
       if (!sz || sz.width === 0 || sz.height === 0) {
         console.warn(`[layoutMockGraph] missing/zero size for node "${n.id}":`, sz);
@@ -194,15 +241,15 @@ async function layoutMockGraph(
     (result.edges ?? []).map((e) => [e.id, e.sections ?? []]),
   );
 
-  const nodes: Node[] = nodeDefs.map((def) => ({
+  const nodes: Node[] = entityDefs.map((def) => ({
     id: def.id,
     type: "mockNode",
     position: posMap.get(def.id) ?? { x: 0, y: 0 },
-    data: { kind: def.kind, label: def.label, inCycle: def.inCycle ?? false },
+    data: { kind: def.kind, label: def.name, inCycle: def.inCycle ?? false, selected: false },
   }));
 
   const edges: Edge[] = edgeDefs.map((def) => {
-    const sz = edgeMarkerSize(def.rel);
+    const sz = edgeMarkerSize(def.kind);
     const sections = elkEdgeMap.get(def.id) ?? [];
     const points: ElkPoint[] = [];
     for (const section of sections) {
@@ -216,7 +263,7 @@ async function layoutMockGraph(
       target: def.target,
       type: "elkrouted",
       data: { points },
-      style: edgeStyle(def.rel),
+      style: edgeStyle(def.kind),
       markerEnd: { type: MarkerType.ArrowClosed, width: sz, height: sz },
     };
   });
@@ -228,12 +275,12 @@ async function layoutMockGraph(
 
 const hiddenHandle: React.CSSProperties = { opacity: 0, width: 0, height: 0, minWidth: 0, minHeight: 0, position: "absolute", top: "50%", left: "50%", pointerEvents: "none" };
 
-function MockNodeComponent({ data }: { data: { kind: string; label: string; inCycle: boolean } }) {
+function MockNodeComponent({ data }: { data: { kind: string; label: string; inCycle: boolean; selected: boolean } }) {
   return (
     <>
       <Handle type="target" position={Position.Top} style={hiddenHandle} />
       <Handle type="source" position={Position.Bottom} style={hiddenHandle} />
-      <div className={`mockup-node${data.inCycle ? " mockup-node--cycle" : ""}`}>
+      <div className={`mockup-node${data.inCycle ? " mockup-node--cycle" : ""}${data.selected ? " mockup-node--selected" : ""}`}>
         <span className="mockup-node-icon">{kindIcon(data.kind, 14)}</span>
         <span className="mockup-node-label">{data.label}</span>
       </div>
@@ -286,20 +333,29 @@ const mockEdgeTypes = { elkrouted: ElkRoutedEdge };
 
 // ── Mock graph panel ──────────────────────────────────────────
 
-function MockGraphPanel() {
+function MockGraphPanel({ selectedEntityId, onSelectEntity }: { selectedEntityId?: string; onSelectEntity: (id: string) => void }) {
   const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
 
   useEffect(() => {
-    const sizes = measureNodeDefs(MOCK_NODE_DEFS);
-    layoutMockGraph(MOCK_NODE_DEFS, MOCK_EDGE_DEFS, sizes).then(setLayout);
+    const sizes = measureNodeDefs(MOCK_ENTITIES);
+    layoutMockGraph(MOCK_ENTITIES, MOCK_EDGES, sizes).then(setLayout);
   }, []);
+
+  // Update selected state on nodes when selection changes
+  const nodesWithSelection = useMemo(() =>
+    layout.nodes.map((n) => ({
+      ...n,
+      data: { ...n.data, selected: n.id === selectedEntityId },
+    })),
+    [layout.nodes, selectedEntityId],
+  );
 
   return (
     <div className="mockup-graph-panel">
       <div className="mockup-graph-toolbar">
         <div className="mockup-graph-toolbar-left">
-          <span className="mockup-graph-stat">7 nodes</span>
-          <span className="mockup-graph-stat">7 edges</span>
+          <span className="mockup-graph-stat">{MOCK_ENTITIES.length} entities</span>
+          <span className="mockup-graph-stat">{MOCK_EDGES.length} edges</span>
         </div>
         <div className="mockup-graph-toolbar-right">
           <span className="mockup-graph-level-label">Detail</span>
@@ -309,10 +365,11 @@ function MockGraphPanel() {
       <div className="mockup-graph-flow">
         <ReactFlowProvider>
           <ReactFlow
-            nodes={layout.nodes}
+            nodes={nodesWithSelection}
             edges={layout.edges}
             nodeTypes={mockNodeTypes}
             edgeTypes={mockEdgeTypes}
+            onNodeClick={(_event, node) => onSelectEntity(node.id)}
             fitView
             fitViewOptions={{ padding: 0.3, maxZoom: 1.2 }}
             proOptions={{ hideAttribution: true }}
@@ -332,14 +389,129 @@ function MockGraphPanel() {
   );
 }
 
-// ── Mock inspector panel ──────────────────────────────────────
+// ── Inspector panel and body sections ─────────────────────────
+
+function EntityBodySection({ entity }: { entity: MockEntityDef }) {
+  const { bodyKind, body } = entity;
+  switch (bodyKind) {
+    case "Request":
+      return (
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="Method" icon={<PaperPlaneTilt size={12} weight="bold" />}>
+            <span className="mockup-inspector-mono">{body.method}</span>
+          </KeyValueRow>
+          <KeyValueRow label="Args">
+            <span className={`mockup-inspector-mono${body.args_preview === "(no args)" ? " mockup-inspector-muted" : ""}`}>
+              {body.args_preview}
+            </span>
+          </KeyValueRow>
+        </div>
+      );
+    case "Response":
+      return (
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="Method" icon={<PaperPlaneTilt size={12} weight="bold" />}>
+            <span className="mockup-inspector-mono">{body.method}</span>
+          </KeyValueRow>
+          <KeyValueRow label="Status" icon={<CircleNotch size={12} weight="bold" />}>
+            <Badge tone={body.status === "ok" ? "ok" : body.status === "error" ? "crit" : "warn"}>
+              {body.status}
+            </Badge>
+          </KeyValueRow>
+        </div>
+      );
+    case "Lock":
+      return (
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="Lock kind">
+            <span className="mockup-inspector-mono">{body.kind}</span>
+          </KeyValueRow>
+        </div>
+      );
+    case "ChannelTx":
+    case "ChannelRx":
+      return (
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="Lifecycle" icon={<CircleNotch size={12} weight="bold" />}>
+            <Badge tone={body.lifecycle === "open" ? "ok" : "neutral"}>
+              {body.lifecycle}
+            </Badge>
+          </KeyValueRow>
+          <KeyValueRow label="Channel kind">
+            <span className="mockup-inspector-mono">{body.details.kind}</span>
+          </KeyValueRow>
+          {body.details.capacity != null && (
+            <KeyValueRow label="Capacity">
+              <span className="mockup-inspector-mono">{body.details.capacity}</span>
+            </KeyValueRow>
+          )}
+          <KeyValueRow label="Queue length">
+            <span className="mockup-inspector-mono">{body.details.queue_len}</span>
+          </KeyValueRow>
+        </div>
+      );
+    case "Future":
+      return (
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="Body">
+            <span className="mockup-inspector-mono mockup-inspector-muted">Future (no body fields)</span>
+          </KeyValueRow>
+        </div>
+      );
+    default:
+      return null;
+  }
+}
+
+function EntityInspectorContent({ entity }: { entity: MockEntityDef }) {
+  return (
+    <>
+      <div className="mockup-inspector-node-header">
+        <span className="mockup-inspector-node-icon">{kindIcon(entity.kind, 16)}</span>
+        <div>
+          <div className="mockup-inspector-node-kind">{entity.bodyKind}</div>
+          <div className="mockup-inspector-node-label">{entity.name}</div>
+        </div>
+        <ActionButton size="sm">
+          <Crosshair size={12} weight="bold" />
+          focus
+        </ActionButton>
+      </div>
+
+      {entity.inCycle && (
+        <div className="mockup-inspector-alert mockup-inspector-alert--crit">
+          Part of <code>needs</code> cycle — possible deadlock
+        </div>
+      )}
+
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Source">
+          <NodeChip
+            icon={<FileRs size={12} weight="bold" />}
+            label={entity.source}
+            href="#"
+            title="Open in editor"
+          />
+        </KeyValueRow>
+        <KeyValueRow label="Age" icon={<Timer size={12} weight="bold" />}>
+          <DurationDisplay ms={entity.birthAgeMs} tone={entity.birthAgeMs > 600000 ? "crit" : entity.birthAgeMs > 60000 ? "warn" : undefined} />
+        </KeyValueRow>
+      </div>
+
+      <EntityBodySection entity={entity} />
+      <MockMetaSection meta={entity.meta} />
+    </>
+  );
+}
 
 function MockInspectorPanel({
   collapsed,
   onToggleCollapse,
+  entity,
 }: {
   collapsed: boolean;
   onToggleCollapse: () => void;
+  entity: MockEntityDef | undefined;
 }) {
   if (collapsed) {
     return (
@@ -364,69 +536,15 @@ function MockInspectorPanel({
         </button>
       </div>
       <div className="mockup-inspector-body">
-        <div className="mockup-inspector-node-header">
-          <span className="mockup-inspector-node-icon">
-            {kindIcon("request", 16)}
-          </span>
-          <div>
-            <div className="mockup-inspector-node-kind">request</div>
-            <div className="mockup-inspector-node-label">DemoRpc.sleepy_forever</div>
-          </div>
-          <ActionButton size="sm">
-            <Crosshair size={12} weight="bold" />
-            focus
-          </ActionButton>
-        </div>
-
-        <div className="mockup-inspector-alert mockup-inspector-alert--crit">
-          Suspect deadlock signal: <code>needs_cycle</code>
-        </div>
-
-        <div className="mockup-inspector-section">
-          <KeyValueRow label="Source">
-            <NodeChip
-              icon={<FileRs size={12} weight="bold" />}
-              label="main.rs:42"
-              href="#"
-              title="Open in editor"
-            />
-          </KeyValueRow>
-          <KeyValueRow label="Status" icon={<CircleNotch size={12} weight="bold" />}>
-            <Badge tone="warn">IN_FLIGHT</Badge>
-          </KeyValueRow>
-          <KeyValueRow label="Age" icon={<Timer size={12} weight="bold" />}>
-            <DurationDisplay ms={1245000} tone="crit" />
-          </KeyValueRow>
-        </div>
-
-        <div className="mockup-inspector-section">
-          <KeyValueRow label="Method" icon={<PaperPlaneTilt size={12} weight="bold" />}>
-            <span className="mockup-inspector-mono">DemoRpc.sleepy_forever</span>
-          </KeyValueRow>
-          <KeyValueRow label="Args preview">
-            <span className="mockup-inspector-mono mockup-inspector-muted">(no args)</span>
-          </KeyValueRow>
-        </div>
-
-        <MockMetaSection />
+        {entity ? <EntityInspectorContent entity={entity} /> : (
+          <div className="mockup-inspector-empty">Select an entity in the graph</div>
+        )}
       </div>
     </div>
   );
 }
 
 type MetaValue = string | number | boolean | null | MetaValue[] | { [key: string]: MetaValue };
-
-const MOCK_META: Record<string, MetaValue> = {
-  level: "info",
-  rpc_service: "DemoRpc",
-  transport: "roam-tcp",
-  retry_policy: {
-    max_retries: 3,
-    backoff_ms: 500,
-    timeout_ms: 30000,
-  },
-  tags: ["stuck", "deadlock-suspect"],
-};
 
 function MetaTreeNode({ name, value, depth = 0 }: { name: string; value: MetaValue; depth?: number }) {
   const [expanded, setExpanded] = useState(depth < 1);
@@ -473,12 +591,12 @@ function MetaTreeNode({ name, value, depth = 0 }: { name: string; value: MetaVal
   );
 }
 
-function MockMetaSection() {
+function MockMetaSection({ meta }: { meta: Record<string, MetaValue> }) {
   const [expanded, setExpanded] = useState(true);
   return (
     <div className="mockup-inspector-section">
       <div className="mockup-inspector-raw-head">
-        <span>Metadata ({Object.keys(MOCK_META).length})</span>
+        <span>Metadata ({Object.keys(meta).length})</span>
         <ActionButton size="sm" onClick={() => setExpanded((v) => !v)}>
           {expanded ? "Collapse" : "Expand"}
         </ActionButton>
@@ -488,7 +606,7 @@ function MockMetaSection() {
       </div>
       {expanded && (
         <div className="mockup-meta-tree">
-          {Object.entries(MOCK_META).map(([k, v]) => (
+          {Object.entries(meta).map(([k, v]) => (
             <MetaTreeNode key={k} name={k} value={v} />
           ))}
         </div>
@@ -502,6 +620,8 @@ function MockMetaSection() {
 function DeadlockDetectorMockup() {
   const [inspectorWidth, setInspectorWidth] = useState(340);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [selectedEntityId, setSelectedEntityId] = useState<string | undefined>("req_sleepy");
+  const selectedEntity = MOCK_ENTITIES.find((e) => e.id === selectedEntityId);
 
   return (
     <div className="mockup-app">
@@ -522,11 +642,17 @@ function DeadlockDetectorMockup() {
         </ActionButton>
       </div>
       <SplitLayout
-        left={<MockGraphPanel />}
+        left={
+          <MockGraphPanel
+            selectedEntityId={selectedEntityId}
+            onSelectEntity={setSelectedEntityId}
+          />
+        }
         right={
           <MockInspectorPanel
             collapsed={inspectorCollapsed}
             onToggleCollapse={() => setInspectorCollapsed((v) => !v)}
+            entity={selectedEntity}
           />
         }
         rightWidth={inspectorWidth}

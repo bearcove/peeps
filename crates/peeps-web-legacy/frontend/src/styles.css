@@ -4845,7 +4845,19 @@ body {
     color: light-dark(#d7263d, #ff6b81);
 }
 
+.mockup-node--selected {
+    outline: 2px solid light-dark(#3b82f6, #60a5fa);
+    outline-offset: 2px;
+}
+
 .mockup-node-label {
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.mockup-inspector-empty {
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 12px;
 }
