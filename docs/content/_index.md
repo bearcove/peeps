@@ -20,6 +20,4 @@ peeps captures the structure of your async program as a live dependency graph. W
 
 - [**Concepts**](/concepts/) — The mental model: nodes, edges, events, the graph
 - [**Architecture**](/architecture/) — How peeps, peeps-types, peeps-web, and the instrumentation layer fit together
-- [**Instrumentation**](/instrumentation/) — How wrappers surface causality for major runtime categories
-- [**Roam**](/roam/) — How roam integrates with peeps for RPC lifecycle tracking
-- [**Extending**](/extending/) — Adding new instrumented primitives
+- [**Instrumentation**](/instrumentation/) — How wrappers surface causality for Tokio and Roam primitives

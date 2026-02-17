@@ -7,10 +7,16 @@ insert_anchor_links = "heading"
 
 peeps wraps runtime primitives so causality is visible in the graph. With `diagnostics` disabled, wrappers become pass-throughs.
 
-These pages focus on intent:
+## Tokio
 
-- what each category represents in the graph,
-- which causal edges to expect,
-- how to interpret behavior when debugging.
+- [Futures & tasks](/instrumentation/futures/)
+- [Channels](/instrumentation/channels/)
+- [Locks](/instrumentation/locks/)
+- [Sync primitives](/instrumentation/sync/)
+- [Timers](/instrumentation/timers/)
+- [System operations](/instrumentation/system/)
 
-Exact fields and wrappers are implementation details and may change with releases.
+## Roam
+
+- [Request/response](/roam/request-response/)
+- [Channels](/roam/channels/)

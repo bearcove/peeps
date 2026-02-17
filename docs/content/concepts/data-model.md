@@ -3,7 +3,7 @@ title = "Data Model"
 weight = 1
 +++
 
-peeps models runtime behavior as a directed graph with two parts: **nodes** and **edges**.
+peeps models runtime behavior as a directed graph plus a timeline: **nodes** are runtime entities, **edges** are causal relationships, and **events** are timestamped facts about lifecycle and activity.
 
 ## Node contract
 
