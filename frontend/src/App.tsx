@@ -536,9 +536,28 @@ function GraphFlow({
 }) {
   const { fitView } = useReactFlow();
 
+  // Only refit when the graph structure changes (nodes/edges added or removed),
+  // not on selection changes which also mutate the nodes array.
+  const layoutKey = useMemo(
+    () => nodes.map((n) => n.id).join(",") + "|" + edges.map((e) => e.id).join(","),
+    [nodes, edges],
+  );
   useEffect(() => {
     fitView({ padding: 0.3, maxZoom: 1.2, duration: 0 });
-  }, [nodes, edges, fitView]);
+  }, [layoutKey, fitView]);
+
+  // Press F to fit the view.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "f" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        fitView({ padding: 0.3, maxZoom: 1.2, duration: 300 });
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [fitView]);
 
   return (
     <ReactFlow
