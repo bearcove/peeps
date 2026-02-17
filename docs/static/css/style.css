@@ -270,8 +270,6 @@ p {
 
 .content p,
 .content li {
-    text-align: justify;
-    text-justify: inter-word;
     hyphens: auto;
     overflow-wrap: break-word;
     word-break: normal;
