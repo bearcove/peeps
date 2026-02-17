@@ -39,10 +39,12 @@ impl Edge {
     }
 }
 
-#[derive(Facet)]
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
 pub enum EdgeKind {
+    /// Polled relationship (non-blocking observation of dependency).
+    Polls,
     /// Waiting/blocked-on relationship.
     Needs,
     /// Closure/cancellation cause relationship.

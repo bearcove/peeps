@@ -42,18 +42,30 @@ pub struct ScopeId(pub(crate) CompactString);
 pub struct EventId(pub(crate) CompactString);
 
 impl EntityId {
+    pub fn new(id: impl Into<CompactString>) -> Self {
+        Self(id.into())
+    }
+
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
 }
 
 impl ScopeId {
+    pub fn new(id: impl Into<CompactString>) -> Self {
+        Self(id.into())
+    }
+
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
 }
 
 impl EventId {
+    pub fn new(id: impl Into<CompactString>) -> Self {
+        Self(id.into())
+    }
+
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
