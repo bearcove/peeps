@@ -280,10 +280,10 @@ where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
-    tokio::spawn(
-        FUTURE_CAUSAL_STACK
-            .scope(RefCell::new(Vec::new()), instrument_future_named_with_krate(name, fut, source, krate)),
-    )
+    tokio::spawn(FUTURE_CAUSAL_STACK.scope(
+        RefCell::new(Vec::new()),
+        instrument_future_named_with_krate(name, fut, source, krate),
+    ))
 }
 
 #[macro_export]
@@ -1325,6 +1325,12 @@ pub trait AsEntityRef {
 impl AsEntityRef for EntityHandle {
     fn as_entity_ref(&self) -> EntityRef {
         self.entity_ref()
+    }
+}
+
+impl AsEntityRef for EntityRef {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.clone()
     }
 }
 
@@ -4489,8 +4495,12 @@ where
         krate: impl Into<CompactString>,
     ) -> Self {
         let name = name.into();
-        let handle =
-            EntityHandle::new_with_krate(format!("joinset.{name}"), EntityBody::Future, source, krate);
+        let handle = EntityHandle::new_with_krate(
+            format!("joinset.{name}"),
+            EntityBody::Future,
+            source,
+            krate,
+        );
         Self {
             inner: tokio::task::JoinSet::new(),
             handle,
@@ -4881,7 +4891,27 @@ pub fn instrument_future_named_with_krate<F>(
 where
     F: Future,
 {
-    let handle = EntityHandle::new_with_krate(name, EntityBody::Future, source, krate);
+    instrument_future_named_with_krate_meta(name, fut, source, krate, &facet_value::Value::NULL)
+}
+
+#[doc(hidden)]
+pub fn instrument_future_named_with_krate_meta<F>(
+    name: impl Into<CompactString>,
+    fut: F,
+    source: impl Into<CompactString>,
+    krate: impl Into<CompactString>,
+    meta: &facet_value::Value,
+) -> InstrumentedFuture<F>
+where
+    F: Future,
+{
+    let mut entity = Entity::builder(name, EntityBody::Future)
+        .source(source)
+        .krate(krate)
+        .build(&())
+        .expect("entity construction with unit meta should be infallible");
+    entity.meta = meta.clone();
+    let handle = EntityHandle::from_entity(entity);
     InstrumentedFuture::new(fut, handle, None)
 }
 
@@ -4940,12 +4970,21 @@ macro_rules! peep {
         )
     }};
     ($fut:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?} $(,)?) => {{
-        let _ = ($((&$k, &$v)),*);
-        $crate::instrument_future_named_with_krate(
+        let mut __peeps_meta_pairs: Vec<(&'static str, $crate::facet_value::Value)> = Vec::new();
+        $(
+            __peeps_meta_pairs.push((
+                $k,
+                $crate::facet_value::to_value(&$v)
+                    .expect("`peep!` metadata value must be Facet-serializable"),
+            ));
+        )*
+        let __peeps_meta: $crate::facet_value::Value = __peeps_meta_pairs.into_iter().collect();
+        $crate::instrument_future_named_with_krate_meta(
             $name,
             $fut,
             $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
             env!("CARGO_PKG_NAME"),
+            &__peeps_meta,
         )
     }};
     ($fut:expr, $name:expr, level = $($rest:tt)*) => {{
@@ -5108,6 +5147,48 @@ mod tests {
             "expected caller line {}, got source {}",
             marker_line,
             source
+        );
+    }
+
+    #[test]
+    fn peep_macro_records_meta_fields() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let fut = crate::peep!(
+            std::future::ready(()),
+            "test.future.meta_fields",
+            {
+                "method" => "Store.put_chunk",
+                "chunk.bytes" => 42u64,
+            }
+        );
+        let fut_id = EntityId::new(fut.future_handle.id().as_str());
+        let meta = {
+            let db = runtime_db()
+                .lock()
+                .expect("runtime db lock should be available");
+            db.entities
+                .get(&fut_id)
+                .expect("future entity should exist")
+                .meta
+                .clone()
+        };
+
+        let meta_obj = meta.as_object().expect("future meta should be an object");
+        assert_eq!(
+            meta_obj
+                .get("method")
+                .and_then(|v| v.as_string())
+                .map(|s| s.as_str()),
+            Some("Store.put_chunk")
+        );
+        assert_eq!(
+            meta_obj
+                .get("chunk.bytes")
+                .and_then(|v| v.as_number())
+                .and_then(|n| n.to_u64()),
+            Some(42)
         );
     }
 

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
 import "./App.css";
 import "./components/graph/graph.css";
 import "./components/inspector/inspector.css";
@@ -441,11 +442,14 @@ const elkOptions = {
 };
 
 async function measureNodeDefs(defs: EntityDef[]): Promise<Map<string, { width: number; height: number }>> {
+  // Escape React's useEffect lifecycle so flushSync works on our measurement roots.
+  await Promise.resolve();
+
   const container = document.createElement("div");
   container.style.cssText = "position:fixed;top:-9999px;left:-9999px;visibility:hidden;pointer-events:none;display:flex;flex-direction:column;align-items:flex-start;gap:4px;";
   document.body.appendChild(container);
 
-  const roots: { id: string; el: HTMLDivElement; root: ReturnType<typeof createRoot> }[] = [];
+  const sizes = new Map<string, { width: number; height: number }>();
 
   for (const def of defs) {
     const el = document.createElement("div");
@@ -487,18 +491,17 @@ async function measureNodeDefs(defs: EntityDef[]): Promise<Map<string, { width: 
       );
     }
 
-    root.render(<ReactFlowProvider>{node}</ReactFlowProvider>);
-    roots.push({ id: def.id, el, root });
-  }
+    flushSync(() => {
+      root.render(<ReactFlowProvider>{node}</ReactFlowProvider>);
+    });
 
-  // Yield to let React finish rendering before measuring.
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-
-  const sizes = new Map<string, { width: number; height: number }>();
-  for (const { id, el, root } of roots) {
-    sizes.set(id, { width: el.offsetWidth, height: el.offsetHeight });
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    console.log("[measure]", def.id, w, h);
+    sizes.set(def.id, { width: w, height: h });
     root.unmount();
   }
+
   document.body.removeChild(container);
   return sizes;
 }

@@ -10,6 +10,9 @@ pub mod fs;
 pub mod fs {}
 pub mod net;
 
+#[doc(hidden)]
+pub use facet_value;
+
 #[cfg(all(feature = "diagnostics", target_arch = "wasm32"))]
 compile_error!(
     "`peeps` diagnostics is not supported on wasm32; build wasm targets without `feature=\"diagnostics\"`"

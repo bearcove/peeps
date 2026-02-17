@@ -67,6 +67,12 @@ impl AsEntityRef for EntityHandle {
     }
 }
 
+impl AsEntityRef for EntityRef {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.clone()
+    }
+}
+
 impl<T> AsEntityRef for Sender<T> {
     fn as_entity_ref(&self) -> EntityRef {
         self.handle.entity_ref()
