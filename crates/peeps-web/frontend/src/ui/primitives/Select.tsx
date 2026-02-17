@@ -40,7 +40,7 @@ export function Select({
         <SelectValue />
         <CaretDown size={12} weight="bold" />
       </Button>
-      <Popover className="ui-select-popover" placement="bottom start" offset={6}>
+      <Popover className="ui-select-popover" placement="bottom start" offset={0}>
         <ListBox className="ui-select-list">
           {options.map((option) => (
             <ListBoxItem id={option.value} key={option.value} className="ui-select-item">

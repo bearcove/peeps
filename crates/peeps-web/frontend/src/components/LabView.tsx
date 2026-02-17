@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   WarningCircle,
   CaretDown,
   CopySimple,
   ArrowSquareOut,
+  FileRs,
   CircleNotch,
   LinkSimple,
   PaperPlaneTilt,
@@ -20,6 +21,7 @@ import { Checkbox } from "../ui/primitives/Checkbox";
 import { Select } from "../ui/primitives/Select";
 import { LabeledSlider } from "../ui/primitives/Slider";
 import { Menu } from "../ui/primitives/Menu";
+import { FilterMenu, type FilterMenuItem } from "../ui/primitives/FilterMenu";
 import { SegmentedGroup } from "../ui/primitives/SegmentedGroup";
 import { KeyValueRow } from "../ui/primitives/KeyValueRow";
 import { RelativeTimestamp } from "../ui/primitives/RelativeTimestamp";
@@ -28,6 +30,7 @@ import { NodeChip } from "../ui/primitives/NodeChip";
 import { ProcessIdenticon } from "../ui/primitives/ProcessIdenticon";
 import { Table, type Column } from "../ui/primitives/Table";
 import { ActionButton } from "../ui/primitives/ActionButton";
+import { kindIcon } from "../nodeKindSpec";
 
 type DemoTone = "neutral" | "ok" | "warn" | "crit";
 type DemoConnectionRow = {
@@ -62,6 +65,8 @@ export function LabView() {
   const [tableSortKey, setTableSortKey] = useState("health");
   const [tableSortDir, setTableSortDir] = useState<"asc" | "desc">("desc");
   const [selectedTableRow, setSelectedTableRow] = useState<string | null>(null);
+  const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
+  const [hiddenProcesses, setHiddenProcesses] = useState<Set<string>>(new Set());
   const tones = useMemo<BadgeTone[]>(() => ["neutral", "ok", "warn", "crit"], []);
   const searchDataset = useMemo(() => [
     { id: "future:store.incoming.recv", label: "store.incoming.recv", kind: "future", process: "vx-store" },
@@ -85,6 +90,57 @@ export function LabView() {
     ],
     [],
   );
+
+  const filterKindItems = useMemo<FilterMenuItem[]>(() => [
+    { id: "connection", label: "Connection", icon: kindIcon("connection", 14), meta: "connection" },
+    { id: "mutex", label: "Mutex", icon: kindIcon("mutex", 14), meta: "lock" },
+    { id: "request", label: "Request", icon: kindIcon("request", 14), meta: "request" },
+    { id: "response", label: "Response", icon: kindIcon("response", 14), meta: "response" },
+    { id: "channel_rx", label: "Channel Rx", icon: kindIcon("channel_rx", 14), meta: "rx" },
+    { id: "channel_tx", label: "Channel Tx", icon: kindIcon("channel_tx", 14), meta: "tx" },
+  ], []);
+
+  const filterProcessItems = useMemo<FilterMenuItem[]>(() => [
+    { id: "vx-store", label: "vx-store" },
+    { id: "vx-runner", label: "vx-runner" },
+    { id: "vx-vfsd", label: "vx-vfsd" },
+    { id: "vxd", label: "vxd" },
+    { id: "peeps-collector", label: "peeps-collector" },
+  ], []);
+
+  const toggleKind = useCallback((id: string) => {
+    setHiddenKinds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const soloKind = useCallback((id: string) => {
+    setHiddenKinds((prev) => {
+      const othersAllHidden = filterKindItems.every((item) => item.id === id || prev.has(item.id));
+      if (othersAllHidden && !prev.has(id)) return new Set();
+      return new Set(filterKindItems.filter((item) => item.id !== id).map((item) => item.id));
+    });
+  }, [filterKindItems]);
+
+  const toggleProcess = useCallback((id: string) => {
+    setHiddenProcesses((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const soloProcess = useCallback((id: string) => {
+    setHiddenProcesses((prev) => {
+      const othersAllHidden = filterProcessItems.every((item) => item.id === id || prev.has(item.id));
+      if (othersAllHidden && !prev.has(id)) return new Set();
+      return new Set(filterProcessItems.filter((item) => item.id !== id).map((item) => item.id));
+    });
+  }, [filterProcessItems]);
 
   const tableRows = useMemo<DemoConnectionRow[]>(() => [
     {
@@ -435,7 +491,7 @@ export function LabView() {
           />
         </Section>
 
-        <Section title="Menu / Dropdown" subtitle="For filters and chip actions">
+        <Section title="Menu" subtitle="Action menus for context operations">
           <Row>
             <Menu
               label={
@@ -452,6 +508,26 @@ export function LabView() {
             />
           </Row>
         </Section>
+
+        <Section title="Filter Menu" subtitle="Multi-select with checkboxes, alt-click to solo">
+          <Row>
+            <FilterMenu
+              label="Node types"
+              items={filterKindItems}
+              hiddenIds={hiddenKinds}
+              onToggle={toggleKind}
+              onSolo={soloKind}
+            />
+            <FilterMenu
+              label="Processes"
+              items={filterProcessItems}
+              hiddenIds={hiddenProcesses}
+              onToggle={toggleProcess}
+              onSolo={soloProcess}
+            />
+          </Row>
+        </Section>
+
         <Section title="Segmented Group" subtitle="Mutually-exclusive mode and severity controls">
           <div className="ui-section-stack">
             <SegmentedGroup
@@ -486,6 +562,17 @@ export function LabView() {
               icon={<PaperPlaneTilt size={12} weight="bold" />}
             >
               DemoRpc.sleepy_forever
+            </KeyValueRow>
+            <KeyValueRow
+              label="Source"
+              labelWidth={80}
+            >
+              <NodeChip
+                icon={<FileRs size={12} weight="bold" />}
+                label="main.rs:20"
+                href="zed://file/%2Fapp%2Fsrc%2Fmain.rs%3A20"
+                title="Open /app/src/main.rs:20 in editor"
+              />
             </KeyValueRow>
             <KeyValueRow
               label="Status"

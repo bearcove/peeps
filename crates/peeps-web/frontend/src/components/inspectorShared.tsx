@@ -1,4 +1,7 @@
-import { ArrowSquareOut } from "@phosphor-icons/react";
+import { FileRs, Hash, LinkSimple, PaperPlaneTilt, Users } from "@phosphor-icons/react";
+import { KeyValueRow } from "../ui/primitives/KeyValueRow";
+import { NodeChip } from "../ui/primitives/NodeChip";
+import { ProcessIdenticon } from "../ui/primitives/ProcessIdenticon";
 
 const THIRTY_DAYS_NS = 30 * 24 * 60 * 60 * 1_000_000_000;
 export type InspectorProcessAction = "show_only" | "hide";
@@ -112,21 +115,37 @@ export function CommonInspectorFields({
 
   return (
     <div className="inspect-section" data-testid="common-fields">
-      <div className="inspect-row" data-testid="common-field-id">
-        <span className="inspect-key">ID</span>
+      <KeyValueRow
+        label="ID"
+        icon={<Hash size={12} weight="bold" />}
+        className="common-field-id"
+      >
         <span className="inspect-val inspect-val--copyable">
           <span className="inspect-val-copy-text" title={id}>
             {id}
           </span>
         </span>
-      </div>
-      <div className="inspect-row" data-testid="common-field-process">
-        <span className="inspect-key">Process</span>
+      </KeyValueRow>
+      <KeyValueRow
+        label="Process"
+        icon={<Users size={12} weight="bold" />}
+        className="common-field-process"
+      >
         {onProcessAction ? (
           <span className="inspect-val inspect-process-menu-wrap">
+            <NodeChip
+              label={process}
+              icon={<ProcessIdenticon name={process} size={12} />}
+              onClick={() => onProcessAction("show_only", process)}
+              title={`Show only process ${process}`}
+            />
             <details className="inspect-process-menu">
-              <summary className="inspect-process-chip" aria-label={`Process actions for ${process}`}>
-                {process}
+              <summary
+                className="inspect-process-chip"
+                aria-label={`Process actions for ${process}`}
+                title="Process actions"
+              >
+                actions
               </summary>
               <div className="inspect-process-dropdown">
                 <button
@@ -147,37 +166,50 @@ export function CommonInspectorFields({
             </details>
           </span>
         ) : (
-          <span className="inspect-val">{process}</span>
+          <span className="inspect-val">
+            <NodeChip
+              label={process}
+              icon={<ProcessIdenticon name={process} size={12} />}
+              onClick={() => undefined}
+              title={process}
+            />
+          </span>
         )}
-      </div>
+      </KeyValueRow>
       {method && (
-        <div className="inspect-row" data-testid="common-field-method">
-          <span className="inspect-key">Method</span>
+        <KeyValueRow
+          label="Method"
+          icon={<PaperPlaneTilt size={12} weight="bold" />}
+          className="common-field-method"
+        >
           <span className="inspect-val inspect-val--mono">{method}</span>
-        </div>
+        </KeyValueRow>
       )}
       {correlation && (
-        <div className="inspect-row" data-testid="common-field-correlation">
-          <span className="inspect-key">Correlation</span>
+        <KeyValueRow
+          label="Correlation"
+          icon={<LinkSimple size={12} weight="bold" />}
+          className="common-field-correlation"
+        >
           <span className="inspect-val inspect-val--mono">{correlation}</span>
-        </div>
+        </KeyValueRow>
       )}
       {source && (
-        <div className="inspect-row" data-testid="common-field-source">
-          <span className="inspect-key">Source</span>
+        <KeyValueRow
+          label="Source"
+          className="inspect-source-row"
+        >
           {isFileLikeSource(source) ? (
-            <a
-              className="inspect-val inspect-val--mono inspect-link"
+            <NodeChip
+              icon={<FileRs size={12} weight="bold" />}
+              label={sourceDisplayName(source)}
               href={`zed://file/${encodeURIComponent(source)}`}
               title={source}
-            >
-              <ArrowSquareOut size={12} weight="bold" className="inspect-link-icon" />
-              {sourceDisplayName(source)}
-            </a>
+            />
           ) : (
-            <span className="inspect-val inspect-val--mono">{source}</span>
+            <span className="inspect-val--mono">{source}</span>
           )}
-        </div>
+        </KeyValueRow>
       )}
     </div>
   );

@@ -45,6 +45,7 @@ import {
 } from "./inspectorShared";
 import { DurationDisplay } from "../ui/primitives/DurationDisplay";
 import { KeyValueRow } from "../ui/primitives/KeyValueRow";
+import { NodeChip } from "../ui/primitives/NodeChip";
 import type {
   InspectorSnapshotNode,
   StuckRequest,
@@ -724,9 +725,12 @@ function NodeDetail({
           {uniqueBlockers.slice(0, 8).map((id) => (
             <KeyValueRow label="waits on" key={`blk:${id}`}>
               <div className="inspect-edge-target-row">
-                <button className="inspect-edge-node-btn" onClick={() => onSelectNode(id)} title={id}>
-                  {nodeLabel(graph, id)}
-                </button>
+                <NodeChip
+                  kind={graph?.nodes.find((n) => n.id === id)?.kind}
+                  label={nodeLabel(graph, id)}
+                  onClick={() => onSelectNode(id)}
+                  title={id}
+                />
                 <button
                   type="button"
                   className="inspect-edge-focus-btn"
@@ -753,9 +757,12 @@ function NodeDetail({
           {uniqueDependents.slice(0, 8).map((id) => (
             <KeyValueRow label="blocking" key={`dep:${id}`}>
               <div className="inspect-edge-target-row">
-                <button className="inspect-edge-node-btn" onClick={() => onSelectNode(id)} title={id}>
-                  {nodeLabel(graph, id)}
-                </button>
+                <NodeChip
+                  kind={graph?.nodes.find((n) => n.id === id)?.kind}
+                  label={nodeLabel(graph, id)}
+                  onClick={() => onSelectNode(id)}
+                  title={id}
+                />
                 <button
                   type="button"
                   className="inspect-edge-focus-btn"

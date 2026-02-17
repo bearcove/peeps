@@ -25,7 +25,7 @@ export function Menu({
   return (
     <MenuTrigger>
       <Button className="ui-menu-trigger">{label}</Button>
-      <Popover className="ui-menu-popover" placement="bottom start" offset={6}>
+      <Popover className="ui-menu-popover" placement="bottom start" offset={0}>
         <AriaMenu
           className="ui-menu-list"
           onAction={(key) => onAction?.(String(key))}
