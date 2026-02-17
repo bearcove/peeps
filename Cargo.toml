@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/peeps-types",
   "crates/peeps-legacy",
   "crates/peeps-types-legacy",
   "crates/peeps-web-legacy",
@@ -15,6 +16,7 @@ repository = "https://github.com/bearcove/peeps"
 
 [workspace.dependencies]
 # Internal
+peeps-types = { path = "crates/peeps-types" }
 peeps-legacy = { path = "crates/peeps-legacy" }
 peeps-types-legacy = { path = "crates/peeps-types-legacy" }
 peeps-web-legacy = { path = "crates/peeps-web-legacy" }

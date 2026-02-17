@@ -813,6 +813,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "peeps-types"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "facet",
+ "facet-format",
+ "facet-value",
+]
+
+[[package]]
 name = "peeps-types-legacy"
 version = "0.1.0"
 dependencies = [
