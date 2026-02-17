@@ -1,10 +1,8 @@
 +++
-title = "Events"
+title = "Schema"
 weight = 2
 insert_anchor_links = "heading"
 +++
-
-This page defines the **v1 runtime event taxonomy** for peeps.
 
 This page is schema-first reference for the canonical payload shapes used by peeps snapshots.
 
