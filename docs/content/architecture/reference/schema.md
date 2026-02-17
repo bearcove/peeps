@@ -38,6 +38,30 @@ Notes:
 - `attrs_json` must include `created_at` and `source` for inspector compatibility.
 - `method` and `correlation` are optional canonical fields in `attrs_json`.
 
+## Canonical Inspector Fields
+
+Inspector common fields read only:
+
+- `created_at` (required, Unix epoch ns)
+- `source` (required)
+- `method` (optional)
+- `correlation` (optional)
+
+Node identity and process come from envelope fields:
+
+- `id` (required)
+- `process` (required)
+
+Timeline origin uses:
+
+1. `created_at` if present and sane for the event window
+2. first timeline event timestamp otherwise
+
+Sanity guard:
+
+- if `created_at > first_event_ts`, use first event
+- if `first_event_ts - created_at > 30 days`, use first event
+
 ## Canonical Edge Payload
 
 ```json
