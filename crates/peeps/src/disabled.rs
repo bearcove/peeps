@@ -103,6 +103,16 @@ pub struct Receiver<T> {
     handle: EntityHandle,
 }
 
+pub struct UnboundedSender<T> {
+    inner: mpsc::UnboundedSender<T>,
+    handle: EntityHandle,
+}
+
+pub struct UnboundedReceiver<T> {
+    inner: mpsc::UnboundedReceiver<T>,
+    handle: EntityHandle,
+}
+
 pub struct OneshotSender<T> {
     inner: Option<oneshot::Sender<T>>,
     handle: EntityHandle,
@@ -136,6 +146,15 @@ pub struct WatchReceiver<T> {
 }
 
 impl<T> Clone for Sender<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            handle: self.handle.clone(),
+        }
+    }
+}
+
+impl<T> Clone for UnboundedSender<T> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -181,9 +200,41 @@ impl<T> Sender<T> {
     pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
         self.inner.send(value).await
     }
+
+    pub fn try_send(&self, value: T) -> Result<(), mpsc::error::TrySendError<T>> {
+        self.inner.try_send(value)
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.inner.is_closed()
+    }
 }
 
 impl<T> Receiver<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub async fn recv(&mut self) -> Option<T> {
+        self.inner.recv().await
+    }
+}
+
+impl<T> UnboundedSender<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
+        self.inner.send(value)
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.inner.is_closed()
+    }
+}
+
+impl<T> UnboundedReceiver<T> {
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
     }
@@ -282,7 +333,7 @@ impl<T: Clone> WatchReceiver<T> {
     }
 }
 
-pub fn channel<T>(_name: impl Into<CompactString>, capacity: usize) -> (Sender<T>, Receiver<T>) {
+pub fn channel<T>(_name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
     let (tx, rx) = mpsc::channel(capacity);
     (
         Sender {
@@ -296,8 +347,24 @@ pub fn channel<T>(_name: impl Into<CompactString>, capacity: usize) -> (Sender<T
     )
 }
 
-pub fn oneshot<T>(name: impl Into<CompactString>) -> (OneshotSender<T>, OneshotReceiver<T>) {
-    let name = name.into();
+pub fn unbounded_channel<T>(
+    _name: impl Into<String>,
+) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
+    let (tx, rx) = mpsc::unbounded_channel();
+    (
+        UnboundedSender {
+            inner: tx,
+            handle: EntityHandle,
+        },
+        UnboundedReceiver {
+            inner: rx,
+            handle: EntityHandle,
+        },
+    )
+}
+
+pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    let name: CompactString = name.into().into();
     let (tx, rx) = oneshot::channel();
     let tx_handle = EntityHandle::new(
         format!("{name}:tx"),
@@ -328,6 +395,10 @@ pub fn oneshot<T>(name: impl Into<CompactString>) -> (OneshotSender<T>, OneshotR
             handle: rx_handle,
         },
     )
+}
+
+pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    oneshot(name)
 }
 
 pub fn broadcast<T: Clone>(
@@ -444,6 +515,21 @@ where
     F::Output: Send + 'static,
 {
     tokio::spawn(fut)
+}
+
+pub fn sleep(duration: std::time::Duration, _label: impl Into<String>) -> impl Future<Output = ()> {
+    tokio::time::sleep(duration)
+}
+
+pub async fn timeout<F>(
+    duration: std::time::Duration,
+    future: F,
+    _label: impl Into<String>,
+) -> Result<F::Output, tokio::time::error::Elapsed>
+where
+    F: Future,
+{
+    tokio::time::timeout(duration, future).await
 }
 
 pub fn entity_ref_from_wire(_id: impl Into<CompactString>) -> EntityRef {

@@ -16,4 +16,5 @@ facet-value.workspace = true
 peeps-types.workspace = true
 peeps-wire.workspace = true
 peeps-sqlite-facet.workspace = true
+parking_lot.workspace = true
 tokio.workspace = true

@@ -7,6 +7,22 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 pub type MetaSerializeError = facet_format::SerializeError<facet_value::ToValueError>;
 
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum Direction {
+    Incoming,
+    Outgoing,
+}
+
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum ChannelDir {
+    Tx,
+    Rx,
+}
+
 /// First-use monotonic anchor for process-relative timestamps.
 /// "Process birth" is defined as the first call to `PTime::now()`.
 fn ptime_anchor() -> &'static Instant {

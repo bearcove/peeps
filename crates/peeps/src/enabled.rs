@@ -206,6 +206,21 @@ where
     tokio::spawn(instrument_future_named(name, fut))
 }
 
+pub fn sleep(duration: std::time::Duration, label: impl Into<String>) -> impl Future<Output = ()> {
+    instrument_future_named(label.into(), tokio::time::sleep(duration))
+}
+
+pub async fn timeout<F>(
+    duration: std::time::Duration,
+    future: F,
+    label: impl Into<String>,
+) -> Result<F::Output, tokio::time::error::Elapsed>
+where
+    F: Future,
+{
+    tokio::time::timeout(duration, instrument_future_named(label.into(), future)).await
+}
+
 fn runtime_db() -> &'static Mutex<RuntimeDb> {
     static DB: OnceLock<Mutex<RuntimeDb>> = OnceLock::new();
     DB.get_or_init(|| Mutex::new(RuntimeDb::new(runtime_stream_id(), MAX_EVENTS)))
@@ -465,18 +480,22 @@ impl RuntimeDb {
         }
     }
 
-    fn update_watch_last_update(&mut self, id: &EntityId, last_update_at: Option<peeps_types::PTime>) {
+    fn update_watch_last_update(
+        &mut self,
+        id: &EntityId,
+        last_update_at: Option<peeps_types::PTime>,
+    ) {
         let Some(entity) = self.entities.get_mut(id) else {
             return;
         };
         let mut changed = false;
         match &mut entity.body {
             EntityBody::ChannelTx(endpoint) | EntityBody::ChannelRx(endpoint) => {
-                if let ChannelDetails::Watch(details) = &mut endpoint.details
-                    && details.last_update_at != last_update_at
-                {
-                    details.last_update_at = last_update_at;
-                    changed = true;
+                if let ChannelDetails::Watch(details) = &mut endpoint.details {
+                    if details.last_update_at != last_update_at {
+                        details.last_update_at = last_update_at;
+                        changed = true;
+                    }
                 }
             }
             _ => return,
@@ -1066,6 +1085,16 @@ pub struct Receiver<T> {
     name: CompactString,
 }
 
+pub struct UnboundedSender<T> {
+    inner: mpsc::UnboundedSender<T>,
+    handle: EntityHandle,
+}
+
+pub struct UnboundedReceiver<T> {
+    inner: mpsc::UnboundedReceiver<T>,
+    handle: EntityHandle,
+}
+
 pub struct OneshotSender<T> {
     inner: Option<oneshot::Sender<T>>,
     handle: EntityHandle,
@@ -1194,6 +1223,15 @@ impl<T> Clone for Sender<T> {
     }
 }
 
+impl<T> Clone for UnboundedSender<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            handle: self.handle.clone(),
+        }
+    }
+}
+
 impl<T> Clone for BroadcastSender<T> {
     fn clone(&self) -> Self {
         if let Ok(mut state) = self.channel.lock() {
@@ -1209,7 +1247,7 @@ impl<T> Clone for BroadcastSender<T> {
     }
 }
 
-impl<T> Clone for BroadcastReceiver<T> {
+impl<T: Clone> Clone for BroadcastReceiver<T> {
     fn clone(&self) -> Self {
         if let Ok(mut state) = self.channel.lock() {
             state.rx_ref_count = state.rx_ref_count.saturating_add(1);
@@ -1392,8 +1430,13 @@ fn apply_broadcast_state(channel: &Arc<Mutex<BroadcastRuntimeState>>) {
 
 fn sync_watch_state(
     channel: &Arc<Mutex<WatchRuntimeState>>,
-) -> Option<(EntityId, EntityId, ChannelEndpointLifecycle, ChannelEndpointLifecycle, Option<peeps_types::PTime>)>
-{
+) -> Option<(
+    EntityId,
+    EntityId,
+    ChannelEndpointLifecycle,
+    ChannelEndpointLifecycle,
+    Option<peeps_types::PTime>,
+)> {
     let state = channel.lock().ok()?;
     let tx_lifecycle = match state.tx_close_cause {
         Some(cause) => ChannelEndpointLifecycle::Closed(cause),
@@ -1413,7 +1456,8 @@ fn sync_watch_state(
 }
 
 fn apply_watch_state(channel: &Arc<Mutex<WatchRuntimeState>>) {
-    let Some((tx_id, rx_id, tx_lifecycle, rx_lifecycle, last_update_at)) = sync_watch_state(channel)
+    let Some((tx_id, rx_id, tx_lifecycle, rx_lifecycle, last_update_at)) =
+        sync_watch_state(channel)
     else {
         return;
     };
@@ -1472,6 +1516,14 @@ impl<T> Drop for Receiver<T> {
 impl<T> Sender<T> {
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
+    }
+
+    pub fn try_send(&self, value: T) -> Result<(), mpsc::error::TrySendError<T>> {
+        self.inner.try_send(value)
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.inner.is_closed()
     }
 
     pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
@@ -1679,8 +1731,32 @@ impl<T> Receiver<T> {
     }
 }
 
-pub fn channel<T>(name: impl Into<CompactString>, capacity: usize) -> (Sender<T>, Receiver<T>) {
-    let name = name.into();
+impl<T> UnboundedSender<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
+        self.inner.send(value)
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.inner.is_closed()
+    }
+}
+
+impl<T> UnboundedReceiver<T> {
+    pub fn handle(&self) -> &EntityHandle {
+        &self.handle
+    }
+
+    pub async fn recv(&mut self) -> Option<T> {
+        self.inner.recv().await
+    }
+}
+
+pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
+    let name: CompactString = name.into().into();
     let (tx, rx) = mpsc::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
 
@@ -1738,19 +1814,39 @@ pub fn channel<T>(name: impl Into<CompactString>, capacity: usize) -> (Sender<T>
     )
 }
 
+pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
+    let name: CompactString = name.into().into();
+    let (tx, rx) = mpsc::unbounded_channel();
+    let tx_handle = EntityHandle::new(format!("{name}:tx"), EntityBody::Future);
+    let rx_handle = EntityHandle::new(format!("{name}:rx"), EntityBody::Future);
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
+    (
+        UnboundedSender {
+            inner: tx,
+            handle: tx_handle,
+        },
+        UnboundedReceiver {
+            inner: rx,
+            handle: rx_handle,
+        },
+    )
+}
+
 impl<T> Drop for OneshotSender<T> {
     fn drop(&mut self) {
         if self.inner.is_none() {
             return;
         }
         let mut emit_for_rx = None;
-        if let Ok(mut state) = self.channel.lock()
-            && matches!(state.state, OneshotState::Pending)
-        {
-            state.state = OneshotState::SenderDropped;
-            state.tx_lifecycle = ChannelEndpointLifecycle::Closed(ChannelCloseCause::SenderDropped);
-            state.rx_lifecycle = ChannelEndpointLifecycle::Closed(ChannelCloseCause::SenderDropped);
-            emit_for_rx = Some(EntityId::new(state.rx_id.as_str()));
+        if let Ok(mut state) = self.channel.lock() {
+            if matches!(state.state, OneshotState::Pending) {
+                state.state = OneshotState::SenderDropped;
+                state.tx_lifecycle =
+                    ChannelEndpointLifecycle::Closed(ChannelCloseCause::SenderDropped);
+                state.rx_lifecycle =
+                    ChannelEndpointLifecycle::Closed(ChannelCloseCause::SenderDropped);
+                emit_for_rx = Some(EntityId::new(state.rx_id.as_str()));
+            }
         }
         apply_oneshot_state(&self.channel);
         if let Some(rx_id) = emit_for_rx {
@@ -1765,15 +1861,15 @@ impl<T> Drop for OneshotReceiver<T> {
             return;
         }
         let mut emit_for_tx = None;
-        if let Ok(mut state) = self.channel.lock()
-            && matches!(state.state, OneshotState::Pending | OneshotState::Sent)
-        {
-            state.state = OneshotState::ReceiverDropped;
-            state.tx_lifecycle =
-                ChannelEndpointLifecycle::Closed(ChannelCloseCause::ReceiverDropped);
-            state.rx_lifecycle =
-                ChannelEndpointLifecycle::Closed(ChannelCloseCause::ReceiverDropped);
-            emit_for_tx = Some(EntityId::new(state.tx_id.as_str()));
+        if let Ok(mut state) = self.channel.lock() {
+            if matches!(state.state, OneshotState::Pending | OneshotState::Sent) {
+                state.state = OneshotState::ReceiverDropped;
+                state.tx_lifecycle =
+                    ChannelEndpointLifecycle::Closed(ChannelCloseCause::ReceiverDropped);
+                state.rx_lifecycle =
+                    ChannelEndpointLifecycle::Closed(ChannelCloseCause::ReceiverDropped);
+                emit_for_tx = Some(EntityId::new(state.tx_id.as_str()));
+            }
         }
         apply_oneshot_state(&self.channel);
         if let Some(tx_id) = emit_for_tx {
@@ -1893,9 +1989,10 @@ impl<T> OneshotSender<T> {
                         outcome: ChannelSendOutcome::Ok,
                         queue_len: None,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 Ok(())
             }
@@ -1914,18 +2011,20 @@ impl<T> OneshotSender<T> {
                         outcome: ChannelSendOutcome::Closed,
                         queue_len: None,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 if let Ok(event) = Event::channel_closed(
                     EventTarget::Entity(self.handle.id().clone()),
                     &ChannelClosedEvent {
                         cause: ChannelCloseCause::ReceiverDropped,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 Err(value)
             }
@@ -1955,9 +2054,10 @@ impl<T> OneshotReceiver<T> {
                         outcome: ChannelReceiveOutcome::Ok,
                         queue_len: None,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 Ok(value)
             }
@@ -1976,18 +2076,20 @@ impl<T> OneshotReceiver<T> {
                         outcome: ChannelReceiveOutcome::Closed,
                         queue_len: None,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 if let Ok(event) = Event::channel_closed(
                     EventTarget::Entity(self.handle.id().clone()),
                     &ChannelClosedEvent {
                         cause: ChannelCloseCause::SenderDropped,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 Err(err)
             }
@@ -1995,8 +2097,8 @@ impl<T> OneshotReceiver<T> {
     }
 }
 
-pub fn oneshot<T>(name: impl Into<CompactString>) -> (OneshotSender<T>, OneshotReceiver<T>) {
-    let name = name.into();
+pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    let name: CompactString = name.into().into();
     let (tx, rx) = oneshot::channel();
     let details = ChannelDetails::Oneshot(OneshotChannelDetails {
         state: OneshotState::Pending,
@@ -2042,6 +2144,10 @@ pub fn oneshot<T>(name: impl Into<CompactString>) -> (OneshotSender<T>, OneshotR
     )
 }
 
+pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    oneshot(name)
+}
+
 impl<T: Clone> BroadcastSender<T> {
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
@@ -2068,9 +2174,10 @@ impl<T: Clone> BroadcastSender<T> {
                         outcome: ChannelSendOutcome::Ok,
                         queue_len: None,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 Ok(receivers)
             }
@@ -2090,18 +2197,20 @@ impl<T: Clone> BroadcastSender<T> {
                         outcome: ChannelSendOutcome::Closed,
                         queue_len: None,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 if let Ok(event) = Event::channel_closed(
                     EventTarget::Entity(self.handle.id().clone()),
                     &ChannelClosedEvent {
                         cause: ChannelCloseCause::ReceiverDropped,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 Err(err)
             }
@@ -2129,9 +2238,10 @@ impl<T: Clone> BroadcastReceiver<T> {
                         outcome: ChannelReceiveOutcome::Ok,
                         queue_len: None,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 Ok(value)
             }
@@ -2151,9 +2261,10 @@ impl<T: Clone> BroadcastReceiver<T> {
                         &ChannelClosedEvent {
                             cause: ChannelCloseCause::SenderDropped,
                         },
-                    ) && let Ok(mut db) = runtime_db().lock()
-                    {
-                        db.record_event(event);
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
                     }
                 }
                 if let Ok(event) = Event::channel_received(
@@ -2162,9 +2273,10 @@ impl<T: Clone> BroadcastReceiver<T> {
                         outcome: ChannelReceiveOutcome::Empty,
                         queue_len: None,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 Err(err)
             }
@@ -2191,9 +2303,10 @@ impl<T: Clone> WatchSender<T> {
                         outcome: ChannelSendOutcome::Ok,
                         queue_len: None,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 Ok(())
             }
@@ -2213,9 +2326,10 @@ impl<T: Clone> WatchSender<T> {
                         outcome: ChannelSendOutcome::Closed,
                         queue_len: None,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 Err(err)
             }
@@ -2265,9 +2379,10 @@ impl<T: Clone> WatchReceiver<T> {
                         outcome: ChannelReceiveOutcome::Ok,
                         queue_len: None,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 Ok(())
             }
@@ -2287,9 +2402,10 @@ impl<T: Clone> WatchReceiver<T> {
                         outcome: ChannelReceiveOutcome::Closed,
                         queue_len: None,
                     },
-                ) && let Ok(mut db) = runtime_db().lock()
-                {
-                    db.record_event(event);
+                ) {
+                    if let Ok(mut db) = runtime_db().lock() {
+                        db.record_event(event);
+                    }
                 }
                 Err(err)
             }
@@ -2365,7 +2481,10 @@ pub fn broadcast<T: Clone>(
     )
 }
 
-pub fn watch<T: Clone>(name: impl Into<CompactString>, initial: T) -> (WatchSender<T>, WatchReceiver<T>) {
+pub fn watch<T: Clone>(
+    name: impl Into<CompactString>,
+    initial: T,
+) -> (WatchSender<T>, WatchReceiver<T>) {
     let name = name.into();
     let (tx, rx) = watch::channel(initial);
     let details = ChannelDetails::Watch(WatchChannelDetails {
