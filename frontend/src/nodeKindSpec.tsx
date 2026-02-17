@@ -302,6 +302,12 @@ export const NODE_KIND_SPECS: Record<string, NodeKindSpec> = {
     category: "meta",
     icon: iconFactory(Ghost),
   },
+  channel_pair: {
+    canonical: "channel_pair",
+    displayName: "Channel",
+    category: "channel",
+    icon: iconFactory(Stack),
+  },
 };
 
 export function kindDisplayName(kind: string): string {

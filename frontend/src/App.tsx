@@ -22,6 +22,8 @@ import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk-api.js";
 import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
 import {
+  ArrowLineDown,
+  ArrowLineUp,
   CaretDown,
   CaretLeft,
   CaretRight,
@@ -82,6 +84,8 @@ export type EntityDef = {
   status: { label: string; tone: Tone };
   stat?: string;
   statTone?: Tone;
+  /** Present when this is a merged TX/RX channel pair node. */
+  channelPair?: { tx: EntityDef; rx: EntityDef };
 };
 
 export type EdgeDef = {
@@ -89,6 +93,10 @@ export type EdgeDef = {
   source: string;
   target: string;
   kind: SnapshotEdgeKind;
+  /** ELK port ID on the source node, when the source is a merged channel pair. */
+  sourcePort?: string;
+  /** ELK port ID on the target node, when the target is a merged channel pair. */
+  targetPort?: string;
 };
 
 // ── Snapshot conversion ────────────────────────────────────────
@@ -202,6 +210,79 @@ function detectCycleNodes(entities: EntityDef[], edges: EdgeDef[]): Set<string> 
   return inCycle;
 }
 
+function mergeChannelPairs(
+  entities: EntityDef[],
+  edges: EdgeDef[],
+): { entities: EntityDef[]; edges: EdgeDef[] } {
+  const channelLinks = edges.filter((e) => e.kind === "channel_link");
+  const entityById = new Map(entities.map((e) => [e.id, e]));
+
+  // Maps from original TX/RX entity id → merged id and port id
+  const mergedIdFor = new Map<string, string>();
+  const portIdFor = new Map<string, string>();
+  const removedIds = new Set<string>();
+  const mergedEntities: EntityDef[] = [];
+
+  for (const link of channelLinks) {
+    const txEntity = entityById.get(link.source);
+    const rxEntity = entityById.get(link.target);
+    if (!txEntity || !rxEntity) continue;
+    // Guard against a TX or RX being part of multiple links (shouldn't happen)
+    if (mergedIdFor.has(link.source) || mergedIdFor.has(link.target)) continue;
+
+    const mergedId = `pair:${link.source}:${link.target}`;
+    const txPortId = `${mergedId}:tx`;
+    const rxPortId = `${mergedId}:rx`;
+
+    mergedIdFor.set(link.source, mergedId);
+    mergedIdFor.set(link.target, mergedId);
+    portIdFor.set(link.source, txPortId);
+    portIdFor.set(link.target, rxPortId);
+    removedIds.add(link.source);
+    removedIds.add(link.target);
+
+    const channelName = txEntity.name.endsWith(":tx")
+      ? txEntity.name.slice(0, -3)
+      : txEntity.name;
+
+    const mergedStatus =
+      txEntity.status.tone === "ok" && rxEntity.status.tone === "ok"
+        ? ({ label: "open", tone: "ok" } as const)
+        : ({ label: "closed", tone: "neutral" } as const);
+
+    mergedEntities.push({
+      ...txEntity,
+      id: mergedId,
+      name: channelName,
+      kind: "channel_pair",
+      status: mergedStatus,
+      stat: txEntity.stat,
+      statTone: txEntity.statTone,
+      inCycle: false, // set later by detectCycleNodes
+      channelPair: { tx: txEntity, rx: rxEntity },
+    });
+  }
+
+  const filteredEntities = entities.filter((e) => !removedIds.has(e.id));
+  const newEntities = [...filteredEntities, ...mergedEntities];
+
+  // Remove channel_link edges; remap sources/targets that pointed at TX/RX entities
+  const newEdges = edges
+    .filter((e) => e.kind !== "channel_link")
+    .map((e) => {
+      const origSource = e.source;
+      const origTarget = e.target;
+      const newSource = mergedIdFor.get(origSource) ?? origSource;
+      const newTarget = mergedIdFor.get(origTarget) ?? origTarget;
+      const sourcePort = mergedIdFor.has(origSource) ? portIdFor.get(origSource) : undefined;
+      const targetPort = mergedIdFor.has(origTarget) ? portIdFor.get(origTarget) : undefined;
+      if (newSource === origSource && newTarget === origTarget) return e;
+      return { ...e, source: newSource, target: newTarget, sourcePort, targetPort };
+    });
+
+  return { entities: newEntities, edges: newEdges };
+}
+
 function convertSnapshot(snapshot: SnapshotCutResponse): { entities: EntityDef[]; edges: EdgeDef[] } {
   const allEntities: EntityDef[] = [];
   const allEdges: EdgeDef[] = [];
@@ -246,12 +327,14 @@ function convertSnapshot(snapshot: SnapshotCutResponse): { entities: EntityDef[]
     }
   }
 
-  const cycleIds = detectCycleNodes(allEntities, allEdges);
-  for (const entity of allEntities) {
+  const { entities: mergedEntities, edges: mergedEdges } = mergeChannelPairs(allEntities, allEdges);
+
+  const cycleIds = detectCycleNodes(mergedEntities, mergedEdges);
+  for (const entity of mergedEntities) {
     entity.inCycle = cycleIds.has(entity.id);
   }
 
-  return { entities: allEntities, edges: allEdges };
+  return { entities: mergedEntities, edges: mergedEdges };
 }
 
 // ── ELK layout ────────────────────────────────────────────────
@@ -274,6 +357,61 @@ function measureNodeDefs(defs: EntityDef[]): Map<string, { width: number; height
 
   const elements: { id: string; el: HTMLDivElement }[] = [];
   for (const def of defs) {
+    if (def.channelPair) {
+      const el = document.createElement("div");
+      el.className = [
+        "mockup-channel-pair",
+        def.statTone === "crit" && "mockup-channel-pair--stat-crit",
+        def.statTone === "warn" && "mockup-channel-pair--stat-warn",
+      ].filter(Boolean).join(" ");
+
+      const header = document.createElement("div");
+      header.className = "mockup-channel-pair-header";
+      const nameEl = document.createElement("span");
+      nameEl.className = "mockup-channel-pair-name";
+      nameEl.textContent = def.name;
+      header.appendChild(nameEl);
+      el.appendChild(header);
+
+      const rows = document.createElement("div");
+      rows.className = "mockup-channel-pair-rows";
+      for (const [rowLabel, rowDef] of [["TX", def.channelPair.tx], ["RX", def.channelPair.rx]] as const) {
+        const row = document.createElement("div");
+        row.className = "mockup-channel-pair-row";
+        const lbl = document.createElement("span");
+        lbl.className = "mockup-channel-pair-row-label";
+        lbl.textContent = rowLabel;
+        row.appendChild(lbl);
+        const badge = document.createElement("span");
+        badge.className = `badge badge--${rowDef.status.tone}`;
+        badge.textContent = rowDef.status.label;
+        row.appendChild(badge);
+        const dot = document.createElement("span");
+        dot.className = "mockup-node-dot";
+        dot.textContent = "·";
+        row.appendChild(dot);
+        const dur = document.createElement("span");
+        dur.className = "ui-duration-display";
+        dur.textContent = "00m00s";
+        row.appendChild(dur);
+        if (rowLabel === "TX" && def.stat) {
+          const dot2 = document.createElement("span");
+          dot2.className = "mockup-node-dot";
+          dot2.textContent = "·";
+          row.appendChild(dot2);
+          const statEl = document.createElement("span");
+          statEl.className = "mockup-node-stat";
+          statEl.textContent = def.stat;
+          row.appendChild(statEl);
+        }
+        rows.appendChild(row);
+      }
+      el.appendChild(rows);
+      container.appendChild(el);
+      elements.push({ id: def.id, el });
+      continue;
+    }
+
     const el = document.createElement("div");
     el.className = [
       "mockup-node",
@@ -385,7 +523,8 @@ async function layoutGraph(
     layoutOptions: elkOptions,
     children: entityDefs.map((n) => {
       const sz = nodeSizes.get(n.id);
-      return { id: n.id, width: sz?.width || 150, height: sz?.height || 36 };
+      const base = { id: n.id, width: sz?.width || 150, height: sz?.height || 36 };
+      return base;
     }),
     edges: validEdges.map((e) => ({
       id: e.id,
@@ -401,21 +540,38 @@ async function layoutGraph(
     (result.edges ?? []).map((e: any) => [e.id, e.sections ?? []]),
   );
 
-  const nodes: Node[] = entityDefs.map((def) => ({
-    id: def.id,
-    type: "mockNode",
-    position: posMap.get(def.id) ?? { x: 0, y: 0 },
-    data: {
-      kind: def.kind,
-      label: def.name,
-      inCycle: def.inCycle,
-      selected: false,
-      status: def.status,
-      ageMs: def.ageMs,
-      stat: def.stat,
-      statTone: def.statTone,
-    },
-  }));
+  const nodes: Node[] = entityDefs.map((def) => {
+    const position = posMap.get(def.id) ?? { x: 0, y: 0 };
+    if (def.channelPair) {
+      return {
+        id: def.id,
+        type: "channelPairNode",
+        position,
+        data: {
+          tx: def.channelPair.tx,
+          rx: def.channelPair.rx,
+          channelName: def.name,
+          selected: false,
+          statTone: def.statTone,
+        },
+      };
+    }
+    return {
+      id: def.id,
+      type: "mockNode",
+      position,
+      data: {
+        kind: def.kind,
+        label: def.name,
+        inCycle: def.inCycle,
+        selected: false,
+        status: def.status,
+        ageMs: def.ageMs,
+        stat: def.stat,
+        statTone: def.statTone,
+      },
+    };
+  });
 
   const entityNameMap = new Map(entityDefs.map((e) => [e.id, e.name]));
   const edges: Edge[] = validEdges.map((def) => {
@@ -499,6 +655,94 @@ function MockNodeComponent({ data }: { data: MockNodeData }) {
   );
 }
 
+type ChannelPairNodeData = {
+  tx: EntityDef;
+  rx: EntityDef;
+  channelName: string;
+  selected: boolean;
+  statTone?: Tone;
+};
+
+const visibleHandleTop: React.CSSProperties = {
+  width: 10, height: 6, minWidth: 0, minHeight: 0,
+  background: "var(--text-tertiary)",
+  border: "none", borderRadius: "0 0 3px 3px",
+  opacity: 0.5, top: 0, left: "50%",
+  transform: "translateX(-50%)",
+  pointerEvents: "none",
+};
+
+const visibleHandleBottom: React.CSSProperties = {
+  width: 10, height: 6, minWidth: 0, minHeight: 0,
+  background: "var(--text-tertiary)",
+  border: "none", borderRadius: "3px 3px 0 0",
+  opacity: 0.5, bottom: 0, left: "50%",
+  transform: "translateX(-50%)",
+  pointerEvents: "none",
+};
+
+function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
+  const { tx, rx, channelName, selected, statTone } = data;
+  const txEp = typeof tx.body !== "string" && "channel_tx" in tx.body ? tx.body.channel_tx : null;
+  const rxEp = typeof rx.body !== "string" && "channel_rx" in rx.body ? rx.body.channel_rx : null;
+
+  const mpscBuffer = txEp && "mpsc" in txEp.details ? txEp.details.mpsc.buffer : null;
+
+  const txLifecycle = txEp ? (txEp.lifecycle === "open" ? "open" : "closed") : "?";
+  const rxLifecycle = rxEp ? (rxEp.lifecycle === "open" ? "open" : "closed") : "?";
+  const txTone: Tone = txLifecycle === "open" ? "ok" : "neutral";
+  const rxTone: Tone = rxLifecycle === "open" ? "ok" : "neutral";
+
+  const bufferStat = mpscBuffer
+    ? `${mpscBuffer.occupancy}/${mpscBuffer.capacity ?? "∞"}`
+    : tx.stat;
+
+  return (
+    <>
+      <Handle type="target" position={Position.Top} style={visibleHandleTop} />
+      <Handle type="source" position={Position.Bottom} style={visibleHandleBottom} />
+      <div className={[
+        "mockup-channel-pair",
+        selected && "mockup-channel-pair--selected",
+        statTone === "crit" && "mockup-channel-pair--stat-crit",
+        statTone === "warn" && "mockup-channel-pair--stat-warn",
+      ].filter(Boolean).join(" ")}>
+        <div className="mockup-channel-pair-header">
+          <span className="mockup-channel-pair-icon">
+            <ArrowLineUp size={9} weight="bold" />
+            <ArrowLineDown size={9} weight="bold" />
+          </span>
+          <span className="mockup-channel-pair-name">{channelName}</span>
+        </div>
+        <div className="mockup-channel-pair-rows">
+          <div className="mockup-channel-pair-row">
+            <span className="mockup-channel-pair-row-label">TX</span>
+            <Badge tone={txTone}>{txLifecycle}</Badge>
+            <span className="mockup-node-dot">&middot;</span>
+            <DurationDisplay ms={tx.ageMs} />
+            {bufferStat && (
+              <>
+                <span className="mockup-node-dot">&middot;</span>
+                <span className={[
+                  "mockup-node-stat",
+                  statTone === "crit" && "mockup-node-stat--crit",
+                  statTone === "warn" && "mockup-node-stat--warn",
+                ].filter(Boolean).join(" ")}>{bufferStat}</span>
+              </>
+            )}
+          </div>
+          <div className="mockup-channel-pair-row">
+            <span className="mockup-channel-pair-row-label">RX</span>
+            <Badge tone={rxTone}>{rxLifecycle}</Badge>
+            <span className="mockup-node-dot">&middot;</span>
+            <DurationDisplay ms={rx.ageMs} />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
   const edgeData = data as { points?: ElkPoint[]; tooltip?: string } | undefined;
   const points = edgeData?.points ?? [];
@@ -546,7 +790,7 @@ function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
   );
 }
 
-const mockNodeTypes = { mockNode: MockNodeComponent };
+const mockNodeTypes = { mockNode: MockNodeComponent, channelPairNode: ChannelPairNode };
 const mockEdgeTypes = { elkrouted: ElkRoutedEdge };
 
 // ── Graph panel ────────────────────────────────────────────────
@@ -899,7 +1143,119 @@ function EntityBodySection({ entity }: { entity: EntityDef }) {
   return null;
 }
 
+function ChannelPairInspectorContent({ entity, onFocus }: { entity: EntityDef; onFocus: (id: string) => void }) {
+  const { tx, rx } = entity.channelPair!;
+  const txEp = typeof tx.body !== "string" && "channel_tx" in tx.body ? tx.body.channel_tx : null;
+  const rxEp = typeof rx.body !== "string" && "channel_rx" in rx.body ? rx.body.channel_rx : null;
+
+  const channelKind = txEp
+    ? "mpsc" in txEp.details ? "mpsc"
+    : "broadcast" in txEp.details ? "broadcast"
+    : "watch" in txEp.details ? "watch"
+    : "oneshot"
+    : null;
+
+  const mpscBuffer = txEp && "mpsc" in txEp.details ? txEp.details.mpsc.buffer : null;
+
+  function lifecycleLabel(ep: { lifecycle: "open" | { closed: string } } | null): string {
+    if (!ep) return "?";
+    const lc = ep.lifecycle;
+    return typeof lc === "string" ? lc : `closed (${Object.values(lc)[0]})`;
+  }
+  function lifecycleTone(ep: { lifecycle: "open" | { closed: string } } | null): Tone {
+    if (!ep) return "neutral";
+    return ep.lifecycle === "open" ? "ok" : "neutral";
+  }
+
+  const bufferFill = mpscBuffer && mpscBuffer.capacity != null
+    ? Math.min(100, (mpscBuffer.occupancy / mpscBuffer.capacity) * 100)
+    : null;
+  const bufferTone: Tone = mpscBuffer && mpscBuffer.capacity != null
+    ? mpscBuffer.occupancy >= mpscBuffer.capacity ? "crit"
+    : mpscBuffer.occupancy / mpscBuffer.capacity >= 0.75 ? "warn"
+    : "ok"
+    : "ok";
+
+  return (
+    <>
+      <div className="mockup-inspector-node-header">
+        <span className="mockup-inspector-node-icon mockup-inspector-node-icon--channel-pair">
+          <span style={{ fontSize: 9, lineHeight: 1 }}>TX</span>
+          <span style={{ fontSize: 9, lineHeight: 1 }}>RX</span>
+        </span>
+        <div className="mockup-inspector-node-header-text">
+          <div className="mockup-inspector-node-kind">Channel</div>
+          <div className="mockup-inspector-node-label">{entity.name}</div>
+        </div>
+        <ActionButton onPress={() => onFocus(entity.id)}>
+          <Crosshair size={14} weight="bold" />
+          Focus
+        </ActionButton>
+      </div>
+
+      <div className="mockup-inspector-alert-slot" />
+
+      {channelKind && (
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="Type">
+            <span className="mockup-inspector-mono">{channelKind}</span>
+          </KeyValueRow>
+          {mpscBuffer && (
+            <KeyValueRow label="Buffer">
+              <span className="mockup-inspector-mono">
+                {mpscBuffer.occupancy} / {mpscBuffer.capacity ?? "∞"}
+              </span>
+              {bufferFill != null && (
+                <div className="mockup-inspector-buffer-bar">
+                  <div
+                    className={`mockup-inspector-buffer-fill mockup-inspector-buffer-fill--${bufferTone}`}
+                    style={{ width: `${bufferFill}%` }}
+                  />
+                </div>
+              )}
+            </KeyValueRow>
+          )}
+        </div>
+      )}
+
+      <div className="mockup-inspector-subsection-label">TX</div>
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Lifecycle">
+          <Badge tone={lifecycleTone(txEp)}>{lifecycleLabel(txEp)}</Badge>
+        </KeyValueRow>
+        <KeyValueRow label="Age" icon={<Timer size={12} weight="bold" />}>
+          <DurationDisplay ms={tx.ageMs} />
+        </KeyValueRow>
+        <KeyValueRow label="Source" icon={<FileRs size={12} weight="bold" />}>
+          <a className="mockup-inspector-source-link" href={`zed://file${tx.source}`} title="Open in Zed">
+            {tx.source}
+          </a>
+        </KeyValueRow>
+      </div>
+
+      <div className="mockup-inspector-subsection-label">RX</div>
+      <div className="mockup-inspector-section">
+        <KeyValueRow label="Lifecycle">
+          <Badge tone={lifecycleTone(rxEp)}>{lifecycleLabel(rxEp)}</Badge>
+        </KeyValueRow>
+        <KeyValueRow label="Age" icon={<Timer size={12} weight="bold" />}>
+          <DurationDisplay ms={rx.ageMs} />
+        </KeyValueRow>
+        <KeyValueRow label="Source" icon={<FileRs size={12} weight="bold" />}>
+          <a className="mockup-inspector-source-link" href={`zed://file${rx.source}`} title="Open in Zed">
+            {rx.source}
+          </a>
+        </KeyValueRow>
+      </div>
+    </>
+  );
+}
+
 function EntityInspectorContent({ entity, onFocus }: { entity: EntityDef; onFocus: (id: string) => void }) {
+  if (entity.channelPair) {
+    return <ChannelPairInspectorContent entity={entity} onFocus={onFocus} />;
+  }
+
   const ageTone: Tone = entity.ageMs > 600_000 ? "crit" : entity.ageMs > 60_000 ? "warn" : "neutral";
 
   return (

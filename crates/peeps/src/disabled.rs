@@ -30,6 +30,15 @@ impl EntityHandle {
         Self
     }
 
+    pub fn new_with_krate(
+        _name: impl Into<CompactString>,
+        _body: EntityBody,
+        _source: impl Into<CompactString>,
+        _krate: impl Into<CompactString>,
+    ) -> Self {
+        Self
+    }
+
     pub fn entity_ref(&self) -> EntityRef {
         EntityRef
     }
@@ -394,6 +403,15 @@ pub fn channel<T>(_name: impl Into<String>, capacity: usize) -> (Sender<T>, Rece
     )
 }
 
+pub fn channel_with_krate<T>(
+    name: impl Into<String>,
+    capacity: usize,
+    _source: impl Into<CompactString>,
+    _krate: impl Into<CompactString>,
+) -> (Sender<T>, Receiver<T>) {
+    channel(name, capacity)
+}
+
 pub fn unbounded_channel<T>(
     _name: impl Into<String>,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
@@ -408,6 +426,14 @@ pub fn unbounded_channel<T>(
             handle: EntityHandle,
         },
     )
+}
+
+pub fn unbounded_channel_with_krate<T>(
+    name: impl Into<String>,
+    _source: impl Into<CompactString>,
+    _krate: impl Into<CompactString>,
+) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
+    unbounded_channel(name)
 }
 
 pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
@@ -445,6 +471,14 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
 }
 
 pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
+    oneshot(name)
+}
+
+pub fn oneshot_with_krate<T>(
+    name: impl Into<String>,
+    _source: impl Into<CompactString>,
+    _krate: impl Into<CompactString>,
+) -> (OneshotSender<T>, OneshotReceiver<T>) {
     oneshot(name)
 }
 
@@ -492,6 +526,15 @@ pub fn broadcast<T: Clone>(
     )
 }
 
+pub fn broadcast_with_krate<T: Clone>(
+    name: impl Into<CompactString>,
+    capacity: usize,
+    _source: impl Into<CompactString>,
+    _krate: impl Into<CompactString>,
+) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
+    broadcast(name, capacity)
+}
+
 pub fn watch<T: Clone>(
     name: impl Into<CompactString>,
     initial: T,
@@ -537,11 +580,28 @@ pub fn watch_channel<T: Clone>(
     watch(name, initial)
 }
 
+pub fn watch_with_krate<T: Clone>(
+    name: impl Into<CompactString>,
+    initial: T,
+    _source: impl Into<CompactString>,
+    _krate: impl Into<CompactString>,
+) -> (WatchSender<T>, WatchReceiver<T>) {
+    watch(name, initial)
+}
+
 impl Notify {
     pub fn new(_name: impl Into<String>) -> Self {
         Self {
             inner: std::sync::Arc::new(tokio::sync::Notify::new()),
         }
+    }
+
+    pub fn new_with_krate(
+        name: impl Into<String>,
+        _source: impl Into<CompactString>,
+        _krate: impl Into<CompactString>,
+    ) -> Self {
+        Self::new(name)
     }
 
     pub async fn notified(&self) {
@@ -560,6 +620,14 @@ impl Notify {
 impl<T> OnceCell<T> {
     pub fn new(_name: impl Into<String>) -> Self {
         Self(tokio::sync::OnceCell::new())
+    }
+
+    pub fn new_with_krate(
+        name: impl Into<String>,
+        _source: impl Into<CompactString>,
+        _krate: impl Into<CompactString>,
+    ) -> Self {
+        Self::new(name)
     }
 
     pub fn get(&self) -> Option<&T> {
@@ -597,6 +665,15 @@ impl<T> OnceCell<T> {
 impl Semaphore {
     pub fn new(_name: impl Into<String>, permits: usize) -> Self {
         Self(std::sync::Arc::new(tokio::sync::Semaphore::new(permits)))
+    }
+
+    pub fn new_with_krate(
+        name: impl Into<String>,
+        permits: usize,
+        _source: impl Into<CompactString>,
+        _krate: impl Into<CompactString>,
+    ) -> Self {
+        Self::new(name, permits)
     }
 
     pub fn available_permits(&self) -> usize {
@@ -911,6 +988,14 @@ where
         Self(tokio::task::JoinSet::new())
     }
 
+    pub fn named_with_krate(
+        name: impl Into<String>,
+        _source: impl Into<CompactString>,
+        _krate: impl Into<CompactString>,
+    ) -> Self {
+        Self::named(name)
+    }
+
     pub fn with_name(name: impl Into<String>) -> Self {
         Self::named(name)
     }
@@ -984,6 +1069,19 @@ where
     tokio::spawn(fut)
 }
 
+pub fn spawn_tracked_with_krate<F>(
+    name: impl Into<CompactString>,
+    fut: F,
+    _source: impl Into<CompactString>,
+    _krate: impl Into<CompactString>,
+) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    spawn_tracked(name, fut)
+}
+
 pub fn spawn_blocking_tracked<F, T>(_: impl Into<CompactString>, f: F) -> tokio::task::JoinHandle<T>
 where
     F: FnOnce() -> T + Send + 'static,
@@ -992,8 +1090,30 @@ where
     tokio::task::spawn_blocking(f)
 }
 
+pub fn spawn_blocking_tracked_with_krate<F, T>(
+    name: impl Into<CompactString>,
+    f: F,
+    _source: impl Into<CompactString>,
+    _krate: impl Into<CompactString>,
+) -> tokio::task::JoinHandle<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    spawn_blocking_tracked(name, f)
+}
+
 pub fn sleep(duration: std::time::Duration, _label: impl Into<String>) -> impl Future<Output = ()> {
     tokio::time::sleep(duration)
+}
+
+pub fn sleep_with_krate(
+    duration: std::time::Duration,
+    label: impl Into<String>,
+    _source: impl Into<CompactString>,
+    _krate: impl Into<CompactString>,
+) -> impl Future<Output = ()> {
+    sleep(duration, label)
 }
 
 pub async fn timeout<F>(
@@ -1005,6 +1125,19 @@ where
     F: Future,
 {
     tokio::time::timeout(duration, future).await
+}
+
+pub async fn timeout_with_krate<F>(
+    duration: std::time::Duration,
+    future: F,
+    label: impl Into<String>,
+    _source: impl Into<CompactString>,
+    _krate: impl Into<CompactString>,
+) -> Result<F::Output, tokio::time::error::Elapsed>
+where
+    F: Future,
+{
+    timeout(duration, future, label).await
 }
 
 pub fn entity_ref_from_wire(_id: impl Into<CompactString>) -> EntityRef {
@@ -1030,6 +1163,15 @@ pub fn rpc_request(
     }
 }
 
+pub fn rpc_request_with_krate(
+    method: impl Into<CompactString>,
+    args_preview: impl Into<CompactString>,
+    _source: impl Into<CompactString>,
+    _krate: impl Into<CompactString>,
+) -> RpcRequestHandle {
+    rpc_request(method, args_preview)
+}
+
 pub fn rpc_response(method: impl Into<CompactString>) -> RpcResponseHandle {
     let method = method.into();
     let handle = EntityHandle::new(
@@ -1045,11 +1187,28 @@ pub fn rpc_response(method: impl Into<CompactString>) -> RpcResponseHandle {
     }
 }
 
+pub fn rpc_response_with_krate(
+    method: impl Into<CompactString>,
+    _source: impl Into<CompactString>,
+    _krate: impl Into<CompactString>,
+) -> RpcResponseHandle {
+    rpc_response(method)
+}
+
 pub fn rpc_response_for(
     method: impl Into<CompactString>,
     _request: &EntityRef,
 ) -> RpcResponseHandle {
     rpc_response(method)
+}
+
+pub fn rpc_response_for_with_krate(
+    method: impl Into<CompactString>,
+    request: &EntityRef,
+    _source: impl Into<CompactString>,
+    _krate: impl Into<CompactString>,
+) -> RpcResponseHandle {
+    rpc_response_for(method, request)
 }
 
 pub trait SnapshotSink {
@@ -1108,6 +1267,18 @@ where
     fut
 }
 
+pub fn instrument_future_named_with_krate<F>(
+    _name: impl Into<CompactString>,
+    fut: F,
+    _source: impl Into<CompactString>,
+    _krate: impl Into<CompactString>,
+) -> F
+where
+    F: core::future::Future,
+{
+    fut
+}
+
 pub fn instrument_future_on<F>(_name: impl Into<CompactString>, _on: &EntityHandle, fut: F) -> F
 where
     F: core::future::Future,
@@ -1120,6 +1291,19 @@ pub fn instrument_future_on_with_source<F>(
     _on: &EntityHandle,
     fut: F,
     _source: impl Into<CompactString>,
+) -> F
+where
+    F: core::future::Future,
+{
+    fut
+}
+
+pub fn instrument_future_on_with_krate<F>(
+    _name: impl Into<CompactString>,
+    _on: &EntityHandle,
+    fut: F,
+    _source: impl Into<CompactString>,
+    _krate: impl Into<CompactString>,
 ) -> F
 where
     F: core::future::Future,
