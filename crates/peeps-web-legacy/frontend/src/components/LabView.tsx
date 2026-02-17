@@ -8,11 +8,9 @@ import {
   BackgroundVariant,
   Controls,
   MarkerType,
-  useInternalNode,
   type Node,
   type Edge,
   type EdgeProps,
-  type InternalNode,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import ELK from "elkjs/lib/elk-api.js";
@@ -92,12 +90,41 @@ const MOCK_NODE_DEFS: MockNodeDef[] = [
   { id: "connection:initiator", kind: "connection", label: "initiator\u2192acceptor" },
 ];
 
-/** Estimate rendered node width: icon (14) + gap (6) + label chars + padding. */
-function estimateNodeWidth(label: string): number {
-  // Mono 11px ≈ 6.6px per char, plus icon 14 + gap 6 + horizontal padding 20
-  return Math.ceil(label.length * 6.6) + 14 + 6 + 20;
+/** Measure actual rendered node dimensions by briefly inserting into the DOM. */
+function measureNodeDefs(defs: MockNodeDef[]): Map<string, { width: number; height: number }> {
+  const container = document.createElement("div");
+  container.style.cssText = "position:fixed;top:-9999px;left:-9999px;visibility:hidden;pointer-events:none;display:flex;flex-direction:column;align-items:flex-start;gap:4px;";
+  document.body.appendChild(container);
+
+  // Create all elements first, then measure — single reflow
+  const elements: { id: string; el: HTMLDivElement }[] = [];
+  for (const def of defs) {
+    const el = document.createElement("div");
+    el.className = `mockup-node${def.inCycle ? " mockup-node--cycle" : ""}`;
+    // Replicate the node's inner structure
+    const icon = document.createElement("span");
+    icon.className = "mockup-node-icon";
+    icon.style.cssText = "display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;flex-shrink:0;";
+    const label = document.createElement("span");
+    label.className = "mockup-node-label";
+    label.textContent = def.label;
+    el.appendChild(icon);
+    el.appendChild(label);
+    container.appendChild(el);
+    elements.push({ id: def.id, el });
+  }
+
+  // Force layout, then measure all
+  const sizes = new Map<string, { width: number; height: number }>();
+  for (const { id, el } of elements) {
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    sizes.set(id, { width: w, height: h });
+  }
+
+  document.body.removeChild(container);
+  return sizes;
 }
-const MOCK_NODE_HEIGHT = 40;
 
 type MockEdgeDef = {
   id: string;
@@ -133,19 +160,24 @@ function edgeMarkerSize(rel: MockEdgeDef["rel"]) {
   return rel === "needs" ? 12 : rel === "spawned" ? 8 : 10;
 }
 
+type ElkPoint = { x: number; y: number };
 type LayoutResult = { nodes: Node[]; edges: Edge[] };
 
-async function layoutMockGraph(nodeDefs: MockNodeDef[], edgeDefs: MockEdgeDef[]): Promise<LayoutResult> {
-  const nodeWidths = new Map(nodeDefs.map((n) => [n.id, estimateNodeWidth(n.label)]));
-
+async function layoutMockGraph(
+  nodeDefs: MockNodeDef[],
+  edgeDefs: MockEdgeDef[],
+  nodeSizes: Map<string, { width: number; height: number }>,
+): Promise<LayoutResult> {
   const result = await elk.layout({
     id: "root",
     layoutOptions: elkOptions,
-    children: nodeDefs.map((n) => ({
-      id: n.id,
-      width: nodeWidths.get(n.id)!,
-      height: MOCK_NODE_HEIGHT,
-    })),
+    children: nodeDefs.map((n) => {
+      const sz = nodeSizes.get(n.id);
+      if (!sz || sz.width === 0 || sz.height === 0) {
+        console.warn(`[layoutMockGraph] missing/zero size for node "${n.id}":`, sz);
+      }
+      return { id: n.id, width: sz?.width || 150, height: sz?.height || 36 };
+    }),
     edges: edgeDefs.map((e) => ({
       id: e.id,
       sources: [e.source],
@@ -157,6 +189,11 @@ async function layoutMockGraph(nodeDefs: MockNodeDef[], edgeDefs: MockEdgeDef[])
     (result.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]),
   );
 
+  // Build a map of ELK's edge sections (route points)
+  const elkEdgeMap = new Map(
+    (result.edges ?? []).map((e) => [e.id, e.sections ?? []]),
+  );
+
   const nodes: Node[] = nodeDefs.map((def) => ({
     id: def.id,
     type: "mockNode",
@@ -166,11 +203,19 @@ async function layoutMockGraph(nodeDefs: MockNodeDef[], edgeDefs: MockEdgeDef[])
 
   const edges: Edge[] = edgeDefs.map((def) => {
     const sz = edgeMarkerSize(def.rel);
+    const sections = elkEdgeMap.get(def.id) ?? [];
+    const points: ElkPoint[] = [];
+    for (const section of sections) {
+      points.push(section.startPoint);
+      if (section.bendPoints) points.push(...section.bendPoints);
+      points.push(section.endPoint);
+    }
     return {
       id: def.id,
       source: def.source,
       target: def.target,
-      type: "floating",
+      type: "elkrouted",
+      data: { points },
       style: edgeStyle(def.rel),
       markerEnd: { type: MarkerType.ArrowClosed, width: sz, height: sz },
     };
@@ -196,82 +241,38 @@ function MockNodeComponent({ data }: { data: { kind: string; label: string; inCy
   );
 }
 
-/** Compute the point where a line from center of a rect to an external point intersects the rect border. */
-function getNodeBorderPoint(node: InternalNode, otherX: number, otherY: number): { x: number; y: number } {
-  const w = node.measured?.width ?? 100;
-  const h = node.measured?.height ?? 40;
-  const cx = node.internals.positionAbsolute.x + w / 2;
-  const cy = node.internals.positionAbsolute.y + h / 2;
-  const dx = otherX - cx;
-  const dy = otherY - cy;
+/** Edge component that draws through ELK's computed route points. */
+function ElkRoutedEdge({ id, data, style, markerEnd }: EdgeProps) {
+  const points: ElkPoint[] = (data as any)?.points ?? [];
+  if (points.length < 2) return null;
 
-  if (dx === 0 && dy === 0) return { x: cx, y: cy };
-
-  // Find intersection with rect border
-  const absDx = Math.abs(dx);
-  const absDy = Math.abs(dy);
-  const hw = w / 2;
-  const hh = h / 2;
-
-  let t: number;
-  if (absDx * hh > absDy * hw) {
-    // Hits left or right side
-    t = hw / absDx;
+  const [start, ...rest] = points;
+  // Build a smooth path through all points
+  let d = `M ${start.x} ${start.y}`;
+  if (rest.length === 1) {
+    // Straight line
+    d += ` L ${rest[0].x} ${rest[0].y}`;
   } else {
-    // Hits top or bottom side
-    t = hh / absDy;
+    // Smooth polyline: use quadratic curves through bend points
+    for (let i = 0; i < rest.length - 1; i++) {
+      const curr = rest[i];
+      const next = rest[i + 1];
+      if (i < rest.length - 2) {
+        // Mid-bend: curve through this point toward the midpoint to next
+        const midX = (curr.x + next.x) / 2;
+        const midY = (curr.y + next.y) / 2;
+        d += ` Q ${curr.x} ${curr.y}, ${midX} ${midY}`;
+      } else {
+        // Last segment: curve to final point
+        d += ` Q ${curr.x} ${curr.y}, ${next.x} ${next.y}`;
+      }
+    }
   }
-
-  return { x: cx + dx * t, y: cy + dy * t };
-}
-
-function FloatingEdge({ id, source, target, style, markerEnd }: EdgeProps) {
-  const sourceNode = useInternalNode(source);
-  const targetNode = useInternalNode(target);
-  if (!sourceNode || !targetNode) return null;
-
-  const sw = sourceNode.measured?.width ?? 100;
-  const sh = sourceNode.measured?.height ?? 40;
-  const tw = targetNode.measured?.width ?? 100;
-  const th = targetNode.measured?.height ?? 40;
-  const sCx = sourceNode.internals.positionAbsolute.x + sw / 2;
-  const sCy = sourceNode.internals.positionAbsolute.y + sh / 2;
-  const tCx = targetNode.internals.positionAbsolute.x + tw / 2;
-  const tCy = targetNode.internals.positionAbsolute.y + th / 2;
-
-  const s = getNodeBorderPoint(sourceNode, tCx, tCy);
-  const t = getNodeBorderPoint(targetNode, sCx, sCy);
-
-  // Bezier control points — offset perpendicular to the line for a gentle curve
-  const dx = t.x - s.x;
-  const dy = t.y - s.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  const curvature = Math.min(dist * 0.25, 60);
-
-  // Use the dominant axis for control point direction
-  let c1x: number, c1y: number, c2x: number, c2y: number;
-  if (Math.abs(dy) >= Math.abs(dx)) {
-    // Mostly vertical — control points shift along Y
-    const sign = dy >= 0 ? 1 : -1;
-    c1x = s.x;
-    c1y = s.y + sign * curvature;
-    c2x = t.x;
-    c2y = t.y - sign * curvature;
-  } else {
-    // Mostly horizontal — control points shift along X
-    const sign = dx >= 0 ? 1 : -1;
-    c1x = s.x + sign * curvature;
-    c1y = s.y;
-    c2x = t.x - sign * curvature;
-    c2y = t.y;
-  }
-
-  const path = `M ${s.x} ${s.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${t.x} ${t.y}`;
 
   return (
     <path
       id={id}
-      d={path}
+      d={d}
       style={style as React.CSSProperties}
       markerEnd={markerEnd as string}
       fill="none"
@@ -281,7 +282,7 @@ function FloatingEdge({ id, source, target, style, markerEnd }: EdgeProps) {
 }
 
 const mockNodeTypes = { mockNode: MockNodeComponent };
-const mockEdgeTypes = { floating: FloatingEdge };
+const mockEdgeTypes = { elkrouted: ElkRoutedEdge };
 
 // ── Mock graph panel ──────────────────────────────────────────
 
@@ -289,7 +290,8 @@ function MockGraphPanel() {
   const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
 
   useEffect(() => {
-    layoutMockGraph(MOCK_NODE_DEFS, MOCK_EDGE_DEFS).then(setLayout);
+    const sizes = measureNodeDefs(MOCK_NODE_DEFS);
+    layoutMockGraph(MOCK_NODE_DEFS, MOCK_EDGE_DEFS, sizes).then(setLayout);
   }, []);
 
   return (
