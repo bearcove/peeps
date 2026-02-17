@@ -226,7 +226,7 @@ pub struct OnceCellEntity {
     pub state: OnceCellState,
 }
 
-#[derive(Facet)]
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
 pub enum OnceCellState {

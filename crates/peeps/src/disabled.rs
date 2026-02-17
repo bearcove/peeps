@@ -5,7 +5,10 @@ use peeps_types::{
     OneshotChannelDetails, OneshotState, PullChangesResponse, RequestEntity, ResponseEntity,
     ResponseStatus, Scope, ScopeBody, SeqNo, StreamCursor, StreamId, WatchChannelDetails,
 };
+use std::ffi::OsStr;
 use std::future::Future;
+use std::io;
+use std::process::{ExitStatus, Output, Stdio};
 use std::sync::Once;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
@@ -149,6 +152,24 @@ pub struct WatchReceiver<T> {
 pub struct Notify {
     inner: std::sync::Arc<tokio::sync::Notify>,
 }
+
+pub struct OnceCell<T>(tokio::sync::OnceCell<T>);
+
+#[derive(Clone)]
+pub struct Semaphore(std::sync::Arc<tokio::sync::Semaphore>);
+
+pub struct Command(tokio::process::Command);
+
+#[derive(Clone, Debug)]
+pub struct CommandDiagnostics {
+    pub program: CompactString,
+    pub args: Vec<CompactString>,
+    pub env: Vec<CompactString>,
+}
+
+pub struct Child(tokio::process::Child);
+
+pub struct JoinSet<T>(tokio::task::JoinSet<T>);
 
 pub type Interval = tokio::time::Interval;
 
@@ -338,6 +359,10 @@ impl<T: Clone> WatchReceiver<T> {
     pub fn borrow_and_update(&mut self) -> watch::Ref<'_, T> {
         self.inner.borrow_and_update()
     }
+
+    pub fn has_changed(&self) -> Result<bool, watch::error::RecvError> {
+        self.inner.has_changed()
+    }
 }
 
 pub fn channel<T>(_name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
@@ -490,6 +515,13 @@ pub fn watch<T: Clone>(
     )
 }
 
+pub fn watch_channel<T: Clone>(
+    name: impl Into<CompactString>,
+    initial: T,
+) -> (WatchSender<T>, WatchReceiver<T>) {
+    watch(name, initial)
+}
+
 impl Notify {
     pub fn new(_name: impl Into<String>) -> Self {
         Self {
@@ -507,6 +539,317 @@ impl Notify {
 
     pub fn notify_waiters(&self) {
         self.inner.notify_waiters();
+    }
+}
+
+impl<T> OnceCell<T> {
+    pub fn new(_name: impl Into<String>) -> Self {
+        Self(tokio::sync::OnceCell::new())
+    }
+
+    pub fn get(&self) -> Option<&T> {
+        self.0.get()
+    }
+
+    pub fn initialized(&self) -> bool {
+        self.0.initialized()
+    }
+
+    pub async fn get_or_init<F, Fut>(&self, f: F) -> &T
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = T>,
+    {
+        self.0.get_or_init(f).await
+    }
+
+    pub async fn get_or_try_init<F, Fut, E>(&self, f: F) -> Result<&T, E>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T, E>>,
+    {
+        self.0.get_or_try_init(f).await
+    }
+
+    pub fn set(&self, value: T) -> Result<(), T> {
+        self.0.set(value).map_err(|e| match e {
+            tokio::sync::SetError::AlreadyInitializedError(v) => v,
+            tokio::sync::SetError::InitializingError(v) => v,
+        })
+    }
+}
+
+impl Semaphore {
+    pub fn new(_name: impl Into<String>, permits: usize) -> Self {
+        Self(std::sync::Arc::new(tokio::sync::Semaphore::new(permits)))
+    }
+
+    pub fn available_permits(&self) -> usize {
+        self.0.available_permits()
+    }
+
+    pub fn close(&self) {
+        self.0.close()
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.0.is_closed()
+    }
+
+    pub fn add_permits(&self, n: usize) {
+        self.0.add_permits(n)
+    }
+
+    pub async fn acquire(
+        &self,
+    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
+        self.0.acquire().await
+    }
+
+    pub async fn acquire_many(
+        &self,
+        n: u32,
+    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
+        self.0.acquire_many(n).await
+    }
+
+    pub async fn acquire_owned(
+        &self,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
+        self.0.clone().acquire_owned().await
+    }
+
+    pub async fn acquire_many_owned(
+        &self,
+        n: u32,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
+        self.0.clone().acquire_many_owned(n).await
+    }
+
+    pub fn try_acquire(
+        &self,
+    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
+        self.0.try_acquire()
+    }
+
+    pub fn try_acquire_many(
+        &self,
+        n: u32,
+    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
+        self.0.try_acquire_many(n)
+    }
+
+    pub fn try_acquire_owned(
+        &self,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+        self.0.clone().try_acquire_owned()
+    }
+
+    pub fn try_acquire_many_owned(
+        &self,
+        n: u32,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+        self.0.clone().try_acquire_many_owned(n)
+    }
+}
+
+impl Command {
+    pub fn new(program: impl AsRef<OsStr>) -> Self {
+        Self(tokio::process::Command::new(program))
+    }
+
+    pub fn arg(&mut self, arg: impl AsRef<OsStr>) -> &mut Self {
+        self.0.arg(arg);
+        self
+    }
+
+    pub fn args(&mut self, args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> &mut Self {
+        self.0.args(args);
+        self
+    }
+
+    pub fn env(&mut self, key: impl AsRef<OsStr>, val: impl AsRef<OsStr>) -> &mut Self {
+        self.0.env(key, val);
+        self
+    }
+
+    pub fn envs(
+        &mut self,
+        vars: impl IntoIterator<Item = (impl AsRef<OsStr>, impl AsRef<OsStr>)>,
+    ) -> &mut Self {
+        self.0.envs(vars);
+        self
+    }
+
+    pub fn env_clear(&mut self) -> &mut Self {
+        self.0.env_clear();
+        self
+    }
+
+    pub fn env_remove(&mut self, key: impl AsRef<OsStr>) -> &mut Self {
+        self.0.env_remove(key);
+        self
+    }
+
+    pub fn current_dir(&mut self, dir: impl AsRef<std::path::Path>) -> &mut Self {
+        self.0.current_dir(dir);
+        self
+    }
+
+    pub fn stdin(&mut self, cfg: impl Into<Stdio>) -> &mut Self {
+        self.0.stdin(cfg);
+        self
+    }
+
+    pub fn stdout(&mut self, cfg: impl Into<Stdio>) -> &mut Self {
+        self.0.stdout(cfg);
+        self
+    }
+
+    pub fn stderr(&mut self, cfg: impl Into<Stdio>) -> &mut Self {
+        self.0.stderr(cfg);
+        self
+    }
+
+    pub fn kill_on_drop(&mut self, kill_on_drop: bool) -> &mut Self {
+        self.0.kill_on_drop(kill_on_drop);
+        self
+    }
+
+    pub fn spawn(&mut self) -> io::Result<Child> {
+        self.0.spawn().map(Child)
+    }
+
+    pub async fn status(&mut self) -> io::Result<ExitStatus> {
+        self.0.status().await
+    }
+
+    pub async fn output(&mut self) -> io::Result<Output> {
+        self.0.output().await
+    }
+
+    pub fn as_std(&self) -> &std::process::Command {
+        self.0.as_std()
+    }
+
+    #[cfg(unix)]
+    pub unsafe fn pre_exec<F>(&mut self, f: F) -> &mut Self
+    where
+        F: FnMut() -> io::Result<()> + Send + Sync + 'static,
+    {
+        self.0.pre_exec(f);
+        self
+    }
+
+    pub fn into_inner(self) -> tokio::process::Command {
+        self.0
+    }
+
+    pub fn into_inner_with_diagnostics(self) -> (tokio::process::Command, CommandDiagnostics) {
+        let std_cmd = self.0.as_std();
+        let program = CompactString::from(std_cmd.get_program().to_string_lossy().as_ref());
+        let args = std_cmd
+            .get_args()
+            .map(|arg| CompactString::from(arg.to_string_lossy().as_ref()))
+            .collect::<Vec<_>>();
+        let env = std_cmd
+            .get_envs()
+            .filter_map(|(k, v)| {
+                v.map(|v| {
+                    CompactString::from(format!("{}={}", k.to_string_lossy(), v.to_string_lossy()))
+                })
+            })
+            .collect::<Vec<_>>();
+        (self.0, CommandDiagnostics { program, args, env })
+    }
+}
+
+impl Child {
+    pub fn from_tokio_with_diagnostics(
+        child: tokio::process::Child,
+        _diag: CommandDiagnostics,
+    ) -> Self {
+        Self(child)
+    }
+
+    pub fn id(&self) -> Option<u32> {
+        self.0.id()
+    }
+
+    pub async fn wait(&mut self) -> io::Result<ExitStatus> {
+        self.0.wait().await
+    }
+
+    pub async fn wait_with_output(self) -> io::Result<Output> {
+        self.0.wait_with_output().await
+    }
+
+    pub fn start_kill(&mut self) -> io::Result<()> {
+        self.0.start_kill()
+    }
+
+    pub fn kill(&mut self) -> io::Result<()> {
+        self.start_kill()
+    }
+
+    pub fn stdin(&mut self) -> &mut Option<tokio::process::ChildStdin> {
+        &mut self.0.stdin
+    }
+
+    pub fn stdout(&mut self) -> &mut Option<tokio::process::ChildStdout> {
+        &mut self.0.stdout
+    }
+
+    pub fn stderr(&mut self) -> &mut Option<tokio::process::ChildStderr> {
+        &mut self.0.stderr
+    }
+
+    pub fn take_stdin(&mut self) -> Option<tokio::process::ChildStdin> {
+        self.0.stdin.take()
+    }
+
+    pub fn take_stdout(&mut self) -> Option<tokio::process::ChildStdout> {
+        self.0.stdout.take()
+    }
+
+    pub fn take_stderr(&mut self) -> Option<tokio::process::ChildStderr> {
+        self.0.stderr.take()
+    }
+}
+
+impl<T> JoinSet<T>
+where
+    T: Send + 'static,
+{
+    pub fn named(_name: impl Into<String>) -> Self {
+        Self(tokio::task::JoinSet::new())
+    }
+
+    pub fn with_name(name: impl Into<String>) -> Self {
+        Self::named(name)
+    }
+
+    pub fn spawn<F>(&mut self, _label: &'static str, future: F)
+    where
+        F: Future<Output = T> + Send + 'static,
+    {
+        self.0.spawn(future);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn abort_all(&mut self) {
+        self.0.abort_all();
+    }
+
+    pub async fn join_next(&mut self) -> Option<Result<T, tokio::task::JoinError>> {
+        self.0.join_next().await
     }
 }
 

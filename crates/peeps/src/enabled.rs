@@ -3,14 +3,18 @@ use peeps_types::{
     BufferState, Change, ChannelCloseCause, ChannelClosedEvent, ChannelDetails,
     ChannelEndpointEntity, ChannelEndpointLifecycle, ChannelReceiveEvent, ChannelReceiveOutcome,
     ChannelSendEvent, ChannelSendOutcome, ChannelWaitEndedEvent, ChannelWaitKind,
-    ChannelWaitStartedEvent, CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, EntityId, Event,
-    EventKind, EventTarget, MpscChannelDetails, NotifyEntity, OneshotChannelDetails, OneshotState,
-    PullChangesResponse, RequestEntity, ResponseEntity, ResponseStatus, Scope, ScopeBody, ScopeId,
-    SeqNo, StampedChange, StreamCursor, StreamId, WatchChannelDetails,
+    ChannelWaitStartedEvent, CommandEntity, CutAck, CutId, Edge, EdgeKind, Entity, EntityBody,
+    EntityId, Event, EventKind, EventTarget, MpscChannelDetails, NotifyEntity, OnceCellEntity,
+    OnceCellState, OneshotChannelDetails, OneshotState, PullChangesResponse, RequestEntity,
+    ResponseEntity, ResponseStatus, Scope, ScopeBody, ScopeId, SemaphoreEntity, SeqNo,
+    StampedChange, StreamCursor, StreamId, WatchChannelDetails,
 };
 use std::collections::{BTreeMap, VecDeque};
+use std::ffi::{OsStr, OsString};
 use std::future::Future;
+use std::io;
 use std::pin::Pin;
+use std::process::{ExitStatus, Output, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::task::{Context, Poll};
@@ -519,6 +523,64 @@ impl RuntimeDb {
             EntityBody::Notify(notify) => {
                 if notify.waiter_count != waiter_count {
                     notify.waiter_count = waiter_count;
+                    changed = true;
+                }
+            }
+            _ => return,
+        }
+        if !changed {
+            return;
+        }
+        if let Some(entity_json) = facet_json::to_vec(entity).ok() {
+            self.push_change(InternalChange::UpsertEntity {
+                id: EntityId::new(id.as_str()),
+                entity_json,
+            });
+        }
+    }
+
+    fn update_once_cell_state(&mut self, id: &EntityId, waiter_count: u32, state: OnceCellState) {
+        let Some(entity) = self.entities.get_mut(id) else {
+            return;
+        };
+        let mut changed = false;
+        match &mut entity.body {
+            EntityBody::OnceCell(once_cell) => {
+                if once_cell.waiter_count != waiter_count {
+                    once_cell.waiter_count = waiter_count;
+                    changed = true;
+                }
+                if once_cell.state != state {
+                    once_cell.state = state;
+                    changed = true;
+                }
+            }
+            _ => return,
+        }
+        if !changed {
+            return;
+        }
+        if let Some(entity_json) = facet_json::to_vec(entity).ok() {
+            self.push_change(InternalChange::UpsertEntity {
+                id: EntityId::new(id.as_str()),
+                entity_json,
+            });
+        }
+    }
+
+    fn update_semaphore_state(&mut self, id: &EntityId, max_permits: u32, handed_out_permits: u32) {
+        let Some(entity) = self.entities.get_mut(id) else {
+            return;
+        };
+        let mut changed = false;
+        match &mut entity.body {
+            EntityBody::Semaphore(semaphore) => {
+                if semaphore.max_permits != max_permits {
+                    semaphore.max_permits = max_permits;
+                    changed = true;
+                }
+                if semaphore.handed_out_permits != handed_out_permits {
+                    semaphore.handed_out_permits = handed_out_permits;
                     changed = true;
                 }
             }
@@ -1176,6 +1238,43 @@ pub struct DiagnosticInterval {
 }
 
 pub type Interval = DiagnosticInterval;
+
+pub struct OnceCell<T> {
+    inner: tokio::sync::OnceCell<T>,
+    handle: EntityHandle,
+    waiter_count: AtomicU32,
+}
+
+#[derive(Clone)]
+pub struct Semaphore {
+    inner: Arc<tokio::sync::Semaphore>,
+    handle: EntityHandle,
+    max_permits: Arc<AtomicU32>,
+}
+
+pub struct Command {
+    inner: tokio::process::Command,
+    program: CompactString,
+    args: Vec<CompactString>,
+    env: Vec<CompactString>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CommandDiagnostics {
+    pub program: CompactString,
+    pub args: Vec<CompactString>,
+    pub env: Vec<CompactString>,
+}
+
+pub struct Child {
+    inner: Option<tokio::process::Child>,
+    handle: EntityHandle,
+}
+
+pub struct JoinSet<T> {
+    inner: tokio::task::JoinSet<T>,
+    handle: EntityHandle,
+}
 
 struct ChannelRuntimeState {
     tx_id: EntityId,
@@ -2457,6 +2556,10 @@ impl<T: Clone> WatchReceiver<T> {
     pub fn borrow_and_update(&mut self) -> watch::Ref<'_, T> {
         self.inner.borrow_and_update()
     }
+
+    pub fn has_changed(&self) -> Result<bool, watch::error::RecvError> {
+        self.inner.has_changed()
+    }
 }
 
 pub fn broadcast<T: Clone>(
@@ -2572,6 +2675,13 @@ pub fn watch<T: Clone>(
     )
 }
 
+pub fn watch_channel<T: Clone>(
+    name: impl Into<CompactString>,
+    initial: T,
+) -> (WatchSender<T>, WatchReceiver<T>) {
+    watch(name, initial)
+}
+
 impl Notify {
     pub fn new(name: impl Into<String>) -> Self {
         let name = name.into();
@@ -2609,6 +2719,543 @@ impl Notify {
 
     pub fn notify_waiters(&self) {
         self.inner.notify_waiters();
+    }
+}
+
+impl<T> OnceCell<T> {
+    pub fn new(name: impl Into<String>) -> Self {
+        let handle = EntityHandle::new(
+            name.into(),
+            EntityBody::OnceCell(OnceCellEntity {
+                waiter_count: 0,
+                state: OnceCellState::Empty,
+            }),
+        );
+        Self {
+            inner: tokio::sync::OnceCell::new(),
+            handle,
+            waiter_count: AtomicU32::new(0),
+        }
+    }
+
+    pub fn get(&self) -> Option<&T> {
+        self.inner.get()
+    }
+
+    pub fn initialized(&self) -> bool {
+        self.inner.initialized()
+    }
+
+    pub async fn get_or_init<F, Fut>(&self, f: F) -> &T
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = T>,
+    {
+        let waiters = self
+            .waiter_count
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1);
+        if let Ok(mut db) = runtime_db().lock() {
+            db.update_once_cell_state(self.handle.id(), waiters, OnceCellState::Initializing);
+        }
+
+        let result = instrument_future_on(
+            "once_cell.get_or_init",
+            &self.handle,
+            self.inner.get_or_init(f),
+        )
+        .await;
+
+        let waiters = self
+            .waiter_count
+            .fetch_sub(1, Ordering::Relaxed)
+            .saturating_sub(1);
+        let state = if self.inner.initialized() {
+            OnceCellState::Initialized
+        } else if waiters > 0 {
+            OnceCellState::Initializing
+        } else {
+            OnceCellState::Empty
+        };
+        if let Ok(mut db) = runtime_db().lock() {
+            db.update_once_cell_state(self.handle.id(), waiters, state);
+        }
+
+        result
+    }
+
+    pub async fn get_or_try_init<F, Fut, E>(&self, f: F) -> Result<&T, E>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T, E>>,
+    {
+        let waiters = self
+            .waiter_count
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1);
+        if let Ok(mut db) = runtime_db().lock() {
+            db.update_once_cell_state(self.handle.id(), waiters, OnceCellState::Initializing);
+        }
+
+        let result = instrument_future_on(
+            "once_cell.get_or_try_init",
+            &self.handle,
+            self.inner.get_or_try_init(f),
+        )
+        .await;
+
+        let waiters = self
+            .waiter_count
+            .fetch_sub(1, Ordering::Relaxed)
+            .saturating_sub(1);
+        let state = if self.inner.initialized() {
+            OnceCellState::Initialized
+        } else if waiters > 0 {
+            OnceCellState::Initializing
+        } else {
+            OnceCellState::Empty
+        };
+        if let Ok(mut db) = runtime_db().lock() {
+            db.update_once_cell_state(self.handle.id(), waiters, state);
+        }
+
+        result
+    }
+
+    pub fn set(&self, value: T) -> Result<(), T> {
+        let result = self.inner.set(value).map_err(|e| match e {
+            tokio::sync::SetError::AlreadyInitializedError(v) => v,
+            tokio::sync::SetError::InitializingError(v) => v,
+        });
+        let state = if self.inner.initialized() {
+            OnceCellState::Initialized
+        } else if self.waiter_count.load(Ordering::Relaxed) > 0 {
+            OnceCellState::Initializing
+        } else {
+            OnceCellState::Empty
+        };
+        if let Ok(mut db) = runtime_db().lock() {
+            db.update_once_cell_state(
+                self.handle.id(),
+                self.waiter_count.load(Ordering::Relaxed),
+                state,
+            );
+        }
+        result
+    }
+}
+
+impl Semaphore {
+    pub fn new(name: impl Into<String>, permits: usize) -> Self {
+        let max_permits = permits.min(u32::MAX as usize) as u32;
+        let handle = EntityHandle::new(
+            name.into(),
+            EntityBody::Semaphore(SemaphoreEntity {
+                max_permits,
+                handed_out_permits: 0,
+            }),
+        );
+        Self {
+            inner: Arc::new(tokio::sync::Semaphore::new(permits)),
+            handle,
+            max_permits: Arc::new(AtomicU32::new(max_permits)),
+        }
+    }
+
+    pub fn available_permits(&self) -> usize {
+        self.inner.available_permits()
+    }
+
+    pub fn close(&self) {
+        self.inner.close();
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.inner.is_closed()
+    }
+
+    pub fn add_permits(&self, n: usize) {
+        self.inner.add_permits(n);
+        let delta = n.min(u32::MAX as usize) as u32;
+        let max = self
+            .max_permits
+            .fetch_add(delta, Ordering::Relaxed)
+            .saturating_add(delta);
+        self.sync_state(max);
+    }
+
+    pub async fn acquire(
+        &self,
+    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
+        let permit =
+            instrument_future_on("semaphore.acquire", &self.handle, self.inner.acquire()).await?;
+        self.sync_state(self.max_permits.load(Ordering::Relaxed));
+        Ok(permit)
+    }
+
+    pub async fn acquire_many(
+        &self,
+        n: u32,
+    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
+        let permit = instrument_future_on(
+            "semaphore.acquire_many",
+            &self.handle,
+            self.inner.acquire_many(n),
+        )
+        .await?;
+        self.sync_state(self.max_permits.load(Ordering::Relaxed));
+        Ok(permit)
+    }
+
+    pub async fn acquire_owned(
+        &self,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
+        let permit = instrument_future_on(
+            "semaphore.acquire_owned",
+            &self.handle,
+            Arc::clone(&self.inner).acquire_owned(),
+        )
+        .await?;
+        self.sync_state(self.max_permits.load(Ordering::Relaxed));
+        Ok(permit)
+    }
+
+    pub async fn acquire_many_owned(
+        &self,
+        n: u32,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
+        let permit = instrument_future_on(
+            "semaphore.acquire_many_owned",
+            &self.handle,
+            Arc::clone(&self.inner).acquire_many_owned(n),
+        )
+        .await?;
+        self.sync_state(self.max_permits.load(Ordering::Relaxed));
+        Ok(permit)
+    }
+
+    pub fn try_acquire(
+        &self,
+    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
+        let permit = self.inner.try_acquire()?;
+        self.sync_state(self.max_permits.load(Ordering::Relaxed));
+        Ok(permit)
+    }
+
+    pub fn try_acquire_many(
+        &self,
+        n: u32,
+    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
+        let permit = self.inner.try_acquire_many(n)?;
+        self.sync_state(self.max_permits.load(Ordering::Relaxed));
+        Ok(permit)
+    }
+
+    pub fn try_acquire_owned(
+        &self,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+        let permit = Arc::clone(&self.inner).try_acquire_owned()?;
+        self.sync_state(self.max_permits.load(Ordering::Relaxed));
+        Ok(permit)
+    }
+
+    pub fn try_acquire_many_owned(
+        &self,
+        n: u32,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
+        let permit = Arc::clone(&self.inner).try_acquire_many_owned(n)?;
+        self.sync_state(self.max_permits.load(Ordering::Relaxed));
+        Ok(permit)
+    }
+
+    fn sync_state(&self, max_permits: u32) {
+        let available = self.inner.available_permits().min(u32::MAX as usize) as u32;
+        let handed_out_permits = max_permits.saturating_sub(available);
+        if let Ok(mut db) = runtime_db().lock() {
+            db.update_semaphore_state(self.handle.id(), max_permits, handed_out_permits);
+        }
+    }
+}
+
+impl Command {
+    pub fn new(program: impl AsRef<OsStr>) -> Self {
+        let program = CompactString::from(program.as_ref().to_string_lossy().as_ref());
+        Self {
+            inner: tokio::process::Command::new(program.as_str()),
+            program,
+            args: Vec::new(),
+            env: Vec::new(),
+        }
+    }
+
+    pub fn arg(&mut self, arg: impl AsRef<OsStr>) -> &mut Self {
+        let arg = arg.as_ref().to_owned();
+        self.args
+            .push(CompactString::from(arg.to_string_lossy().as_ref()));
+        self.inner.arg(&arg);
+        self
+    }
+
+    pub fn args(&mut self, args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> &mut Self {
+        let args: Vec<OsString> = args.into_iter().map(|a| a.as_ref().to_owned()).collect();
+        for arg in &args {
+            self.args
+                .push(CompactString::from(arg.to_string_lossy().as_ref()));
+        }
+        self.inner.args(args);
+        self
+    }
+
+    pub fn env(&mut self, key: impl AsRef<OsStr>, val: impl AsRef<OsStr>) -> &mut Self {
+        let key = key.as_ref().to_owned();
+        let val = val.as_ref().to_owned();
+        self.env.push(CompactString::from(format!(
+            "{}={}",
+            key.to_string_lossy(),
+            val.to_string_lossy()
+        )));
+        self.inner.env(&key, &val);
+        self
+    }
+
+    pub fn envs(
+        &mut self,
+        vars: impl IntoIterator<Item = (impl AsRef<OsStr>, impl AsRef<OsStr>)>,
+    ) -> &mut Self {
+        let vars: Vec<(OsString, OsString)> = vars
+            .into_iter()
+            .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned()))
+            .collect();
+        for (k, v) in &vars {
+            self.env.push(CompactString::from(format!(
+                "{}={}",
+                k.to_string_lossy(),
+                v.to_string_lossy()
+            )));
+        }
+        self.inner.envs(vars);
+        self
+    }
+
+    pub fn env_clear(&mut self) -> &mut Self {
+        self.env.clear();
+        self.inner.env_clear();
+        self
+    }
+
+    pub fn env_remove(&mut self, key: impl AsRef<OsStr>) -> &mut Self {
+        let key = key.as_ref().to_owned();
+        let key_prefix = format!("{}=", key.to_string_lossy());
+        self.env
+            .retain(|entry| !entry.as_str().starts_with(&key_prefix));
+        self.inner.env_remove(&key);
+        self
+    }
+
+    pub fn current_dir(&mut self, dir: impl AsRef<std::path::Path>) -> &mut Self {
+        self.inner.current_dir(dir);
+        self
+    }
+
+    pub fn stdin(&mut self, cfg: impl Into<Stdio>) -> &mut Self {
+        self.inner.stdin(cfg);
+        self
+    }
+
+    pub fn stdout(&mut self, cfg: impl Into<Stdio>) -> &mut Self {
+        self.inner.stdout(cfg);
+        self
+    }
+
+    pub fn stderr(&mut self, cfg: impl Into<Stdio>) -> &mut Self {
+        self.inner.stderr(cfg);
+        self
+    }
+
+    pub fn kill_on_drop(&mut self, kill_on_drop: bool) -> &mut Self {
+        self.inner.kill_on_drop(kill_on_drop);
+        self
+    }
+
+    pub fn spawn(&mut self) -> io::Result<Child> {
+        let child = self.inner.spawn()?;
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body());
+        Ok(Child {
+            inner: Some(child),
+            handle,
+        })
+    }
+
+    pub async fn status(&mut self) -> io::Result<ExitStatus> {
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body());
+        instrument_future_on("command.status", &handle, self.inner.status()).await
+    }
+
+    pub async fn output(&mut self) -> io::Result<Output> {
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body());
+        instrument_future_on("command.output", &handle, self.inner.output()).await
+    }
+
+    pub fn as_std(&self) -> &std::process::Command {
+        self.inner.as_std()
+    }
+
+    #[cfg(unix)]
+    pub unsafe fn pre_exec<F>(&mut self, f: F) -> &mut Self
+    where
+        F: FnMut() -> io::Result<()> + Send + Sync + 'static,
+    {
+        self.inner.pre_exec(f);
+        self
+    }
+
+    pub fn into_inner(self) -> tokio::process::Command {
+        self.inner
+    }
+
+    pub fn into_inner_with_diagnostics(self) -> (tokio::process::Command, CommandDiagnostics) {
+        let diag = CommandDiagnostics {
+            program: self.program.clone(),
+            args: self.args.clone(),
+            env: self.env.clone(),
+        };
+        (self.inner, diag)
+    }
+
+    fn entity_name(&self) -> CompactString {
+        CompactString::from(format!("command.{}", self.program))
+    }
+
+    fn entity_body(&self) -> EntityBody {
+        EntityBody::Command(CommandEntity {
+            program: self.program.clone(),
+            args: self.args.clone(),
+            env: self.env.clone(),
+        })
+    }
+}
+
+impl Child {
+    pub fn from_tokio_with_diagnostics(
+        child: tokio::process::Child,
+        diag: CommandDiagnostics,
+    ) -> Self {
+        let body = EntityBody::Command(CommandEntity {
+            program: diag.program.clone(),
+            args: diag.args.clone(),
+            env: diag.env.clone(),
+        });
+        let name = CompactString::from(format!("command.{}", diag.program));
+        let handle = EntityHandle::new(name, body);
+        Self {
+            inner: Some(child),
+            handle,
+        }
+    }
+
+    fn inner(&self) -> &tokio::process::Child {
+        self.inner.as_ref().expect("child already consumed")
+    }
+
+    fn inner_mut(&mut self) -> &mut tokio::process::Child {
+        self.inner.as_mut().expect("child already consumed")
+    }
+
+    pub fn id(&self) -> Option<u32> {
+        self.inner().id()
+    }
+
+    pub async fn wait(&mut self) -> io::Result<ExitStatus> {
+        let handle = self.handle.clone();
+        let wait_fut = self.inner_mut().wait();
+        instrument_future_on("command.wait", &handle, wait_fut).await
+    }
+
+    pub async fn wait_with_output(mut self) -> io::Result<Output> {
+        let child = self.inner.take().expect("child already consumed");
+        instrument_future_on(
+            "command.wait_with_output",
+            &self.handle,
+            child.wait_with_output(),
+        )
+        .await
+    }
+
+    pub fn start_kill(&mut self) -> io::Result<()> {
+        self.inner_mut().start_kill()
+    }
+
+    pub fn kill(&mut self) -> io::Result<()> {
+        self.start_kill()
+    }
+
+    pub fn stdin(&mut self) -> &mut Option<tokio::process::ChildStdin> {
+        &mut self.inner_mut().stdin
+    }
+
+    pub fn stdout(&mut self) -> &mut Option<tokio::process::ChildStdout> {
+        &mut self.inner_mut().stdout
+    }
+
+    pub fn stderr(&mut self) -> &mut Option<tokio::process::ChildStderr> {
+        &mut self.inner_mut().stderr
+    }
+
+    pub fn take_stdin(&mut self) -> Option<tokio::process::ChildStdin> {
+        self.inner_mut().stdin.take()
+    }
+
+    pub fn take_stdout(&mut self) -> Option<tokio::process::ChildStdout> {
+        self.inner_mut().stdout.take()
+    }
+
+    pub fn take_stderr(&mut self) -> Option<tokio::process::ChildStderr> {
+        self.inner_mut().stderr.take()
+    }
+}
+
+impl<T> JoinSet<T>
+where
+    T: Send + 'static,
+{
+    pub fn named(name: impl Into<String>) -> Self {
+        let name = name.into();
+        let handle = EntityHandle::new(format!("joinset.{name}"), EntityBody::Future);
+        Self {
+            inner: tokio::task::JoinSet::new(),
+            handle,
+        }
+    }
+
+    pub fn with_name(name: impl Into<String>) -> Self {
+        Self::named(name)
+    }
+
+    pub fn spawn<F>(&mut self, label: &'static str, future: F)
+    where
+        F: Future<Output = T> + Send + 'static,
+    {
+        let joinset_handle = self.handle.clone();
+        self.inner
+            .spawn(async move { instrument_future_on(label, &joinset_handle, future).await });
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn abort_all(&mut self) {
+        self.inner.abort_all();
+    }
+
+    pub async fn join_next(&mut self) -> Option<Result<T, tokio::task::JoinError>> {
+        let handle = self.handle.clone();
+        let fut = self.inner.join_next();
+        instrument_future_on("joinset.join_next", &handle, fut).await
     }
 }
 

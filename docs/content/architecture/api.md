@@ -121,6 +121,65 @@ Current rule:
 
 No other SQL "safety theater" constraints are enforced right now.
 
+### `POST /api/snapshot`
+
+Returns all entities and edges currently materialized in the database, in a structured form suitable for graph rendering.
+
+Request body:
+
+```json
+{}
+```
+
+Response JSON:
+
+```json
+{
+  "entities": [
+    {
+      "id": "0a1b2c3d",
+      "birth_ms": 1245000,
+      "source": "src/rpc/demo.rs:42",
+      "name": "DemoRpc.sleepy_forever",
+      "body": { "request": { "method": "DemoRpc.sleepy_forever", "args_preview": "(no args)" } },
+      "meta": {}
+    },
+    {
+      "id": "4e5f6a7b",
+      "birth_ms": 3590000,
+      "source": "src/dispatch.rs:67",
+      "name": "mpsc.send",
+      "body": {
+        "channel_tx": {
+          "lifecycle": "open",
+          "details": { "mpsc": { "buffer": { "occupancy": 0, "capacity": 128 } } }
+        }
+      },
+      "meta": {}
+    },
+    {
+      "id": "8c9d0e1f",
+      "birth_ms": 2100000,
+      "source": "src/store.rs:104",
+      "name": "store.incoming.recv",
+      "body": "future",
+      "meta": { "poll_count": 847 }
+    }
+  ],
+  "edges": [
+    { "src_id": "0a1b2c3d", "dst_id": "4e5f6a7b", "kind": "needs" },
+    { "src_id": "4e5f6a7b", "dst_id": "8c9d0e1f", "kind": "channel_link" }
+  ]
+}
+```
+
+Notes:
+
+1. `body` mirrors the `EntityBody` Rust enum serialized via facet-json: unit variants serialize as a plain string (e.g. `"future"`), data variants as `{ "variant_name": { ... } }` (e.g. `{ "request": { ... } }`).
+2. `birth_ms` is milliseconds since process start (not wall clock).
+3. `edge.kind` is the snake_case `EdgeKind` string: `"needs"`, `"polls"`, `"closed_by"`, `"channel_link"`, `"rpc_link"`.
+4. The response is a point-in-time dump — call after a cut completes to get a consistent view.
+
 ### `POST /api/query`
 
 Runs a canonical named query pack maintained by the backend.
