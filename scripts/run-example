@@ -37,6 +37,7 @@ Examples:
 Environment overrides:
   PEEPS_LISTEN, PEEPS_HTTP
   PEEPS_DASHBOARD
+  PEEPS_NO_OPEN=1   # disable opening browser
 USAGE
 }
 
@@ -80,6 +81,24 @@ ensure_process_alive() {
   if ! kill -0 "$pid" 2>/dev/null; then
     echo "$name exited unexpectedly. Check logs above for details." >&2
     return 1
+  fi
+}
+
+open_browser() {
+  local url="$1"
+
+  if [[ "${PEEPS_NO_OPEN:-0}" == "1" ]]; then
+    return 0
+  fi
+
+  if command -v open >/dev/null 2>&1; then
+    open "$url" >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  if command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$url" >/dev/null 2>&1 || true
+    return 0
   fi
 }
 
@@ -127,15 +146,17 @@ fi
 
 trap cleanup EXIT INT TERM
 
-echo "Starting peeps-web backend on $PEEPS_HTTP (ingest: $PEEPS_LISTEN)"
+echo "Starting peeps-web on $PEEPS_HTTP (ingest: $PEEPS_LISTEN)"
 (
   cd "$ROOT_DIR"
-  PEEPS_LISTEN="$PEEPS_LISTEN" PEEPS_HTTP="$PEEPS_HTTP" cargo run -p peeps-web
+  PEEPS_LISTEN="$PEEPS_LISTEN" PEEPS_HTTP="$PEEPS_HTTP" cargo run -p peeps-web -- --dev
 ) &
 backend_pid=$!
 
 wait_for_url "http://${PEEPS_HTTP}/health" "peeps-web backend"
 ensure_process_alive "$backend_pid" "peeps-web backend"
+
+open_browser "http://${PEEPS_HTTP}"
 
 PEEPS_DASHBOARD="${PEEPS_DASHBOARD:-$PEEPS_LISTEN}"
 echo "Running example '$example_name' (PEEPS_DASHBOARD=$PEEPS_DASHBOARD)"
