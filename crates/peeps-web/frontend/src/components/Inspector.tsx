@@ -44,6 +44,7 @@ import {
   resolveTimelineOriginNs,
 } from "./inspectorShared";
 import { DurationDisplay } from "../ui/primitives/DurationDisplay";
+import { KeyValueRow } from "../ui/primitives/KeyValueRow";
 import type {
   InspectorSnapshotNode,
   StuckRequest,
@@ -252,17 +253,13 @@ function RequestDetail({
   onSelectNode: (nodeId: string) => void;
 }) {
   return (
-    <dl>
-      <dt>Method</dt>
-      <dd>{req.method ?? "unknown"}</dd>
-      <dt>Process</dt>
-      <dd>{req.process}</dd>
-      <dt>Elapsed</dt>
-      <dd>
+    <div className="inspect-section">
+      <KeyValueRow label="Method">{req.method ?? "unknown"}</KeyValueRow>
+      <KeyValueRow label="Process">{req.process}</KeyValueRow>
+      <KeyValueRow label="Elapsed">
         <DurationDisplay ms={req.elapsed_ns / 1_000_000} />
-      </dd>
-      <dt>Connection</dt>
-      <dd>
+      </KeyValueRow>
+      <KeyValueRow label="Connection">
         {req.connection ? (
           <RelatedConnectionLink
             connection={req.connection}
@@ -272,8 +269,8 @@ function RequestDetail({
         ) : (
           "—"
         )}
-      </dd>
-    </dl>
+      </KeyValueRow>
+    </div>
   );
 }
 
@@ -324,12 +321,9 @@ function EdgeDetail({
       </div>
 
       <div className="inspect-section">
-        <div className="inspect-row">
-          <span className="inspect-key">Kind</span>
-          <span className={`inspect-pill inspect-pill--${kindVariant}`}>
-            {edge.kind.toUpperCase()}
-          </span>
-        </div>
+        <KeyValueRow label="Kind">
+          <span className={`inspect-pill inspect-pill--${kindVariant}`}>{edge.kind.toUpperCase()}</span>
+        </KeyValueRow>
       </div>
 
       <div className="inspect-section">
@@ -402,27 +396,23 @@ function GhostDetail({ node, graph }: { node: SnapshotNode; graph: SnapshotGraph
       </div>
 
       <div className="inspect-section">
-        <div className="inspect-row">
-          <span className="inspect-key">ID</span>
+        <KeyValueRow label="ID">
           <span className="inspect-val inspect-val--copyable">
             <span className="inspect-val-copy-text" title={node.id}>
               {node.id}
             </span>
             <CopyIdButton id={node.id} />
           </span>
-        </div>
-        <div className="inspect-row">
-          <span className="inspect-key">Reason</span>
+        </KeyValueRow>
+        <KeyValueRow label="Reason">
           <span className="inspect-pill inspect-pill--neutral">{reason}</span>
-        </div>
-        <div className="inspect-row">
-          <span className="inspect-key">Incoming</span>
+        </KeyValueRow>
+        <KeyValueRow label="Incoming">
           <span className="inspect-val">{incoming}</span>
-        </div>
-        <div className="inspect-row">
-          <span className="inspect-key">Outgoing</span>
+        </KeyValueRow>
+        <KeyValueRow label="Outgoing">
           <span className="inspect-val">{outgoing}</span>
-        </div>
+        </KeyValueRow>
       </div>
     </div>
   );
@@ -724,15 +714,15 @@ function NodeDetail({
 
       {(uniqueBlockers.length > 0 || uniqueDependents.length > 0) && (
         <div className="inspect-section">
-          <div className="inspect-row">
-            <span className="inspect-key">Wait blockers</span>
-            <span className={`inspect-val ${uniqueBlockers.length > 0 ? "inspect-val--crit" : ""}`}>
+          <KeyValueRow label="Wait blockers">
+            <span
+              className={`inspect-val ${uniqueBlockers.length > 0 ? "inspect-val--crit" : ""}`}
+            >
               {uniqueBlockers.length}
             </span>
-          </div>
+          </KeyValueRow>
           {uniqueBlockers.slice(0, 8).map((id) => (
-            <div className="inspect-row" key={`blk:${id}`}>
-              <span className="inspect-key">waits on</span>
+            <KeyValueRow label="waits on" key={`blk:${id}`}>
               <div className="inspect-edge-target-row">
                 <button className="inspect-edge-node-btn" onClick={() => onSelectNode(id)} title={id}>
                   {nodeLabel(graph, id)}
@@ -751,17 +741,17 @@ function NodeDetail({
                   focus
                 </button>
               </div>
-            </div>
+            </KeyValueRow>
           ))}
-          <div className="inspect-row">
-            <span className="inspect-key">Dependents</span>
-            <span className={`inspect-val ${uniqueDependents.length > 0 ? "inspect-val--warn" : ""}`}>
+          <KeyValueRow label="Dependents">
+            <span
+              className={`inspect-val ${uniqueDependents.length > 0 ? "inspect-val--warn" : ""}`}
+            >
               {uniqueDependents.length}
             </span>
-          </div>
+          </KeyValueRow>
           {uniqueDependents.slice(0, 8).map((id) => (
-            <div className="inspect-row" key={`dep:${id}`}>
-              <span className="inspect-key">blocking</span>
+            <KeyValueRow label="blocking" key={`dep:${id}`}>
               <div className="inspect-edge-target-row">
                 <button className="inspect-edge-node-btn" onClick={() => onSelectNode(id)} title={id}>
                   {nodeLabel(graph, id)}
@@ -780,25 +770,25 @@ function NodeDetail({
                   focus
                 </button>
               </div>
-            </div>
+            </KeyValueRow>
           ))}
         </div>
       )}
 
       {!isResourceKind(node.kind) && (
         <div className="inspect-section">
-          <div className="inspect-row">
-            <span className="inspect-key">Related resources</span>
-            <span className={`inspect-val ${relatedResources.length > 0 ? "inspect-val--ok" : ""}`}>
+          <KeyValueRow label="Related resources">
+            <span
+              className={`inspect-val ${relatedResources.length > 0 ? "inspect-val--ok" : ""}`}
+            >
               {relatedResources.length}
             </span>
-          </div>
+          </KeyValueRow>
           {relatedResources.length === 0 ? (
             <div className="inspect-alert inspect-alert--ghost">No related resources.</div>
           ) : (
             relatedResources.map((resource) => (
-              <div className="inspect-row" key={`res:${resource.id}`}>
-                <span className="inspect-key">{resource.kind}</span>
+              <KeyValueRow label={resource.kind} key={`res:${resource.id}`}>
                 <button
                   className="inspect-edge-node-btn"
                   onClick={() => onSelectNode(resource.id)}
@@ -806,7 +796,7 @@ function NodeDetail({
                 >
                   {resource.kind} · {resourceNodeLabel(resource)}
                 </button>
-              </div>
+              </KeyValueRow>
             ))
           )}
         </div>
@@ -1059,27 +1049,24 @@ function FutureDetail({ attrs }: DetailProps) {
   return (
     <>
       {state && (
-        <div className="inspect-row">
-          <span className="inspect-key">State</span>
+        <KeyValueRow label="State">
           <span
             className={`inspect-pill inspect-pill--${state === "completed" ? "ok" : state === "polling" ? "ok" : "neutral"}`}
           >
             {state}
           </span>
-        </div>
+        </KeyValueRow>
       )}
       {pollCount != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Poll count</span>
+        <KeyValueRow label="Poll count">
           <span className={`inspect-val ${pollCount === 0 ? "inspect-val--crit" : ""}`}>
             {pollCount}
             {pollCount === 0 ? " (never polled!)" : ""}
           </span>
-        </div>
+        </KeyValueRow>
       )}
       {lastPolledNs != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Idle</span>
+        <KeyValueRow label="Idle">
           <span className="inspect-val">
             <DurationDisplay
               ms={lastPolledNs / 1_000_000}
@@ -1087,18 +1074,17 @@ function FutureDetail({ attrs }: DetailProps) {
             />
             {" ago"}
           </span>
-        </div>
+        </KeyValueRow>
       )}
       {inPollNs != null && inPollNs > 0 && (
-        <div className="inspect-row">
-          <span className="inspect-key">In poll</span>
+        <KeyValueRow label="In poll">
           <span className="inspect-val">
             <DurationDisplay
               ms={inPollNs / 1_000_000}
               tone={durationTone(inPollNs, 1_000_000_000, 5_000_000_000)}
             />
           </span>
-        </div>
+        </KeyValueRow>
       )}
     </>
   );
@@ -1113,49 +1099,43 @@ function MutexDetail({ attrs }: DetailProps) {
 
   return (
     <>
-      <div className="inspect-row">
-        <span className="inspect-key">State</span>
+      <KeyValueRow label="State">
         <span className={`inspect-pill inspect-pill--${holder ? "crit" : "ok"}`}>
           {holderCount > 0 ? "HELD" : "FREE"}
         </span>
-      </div>
+      </KeyValueRow>
       {!holder && holderCount > 0 && (
-        <div className="inspect-row">
-          <span className="inspect-key">Holders</span>
+        <KeyValueRow label="Holders">
           <span className="inspect-val">{holderCount}</span>
-        </div>
+        </KeyValueRow>
       )}
       {holder && (
-        <div className="inspect-row">
-          <span className="inspect-key">Holder</span>
+        <KeyValueRow label="Holder">
           <span className="inspect-val inspect-val--mono">{holder}</span>
-        </div>
+        </KeyValueRow>
       )}
       {heldNs != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Hold duration</span>
+        <KeyValueRow label="Hold duration">
           <span className="inspect-val">
             <DurationDisplay
               ms={heldNs / 1_000_000}
               tone={durationTone(heldNs, 100_000_000, 1_000_000_000)}
             />
           </span>
-        </div>
+        </KeyValueRow>
       )}
-      <div className="inspect-row">
-        <span className="inspect-key">Waiters</span>
+      <KeyValueRow label="Waiters">
         <span className={`inspect-val ${waiters > 0 ? "inspect-val--crit" : ""}`}>{waiters}</span>
-      </div>
+      </KeyValueRow>
       {longestWaitNs != null && longestWaitNs > 0 && (
-        <div className="inspect-row">
-          <span className="inspect-key">Longest wait</span>
+        <KeyValueRow label="Longest wait">
           <span className="inspect-val">
             <DurationDisplay
               ms={longestWaitNs / 1_000_000}
               tone={durationTone(longestWaitNs, 100_000_000, 1_000_000_000)}
             />
           </span>
-        </div>
+        </KeyValueRow>
       )}
     </>
   );
@@ -1170,31 +1150,28 @@ function RwLockDetail({ attrs }: DetailProps) {
 
   return (
     <>
-      <div className="inspect-row">
-        <span className="inspect-key">State</span>
+      <KeyValueRow label="State">
         <span className={`inspect-pill inspect-pill--${readers > 0 || holder ? "crit" : "ok"}`}>
           {readers > 0 ? `${readers} readers` : holder ? `Write: ${holder}` : "FREE"}
         </span>
-      </div>
+      </KeyValueRow>
       {heldNs != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Hold duration</span>
+        <KeyValueRow label="Hold duration">
           <span className="inspect-val">
             <DurationDisplay
               ms={heldNs / 1_000_000}
               tone={durationTone(heldNs, 100_000_000, 1_000_000_000)}
             />
           </span>
-        </div>
+        </KeyValueRow>
       )}
-      <div className="inspect-row">
-        <span className="inspect-key">Waiters</span>
+      <KeyValueRow label="Waiters">
         <span
           className={`inspect-val ${writerWaiters + readerWaiters > 0 ? "inspect-val--crit" : ""}`}
         >
           {readerWaiters}R + {writerWaiters}W
         </span>
-      </div>
+      </KeyValueRow>
     </>
   );
 }
@@ -1210,12 +1187,11 @@ function ChannelTxDetail({ attrs }: DetailProps) {
     <>
       {capacity > 0 && (
         <>
-          <div className="inspect-row">
-            <span className="inspect-key">Buffer</span>
+          <KeyValueRow label="Buffer">
             <span className={`inspect-val ${isFull ? "inspect-val--crit" : ""}`}>
               {buffered} / {capacity} ({pct}%)
             </span>
-          </div>
+          </KeyValueRow>
           <div className="inspect-bar-wrap">
             <div
               className={`inspect-bar inspect-bar--${isFull ? "crit" : buffered / capacity >= 0.5 ? "warn" : "ok"}`}
@@ -1229,15 +1205,14 @@ function ChannelTxDetail({ attrs }: DetailProps) {
         </>
       )}
       {isFull && (
-        <div className="inspect-row">
+        <KeyValueRow label="Capacity">
           <span className="inspect-pill inspect-pill--crit">FULL — senders blocking</span>
-        </div>
+        </KeyValueRow>
       )}
       {senderCount != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Sender handles</span>
+        <KeyValueRow label="Sender handles">
           <span className="inspect-val">{senderCount}</span>
-        </div>
+        </KeyValueRow>
       )}
     </>
   );
@@ -1251,25 +1226,22 @@ function ChannelRxDetail({ attrs }: DetailProps) {
 
   return (
     <>
-      <div className="inspect-row">
-        <span className="inspect-key">State</span>
+      <KeyValueRow label="State">
         <span className={`inspect-pill inspect-pill--${state === "starved" ? "warn" : "neutral"}`}>
           {state}
         </span>
-      </div>
+      </KeyValueRow>
       {receiverAlive != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Receiver</span>
+        <KeyValueRow label="Receiver">
           <span className={`inspect-val ${isAlive ? "inspect-val--ok" : "inspect-val--crit"}`}>
             {isAlive ? "alive" : "DEAD"}
           </span>
-        </div>
+        </KeyValueRow>
       )}
       {pending != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Pending</span>
+        <KeyValueRow label="Pending">
           <span className="inspect-val">{pending}</span>
-        </div>
+        </KeyValueRow>
       )}
     </>
   );
@@ -1284,28 +1256,26 @@ function OneshotDetail({ attrs }: DetailProps) {
 
   return (
     <>
-      <div className="inspect-row">
-        <span className="inspect-key">State</span>
+      <KeyValueRow label="State">
         <span className={`inspect-pill inspect-pill--${variant}`}>
           {isDropped && <Warning size={12} weight="bold" />}
           {state.toUpperCase()}
         </span>
-      </div>
+      </KeyValueRow>
       {isDropped && (
         <div className="inspect-alert inspect-alert--crit">
           Sender dropped without sending. Receiver will never resolve — potential deadlock.
         </div>
       )}
       {elapsedNs != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Elapsed</span>
+        <KeyValueRow label="Elapsed">
           <span className="inspect-val">
             <DurationDisplay
               ms={elapsedNs / 1_000_000}
               tone={durationTone(elapsedNs, 1_000_000_000, 5_000_000_000)}
             />
           </span>
-        </div>
+        </KeyValueRow>
       )}
     </>
   );
@@ -1320,20 +1290,18 @@ function WatchDetail({ attrs }: DetailProps) {
   return (
     <>
       {subscribers != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Subscribers</span>
+        <KeyValueRow label="Subscribers">
           <span className="inspect-val">{subscribers}</span>
-        </div>
+        </KeyValueRow>
       )}
       {senderAlive != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Sender</span>
+        <KeyValueRow label="Sender">
           <span
             className={`inspect-val ${isSenderAlive ? "inspect-val--ok" : "inspect-val--crit"}`}
           >
             {isSenderAlive ? "alive" : "DROPPED"}
           </span>
-        </div>
+        </KeyValueRow>
       )}
       {senderAlive != null && !isSenderAlive && (
         <div className="inspect-alert inspect-alert--crit">
@@ -1341,8 +1309,7 @@ function WatchDetail({ attrs }: DetailProps) {
         </div>
       )}
       {lastUpdatedNs != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Last updated</span>
+        <KeyValueRow label="Last updated">
           <span className="inspect-val">
             <DurationDisplay
               ms={lastUpdatedNs / 1_000_000}
@@ -1350,7 +1317,7 @@ function WatchDetail({ attrs }: DetailProps) {
             />
             {" ago"}
           </span>
-        </div>
+        </KeyValueRow>
       )}
     </>
   );
@@ -1367,12 +1334,11 @@ function SemaphoreDetail({ attrs }: DetailProps) {
     <>
       {total > 0 && (
         <>
-          <div className="inspect-row">
-            <span className="inspect-key">Permits</span>
+          <KeyValueRow label="Permits">
             <span className={`inspect-val ${exhausted ? "inspect-val--crit" : ""}`}>
               {available} / {total} available
             </span>
-          </div>
+          </KeyValueRow>
           <div className="inspect-bar-wrap">
             <div
               className={`inspect-bar inspect-bar--${exhausted ? "crit" : (total - available) / total >= 0.5 ? "warn" : "ok"}`}
@@ -1390,20 +1356,18 @@ function SemaphoreDetail({ attrs }: DetailProps) {
           All permits exhausted. {waiters > 0 ? `${waiters} tasks waiting.` : ""}
         </div>
       )}
-      <div className="inspect-row">
-        <span className="inspect-key">Waiters</span>
+      <KeyValueRow label="Waiters">
         <span className={`inspect-val ${waiters > 0 ? "inspect-val--crit" : ""}`}>{waiters}</span>
-      </div>
+      </KeyValueRow>
       {longestWaitNs != null && longestWaitNs > 0 && (
-        <div className="inspect-row">
-          <span className="inspect-key">Longest wait</span>
+        <KeyValueRow label="Longest wait">
           <span className="inspect-val">
             <DurationDisplay
               ms={longestWaitNs / 1_000_000}
               tone={durationTone(longestWaitNs, 100_000_000, 1_000_000_000)}
             />
           </span>
-        </div>
+        </KeyValueRow>
       )}
     </>
   );
@@ -1416,30 +1380,27 @@ function OnceCellDetail({ attrs }: DetailProps) {
 
   return (
     <>
-      <div className="inspect-row">
-        <span className="inspect-key">State</span>
+      <KeyValueRow label="State">
         <span
           className={`inspect-pill inspect-pill--${state === "set" ? "ok" : state === "initializing" ? "warn" : "neutral"}`}
         >
           {state.toUpperCase()}
         </span>
-      </div>
+      </KeyValueRow>
       {initNs != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Init duration</span>
+        <KeyValueRow label="Init duration">
           <span className="inspect-val">
             <DurationDisplay
               ms={initNs / 1_000_000}
               tone={durationTone(initNs, 1_000_000_000, 5_000_000_000)}
             />
           </span>
-        </div>
+        </KeyValueRow>
       )}
       {waiters > 0 && (
-        <div className="inspect-row">
-          <span className="inspect-key">Waiters</span>
+        <KeyValueRow label="Waiters">
           <span className="inspect-val inspect-val--crit">{waiters}</span>
-        </div>
+        </KeyValueRow>
       )}
     </>
   );
@@ -1452,34 +1413,31 @@ function RpcRequestDetail({ attrs, graph, onSelectNode }: DetailProps) {
 
   return (
     <>
-      <div className="inspect-row">
-        <span className="inspect-key">Status</span>
+      <KeyValueRow label="Status">
         <span
           className={`inspect-pill inspect-pill--${status === "completed" ? "ok" : status === "timed_out" ? "crit" : "neutral"}`}
         >
           {status.toUpperCase()}
         </span>
-      </div>
+      </KeyValueRow>
       {elapsedNs != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Elapsed</span>
+        <KeyValueRow label="Elapsed">
           <span className="inspect-val">
             <DurationDisplay
               ms={elapsedNs / 1_000_000}
               tone={durationTone(elapsedNs, 1_000_000_000, 10_000_000_000)}
             />
           </span>
-        </div>
+        </KeyValueRow>
       )}
       {connection && (
-        <div className="inspect-row">
-          <span className="inspect-key">Connection</span>
+        <KeyValueRow label="Connection">
           <RelatedConnectionLink
             connection={connection}
             graph={graph}
             onSelectNode={onSelectNode}
           />
-        </div>
+        </KeyValueRow>
       )}
     </>
   );
@@ -1492,56 +1450,51 @@ function RpcResponseDetail({ attrs, graph, onSelectNode }: DetailProps) {
 
   return (
     <>
-      <div className="inspect-row">
-        <span className="inspect-key">Status</span>
+      <KeyValueRow label="Status">
         <span
           className={`inspect-pill inspect-pill--${status === "delivered" || status === "completed" ? "ok" : status === "cancelled" ? "crit" : "warn"}`}
         >
           {status.toUpperCase()}
         </span>
-      </div>
+      </KeyValueRow>
       {connection && (
-        <div className="inspect-row">
-          <span className="inspect-key">Connection</span>
+        <KeyValueRow label="Connection">
           <RelatedConnectionLink
             connection={connection}
             graph={graph}
             onSelectNode={onSelectNode}
           />
-        </div>
+        </KeyValueRow>
       )}
       {elapsedNs != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Elapsed</span>
+        <KeyValueRow label="Elapsed">
           <span className="inspect-val">
             <DurationDisplay
               ms={elapsedNs / 1_000_000}
               tone={durationTone(elapsedNs, 1_000_000_000, 10_000_000_000)}
             />
           </span>
-        </div>
+        </KeyValueRow>
       )}
       {handledElapsedNs != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Handled</span>
+        <KeyValueRow label="Handled">
           <span className="inspect-val">
             <DurationDisplay
               ms={handledElapsedNs / 1_000_000}
               tone={durationTone(handledElapsedNs, 500_000_000, 5_000_000_000)}
             />
           </span>
-        </div>
+        </KeyValueRow>
       )}
       {queueWaitNs != null && (
-        <div className="inspect-row">
-          <span className="inspect-key">Queue wait</span>
+        <KeyValueRow label="Queue wait">
           <span className="inspect-val">
             <DurationDisplay
               ms={queueWaitNs / 1_000_000}
               tone={durationTone(queueWaitNs, 250_000_000, 2_000_000_000)}
             />
           </span>
-        </div>
+        </KeyValueRow>
       )}
     </>
   );
@@ -1569,12 +1522,10 @@ function ConnectionDetail({ attrs }: DetailProps) {
 
   return (
     <>
-      <div className="inspect-row">
-        <span className="inspect-key">Connection</span>
+      <KeyValueRow label="Connection">
         <span className="inspect-val inspect-val--mono">{connectionId ?? "—"}</span>
-      </div>
-      <div className="inspect-row">
-        <span className="inspect-key">State</span>
+      </KeyValueRow>
+      <KeyValueRow label="State">
         <span
           className={`inspect-pill inspect-pill--${
             state === "open" ? "ok" : state === "closed" ? "crit" : "neutral"
@@ -1582,31 +1533,26 @@ function ConnectionDetail({ attrs }: DetailProps) {
         >
           {(state ?? "—").toUpperCase()}
         </span>
-      </div>
-      <div className="inspect-row">
-        <span className="inspect-key">Opened</span>
+      </KeyValueRow>
+      <KeyValueRow label="Opened">
         <span className="inspect-val">{formatOptionalTimestampNs(openedAtNs)}</span>
-      </div>
-      <div className="inspect-row">
-        <span className="inspect-key">Closed</span>
+      </KeyValueRow>
+      <KeyValueRow label="Closed">
         <span className="inspect-val">{formatOptionalTimestampNs(closedAtNs)}</span>
-      </div>
-      <div className="inspect-row">
-        <span className="inspect-key">Last frame recv</span>
+      </KeyValueRow>
+      <KeyValueRow label="Last frame recv">
         <span className="inspect-val">
           {formatOptionalTimestampNs(lastFrameRecvAtNs)}
         </span>
-      </div>
-      <div className="inspect-row">
-        <span className="inspect-key">Last frame sent</span>
+      </KeyValueRow>
+      <KeyValueRow label="Last frame sent">
         <span className="inspect-val">
           {formatOptionalTimestampNs(lastFrameSentAtNs)}
         </span>
-      </div>
-      <div className="inspect-row">
-        <span className="inspect-key">Pending requests</span>
+      </KeyValueRow>
+      <KeyValueRow label="Pending requests">
         <span className="inspect-val">{pendingRequests != null ? pendingRequests : "—"}</span>
-      </div>
+      </KeyValueRow>
     </>
   );
 }

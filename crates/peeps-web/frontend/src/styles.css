@@ -3666,12 +3666,11 @@ body {
     color: light-dark(#6e6e73, #98989d);
 }
 
-.kv-row--bordered {
+.ui-section-stack > .ui-key-value-row {
     padding: 4px 6px;
-    border-bottom: none;
 }
 
-.kv-row--bordered:nth-child(odd) {
+.ui-section-stack > .ui-key-value-row:nth-child(odd) {
     background: light-dark(rgba(0, 0, 0, 0.025), rgba(255, 255, 255, 0.025));
     border-radius: 3px;
 }

@@ -286,34 +286,30 @@ export function LabView() {
     <Panel variant="lab">
       <PanelHeader title="Lab" hint="Primitives and tone language" />
       <div className="lab-body">
-        <Section title="Typography" subtitle="UI and mono fonts in the sizes we actually use" wide>
-          <div className="ui-typography-grid">
-            <div className="ui-typo-card">
-              <div className="ui-typo-kicker">UI font</div>
-              <div className="ui-typo-fontname ui-typo-ui">Manrope</div>
-              <div className="ui-typo-sample ui-typo-ui ui-typo-ui--xl">Take a snapshot</div>
-              <div className="ui-typo-sample ui-typo-ui ui-typo-ui--md">Inspector, Graph, Timeline, Resources</div>
-              <div className="ui-typo-sample ui-typo-ui ui-typo-ui--sm ui-typo-muted">
-                Buttons, labels, helper text, and navigation should mostly live here.
-              </div>
-              <div className="ui-typo-weights">
-                <span className="ui-typo-pill ui-typo-ui ui-typo-w-400">400</span>
-                <span className="ui-typo-pill ui-typo-ui ui-typo-w-700">700</span>
-              </div>
+        <Section title="UI font — Manrope" subtitle="UI font in the sizes we actually use" wide>
+          <div className="ui-typo-card">
+            <div className="ui-typo-sample ui-typo-ui ui-typo-ui--xl">Take a snapshot</div>
+            <div className="ui-typo-sample ui-typo-ui ui-typo-ui--md">Inspector, Graph, Timeline, Resources</div>
+            <div className="ui-typo-sample ui-typo-ui ui-typo-ui--sm ui-typo-muted">
+              Buttons, labels, helper text, and navigation should mostly live here.
             </div>
+            <div className="ui-typo-weights">
+              <span className="ui-typo-pill ui-typo-ui ui-typo-w-400">400</span>
+              <span className="ui-typo-pill ui-typo-ui ui-typo-w-700">700</span>
+            </div>
+          </div>
+        </Section>
 
-            <div className="ui-typo-card">
-              <div className="ui-typo-kicker">Mono font</div>
-              <div className="ui-typo-fontname ui-typo-mono">JetBrains Mono</div>
-              <div className="ui-typo-sample ui-typo-mono ui-typo-mono--xl">request:01KHNGCY…</div>
-              <div className="ui-typo-sample ui-typo-mono ui-typo-mono--md">connection: initiator-&gt;acceptor</div>
-              <div className="ui-typo-sample ui-typo-mono ui-typo-mono--sm ui-typo-muted">
-                IDs, paths, tokens, and anything users copy/paste.
-              </div>
-              <div className="ui-typo-weights">
-                <span className="ui-typo-pill ui-typo-mono ui-typo-w-400">400</span>
-                <span className="ui-typo-pill ui-typo-mono ui-typo-w-700">700</span>
-              </div>
+        <Section title="Mono font — Jetbrains Mono" subtitle="Mono font in the sizes we actually use" wide>
+          <div className="ui-typo-card">
+            <div className="ui-typo-sample ui-typo-mono ui-typo-mono--xl">request:01KHNGCY…</div>
+            <div className="ui-typo-sample ui-typo-mono ui-typo-mono--md">connection: initiator-&gt;acceptor</div>
+            <div className="ui-typo-sample ui-typo-mono ui-typo-mono--sm ui-typo-muted">
+              IDs, paths, tokens, and anything users copy/paste.
+            </div>
+            <div className="ui-typo-weights">
+              <span className="ui-typo-pill ui-typo-mono ui-typo-w-400">400</span>
+              <span className="ui-typo-pill ui-typo-mono ui-typo-w-700">700</span>
             </div>
           </div>
         </Section>
@@ -345,7 +341,6 @@ export function LabView() {
               <ActionButton
                 size="sm"
                 aria-label="Copy"
-                className="ui-action-button--icon-only"
               >
                 <CopySimple size={12} weight="bold" />
               </ActionButton>
@@ -488,7 +483,6 @@ export function LabView() {
             <KeyValueRow
               label="Method"
               labelWidth={80}
-              className="kv-row--bordered"
               icon={<PaperPlaneTilt size={12} weight="bold" />}
             >
               DemoRpc.sleepy_forever
@@ -496,18 +490,16 @@ export function LabView() {
             <KeyValueRow
               label="Status"
               labelWidth={80}
-              className="kv-row--bordered"
               icon={<CircleNotch size={12} weight="bold" />}
             >
               <Badge tone="warn">IN_FLIGHT</Badge>
             </KeyValueRow>
-            <KeyValueRow label="Elapsed" labelWidth={80} className="kv-row--bordered">
+            <KeyValueRow label="Elapsed" labelWidth={80}>
               <DurationDisplay ms={1245000} tone="crit" />
             </KeyValueRow>
             <KeyValueRow
               label="Connection"
               labelWidth={80}
-              className="kv-row--bordered"
               icon={<LinkSimple size={12} weight="bold" />}
             >
               <NodeChip
@@ -523,7 +515,6 @@ export function LabView() {
             <KeyValueRow
               label="Opened"
               labelWidth={80}
-              className="kv-row--bordered"
               icon={<Timer size={12} weight="bold" />}
             >
               <RelativeTimestamp
@@ -536,7 +527,6 @@ export function LabView() {
             <KeyValueRow
               label="Closed"
               labelWidth={80}
-              className="kv-row--bordered"
               icon={<Timer size={12} weight="bold" />}
             >
               <RelativeTimestamp
