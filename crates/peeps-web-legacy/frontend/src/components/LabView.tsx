@@ -298,13 +298,10 @@ function MockGraphPanel() {
     <div className="mockup-graph-panel">
       <div className="mockup-graph-toolbar">
         <div className="mockup-graph-toolbar-left">
-          <Badge tone="crit">1 cycle</Badge>
-          <Badge tone="warn">2 suspects</Badge>
           <span className="mockup-graph-stat">7 nodes</span>
           <span className="mockup-graph-stat">7 edges</span>
         </div>
         <div className="mockup-graph-toolbar-right">
-          <Checkbox checked={false} onChange={() => {}} label="Resources" />
           <span className="mockup-graph-level-label">Detail</span>
           <Badge tone="neutral">info</Badge>
         </div>
@@ -386,18 +383,6 @@ function MockInspectorPanel({
         </div>
 
         <div className="mockup-inspector-section">
-          <KeyValueRow label="ID" icon={<Hash size={12} weight="bold" />}>
-            <span className="mockup-inspector-mono">request:demorpc.sleepy</span>
-          </KeyValueRow>
-          <KeyValueRow label="Process" icon={<Users size={12} weight="bold" />}>
-            <NodeChip
-              label="example-roam-rpc-stuck-request"
-              icon={<ProcessIdenticon name="example-roam-rpc-stuck-request" size={12} />}
-            />
-          </KeyValueRow>
-          <KeyValueRow label="Method" icon={<PaperPlaneTilt size={12} weight="bold" />}>
-            <span className="mockup-inspector-mono">DemoRpc.sleepy_forever</span>
-          </KeyValueRow>
           <KeyValueRow label="Source">
             <NodeChip
               icon={<FileRs size={12} weight="bold" />}
@@ -406,64 +391,108 @@ function MockInspectorPanel({
               title="Open in editor"
             />
           </KeyValueRow>
-        </div>
-
-        <div className="mockup-inspector-section">
           <KeyValueRow label="Status" icon={<CircleNotch size={12} weight="bold" />}>
             <Badge tone="warn">IN_FLIGHT</Badge>
           </KeyValueRow>
-          <KeyValueRow label="Elapsed" icon={<Timer size={12} weight="bold" />}>
+          <KeyValueRow label="Age" icon={<Timer size={12} weight="bold" />}>
             <DurationDisplay ms={1245000} tone="crit" />
           </KeyValueRow>
-          <KeyValueRow label="Connection" icon={<LinkSimple size={12} weight="bold" />}>
-            <NodeChip
-              kind="connection"
-              label="initiator->acceptor"
-              onClick={() => {}}
-            />
-          </KeyValueRow>
         </div>
 
         <div className="mockup-inspector-section">
-          <KeyValueRow label="Wait blockers">
-            <span className="mockup-inspector-crit">2</span>
+          <KeyValueRow label="Method" icon={<PaperPlaneTilt size={12} weight="bold" />}>
+            <span className="mockup-inspector-mono">DemoRpc.sleepy_forever</span>
           </KeyValueRow>
-          <KeyValueRow label="waits on">
-            <NodeChip
-              kind="mutex"
-              label="Mutex<GlobalState>"
-              onClick={() => {}}
-            />
-          </KeyValueRow>
-          <KeyValueRow label="waits on">
-            <NodeChip
-              kind="channel_rx"
-              label="mpsc.recv"
-              onClick={() => {}}
-            />
-          </KeyValueRow>
-          <KeyValueRow label="Dependents">
-            <span className="mockup-inspector-warn">1</span>
-          </KeyValueRow>
-          <KeyValueRow label="blocking">
-            <NodeChip
-              kind="request"
-              label="DemoRpc.ping"
-              onClick={() => {}}
-            />
+          <KeyValueRow label="Args preview">
+            <span className="mockup-inspector-mono mockup-inspector-muted">(no args)</span>
           </KeyValueRow>
         </div>
 
-        <div className="mockup-inspector-section">
-          <div className="mockup-inspector-raw-head">
-            <span>All attributes (12)</span>
-            <ActionButton size="sm">
-              <CopySimple size={12} weight="bold" />
-            </ActionButton>
-            <ActionButton size="sm">Show raw</ActionButton>
-          </div>
-        </div>
+        <MockMetaSection />
       </div>
+    </div>
+  );
+}
+
+type MetaValue = string | number | boolean | null | MetaValue[] | { [key: string]: MetaValue };
+
+const MOCK_META: Record<string, MetaValue> = {
+  level: "info",
+  rpc_service: "DemoRpc",
+  transport: "roam-tcp",
+  retry_policy: {
+    max_retries: 3,
+    backoff_ms: 500,
+    timeout_ms: 30000,
+  },
+  tags: ["stuck", "deadlock-suspect"],
+};
+
+function MetaTreeNode({ name, value, depth = 0 }: { name: string; value: MetaValue; depth?: number }) {
+  const [expanded, setExpanded] = useState(depth < 1);
+  const isObject = value !== null && typeof value === "object" && !Array.isArray(value);
+  const isArray = Array.isArray(value);
+  const isExpandable = isObject || isArray;
+
+  if (!isExpandable) {
+    return (
+      <div className="mockup-meta-leaf" style={{ paddingLeft: depth * 14 }}>
+        <span className="mockup-meta-key">{name}</span>
+        <span className={`mockup-meta-value mockup-meta-value--${typeof value}`}>
+          {value === null ? "null" : typeof value === "string" ? `"${value}"` : String(value)}
+        </span>
+      </div>
+    );
+  }
+
+  const entries = isArray
+    ? (value as MetaValue[]).map((v, i) => [String(i), v] as const)
+    : Object.entries(value as Record<string, MetaValue>);
+
+  return (
+    <div className="mockup-meta-branch">
+      <button
+        className="mockup-meta-toggle"
+        style={{ paddingLeft: depth * 14 }}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <CaretDown
+          size={10}
+          weight="bold"
+          style={{ transform: expanded ? undefined : "rotate(-90deg)", transition: "transform 0.15s" }}
+        />
+        <span className="mockup-meta-key">{name}</span>
+        <span className="mockup-meta-hint">
+          {isArray ? `[${entries.length}]` : `{${entries.length}}`}
+        </span>
+      </button>
+      {expanded && entries.map(([k, v]) => (
+        <MetaTreeNode key={k} name={k} value={v} depth={depth + 1} />
+      ))}
+    </div>
+  );
+}
+
+function MockMetaSection() {
+  const [expanded, setExpanded] = useState(true);
+  return (
+    <div className="mockup-inspector-section">
+      <div className="mockup-inspector-raw-head">
+        <span>Metadata ({Object.keys(MOCK_META).length})</span>
+        <ActionButton size="sm" onClick={() => setExpanded((v) => !v)}>
+          {expanded ? "Collapse" : "Expand"}
+        </ActionButton>
+        <ActionButton size="sm">
+          <CopySimple size={12} weight="bold" />
+        </ActionButton>
+      </div>
+      {expanded && (
+        <div className="mockup-meta-tree">
+          {Object.entries(MOCK_META).map(([k, v]) => (
+            <MetaTreeNode key={k} name={k} value={v} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

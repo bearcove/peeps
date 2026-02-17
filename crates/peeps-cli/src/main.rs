@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 const DEFAULT_BASE_URL: &str = "http://127.0.0.1:9130";
 const DEFAULT_POLL_MS: u64 = 100;
 const DEFAULT_TIMEOUT_MS: u64 = 5_000;
+const DEFAULT_QUERY_LIMIT: u32 = 50;
 
 #[derive(Facet)]
 struct TriggerCutResponse {
@@ -44,6 +45,7 @@ fn run() -> Result<(), String> {
     match command.as_str() {
         "cut" => run_cut(args),
         "sql" => run_sql(args),
+        "query" => run_query_pack(args),
         "-h" | "--help" | "help" => {
             println!("{}", usage());
             Ok(())
@@ -174,6 +176,121 @@ fn run_sql(args: Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
+fn run_query_pack(args: Vec<String>) -> Result<(), String> {
+    let mut base_url = DEFAULT_BASE_URL.to_string();
+    let mut name: Option<String> = None;
+    let mut limit: u32 = DEFAULT_QUERY_LIMIT;
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--url" => {
+                i += 1;
+                let Some(value) = args.get(i) else {
+                    return Err("missing value for --url".to_string());
+                };
+                base_url = value.clone();
+            }
+            "--name" => {
+                i += 1;
+                let Some(value) = args.get(i) else {
+                    return Err("missing value for --name".to_string());
+                };
+                name = Some(value.clone());
+            }
+            "--limit" => {
+                i += 1;
+                let Some(value) = args.get(i) else {
+                    return Err("missing value for --limit".to_string());
+                };
+                limit = value
+                    .parse::<u32>()
+                    .map_err(|e| format!("invalid --limit: {e}"))?;
+            }
+            "--help" | "-h" => {
+                println!("{}", query_usage());
+                return Ok(());
+            }
+            other => {
+                return Err(format!(
+                    "unknown flag for query: {other}\n\n{}",
+                    query_usage()
+                ))
+            }
+        }
+        i += 1;
+    }
+
+    let Some(name) = name else {
+        return Err(format!("missing --name\n\n{}", query_usage()));
+    };
+    let sql = query_sql(&name, limit)?;
+    run_sql(vec![
+        "--url".to_string(),
+        base_url,
+        "--query".to_string(),
+        sql,
+    ])
+}
+
+fn query_sql(name: &str, limit: u32) -> Result<String, String> {
+    match name {
+        "blockers" => Ok(format!(
+            "select \
+             e.src_id as waiter_id, \
+             json_extract(src.entity_json, '$.name') as waiter_name, \
+             e.dst_id as blocked_on_id, \
+             json_extract(dst.entity_json, '$.name') as blocked_on_name, \
+             e.kind_json \
+             from edges e \
+             left join entities src on src.conn_id = e.conn_id and src.stream_id = e.stream_id and src.entity_id = e.src_id \
+             left join entities dst on dst.conn_id = e.conn_id and dst.stream_id = e.stream_id and dst.entity_id = e.dst_id \
+             where e.kind_json = '\"needs\"' \
+             order by e.updated_at_ns desc \
+             limit {limit}"
+        )),
+        "stalled-sends" => Ok(format!(
+            "select \
+             f.entity_id as send_future_id, \
+             json_extract(f.entity_json, '$.name') as send_name, \
+             e.dst_id as waiting_on_entity_id, \
+             json_extract(ch.entity_json, '$.name') as waiting_on_name \
+             from edges e \
+             join entities f on f.conn_id = e.conn_id and f.stream_id = e.stream_id and f.entity_id = e.src_id \
+             left join entities ch on ch.conn_id = e.conn_id and ch.stream_id = e.stream_id and ch.entity_id = e.dst_id \
+             where e.kind_json = '\"needs\"' \
+               and json_extract(f.entity_json, '$.body') = 'future' \
+               and json_extract(f.entity_json, '$.name') like '%.send' \
+             order by e.updated_at_ns desc \
+             limit {limit}"
+        )),
+        "channel-health" => Ok(format!(
+            "select \
+             entity_id, \
+             json_extract(entity_json, '$.name') as name, \
+             coalesce( \
+               json_extract(entity_json, '$.body.channel_tx.lifecycle'), \
+               json_extract(entity_json, '$.body.channel_rx.lifecycle') \
+             ) as lifecycle, \
+             coalesce( \
+               json_extract(entity_json, '$.body.channel_tx.details.mpsc.capacity'), \
+               json_extract(entity_json, '$.body.channel_rx.details.mpsc.capacity') \
+             ) as capacity, \
+             coalesce( \
+               json_extract(entity_json, '$.body.channel_tx.details.mpsc.queue_len'), \
+               json_extract(entity_json, '$.body.channel_rx.details.mpsc.queue_len') \
+             ) as queue_len \
+             from entities \
+             where json_extract(entity_json, '$.body.channel_tx') is not null \
+                or json_extract(entity_json, '$.body.channel_rx') is not null \
+             order by name \
+             limit {limit}"
+        )),
+        _ => Err(format!(
+            "unknown query pack: {name}. expected one of: blockers, stalled-sends, channel-health"
+        )),
+    }
+}
+
 fn http_get_text(url: &str) -> Result<String, String> {
     let response = ureq::get(url)
         .call()
@@ -195,7 +312,7 @@ fn http_post_json(url: &str, body: &str) -> Result<String, String> {
 
 fn usage() -> String {
     format!(
-        "peeps-cli commands:\n  cut [--url URL] [--poll-ms N] [--timeout-ms N]\n  sql --query \"...\" [--url URL]\n\n{}",
+        "peeps-cli commands:\n  cut [--url URL] [--poll-ms N] [--timeout-ms N]\n  sql --query \"...\" [--url URL]\n  query --name <blockers|stalled-sends|channel-health> [--url URL]\n\n{}",
         defaults_usage()
     )
 }
@@ -214,9 +331,16 @@ fn sql_usage() -> String {
     )
 }
 
+fn query_usage() -> String {
+    format!(
+        "peeps-cli query --name <blockers|stalled-sends|channel-health> [--url URL]\n\n{}",
+        defaults_usage()
+    )
+}
+
 fn defaults_usage() -> String {
     format!(
-        "defaults:\n  --url {}\n  --poll-ms {}\n  --timeout-ms {}",
-        DEFAULT_BASE_URL, DEFAULT_POLL_MS, DEFAULT_TIMEOUT_MS
+        "defaults:\n  --url {}\n  --poll-ms {}\n  --timeout-ms {}\n  --limit {}",
+        DEFAULT_BASE_URL, DEFAULT_POLL_MS, DEFAULT_TIMEOUT_MS, DEFAULT_QUERY_LIMIT
     )
 }

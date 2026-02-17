@@ -1,7 +1,7 @@
 use compact_str::CompactString;
 use peeps_types::{
-    CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, Event, PullChangesResponse, SeqNo,
-    StreamCursor, StreamId,
+    CutAck, CutId, Edge, EdgeKind, Entity, EntityBody, Event, PullChangesResponse, Scope,
+    ScopeBody, SeqNo, StreamCursor, StreamId,
 };
 use std::future::Future;
 use tokio::sync::mpsc;
@@ -11,6 +11,12 @@ pub struct EntityRef;
 
 #[derive(Clone, Debug, Default)]
 pub struct EntityHandle;
+
+#[derive(Clone, Debug, Default)]
+pub struct ScopeRef;
+
+#[derive(Clone, Debug, Default)]
+pub struct ScopeHandle;
 
 impl EntityHandle {
     pub fn new(_name: impl Into<CompactString>, _body: EntityBody) -> Self {
@@ -24,6 +30,16 @@ impl EntityHandle {
     pub fn link_to(&self, _target: &EntityRef, _kind: EdgeKind) {}
 
     pub fn link_to_handle(&self, _target: &EntityHandle, _kind: EdgeKind) {}
+}
+
+impl ScopeHandle {
+    pub fn new(_name: impl Into<CompactString>, _body: ScopeBody) -> Self {
+        Self
+    }
+
+    pub fn scope_ref(&self) -> ScopeRef {
+        ScopeRef
+    }
 }
 
 pub struct Sender<T> {
@@ -95,6 +111,7 @@ pub fn entity_ref_from_wire(_id: impl Into<CompactString>) -> EntityRef {
 
 pub trait SnapshotSink {
     fn entity(&mut self, _entity: &Entity) {}
+    fn scope(&mut self, _scope: &Scope) {}
     fn edge(&mut self, _edge: &Edge) {}
     fn event(&mut self, _event: &Event) {}
 }

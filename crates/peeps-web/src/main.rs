@@ -92,6 +92,8 @@ struct SqlResponse {
     row_count: u32,
 }
 
+const DB_SCHEMA_VERSION: i64 = 2;
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -550,87 +552,132 @@ fn sql_query_blocking(db_path: &PathBuf, sql: &str) -> Result<SqlResponse, Strin
 
 fn init_sqlite(db_path: &PathBuf) -> Result<(), String> {
     let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+    conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")
+        .map_err(|e| format!("init sqlite pragmas: {e}"))?;
+
+    let user_version: i64 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|e| format!("read sqlite user_version: {e}"))?;
+
+    if user_version > DB_SCHEMA_VERSION {
+        return Err(format!(
+            "database schema version {} is newer than supported {}",
+            user_version, DB_SCHEMA_VERSION
+        ));
+    }
+
+    if user_version < DB_SCHEMA_VERSION {
+        reset_managed_schema(&conn)?;
+        conn.pragma_update(None, "user_version", DB_SCHEMA_VERSION)
+            .map_err(|e| format!("set sqlite user_version: {e}"))?;
+    }
+
+    conn.execute_batch(managed_schema_sql())
+        .map_err(|e| format!("ensure schema: {e}"))?;
+    Ok(())
+}
+
+fn reset_managed_schema(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         "
-        PRAGMA journal_mode = WAL;
-        PRAGMA synchronous = NORMAL;
-
-        CREATE TABLE IF NOT EXISTS connections (
-            conn_id INTEGER PRIMARY KEY,
-            process_name TEXT NOT NULL,
-            pid INTEGER NOT NULL,
-            connected_at_ns INTEGER NOT NULL,
-            disconnected_at_ns INTEGER
-        );
-
-        CREATE TABLE IF NOT EXISTS cuts (
-            cut_id TEXT PRIMARY KEY,
-            requested_at_ns INTEGER NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS cut_acks (
-            cut_id TEXT NOT NULL,
-            conn_id INTEGER NOT NULL,
-            stream_id TEXT NOT NULL,
-            next_seq_no INTEGER NOT NULL,
-            received_at_ns INTEGER NOT NULL,
-            PRIMARY KEY (cut_id, conn_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS stream_cursors (
-            conn_id INTEGER NOT NULL,
-            stream_id TEXT NOT NULL,
-            next_seq_no INTEGER NOT NULL,
-            updated_at_ns INTEGER NOT NULL,
-            PRIMARY KEY (conn_id, stream_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS delta_batches (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            conn_id INTEGER NOT NULL,
-            stream_id TEXT NOT NULL,
-            from_seq_no INTEGER NOT NULL,
-            next_seq_no INTEGER NOT NULL,
-            truncated INTEGER NOT NULL,
-            compacted_before_seq_no INTEGER,
-            change_count INTEGER NOT NULL,
-            payload_json TEXT NOT NULL,
-            received_at_ns INTEGER NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS entities (
-            conn_id INTEGER NOT NULL,
-            stream_id TEXT NOT NULL,
-            entity_id TEXT NOT NULL,
-            entity_json TEXT NOT NULL,
-            updated_at_ns INTEGER NOT NULL,
-            PRIMARY KEY (conn_id, stream_id, entity_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS edges (
-            conn_id INTEGER NOT NULL,
-            stream_id TEXT NOT NULL,
-            src_id TEXT NOT NULL,
-            dst_id TEXT NOT NULL,
-            kind_json TEXT NOT NULL,
-            edge_json TEXT NOT NULL,
-            updated_at_ns INTEGER NOT NULL,
-            PRIMARY KEY (conn_id, stream_id, src_id, dst_id, kind_json)
-        );
-
-        CREATE TABLE IF NOT EXISTS events (
-            conn_id INTEGER NOT NULL,
-            stream_id TEXT NOT NULL,
-            seq_no INTEGER NOT NULL,
-            event_id TEXT NOT NULL,
-            event_json TEXT NOT NULL,
-            at_ms INTEGER NOT NULL,
-            PRIMARY KEY (conn_id, stream_id, seq_no)
-        );
+        DROP TABLE IF EXISTS events;
+        DROP TABLE IF EXISTS edges;
+        DROP TABLE IF EXISTS entities;
+        DROP TABLE IF EXISTS scopes;
+        DROP TABLE IF EXISTS delta_batches;
+        DROP TABLE IF EXISTS stream_cursors;
+        DROP TABLE IF EXISTS cut_acks;
+        DROP TABLE IF EXISTS cuts;
+        DROP TABLE IF EXISTS connections;
         ",
     )
-    .map_err(|e| format!("init schema: {e}"))?;
-    Ok(())
+    .map_err(|e| format!("reset schema: {e}"))
+}
+
+fn managed_schema_sql() -> &'static str {
+    "
+    CREATE TABLE IF NOT EXISTS connections (
+        conn_id INTEGER PRIMARY KEY,
+        process_name TEXT NOT NULL,
+        pid INTEGER NOT NULL,
+        connected_at_ns INTEGER NOT NULL,
+        disconnected_at_ns INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS cuts (
+        cut_id TEXT PRIMARY KEY,
+        requested_at_ns INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS cut_acks (
+        cut_id TEXT NOT NULL,
+        conn_id INTEGER NOT NULL,
+        stream_id TEXT NOT NULL,
+        next_seq_no INTEGER NOT NULL,
+        received_at_ns INTEGER NOT NULL,
+        PRIMARY KEY (cut_id, conn_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS stream_cursors (
+        conn_id INTEGER NOT NULL,
+        stream_id TEXT NOT NULL,
+        next_seq_no INTEGER NOT NULL,
+        updated_at_ns INTEGER NOT NULL,
+        PRIMARY KEY (conn_id, stream_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS delta_batches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conn_id INTEGER NOT NULL,
+        stream_id TEXT NOT NULL,
+        from_seq_no INTEGER NOT NULL,
+        next_seq_no INTEGER NOT NULL,
+        truncated INTEGER NOT NULL,
+        compacted_before_seq_no INTEGER,
+        change_count INTEGER NOT NULL,
+        payload_json TEXT NOT NULL,
+        received_at_ns INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS entities (
+        conn_id INTEGER NOT NULL,
+        stream_id TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        entity_json TEXT NOT NULL,
+        updated_at_ns INTEGER NOT NULL,
+        PRIMARY KEY (conn_id, stream_id, entity_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS scopes (
+        conn_id INTEGER NOT NULL,
+        stream_id TEXT NOT NULL,
+        scope_id TEXT NOT NULL,
+        scope_json TEXT NOT NULL,
+        updated_at_ns INTEGER NOT NULL,
+        PRIMARY KEY (conn_id, stream_id, scope_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS edges (
+        conn_id INTEGER NOT NULL,
+        stream_id TEXT NOT NULL,
+        src_id TEXT NOT NULL,
+        dst_id TEXT NOT NULL,
+        kind_json TEXT NOT NULL,
+        edge_json TEXT NOT NULL,
+        updated_at_ns INTEGER NOT NULL,
+        PRIMARY KEY (conn_id, stream_id, src_id, dst_id, kind_json)
+    );
+
+    CREATE TABLE IF NOT EXISTS events (
+        conn_id INTEGER NOT NULL,
+        stream_id TEXT NOT NULL,
+        seq_no INTEGER NOT NULL,
+        event_id TEXT NOT NULL,
+        event_json TEXT NOT NULL,
+        at_ms INTEGER NOT NULL,
+        PRIMARY KEY (conn_id, stream_id, seq_no)
+    );
+    "
 }
 
 async fn persist_connection_upsert(
@@ -788,6 +835,25 @@ fn persist_delta_batch_blocking(
                 )
                 .map_err(|e| format!("upsert entity: {e}"))?;
             }
+            Change::UpsertScope(scope) => {
+                let scope_json =
+                    facet_json::to_string(scope).map_err(|e| format!("encode scope: {e}"))?;
+                tx.execute(
+                    "INSERT INTO scopes (conn_id, stream_id, scope_id, scope_json, updated_at_ns)
+                     VALUES (?1, ?2, ?3, ?4, ?5)
+                     ON CONFLICT(conn_id, stream_id, scope_id) DO UPDATE SET
+                       scope_json = excluded.scope_json,
+                       updated_at_ns = excluded.updated_at_ns",
+                    params![
+                        to_i64_u64(conn_id),
+                        batch.stream_id.0.as_str(),
+                        scope.id.as_str(),
+                        scope_json,
+                        received_at_ns
+                    ],
+                )
+                .map_err(|e| format!("upsert scope: {e}"))?;
+            }
             Change::RemoveEntity { id } => {
                 tx.execute(
                     "DELETE FROM entities WHERE conn_id = ?1 AND stream_id = ?2 AND entity_id = ?3",
@@ -800,6 +866,13 @@ fn persist_delta_batch_blocking(
                     params![to_i64_u64(conn_id), batch.stream_id.0.as_str(), id.as_str()],
                 )
                 .map_err(|e| format!("delete incident edges: {e}"))?;
+            }
+            Change::RemoveScope { id } => {
+                tx.execute(
+                    "DELETE FROM scopes WHERE conn_id = ?1 AND stream_id = ?2 AND scope_id = ?3",
+                    params![to_i64_u64(conn_id), batch.stream_id.0.as_str(), id.as_str()],
+                )
+                .map_err(|e| format!("delete scope: {e}"))?;
             }
             Change::UpsertEdge(edge) => {
                 let kind_json = facet_json::to_string(&edge.kind)

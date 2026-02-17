@@ -2,7 +2,7 @@ use compact_str::CompactString;
 use peeps_types::{
     Change, ChannelDetails, ChannelEndpointEntity, ChannelEndpointLifecycle, CutAck, CutId, Edge,
     EdgeKind, Entity, EntityBody, EntityId, Event, EventKind, EventTarget, MpscChannelDetails,
-    PullChangesResponse, SeqNo, StampedChange, StreamCursor, StreamId,
+    PullChangesResponse, Scope, ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId,
 };
 use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
@@ -36,11 +36,18 @@ const DASHBOARD_PUSH_INTERVAL_MS: u64 = 100;
 const DASHBOARD_RECONNECT_DELAY_MS: u64 = 500;
 
 pub fn init(process_name: &str) {
+    ensure_process_scope(process_name);
+
     #[cfg(feature = "dashboard")]
     init_dashboard_push_loop(process_name);
 
     #[cfg(not(feature = "dashboard"))]
     let _ = process_name;
+}
+
+fn ensure_process_scope(process_name: &str) {
+    static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
+    PROCESS_SCOPE.get_or_init(|| ScopeHandle::new(process_name, ScopeBody::Process));
 }
 
 #[cfg(feature = "dashboard")]
@@ -217,6 +224,7 @@ struct RuntimeDb {
     next_seq_no: SeqNo,
     compacted_before_seq_no: Option<SeqNo>,
     entities: BTreeMap<EntityId, Entity>,
+    scopes: BTreeMap<ScopeId, Scope>,
     edges: BTreeMap<EdgeKey, Edge>,
     events: VecDeque<Event>,
     changes: VecDeque<InternalStampedChange>,
@@ -230,6 +238,7 @@ impl RuntimeDb {
             next_seq_no: SeqNo::ZERO,
             compacted_before_seq_no: None,
             entities: BTreeMap::new(),
+            scopes: BTreeMap::new(),
             edges: BTreeMap::new(),
             events: VecDeque::with_capacity(max_events.min(256)),
             changes: VecDeque::new(),
@@ -255,6 +264,7 @@ impl RuntimeDb {
 
         let mut keep_seq: BTreeMap<SeqNo, ()> = BTreeMap::new();
         let mut seen_entities: BTreeMap<EntityId, ()> = BTreeMap::new();
+        let mut seen_scopes: BTreeMap<ScopeId, ()> = BTreeMap::new();
         let mut seen_edges: BTreeMap<EdgeKey, ()> = BTreeMap::new();
 
         for stamped in self.changes.iter().rev() {
@@ -265,6 +275,12 @@ impl RuntimeDb {
                 InternalChange::UpsertEntity { id, .. } | InternalChange::RemoveEntity { id } => {
                     if !seen_entities.contains_key(id) {
                         seen_entities.insert(EntityId::new(id.as_str()), ());
+                        keep_seq.insert(stamped.seq_no, ());
+                    }
+                }
+                InternalChange::UpsertScope { id, .. } | InternalChange::RemoveScope { id } => {
+                    if !seen_scopes.contains_key(id) {
+                        seen_scopes.insert(ScopeId::new(id.as_str()), ());
                         keep_seq.insert(stamped.seq_no, ());
                     }
                 }
@@ -318,6 +334,18 @@ impl RuntimeDb {
         }
     }
 
+    fn upsert_scope(&mut self, scope: Scope) {
+        let scope_id = ScopeId::new(scope.id.as_str());
+        let scope_json = facet_json::to_vec(&scope).ok();
+        self.scopes.insert(ScopeId::new(scope.id.as_str()), scope);
+        if let Some(scope_json) = scope_json {
+            self.push_change(InternalChange::UpsertScope {
+                id: scope_id,
+                scope_json,
+            });
+        }
+    }
+
     fn remove_entity(&mut self, id: &EntityId) {
         if self.entities.remove(id).is_none() {
             return;
@@ -339,6 +367,15 @@ impl RuntimeDb {
         }
         self.push_change(InternalChange::RemoveEntity {
             id: EntityId::new(id.as_str()),
+        });
+    }
+
+    fn remove_scope(&mut self, id: &ScopeId) {
+        if self.scopes.remove(id).is_none() {
+            return;
+        }
+        self.push_change(InternalChange::RemoveScope {
+            id: ScopeId::new(id.as_str()),
         });
     }
 
@@ -464,8 +501,15 @@ enum InternalChange {
         id: EntityId,
         entity_json: Vec<u8>,
     },
+    UpsertScope {
+        id: ScopeId,
+        scope_json: Vec<u8>,
+    },
     RemoveEntity {
         id: EntityId,
+    },
+    RemoveScope {
+        id: ScopeId,
     },
     UpsertEdge {
         src: EntityId,
@@ -495,8 +539,15 @@ impl InternalStampedChange {
                 let entity = facet_json::from_slice::<Entity>(entity_json).ok()?;
                 Some(Change::UpsertEntity(entity))
             }
+            InternalChange::UpsertScope { scope_json, .. } => {
+                let scope = facet_json::from_slice::<Scope>(scope_json).ok()?;
+                Some(Change::UpsertScope(scope))
+            }
             InternalChange::RemoveEntity { id } => Some(Change::RemoveEntity {
                 id: EntityId::new(id.as_str()),
+            }),
+            InternalChange::RemoveScope { id } => Some(Change::RemoveScope {
+                id: ScopeId::new(id.as_str()),
             }),
             InternalChange::UpsertEdge { edge_json, .. } => {
                 let edge = facet_json::from_slice::<Edge>(edge_json).ok()?;
@@ -529,6 +580,61 @@ impl EntityRef {
 pub fn entity_ref_from_wire(id: impl Into<CompactString>) -> EntityRef {
     EntityRef {
         id: EntityId::new(id.into()),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ScopeRef {
+    id: ScopeId,
+}
+
+impl ScopeRef {
+    pub fn id(&self) -> &ScopeId {
+        &self.id
+    }
+}
+
+struct ScopeHandleInner {
+    id: ScopeId,
+}
+
+impl Drop for ScopeHandleInner {
+    fn drop(&mut self) {
+        if let Ok(mut db) = runtime_db().lock() {
+            db.remove_scope(&self.id);
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ScopeHandle {
+    inner: Arc<ScopeHandleInner>,
+}
+
+impl ScopeHandle {
+    pub fn new(name: impl Into<CompactString>, body: ScopeBody) -> Self {
+        let scope = Scope::builder(name, body)
+            .build(&())
+            .expect("scope construction with unit meta should be infallible");
+        let id = ScopeId::new(scope.id.as_str());
+
+        if let Ok(mut db) = runtime_db().lock() {
+            db.upsert_scope(scope);
+        }
+
+        Self {
+            inner: Arc::new(ScopeHandleInner { id }),
+        }
+    }
+
+    pub fn id(&self) -> &ScopeId {
+        &self.inner.id
+    }
+
+    pub fn scope_ref(&self) -> ScopeRef {
+        ScopeRef {
+            id: ScopeId::new(self.inner.id.as_str()),
+        }
     }
 }
 
@@ -682,6 +788,7 @@ pub fn channel<T>(name: impl Into<CompactString>, capacity: usize) -> (Sender<T>
 
 pub trait SnapshotSink {
     fn entity(&mut self, entity: &Entity);
+    fn scope(&mut self, _scope: &Scope) {}
     fn edge(&mut self, edge: &Edge);
     fn event(&mut self, event: &Event);
 }
@@ -695,6 +802,9 @@ where
     };
     for entity in db.entities.values() {
         sink.entity(entity);
+    }
+    for scope in db.scopes.values() {
+        sink.scope(scope);
     }
     for edge in db.edges.values() {
         sink.edge(edge);

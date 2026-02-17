@@ -1,7 +1,7 @@
 use compact_str::CompactString;
 use facet::Facet;
 
-use crate::{Edge, EdgeKind, Entity, EntityId, Event, Snapshot};
+use crate::{Edge, EdgeKind, Entity, EntityId, Event, Scope, ScopeId, Snapshot};
 
 /// Monotonic sequence number within one process change stream.
 ///
@@ -35,8 +35,12 @@ pub struct CutId(pub CompactString);
 pub enum Change {
     /// Insert or replace entity state.
     UpsertEntity(Entity),
+    /// Insert or replace scope state.
+    UpsertScope(Scope),
     /// Remove entity and any incident edges in materialized state.
     RemoveEntity { id: EntityId },
+    /// Remove scope in materialized state.
+    RemoveScope { id: ScopeId },
     /// Insert or replace edge state.
     UpsertEdge(Edge),
     /// Remove a specific edge in materialized state.
