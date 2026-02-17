@@ -4390,3 +4390,314 @@ body {
         height: 38px;
     }
 }
+
+/* ── SplitLayout Primitive ─────────────────────────────────── */
+
+.ui-split-layout {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns:
+        minmax(0, 1fr)
+        var(--split-resizer-width, 10px)
+        var(--split-right-width, 320px);
+    overflow: hidden;
+}
+
+.ui-split-layout--right-collapsed {
+    grid-template-columns:
+        minmax(0, 1fr)
+        0px
+        40px;
+}
+
+.ui-split-left {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.ui-split-right {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.ui-split-resizer {
+    width: var(--split-resizer-width, 10px);
+    cursor: col-resize;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    background: var(--surface-sunken);
+    transition: background 120ms ease;
+}
+
+.ui-split-resizer:hover,
+.ui-split-resizer:focus-visible {
+    background: light-dark(#e4efff, #24364f);
+    outline: none;
+}
+
+.ui-split-layout--dragging .ui-split-resizer {
+    background: light-dark(#d0e3ff, #2d4466);
+}
+
+/* ── Deadlock Detector Mockup ──────────────────────────────── */
+
+.mockup-app {
+    display: flex;
+    flex-direction: column;
+    height: 560px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--surface-bg);
+}
+
+/* Header */
+.mockup-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-raised);
+    font-size: var(--font-size-sm);
+    flex-shrink: 0;
+}
+
+.mockup-header-title {
+    font-weight: 800;
+    font-size: var(--font-size-md);
+    letter-spacing: -0.02em;
+}
+
+.mockup-header-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--surface-sunken);
+    color: var(--text-secondary);
+}
+
+.mockup-header-badge--active {
+    background: light-dark(#e8f5e9, #1b3a1b);
+    color: light-dark(#2e7d32, #66bb6a);
+}
+
+.mockup-header-spacer {
+    flex: 1;
+}
+
+/* Graph panel */
+.mockup-graph-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.mockup-graph-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-raised);
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+.mockup-graph-toolbar-left,
+.mockup-graph-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mockup-graph-stat {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 10px;
+}
+
+.mockup-graph-level-label {
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.mockup-graph-flow {
+    flex: 1;
+    min-height: 0;
+}
+
+.mockup-graph-flow .react-flow {
+    height: 100%;
+}
+
+/* Inspector panel */
+.mockup-inspector {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background: var(--surface-raised);
+    border-left: 1px solid var(--border);
+}
+
+.mockup-inspector--collapsed {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding-top: 8px;
+    width: 40px;
+    background: var(--surface-raised);
+    border-left: 1px solid var(--border);
+}
+
+.mockup-inspector-collapsed-label {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+}
+
+.mockup-inspector-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    color: var(--text-primary);
+    flex-shrink: 0;
+}
+
+.mockup-inspector-header .mockup-inspector-collapse-btn {
+    margin-left: auto;
+}
+
+.mockup-inspector-collapse-btn {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.mockup-inspector-collapse-btn:hover {
+    background: var(--surface-hover);
+}
+
+.mockup-inspector-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mockup-inspector-node-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+}
+
+.mockup-inspector-node-icon {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: light-dark(#f0f0f5, #28282e);
+    color: var(--text-primary);
+    flex-shrink: 0;
+}
+
+.mockup-inspector-node-kind {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.mockup-inspector-node-label {
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.mockup-inspector-alert {
+    font-size: 11px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    line-height: 1.4;
+}
+
+.mockup-inspector-alert code {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.08));
+}
+
+.mockup-inspector-alert--crit {
+    background: light-dark(#fff0f0, #3a1818);
+    color: light-dark(#c62828, #ff8a80);
+    border: 1px solid light-dark(#ffcdd2, #5c2020);
+}
+
+.mockup-inspector-section {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 0;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.mockup-inspector-mono {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-primary);
+}
+
+.mockup-inspector-crit {
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: light-dark(#c62828, #ff8a80);
+}
+
+.mockup-inspector-warn {
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: light-dark(#e65100, #ffab40);
+}
+
+.mockup-inspector-raw-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    padding: 4px 0;
+}

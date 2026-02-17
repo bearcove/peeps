@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
@@ -74,6 +75,23 @@ struct CutStatusResponse {
     pending_conn_ids: Vec<u64>,
 }
 
+#[derive(Facet)]
+struct ApiError {
+    error: String,
+}
+
+#[derive(Facet)]
+struct SqlRequest {
+    sql: CompactString,
+}
+
+#[derive(Facet)]
+struct SqlResponse {
+    columns: Vec<CompactString>,
+    rows: Vec<facet_value::Value>,
+    row_count: u32,
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -114,6 +132,7 @@ async fn main() {
         .route("/api/connections", get(api_connections))
         .route("/api/cuts", post(api_trigger_cut))
         .route("/api/cuts/{cut_id}", get(api_cut_status))
+        .route("/api/sql", post(api_sql))
         .with_state(state.clone());
 
     tokio::select! {
@@ -227,6 +246,29 @@ async fn api_cut_status(
         acked_connections: cut.acks.len(),
         pending_conn_ids,
     })
+}
+
+async fn api_sql(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {
+    let req: SqlRequest = match facet_json::from_slice(&body) {
+        Ok(req) => req,
+        Err(e) => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                format!("invalid request json: {e}"),
+            )
+        }
+    };
+
+    let db_path = state.db_path.clone();
+    match tokio::task::spawn_blocking(move || sql_query_blocking(&db_path, req.sql.as_str())).await
+    {
+        Ok(Ok(resp)) => json_ok(&resp),
+        Ok(Err(err)) => json_error(StatusCode::BAD_REQUEST, err),
+        Err(e) => json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("sql worker join error: {e}"),
+        ),
+    }
 }
 
 async fn run_tcp_acceptor(listener: TcpListener, state: AppState) {
@@ -423,6 +465,35 @@ where
     }
 }
 
+fn json_error(status: StatusCode, message: impl Into<String>) -> axum::response::Response {
+    json_with_status(
+        status,
+        &ApiError {
+            error: message.into(),
+        },
+    )
+}
+
+fn json_with_status<T>(status: StatusCode, value: &T) -> axum::response::Response
+where
+    T: for<'facet> Facet<'facet>,
+{
+    match facet_json::to_string(value) {
+        Ok(body) => (
+            status,
+            [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+            body,
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            format!("json encode error: {e}"),
+        )
+            .into_response(),
+    }
+}
+
 fn now_nanos() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -432,6 +503,49 @@ fn now_nanos() -> i64 {
 
 fn to_i64_u64(value: u64) -> i64 {
     value.min(i64::MAX as u64) as i64
+}
+
+fn sql_query_blocking(db_path: &PathBuf, sql: &str) -> Result<SqlResponse, String> {
+    let sql = sql.trim();
+    if sql.is_empty() {
+        return Err("empty SQL".to_string());
+    }
+
+    let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+    let mut stmt = conn.prepare(sql).map_err(|e| format!("prepare sql: {e}"))?;
+    if !stmt.readonly() {
+        return Err("only read-only statements are allowed".to_string());
+    }
+
+    let column_count = stmt.column_count();
+    let columns: Vec<CompactString> = (0..column_count)
+        .map(|i| CompactString::from(stmt.column_name(i).unwrap_or("?")))
+        .collect();
+
+    let mut rows = Vec::new();
+    let mut raw_rows = stmt.raw_query();
+
+    loop {
+        let Some(row) = raw_rows.next().map_err(|e| format!("query row: {e}"))? else {
+            break;
+        };
+
+        let mut row_values = Vec::with_capacity(column_count);
+        for idx in 0..column_count {
+            let value_ref = row
+                .get_ref(idx)
+                .map_err(|e| format!("read column {idx}: {e}"))?;
+            row_values.push(peeps_sqlite_facet::sqlite_value_ref_to_facet(value_ref));
+        }
+        let row_value: facet_value::Value = row_values.into_iter().collect();
+        rows.push(row_value);
+    }
+
+    Ok(SqlResponse {
+        columns,
+        row_count: rows.len() as u32,
+        rows,
+    })
 }
 
 fn init_sqlite(db_path: &PathBuf) -> Result<(), String> {

@@ -3,17 +3,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXAMPLES_DIR="$ROOT_DIR/examples"
-FRONTEND_DIR="$ROOT_DIR/crates/peeps-web-legacy/frontend"
 LAST_EXAMPLE_FILE="${PEEPS_LAST_EXAMPLE_FILE:-$ROOT_DIR/.run-example-last}"
 
 PEEPS_LISTEN="${PEEPS_LISTEN:-127.0.0.1:9119}"
 PEEPS_HTTP="${PEEPS_HTTP:-127.0.0.1:9130}"
-PEEPS_FRONTEND_PORT="${PEEPS_FRONTEND_PORT:-9131}"
-PEEPS_FRONTEND_HOST="${PEEPS_FRONTEND_HOST:-127.0.0.1}"
-PEEPS_FRONTEND_URL="${PEEPS_FRONTEND_URL:-http://${PEEPS_FRONTEND_HOST}:${PEEPS_FRONTEND_PORT}}"
 
 backend_pid=""
-frontend_pid=""
 cleaned_up="0"
 
 run_selector() {
@@ -41,9 +36,7 @@ Examples:
 
 Environment overrides:
   PEEPS_LISTEN, PEEPS_HTTP
-  PEEPS_FRONTEND_HOST, PEEPS_FRONTEND_PORT, PEEPS_FRONTEND_URL
   PEEPS_DASHBOARD
-  PEEPS_NO_OPEN=1   # disable opening browser
 USAGE
 }
 
@@ -55,17 +48,10 @@ cleanup() {
 
   local exit_code=$?
 
-  if [[ -n "$frontend_pid" ]] && kill -0 "$frontend_pid" 2>/dev/null; then
-    kill "$frontend_pid" 2>/dev/null || true
-  fi
-
   if [[ -n "$backend_pid" ]] && kill -0 "$backend_pid" 2>/dev/null; then
     kill "$backend_pid" 2>/dev/null || true
   fi
 
-  if [[ -n "$frontend_pid" ]]; then
-    wait "$frontend_pid" 2>/dev/null || true
-  fi
   if [[ -n "$backend_pid" ]]; then
     wait "$backend_pid" 2>/dev/null || true
   fi
@@ -94,24 +80,6 @@ ensure_process_alive() {
   if ! kill -0 "$pid" 2>/dev/null; then
     echo "$name exited unexpectedly. Check logs above for details." >&2
     return 1
-  fi
-}
-
-open_browser() {
-  local url="$1"
-
-  if [[ "${PEEPS_NO_OPEN:-0}" == "1" ]]; then
-    return 0
-  fi
-
-  if command -v open >/dev/null 2>&1; then
-    open "$url" >/dev/null 2>&1 || true
-    return 0
-  fi
-
-  if command -v xdg-open >/dev/null 2>&1; then
-    xdg-open "$url" >/dev/null 2>&1 || true
-    return 0
   fi
 }
 
@@ -144,7 +112,7 @@ if [[ ! -f "$example_manifest" ]]; then
   exit 1
 fi
 
-for cmd in pnpm curl; do
+for cmd in curl; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Missing required command: $cmd" >&2
     exit 1
@@ -152,39 +120,22 @@ for cmd in pnpm curl; do
 done
 
 if curl -fsS "http://${PEEPS_HTTP}/health" >/dev/null 2>&1; then
-  echo "A peeps-web-legacy backend is already running at http://${PEEPS_HTTP}." >&2
+  echo "A peeps-web backend is already running at http://${PEEPS_HTTP}." >&2
   echo "Stop it first, or set PEEPS_HTTP/PEEPS_LISTEN to alternate ports." >&2
-  exit 1
-fi
-
-if curl -fsS "$PEEPS_FRONTEND_URL" >/dev/null 2>&1; then
-  echo "A frontend server is already running at $PEEPS_FRONTEND_URL." >&2
-  echo "Stop it first, or set PEEPS_FRONTEND_HOST/PEEPS_FRONTEND_PORT." >&2
   exit 1
 fi
 
 trap cleanup EXIT INT TERM
 
-echo "Starting peeps-web-legacy backend on $PEEPS_HTTP (ingest: $PEEPS_LISTEN)"
+echo "Starting peeps-web backend on $PEEPS_HTTP (ingest: $PEEPS_LISTEN)"
 (
   cd "$ROOT_DIR"
-  PEEPS_LISTEN="$PEEPS_LISTEN" PEEPS_HTTP="$PEEPS_HTTP" cargo run -p peeps-web-legacy
+  PEEPS_LISTEN="$PEEPS_LISTEN" PEEPS_HTTP="$PEEPS_HTTP" cargo run -p peeps-web
 ) &
 backend_pid=$!
 
-echo "Starting frontend dev server on $PEEPS_FRONTEND_URL"
-(
-  cd "$FRONTEND_DIR"
-  pnpm dev --host "$PEEPS_FRONTEND_HOST" --port "$PEEPS_FRONTEND_PORT"
-) &
-frontend_pid=$!
-
-wait_for_url "http://${PEEPS_HTTP}/health" "peeps-web-legacy backend"
-wait_for_url "$PEEPS_FRONTEND_URL" "frontend dev server"
-ensure_process_alive "$backend_pid" "peeps-web-legacy backend"
-ensure_process_alive "$frontend_pid" "frontend dev server"
-
-open_browser "$PEEPS_FRONTEND_URL"
+wait_for_url "http://${PEEPS_HTTP}/health" "peeps-web backend"
+ensure_process_alive "$backend_pid" "peeps-web backend"
 
 PEEPS_DASHBOARD="${PEEPS_DASHBOARD:-$PEEPS_LISTEN}"
 echo "Running example '$example_name' (PEEPS_DASHBOARD=$PEEPS_DASHBOARD)"

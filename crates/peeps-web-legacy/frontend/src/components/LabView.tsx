@@ -1,4 +1,17 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ReactFlow,
+  ReactFlowProvider,
+  Background,
+  BackgroundVariant,
+  Controls,
+  MarkerType,
+  type Node,
+  type Edge,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import ELK from "elkjs/lib/elk-api.js";
+import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
 import {
   WarningCircle,
   CaretDown,
@@ -9,11 +22,21 @@ import {
   LinkSimple,
   PaperPlaneTilt,
   Timer,
+  Aperture,
+  Camera,
+  CheckCircle,
+  MagnifyingGlass,
+  CaretLeft,
+  CaretRight,
+  Crosshair,
+  Hash,
+  Users,
 } from "@phosphor-icons/react";
 import { Panel } from "../ui/layout/Panel";
 import { PanelHeader } from "../ui/layout/PanelHeader";
 import { Row } from "../ui/layout/Row";
 import { Section } from "../ui/layout/Section";
+import { SplitLayout } from "../ui/layout/SplitLayout";
 import { Badge, type BadgeTone } from "../ui/primitives/Badge";
 import { TextInput } from "../ui/primitives/TextInput";
 import { SearchInput } from "../ui/primitives/SearchInput";
@@ -31,6 +54,335 @@ import { ProcessIdenticon } from "../ui/primitives/ProcessIdenticon";
 import { Table, type Column } from "../ui/primitives/Table";
 import { ActionButton } from "../ui/primitives/ActionButton";
 import { kindIcon } from "../nodeKindSpec";
+
+// ── Mock data for the deadlock detector mockup ────────────────
+
+const MOCK_NODES: Node[] = [
+  {
+    id: "future:store.incoming.recv",
+    type: "default",
+    position: { x: 50, y: 30 },
+    data: { label: "store.incoming.recv" },
+    style: { background: "light-dark(#e8f5e9, #1b3a1b)", border: "1px solid light-dark(#a5d6a7, #2e6b2e)", borderRadius: 8, fontSize: 11, padding: "6px 10px", fontFamily: "var(--font-mono)" },
+  },
+  {
+    id: "request:demorpc.sleepy",
+    type: "default",
+    position: { x: 250, y: 30 },
+    data: { label: "DemoRpc.sleepy_forever" },
+    style: { background: "light-dark(#ffebee, #3a1b1b)", border: "2px solid light-dark(#ef9a9a, #8b2e2e)", borderRadius: 8, fontSize: 11, padding: "6px 10px", fontFamily: "var(--font-mono)" },
+  },
+  {
+    id: "request:demorpc.ping",
+    type: "default",
+    position: { x: 250, y: 130 },
+    data: { label: "DemoRpc.ping" },
+    style: { background: "light-dark(#fff3e0, #3a2e1b)", border: "1px solid light-dark(#ffcc80, #8b6b2e)", borderRadius: 8, fontSize: 11, padding: "6px 10px", fontFamily: "var(--font-mono)" },
+  },
+  {
+    id: "mutex:global_state",
+    type: "default",
+    position: { x: 50, y: 230 },
+    data: { label: "Mutex<GlobalState>" },
+    style: { background: "light-dark(#ffebee, #3a1b1b)", border: "2px solid light-dark(#ef9a9a, #8b2e2e)", borderRadius: 8, fontSize: 11, padding: "6px 10px", fontFamily: "var(--font-mono)" },
+  },
+  {
+    id: "channel:mpsc.tx",
+    type: "default",
+    position: { x: 250, y: 230 },
+    data: { label: "mpsc.send" },
+    style: { background: "light-dark(#e3f2fd, #1b2a3a)", border: "1px solid light-dark(#90caf9, #2e5b8b)", borderRadius: 8, fontSize: 11, padding: "6px 10px", fontFamily: "var(--font-mono)" },
+  },
+  {
+    id: "channel:mpsc.rx",
+    type: "default",
+    position: { x: 450, y: 230 },
+    data: { label: "mpsc.recv" },
+    style: { background: "light-dark(#fff3e0, #3a2e1b)", border: "1px solid light-dark(#ffcc80, #8b6b2e)", borderRadius: 8, fontSize: 11, padding: "6px 10px", fontFamily: "var(--font-mono)" },
+  },
+  {
+    id: "connection:initiator",
+    type: "default",
+    position: { x: 450, y: 30 },
+    data: { label: "initiator->acceptor" },
+    style: { background: "light-dark(#f3e5f5, #2a1b3a)", border: "1px solid light-dark(#ce93d8, #6b2e8b)", borderRadius: 8, fontSize: 11, padding: "6px 10px", fontFamily: "var(--font-mono)" },
+  },
+];
+
+const MOCK_EDGES: Edge[] = [
+  {
+    id: "e1",
+    source: "request:demorpc.sleepy",
+    target: "mutex:global_state",
+    label: "needs",
+    style: { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 },
+    markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+  },
+  {
+    id: "e2",
+    source: "mutex:global_state",
+    target: "channel:mpsc.tx",
+    label: "needs",
+    style: { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 },
+    markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+  },
+  {
+    id: "e3",
+    source: "channel:mpsc.tx",
+    target: "channel:mpsc.rx",
+    style: { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
+    markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10 },
+  },
+  {
+    id: "e4",
+    source: "channel:mpsc.rx",
+    target: "request:demorpc.sleepy",
+    label: "needs",
+    style: { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 },
+    markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+  },
+  {
+    id: "e5",
+    source: "request:demorpc.ping",
+    target: "mutex:global_state",
+    label: "needs",
+    style: { stroke: "light-dark(#c7c7cc, #48484a)", strokeWidth: 1.5 },
+    markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10 },
+  },
+  {
+    id: "e6",
+    source: "future:store.incoming.recv",
+    target: "request:demorpc.sleepy",
+    label: "spawned",
+    style: { stroke: "light-dark(#8e7cc3, #b4a7d6)", strokeWidth: 1.2, strokeDasharray: "2 3" },
+    labelStyle: { fontSize: 10, fill: "light-dark(#8e7cc3, #b4a7d6)" },
+    markerEnd: { type: MarkerType.ArrowClosed, width: 8, height: 8 },
+  },
+  {
+    id: "e7",
+    source: "request:demorpc.sleepy",
+    target: "connection:initiator",
+    style: { stroke: "light-dark(#a1a1a6, #636366)", strokeWidth: 1, strokeDasharray: "4 3" },
+    markerEnd: { type: MarkerType.ArrowClosed, width: 8, height: 8 },
+  },
+];
+
+// ── Mock graph panel ──────────────────────────────────────────
+
+function MockGraphPanel() {
+  return (
+    <div className="mockup-graph-panel">
+      <div className="mockup-graph-toolbar">
+        <div className="mockup-graph-toolbar-left">
+          <Badge tone="crit">1 cycle</Badge>
+          <Badge tone="warn">2 suspects</Badge>
+          <span className="mockup-graph-stat">7 nodes</span>
+          <span className="mockup-graph-stat">7 edges</span>
+        </div>
+        <div className="mockup-graph-toolbar-right">
+          <Checkbox checked={false} onChange={() => {}} label="Resources" />
+          <span className="mockup-graph-level-label">Detail</span>
+          <Badge tone="neutral">info</Badge>
+        </div>
+      </div>
+      <div className="mockup-graph-flow">
+        <ReactFlowProvider>
+          <ReactFlow
+            nodes={MOCK_NODES}
+            edges={MOCK_EDGES}
+            fitView
+            fitViewOptions={{ padding: 0.3, maxZoom: 1.2 }}
+            proOptions={{ hideAttribution: true }}
+            minZoom={0.3}
+            maxZoom={3}
+            panOnDrag
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={false}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+            <Controls showInteractive={false} />
+          </ReactFlow>
+        </ReactFlowProvider>
+      </div>
+    </div>
+  );
+}
+
+// ── Mock inspector panel ──────────────────────────────────────
+
+function MockInspectorPanel({
+  collapsed,
+  onToggleCollapse,
+}: {
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+}) {
+  if (collapsed) {
+    return (
+      <div className="mockup-inspector mockup-inspector--collapsed">
+        <button className="mockup-inspector-collapse-btn" onClick={onToggleCollapse} title="Expand inspector">
+          <CaretLeft size={14} weight="bold" />
+        </button>
+        <span className="mockup-inspector-collapsed-label">Inspector</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mockup-inspector">
+      <div className="mockup-inspector-header">
+        <MagnifyingGlass size={14} weight="bold" />
+        <span>Inspector</span>
+        <button className="mockup-inspector-collapse-btn" onClick={onToggleCollapse} title="Collapse inspector">
+          <CaretRight size={14} weight="bold" />
+        </button>
+      </div>
+      <div className="mockup-inspector-body">
+        <div className="mockup-inspector-node-header">
+          <span className="mockup-inspector-node-icon">
+            {kindIcon("request", 16)}
+          </span>
+          <div>
+            <div className="mockup-inspector-node-kind">request</div>
+            <div className="mockup-inspector-node-label">DemoRpc.sleepy_forever</div>
+          </div>
+          <ActionButton size="sm">
+            <Crosshair size={12} weight="bold" />
+            focus
+          </ActionButton>
+        </div>
+
+        <div className="mockup-inspector-alert mockup-inspector-alert--crit">
+          Suspect deadlock signal: <code>needs_cycle</code>
+        </div>
+
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="ID" icon={<Hash size={12} weight="bold" />}>
+            <span className="mockup-inspector-mono">request:demorpc.sleepy</span>
+          </KeyValueRow>
+          <KeyValueRow label="Process" icon={<Users size={12} weight="bold" />}>
+            <NodeChip
+              label="example-roam-rpc-stuck-request"
+              icon={<ProcessIdenticon name="example-roam-rpc-stuck-request" size={12} />}
+            />
+          </KeyValueRow>
+          <KeyValueRow label="Method" icon={<PaperPlaneTilt size={12} weight="bold" />}>
+            <span className="mockup-inspector-mono">DemoRpc.sleepy_forever</span>
+          </KeyValueRow>
+          <KeyValueRow label="Source">
+            <NodeChip
+              icon={<FileRs size={12} weight="bold" />}
+              label="main.rs:42"
+              href="#"
+              title="Open in editor"
+            />
+          </KeyValueRow>
+        </div>
+
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="Status" icon={<CircleNotch size={12} weight="bold" />}>
+            <Badge tone="warn">IN_FLIGHT</Badge>
+          </KeyValueRow>
+          <KeyValueRow label="Elapsed" icon={<Timer size={12} weight="bold" />}>
+            <DurationDisplay ms={1245000} tone="crit" />
+          </KeyValueRow>
+          <KeyValueRow label="Connection" icon={<LinkSimple size={12} weight="bold" />}>
+            <NodeChip
+              kind="connection"
+              label="initiator->acceptor"
+              onClick={() => {}}
+            />
+          </KeyValueRow>
+        </div>
+
+        <div className="mockup-inspector-section">
+          <KeyValueRow label="Wait blockers">
+            <span className="mockup-inspector-crit">2</span>
+          </KeyValueRow>
+          <KeyValueRow label="waits on">
+            <NodeChip
+              kind="mutex"
+              label="Mutex<GlobalState>"
+              onClick={() => {}}
+            />
+          </KeyValueRow>
+          <KeyValueRow label="waits on">
+            <NodeChip
+              kind="channel_rx"
+              label="mpsc.recv"
+              onClick={() => {}}
+            />
+          </KeyValueRow>
+          <KeyValueRow label="Dependents">
+            <span className="mockup-inspector-warn">1</span>
+          </KeyValueRow>
+          <KeyValueRow label="blocking">
+            <NodeChip
+              kind="request"
+              label="DemoRpc.ping"
+              onClick={() => {}}
+            />
+          </KeyValueRow>
+        </div>
+
+        <div className="mockup-inspector-section">
+          <div className="mockup-inspector-raw-head">
+            <span>All attributes (12)</span>
+            <ActionButton size="sm">
+              <CopySimple size={12} weight="bold" />
+            </ActionButton>
+            <ActionButton size="sm">Show raw</ActionButton>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Deadlock detector mockup ──────────────────────────────────
+
+function DeadlockDetectorMockup() {
+  const [inspectorWidth, setInspectorWidth] = useState(340);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+
+  return (
+    <div className="mockup-app">
+      <div className="mockup-header">
+        <Aperture size={16} weight="bold" />
+        <span className="mockup-header-title">peeps</span>
+        <span className="mockup-header-badge mockup-header-badge--active">
+          <CheckCircle size={12} weight="bold" />
+          snapshot #4
+        </span>
+        <span className="mockup-header-badge">
+          3/3 responded
+        </span>
+        <span className="mockup-header-spacer" />
+        <ActionButton variant="primary">
+          <Camera size={14} weight="bold" />
+          Take snapshot
+        </ActionButton>
+      </div>
+      <SplitLayout
+        left={<MockGraphPanel />}
+        right={
+          <MockInspectorPanel
+            collapsed={inspectorCollapsed}
+            onToggleCollapse={() => setInspectorCollapsed((v) => !v)}
+          />
+        }
+        rightWidth={inspectorWidth}
+        onRightWidthChange={setInspectorWidth}
+        rightMinWidth={260}
+        rightMaxWidth={600}
+        rightCollapsed={inspectorCollapsed}
+      />
+    </div>
+  );
+}
+
+// ── Lab primitives showcase (existing) ────────────────────────
 
 type DemoTone = "neutral" | "ok" | "warn" | "crit";
 type DemoConnectionRow = {
@@ -148,7 +500,7 @@ export function LabView() {
       healthLabel: "OK",
       healthTone: "ok",
       connectionKind: "connection",
-      connectionLabel: "example-roam-rpc-stuck-request: initiator→acceptor",
+      connectionLabel: "example-roam-rpc-stuck-request: initiator\u2192acceptor",
       pending: 0,
       lastRecvBasis: "P",
       lastRecvBasisLabel: "process started",
@@ -166,7 +518,7 @@ export function LabView() {
       healthLabel: "WARN",
       healthTone: "warn",
       connectionKind: "channel_tx",
-      connectionLabel: "vx-store · channel.v1.mpsc.send",
+      connectionLabel: "vx-store \u00b7 channel.v1.mpsc.send",
       pending: 3,
       lastRecvBasis: "P",
       lastRecvBasisLabel: "process started",
@@ -184,7 +536,7 @@ export function LabView() {
       healthLabel: "CRIT",
       healthTone: "crit",
       connectionKind: "request",
-      connectionLabel: "example-roam-rpc-stuck-request · DemoRpc.sleepy_forever",
+      connectionLabel: "example-roam-rpc-stuck-request \u00b7 DemoRpc.sleepy_forever",
       pending: 12,
       lastRecvBasis: "N",
       lastRecvBasisLabel: "node opened",
@@ -202,7 +554,7 @@ export function LabView() {
       healthLabel: "WARN",
       healthTone: "warn",
       connectionKind: "connection",
-      connectionLabel: "vxd · connection: initiator<->acceptor",
+      connectionLabel: "vxd \u00b7 connection: initiator<->acceptor",
       pending: 8,
       lastRecvBasis: "P",
       lastRecvBasisLabel: "process started",
@@ -220,7 +572,7 @@ export function LabView() {
       healthLabel: "OK",
       healthTone: "ok",
       connectionKind: "request",
-      connectionLabel: "vx-vfsd · net.readable.wait",
+      connectionLabel: "vx-vfsd \u00b7 net.readable.wait",
       pending: 1,
       lastRecvBasis: "N",
       lastRecvBasisLabel: "socket opened",
@@ -259,7 +611,7 @@ export function LabView() {
       />
     ) },
     { key: "lastSent", label: "Last Sent", sortable: true, width: "100px", render: (row) => {
-      if (row.lastSentEventTime === null) return <span>—</span>;
+      if (row.lastSentEventTime === null) return <span>&mdash;</span>;
       return (
         <RelativeTimestamp
           basis={row.lastSentBasis}
@@ -273,7 +625,7 @@ export function LabView() {
   ], []);
 
   const tableSortedRows = useMemo(() => {
-    const healthOrder = {
+    const healthOrder: Record<string, number> = {
       healthy: 1,
       warning: 2,
       critical: 3,
@@ -342,7 +694,11 @@ export function LabView() {
     <Panel variant="lab">
       <PanelHeader title="Lab" hint="Primitives and tone language" />
       <div className="lab-body">
-        <Section title="UI font — Manrope" subtitle="UI font in the sizes we actually use" wide>
+        <Section title="Deadlock Detector" subtitle="Full app layout mockup with resizable inspector" wide>
+          <DeadlockDetectorMockup />
+        </Section>
+
+        <Section title="UI font \u2014 Manrope" subtitle="UI font in the sizes we actually use" wide>
           <div className="ui-typo-card">
             <div className="ui-typo-sample ui-typo-ui ui-typo-ui--xl">Take a snapshot</div>
             <div className="ui-typo-sample ui-typo-ui ui-typo-ui--md">Inspector, Graph, Timeline, Resources</div>
@@ -356,9 +712,9 @@ export function LabView() {
           </div>
         </Section>
 
-        <Section title="Mono font — Jetbrains Mono" subtitle="Mono font in the sizes we actually use" wide>
+        <Section title="Mono font \u2014 Jetbrains Mono" subtitle="Mono font in the sizes we actually use" wide>
           <div className="ui-typo-card">
-            <div className="ui-typo-sample ui-typo-mono ui-typo-mono--xl">request:01KHNGCY…</div>
+            <div className="ui-typo-sample ui-typo-mono ui-typo-mono--xl">request:01KHNGCY&hellip;</div>
             <div className="ui-typo-sample ui-typo-mono ui-typo-mono--md">connection: initiator-&gt;acceptor</div>
             <div className="ui-typo-sample ui-typo-mono ui-typo-mono--sm ui-typo-muted">
               IDs, paths, tokens, and anything users copy/paste.
@@ -427,7 +783,7 @@ export function LabView() {
           <TextInput
             value={textValue}
             onChange={setTextValue}
-            placeholder="Type…"
+            placeholder="Type\u2026"
             aria-label="Text input"
           />
         </Section>
@@ -436,7 +792,7 @@ export function LabView() {
           <SearchInput
             value={searchValue}
             onChange={setSearchValue}
-            placeholder="Search nodes…"
+            placeholder="Search nodes\u2026"
             aria-label="Search input"
             items={searchResults.map((item) => ({
               id: item.id,
@@ -448,7 +804,7 @@ export function LabView() {
             resultHint={
               <>
                 <span>{searchResults.length} result(s)</span>
-                <span className="ui-search-results-hint">click to select · alt+click to filter only this kind</span>
+                <span className="ui-search-results-hint">click to select &middot; alt+click to filter only this kind</span>
               </>
             }
             filterBadge={searchOnlyKind ? <Badge tone="neutral">{`kind:${searchOnlyKind}`}</Badge> : undefined}
@@ -591,11 +947,11 @@ export function LabView() {
             >
               <NodeChip
                 kind="connection"
-                label="initiator→acceptor"
-                onClick={() => console.log("inspect initiator→acceptor")}
+                label="initiator\u2192acceptor"
+                onClick={() => console.log("inspect initiator\u2192acceptor")}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  console.log("open context for initiator→acceptor");
+                  console.log("open context for initiator\u2192acceptor");
                 }}
               />
             </KeyValueRow>
@@ -673,7 +1029,7 @@ export function LabView() {
           <Row>
             <NodeChip
               kind="connection"
-              label="initiator→acceptor:acceptor←→initiator"
+              label="initiator\u2192acceptor:acceptor\u2194\u2192initiator"
               onClick={() => console.log("open connection chip")}
               onContextMenu={(event) => {
                 event.preventDefault();
