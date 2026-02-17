@@ -64,10 +64,13 @@ export type EntityBody =
   | { net_connect: { addr: string } }
   | { net_accept: { addr: string } }
   | { net_read: { addr: string } }
-  | { net_write: { addr: string } };
+  | { net_write: { addr: string } }
+  | { request: { method: string; args_preview: string } }
+  | { response: { method: string; status: "pending" | "ok" | "error" | "cancelled" } };
 
 export interface SnapshotEntity {
   id: string;
+  /** Process-relative birth time in milliseconds (PTime). Not comparable across processes. */
   birth: number;
   source: string;
   name: string;
@@ -78,12 +81,25 @@ export interface SnapshotEntity {
 export type SnapshotEdgeKind = "needs" | "polls" | "closed_by" | "channel_link" | "rpc_link";
 
 export interface SnapshotEdge {
+  /** Process-local entity ID. */
   src_id: string;
+  /** Process-local entity ID. */
   dst_id: string;
   kind: SnapshotEdgeKind;
 }
 
-export interface SnapshotResponse {
+/** Per-process snapshot data. All times are process-relative (PTime in ms) unless noted. */
+export interface ProcessSnapshotView {
+  process_id: string;
+  process_name: string;
+  /** Unix epoch ms of when this snapshot was captured (wall clock). */
+  captured_at_unix_ms: number;
+  /** Process-relative time (ms since process start) at the capture moment. */
+  ptime_now_ms: number;
   entities: SnapshotEntity[];
   edges: SnapshotEdge[];
+}
+
+export interface SnapshotCutResponse {
+  processes: ProcessSnapshotView[];
 }

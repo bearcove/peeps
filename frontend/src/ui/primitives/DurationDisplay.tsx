@@ -10,6 +10,7 @@ export type DurationDisplayProps = {
 };
 
 function formatDuration(ms: number): string {
+  if (!isFinite(ms)) return "—";
   const totalMs = Math.max(0, ms);
   if (totalMs < 1000) {
     return `${totalMs}ms`;

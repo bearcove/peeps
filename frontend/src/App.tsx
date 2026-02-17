@@ -38,7 +38,14 @@ import { DurationDisplay } from "./ui/primitives/DurationDisplay";
 import { ActionButton } from "./ui/primitives/ActionButton";
 import { kindIcon, kindDisplayName } from "./nodeKindSpec";
 import { apiClient, apiMode } from "./api";
-import type { EntityBody, SnapshotEdgeKind, SnapshotResponse } from "./api/types";
+import type { EntityBody, SnapshotEdgeKind, SnapshotCutResponse } from "./api/types";
+
+// ── Body type helpers ──────────────────────────────────────────
+
+// TypeScript's `in` narrowing on complex union types produces `unknown` for
+// nested property types. Use `Extract` to safely reference specific variants.
+type RequestBody = Extract<EntityBody, { request: unknown }>;
+type ResponseBody = Extract<EntityBody, { response: unknown }>;
 
 // ── Display types ──────────────────────────────────────────────
 
@@ -47,12 +54,22 @@ type Tone = "ok" | "warn" | "crit" | "neutral";
 type MetaValue = string | number | boolean | null | MetaValue[] | { [key: string]: MetaValue };
 
 export type EntityDef = {
+  /** Composite identity: "${processId}/${rawEntityId}". Unique across all processes. */
   id: string;
+  /** Original entity ID as reported by the process. */
+  rawEntityId: string;
+  processId: string;
+  processName: string;
   name: string;
   kind: string;
   body: EntityBody;
   source: string;
-  birth: number;
+  /** Process-relative birth time in ms (PTime). Not comparable across processes. */
+  birthPtime: number;
+  /** Age at capture time: ptime_now_ms - birthPtime (clamped to 0). */
+  ageMs: number;
+  /** Approximate wall-clock birth: (captured_at_unix_ms - ptime_now_ms) + birthPtime. */
+  birthApproxUnixMs: number;
   meta: Record<string, MetaValue>;
   inCycle: boolean;
   status: { label: string; tone: Tone };
@@ -76,7 +93,7 @@ function deriveStatus(body: EntityBody): { label: string; tone: Tone } {
   if (typeof body === "string") return { label: "polling", tone: "neutral" };
   if ("request" in body) return { label: "in_flight", tone: "warn" };
   if ("response" in body) {
-    const s = body.response.status;
+    const s = (body as ResponseBody).response.status;
     if (s === "ok") return { label: "ok", tone: "ok" };
     if (s === "error") return { label: "error", tone: "crit" };
     if (s === "cancelled") return { label: "cancelled", tone: "neutral" };
@@ -131,12 +148,12 @@ function deriveStat(body: EntityBody): string | undefined {
   return undefined;
 }
 
-function detectCycleNodes(entities: SnapshotResponse["entities"], edges: SnapshotResponse["edges"]): Set<string> {
+function detectCycleNodes(entities: EntityDef[], edges: EdgeDef[]): Set<string> {
   const adj = new Map<string, string[]>();
   for (const e of edges) {
     if (e.kind !== "needs") continue;
-    if (!adj.has(e.src_id)) adj.set(e.src_id, []);
-    adj.get(e.src_id)!.push(e.dst_id);
+    if (!adj.has(e.source)) adj.set(e.source, []);
+    adj.get(e.source)!.push(e.target);
   }
 
   const inCycle = new Set<string>();
@@ -163,23 +180,55 @@ function detectCycleNodes(entities: SnapshotResponse["entities"], edges: Snapsho
   return inCycle;
 }
 
-function convertSnapshot(snapshot: SnapshotResponse): { entities: EntityDef[]; edges: EdgeDef[] } {
-  const cycleNodes = detectCycleNodes(snapshot.entities, snapshot.edges);
-  const entities: EntityDef[] = snapshot.entities.map((e) => ({
-    ...e,
-    meta: e.meta as Record<string, MetaValue>,
-    kind: bodyToKind(e.body),
-    inCycle: cycleNodes.has(e.id),
-    status: deriveStatus(e.body),
-    stat: deriveStat(e.body),
-  }));
-  const edges: EdgeDef[] = snapshot.edges.map((e, i) => ({
-    id: `e${i}-${e.src_id}-${e.dst_id}-${e.kind}`,
-    source: e.src_id,
-    target: e.dst_id,
-    kind: e.kind,
-  }));
-  return { entities, edges };
+function convertSnapshot(snapshot: SnapshotCutResponse): { entities: EntityDef[]; edges: EdgeDef[] } {
+  const allEntities: EntityDef[] = [];
+  const allEdges: EdgeDef[] = [];
+
+  for (const proc of snapshot.processes) {
+    const { process_id, process_name, captured_at_unix_ms, ptime_now_ms } = proc;
+    const anchorUnixMs = captured_at_unix_ms - ptime_now_ms;
+
+    for (const e of proc.entities) {
+      const compositeId = `${process_id}/${e.id}`;
+      const ageMs = Math.max(0, ptime_now_ms - e.birth);
+      allEntities.push({
+        id: compositeId,
+        rawEntityId: e.id,
+        processId: process_id,
+        processName: process_name,
+        name: e.name,
+        kind: bodyToKind(e.body),
+        body: e.body,
+        source: e.source,
+        birthPtime: e.birth,
+        ageMs,
+        birthApproxUnixMs: anchorUnixMs + e.birth,
+        meta: (e.meta ?? {}) as Record<string, MetaValue>,
+        inCycle: false,
+        status: deriveStatus(e.body),
+        stat: deriveStat(e.body),
+      });
+    }
+
+    for (let i = 0; i < proc.edges.length; i++) {
+      const e = proc.edges[i];
+      const srcComposite = `${process_id}/${e.src_id}`;
+      const dstComposite = `${process_id}/${e.dst_id}`;
+      allEdges.push({
+        id: `e${i}-${srcComposite}-${dstComposite}-${e.kind}`,
+        source: srcComposite,
+        target: dstComposite,
+        kind: e.kind,
+      });
+    }
+  }
+
+  const cycleIds = detectCycleNodes(allEntities, allEdges);
+  for (const entity of allEntities) {
+    entity.inCycle = cycleIds.has(entity.id);
+  }
+
+  return { entities: allEntities, edges: allEdges };
 }
 
 // ── ELK layout ────────────────────────────────────────────────
@@ -330,7 +379,7 @@ async function layoutGraph(
       inCycle: def.inCycle,
       selected: false,
       status: def.status,
-      birth: def.birth,
+      ageMs: def.ageMs,
       stat: def.stat,
     },
   }));
@@ -374,7 +423,7 @@ type MockNodeData = {
   inCycle: boolean;
   selected: boolean;
   status: { label: string; tone: Tone };
-  birth: number;
+  ageMs: number;
   stat?: string;
 };
 
@@ -392,7 +441,7 @@ function MockNodeComponent({ data }: { data: MockNodeData }) {
           <div className="mockup-node-details">
             <Badge tone={data.status.tone}>{data.status.label}</Badge>
             <span className="mockup-node-dot">&middot;</span>
-            <DurationDisplay ms={data.birth} />
+            <DurationDisplay ms={data.ageMs} />
             {data.stat && (
               <>
                 <span className="mockup-node-dot">&middot;</span>
@@ -572,11 +621,12 @@ function EntityBodySection({ entity }: { entity: EntityDef }) {
   }
 
   if ("request" in body) {
+    const req = (body as RequestBody).request;
     return (
       <div className="mockup-inspector-section">
         <KeyValueRow label="Args">
-          <span className={`mockup-inspector-mono${body.request.args_preview === "(no args)" ? " mockup-inspector-muted" : ""}`}>
-            {body.request.args_preview}
+          <span className={`mockup-inspector-mono${req.args_preview === "(no args)" ? " mockup-inspector-muted" : ""}`}>
+            {req.args_preview}
           </span>
         </KeyValueRow>
       </div>
@@ -584,14 +634,15 @@ function EntityBodySection({ entity }: { entity: EntityDef }) {
   }
 
   if ("response" in body) {
+    const resp = (body as ResponseBody).response;
     return (
       <div className="mockup-inspector-section">
         <KeyValueRow label="Method" icon={<PaperPlaneTilt size={12} weight="bold" />}>
-          <span className="mockup-inspector-mono">{body.response.method}</span>
+          <span className="mockup-inspector-mono">{resp.method}</span>
         </KeyValueRow>
         <KeyValueRow label="Status">
-          <Badge tone={body.response.status === "ok" ? "ok" : body.response.status === "error" ? "crit" : "warn"}>
-            {body.response.status}
+          <Badge tone={resp.status === "ok" ? "ok" : resp.status === "error" ? "crit" : "warn"}>
+            {resp.status}
           </Badge>
         </KeyValueRow>
       </div>
@@ -721,6 +772,8 @@ function EntityBodySection({ entity }: { entity: EntityDef }) {
 }
 
 function EntityInspectorContent({ entity }: { entity: EntityDef }) {
+  const ageTone: Tone = entity.ageMs > 600_000 ? "crit" : entity.ageMs > 60_000 ? "warn" : "neutral";
+
   return (
     <>
       <div className="mockup-inspector-node-header">
@@ -744,14 +797,28 @@ function EntityInspectorContent({ entity }: { entity: EntityDef }) {
       </div>
 
       <div className="mockup-inspector-section">
+        <KeyValueRow label="Process">
+          <span className="mockup-inspector-mono">{entity.processName}</span>
+          <span className="mockup-inspector-muted" style={{ fontSize: "0.75em", marginLeft: 4 }}>{entity.processId}</span>
+        </KeyValueRow>
         <KeyValueRow label="Source" icon={<FileRs size={12} weight="bold" />}>
           <a className="mockup-inspector-source-link" href="#" title="Open in editor">
             {entity.source}
           </a>
         </KeyValueRow>
         <KeyValueRow label="Age" icon={<Timer size={12} weight="bold" />}>
-          <DurationDisplay ms={entity.birth} tone={entity.birth > 600000 ? "crit" : entity.birth > 60000 ? "warn" : undefined} />
+          <DurationDisplay ms={entity.ageMs} tone={ageTone} />
         </KeyValueRow>
+        <KeyValueRow label="PTime birth">
+          <span className="mockup-inspector-mono">{entity.birthPtime}ms</span>
+        </KeyValueRow>
+        {isFinite(entity.birthApproxUnixMs) && entity.birthApproxUnixMs > 0 && (
+          <KeyValueRow label="Born ~">
+            <span className="mockup-inspector-mono">
+              {new Date(entity.birthApproxUnixMs).toLocaleTimeString()}
+            </span>
+          </KeyValueRow>
+        )}
       </div>
 
       <EntityBodySection entity={entity} />
@@ -791,9 +858,11 @@ function EdgeInspectorContent({ edge, entityDefs }: { edge: EdgeDef; entityDefs:
       <div className="mockup-inspector-section">
         <KeyValueRow label="From" icon={srcEntity ? kindIcon(srcEntity.kind, 12) : undefined}>
           <span className="mockup-inspector-mono">{srcEntity?.name ?? edge.source}</span>
+          {srcEntity && <span className="mockup-inspector-muted" style={{ fontSize: "0.75em", marginLeft: 4 }}>{srcEntity.processName}</span>}
         </KeyValueRow>
         <KeyValueRow label="To" icon={dstEntity ? kindIcon(dstEntity.kind, 12) : undefined}>
           <span className="mockup-inspector-mono">{dstEntity?.name ?? edge.target}</span>
+          {dstEntity && <span className="mockup-inspector-muted" style={{ fontSize: "0.75em", marginLeft: 4 }}>{dstEntity.processName}</span>}
         </KeyValueRow>
       </div>
 

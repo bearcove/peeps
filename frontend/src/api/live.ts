@@ -2,7 +2,7 @@ import type { ApiClient } from "./client";
 import type {
   ConnectionsResponse,
   CutStatusResponse,
-  SnapshotResponse,
+  SnapshotCutResponse,
   TriggerCutResponse,
 } from "./types";
 
@@ -50,6 +50,6 @@ export function createLiveApiClient(): ApiClient {
     triggerCut: () => postJson<TriggerCutResponse>("/api/cuts", {}),
     fetchCutStatus: (cutId: string) =>
       getJson<CutStatusResponse>(`/api/cuts/${encodeURIComponent(cutId)}`),
-    fetchSnapshot: () => postJson<SnapshotResponse>("/api/snapshot", {}),
+    fetchSnapshot: () => postJson<SnapshotCutResponse>("/api/snapshot", {}),
   };
 }

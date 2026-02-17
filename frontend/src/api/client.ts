@@ -1,7 +1,7 @@
 import type {
   ConnectionsResponse,
   CutStatusResponse,
-  SnapshotResponse,
+  SnapshotCutResponse,
   TriggerCutResponse,
 } from "./types";
 
@@ -11,5 +11,5 @@ export interface ApiClient {
   fetchConnections(): Promise<ConnectionsResponse>;
   triggerCut(): Promise<TriggerCutResponse>;
   fetchCutStatus(cutId: string): Promise<CutStatusResponse>;
-  fetchSnapshot(): Promise<SnapshotResponse>;
+  fetchSnapshot(): Promise<SnapshotCutResponse>;
 }
