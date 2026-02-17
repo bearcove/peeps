@@ -38,12 +38,12 @@ function formatDelta(ms: number): string {
   if (totalMs < 3600000) {
     const totalMinutes = Math.floor(totalSeconds / 60);
     const remainingSeconds = Math.floor(totalSeconds % 60);
-    return `${totalMinutes}m ${remainingSeconds}s`;
+    return `${totalMinutes}m${remainingSeconds}s`;
   }
 
   const hours = Math.floor(totalMs / 3600000);
   const remainingMinutes = Math.floor((totalMs % 3600000) / 60000);
-  return `${hours}h ${remainingMinutes}m`;
+  return `${hours}h${remainingMinutes}m`;
 }
 
 export function RelativeTimestamp({
@@ -69,10 +69,7 @@ export function RelativeTimestamp({
       className={["ui-relative-timestamp", tone && `ui-relative-timestamp--${tone}`].filter(Boolean).join(" ")}
       title={title}
     >
-      <span className="ui-relative-timestamp__prefix">
-        {basis}
-      </span>
-      <span className="ui-relative-timestamp__value">
+      <span className="ui-relative-timestamp__prefix">{basis}</span><span className="ui-relative-timestamp__value">
         {prefixSign}
         {formattedDelta}
       </span>

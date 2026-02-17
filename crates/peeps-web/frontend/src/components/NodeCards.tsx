@@ -22,6 +22,7 @@ import {
 } from "@phosphor-icons/react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { kindIcon } from "../nodeKindSpec";
+import { ProcessIdenticon } from "../ui/primitives/ProcessIdenticon";
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -254,15 +255,13 @@ function CardShell({
   stateClass?: string;
   children?: React.ReactNode;
 }) {
-  const { color } = processIdentity(process);
   return (
     <div
       className={`card card--${kind}${stateClass ? ` ${stateClass}` : ""}`}
-      style={{ borderLeftColor: color }}
     >
       <Handle type="target" position={Position.Top} style={{ visibility: "hidden" }} />
       <div className="card-head">
-        <ProcessSwatch process={process} size={10} />
+        <ProcessIdenticon name={process} size={14} />
         <span className="card-icon">{icon}</span>
         <span className="card-label" title={label}>
           {label}

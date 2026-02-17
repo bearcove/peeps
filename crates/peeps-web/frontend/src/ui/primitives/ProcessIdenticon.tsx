@@ -45,8 +45,9 @@ export function ProcessIdenticon({ name, size = 20 }: ProcessIdenticonProps) {
       width={size}
       height={size}
       viewBox="0 0 5 5"
-      aria-hidden="true"
       role="img"
+      aria-label={name}
+      title={name}
       style={{ flexShrink: 0 }}
     >
       {pixels.map((pixel) => (

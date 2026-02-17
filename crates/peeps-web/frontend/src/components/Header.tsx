@@ -11,6 +11,7 @@ import {
 } from "@phosphor-icons/react";
 import type { TakeSnapshotResponse, SnapshotProgressResponse } from "../types";
 import type { SnapshotProcessInfo, ProcessDebugResponse } from "../types";
+import { Table } from "../ui/primitives/Table";
 
 const DASH = "—";
 const PROCESS_STATUS_UNKNOWN = "unknown";
@@ -151,6 +152,124 @@ export function Header({
     if (!useProgressForStatus) return "snapshot-process-table__status--normal";
     return proc.responded ? "snapshot-process-table__status--responded" : "snapshot-process-table__status--missing";
   };
+
+  const processTableColumns = useMemo(() => [
+    {
+      key: "process",
+      label: "Process",
+      render: (proc: SnapshotProcessRow) => proc.process,
+    },
+    {
+      key: "proc_key",
+      label: "Proc key",
+      render: (proc: SnapshotProcessRow) => (
+        <span className="snapshot-process-table__mono">{proc.proc_key}</span>
+      ),
+    },
+    {
+      key: "pid",
+      label: "PID",
+      render: (proc: SnapshotProcessRow) => (
+        <span className="snapshot-process-table__mono">
+          {proc.pid == null ? "—" : proc.pid}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (proc: SnapshotProcessRow) => (
+        <span className={`snapshot-process-table__status ${getStatusClass(proc)}`}>
+          <span title={proc.error_text ?? undefined}>{statusText(proc)}</span>
+        </span>
+      ),
+    },
+    {
+      key: "command",
+      label: "Command",
+      render: (proc: SnapshotProcessRow) => {
+        const commandText = proc.command ? proc.command : proc.cmd_args_preview ? proc.cmd_args_preview : "—";
+        return (
+          <span className="snapshot-process-table__command" title={commandText}>
+            {commandText}
+          </span>
+        );
+      },
+    },
+    {
+      key: "actions",
+      label: "Actions",
+      render: (proc: SnapshotProcessRow) => {
+        const actionKey = `${proc.proc_key}:sample`;
+        const spindumpActionKey = `${proc.proc_key}:spindump`;
+        const disabled = proc.pid == null;
+        return (
+          <div className="snapshot-process-table__actions">
+            {actionInFlight === actionKey ? (
+              <button
+                type="button"
+                className="snapshot-process-btn snapshot-process-btn--loading"
+                disabled
+              >
+                <CircleNotch size={10} weight="bold" className="snapshot-process-btn__spinner" />
+                sample running
+              </button>
+            ) : actionResultUrls[actionKey] ? (
+              <a
+                href={actionResultUrls[actionKey]}
+                className="snapshot-process-btn"
+                target="_blank"
+                rel="noreferrer"
+                title="Open sample result"
+              >
+                Open sample txt
+              </a>
+            ) : (
+              <button
+                type="button"
+                className="snapshot-process-btn"
+                onClick={() => void onProcessAction(proc, "sample")}
+                disabled={disabled}
+                title={disabled ? "PID not available" : "Run sample command"}
+              >
+                sample
+              </button>
+            )}
+            {actionInFlight === spindumpActionKey ? (
+              <button
+                type="button"
+                className="snapshot-process-btn snapshot-process-btn--loading"
+                disabled
+              >
+                <CircleNotch size={10} weight="bold" className="snapshot-process-btn__spinner" />
+                spindump running
+              </button>
+            ) : actionResultUrls[spindumpActionKey] ? (
+              <a
+                href={actionResultUrls[spindumpActionKey]}
+                className="snapshot-process-btn"
+                target="_blank"
+                rel="noreferrer"
+                title="Open spindump result"
+              >
+                Open spindump txt
+              </a>
+            ) : (
+              <button
+                type="button"
+                className="snapshot-process-btn"
+                onClick={() => void onProcessAction(proc, "spindump")}
+                disabled={disabled}
+                title={disabled ? "PID not available" : "Run spindump command"}
+              >
+                spindump
+              </button>
+            )}
+          </div>
+        );
+      },
+    },
+  ], [actionInFlight, actionResultUrls, onProcessAction, getStatusClass, statusText]);
 
   const displayedMessage = feedbackMessage ?? processDebugMessage;
 
@@ -298,103 +417,12 @@ export function Header({
               {sortedProcesses.length === 0 ? (
                 <div className="snapshot-process-modal__empty">No process metadata for this snapshot.</div>
               ) : (
-                <table className="snapshot-process-table">
-                  <thead>
-                    <tr>
-                      <th>Process</th>
-                      <th>Proc key</th>
-                      <th>PID</th>
-                      <th>Status</th>
-                      <th>Command</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedProcesses.map((proc) => {
-                      const actionKey = `${proc.proc_key}:sample`;
-                      const spindumpActionKey = `${proc.proc_key}:spindump`;
-                      const commandText = proc.command ? proc.command : proc.cmd_args_preview ? proc.cmd_args_preview : "—";
-                      const disabled = proc.pid == null;
-                      return (
-                        <tr key={proc.proc_key} className={`snapshot-process-table__row ${proc.responded ? "" : "snapshot-process-table__row--missing"}`}>
-                          <td>{proc.process}</td>
-                          <td className="snapshot-process-table__mono">{proc.proc_key}</td>
-                          <td className="snapshot-process-table__mono">{proc.pid == null ? "—" : proc.pid}</td>
-                          <td>
-                            <span className={`snapshot-process-table__status ${getStatusClass(proc)}`}>
-                              <span title={proc.error_text ?? undefined}>{statusText(proc)}</span>
-                            </span>
-                          </td>
-                          <td className="snapshot-process-table__command" title={commandText}>
-                            {commandText}
-                          </td>
-                          <td className="snapshot-process-table__actions">
-                            {actionInFlight === actionKey ? (
-                              <button
-                                type="button"
-                                className="snapshot-process-btn snapshot-process-btn--loading"
-                                disabled
-                              >
-                                <CircleNotch size={10} weight="bold" className="snapshot-process-btn__spinner" />
-                                sample running
-                              </button>
-                            ) : actionResultUrls[actionKey] ? (
-                              <a
-                                href={actionResultUrls[actionKey]}
-                                className="snapshot-process-btn"
-                                target="_blank"
-                                rel="noreferrer"
-                                title="Open sample result"
-                              >
-                                Open sample txt
-                              </a>
-                            ) : (
-                              <button
-                                type="button"
-                                className="snapshot-process-btn"
-                                onClick={() => void onProcessAction(proc, "sample")}
-                                disabled={disabled}
-                                title={disabled ? "PID not available" : "Run sample command"}
-                              >
-                                sample
-                              </button>
-                            )}
-                            {actionInFlight === spindumpActionKey ? (
-                              <button
-                                type="button"
-                                className="snapshot-process-btn snapshot-process-btn--loading"
-                                disabled
-                              >
-                                <CircleNotch size={10} weight="bold" className="snapshot-process-btn__spinner" />
-                                spindump running
-                              </button>
-                            ) : actionResultUrls[spindumpActionKey] ? (
-                              <a
-                                href={actionResultUrls[spindumpActionKey]}
-                                className="snapshot-process-btn"
-                                target="_blank"
-                                rel="noreferrer"
-                                title="Open spindump result"
-                              >
-                                Open spindump txt
-                              </a>
-                            ) : (
-                              <button
-                                type="button"
-                                className="snapshot-process-btn"
-                                onClick={() => void onProcessAction(proc, "spindump")}
-                                disabled={disabled}
-                                title={disabled ? "PID not available" : "Run spindump command"}
-                              >
-                                spindump
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <Table
+                  columns={processTableColumns}
+                  rows={sortedProcesses}
+                  rowKey={(proc) => proc.proc_key}
+                  aria-label="Snapshot processes"
+                />
               )}
             </div>
           </div>

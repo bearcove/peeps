@@ -1,21 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Cpu, Camera, WarningCircle } from "@phosphor-icons/react";
 import {
   fetchConnections,
   fetchGraph,
-  fetchRecentTimelineEvents,
   fetchSnapshotProgress,
-  fetchTimelineProcessOptions,
   fetchSnapshotProcesses,
   requestProcessDebug,
   takeSnapshot,
 } from "./api";
 import { Header } from "./components/Header";
-import { SuspectsTable, type SuspectItem } from "./components/SuspectsTable";
 import { GraphView } from "./components/GraphView";
-import { ResourcesPanel } from "./components/ResourcesPanel";
 import { Inspector } from "./components/Inspector";
-import { TimelineView } from "./components/TimelineView";
 import { isResourceKind } from "./resourceKinds";
 import type {
   TakeSnapshotResponse,
@@ -24,8 +19,6 @@ import type {
   SnapshotGraph,
   SnapshotNode,
   SnapshotProcessInfo,
-  TimelineEvent,
-  TimelineProcessOption,
   ProcessDebugResponse,
 } from "./types";
 
@@ -48,7 +41,6 @@ const SNAPSHOT_POLL_INTERVAL_MS = 250;
 const SNAPSHOT_FINALIZATION_WAIT_BUDGET_MS = 6_000;
 type DetailLevel = "info" | "debug" | "trace";
 const DETAIL_LEVELS: DetailLevel[] = ["info", "debug", "trace"];
-type InvestigationMode = "graph" | "timeline" | "resources";
 const INSPECTOR_WIDTH_MIN = 260;
 const INSPECTOR_WIDTH_MAX = 720;
 
@@ -72,26 +64,6 @@ function firstString(attrs: Record<string, unknown>, keys: string[]): string | u
 
 function parseDetailLevel(value: string | null): DetailLevel {
   return value === "debug" || value === "trace" ? value : "info";
-}
-
-function parseInvestigationMode(value: string | null): InvestigationMode {
-  if (value === "timeline" || value === "resources") return value;
-  return "graph";
-}
-
-function normalizeProcessParam(value: string | null): string | null {
-  if (!value) return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function readRouteState(): { mode: InvestigationMode; resourceProcess: string | null } {
-  const params = new URLSearchParams(window.location.search);
-  const mode = parseInvestigationMode(params.get("mode"));
-  const resourceKind = params.get("resource_kind");
-  const resourceProcess =
-    resourceKind === "process" ? normalizeProcessParam(params.get("resource_process")) : null;
-  return { mode, resourceProcess };
 }
 
 function detailLevelRank(level: DetailLevel): number {
@@ -515,7 +487,6 @@ function applyDeadlockFocus(
 }
 
 export function App() {
-  const initialRoute = readRouteState();
   const [snapshot, setSnapshot] = useState<TakeSnapshotResponse | null>(null);
   const [graph, setGraph] = useState<SnapshotGraph | null>(null);
   const [loading, setLoading] = useState(false);
@@ -525,14 +496,6 @@ export function App() {
   const [snapshotProcesses, setSnapshotProcesses] = useState<SnapshotProcessInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [processDebugMessage, setProcessDebugMessage] = useState<string | null>(null);
-  const [investigationMode, setInvestigationMode] = useState<InvestigationMode>(() => {
-    if (initialRoute.mode !== "graph") return initialRoute.mode;
-    return parseInvestigationMode(sessionStorage.getItem("peeps-investigation-mode"));
-  });
-  const [resourcesProcessFilter, setResourcesProcessFilter] = useState<string | null>(
-    initialRoute.resourceProcess,
-  );
-
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [filteredNodeId, setFilteredNodeId] = useState<string | null>(null);
   const [graphSearchQuery, setGraphSearchQuery] = useState("");
@@ -540,23 +503,11 @@ export function App() {
   const [selectedEdge, setSelectedEdge] = useState<SnapshotEdge | null>(null);
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
   const [hiddenProcesses, setHiddenProcesses] = useState<Set<string>>(new Set());
-  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
-  const [timelineProcessOptions, setTimelineProcessOptions] = useState<TimelineProcessOption[]>([]);
-  const [timelineSelectedProcKey, setTimelineSelectedProcKey] = useState<string | null>(null);
-  const [timelineLoading, setTimelineLoading] = useState(false);
-  const [timelineError, setTimelineError] = useState<string | null>(null);
-  const [selectedTimelineEventId, setSelectedTimelineEventId] = useState<string | null>(null);
-  const [timelineRefreshTick, setTimelineRefreshTick] = useState(0);
   const [inspectorWidth, setInspectorWidth] = useState<number>(() => {
     const raw = sessionStorage.getItem("peeps-inspector-width");
     const parsed = raw ? Number(raw) : 320;
     if (!Number.isFinite(parsed)) return 320;
     return Math.min(INSPECTOR_WIDTH_MAX, Math.max(INSPECTOR_WIDTH_MIN, parsed));
-  });
-  const [timelineWindowSeconds, setTimelineWindowSeconds] = useState<number>(() => {
-    const raw = sessionStorage.getItem("peeps-timeline-window-seconds");
-    const parsed = raw ? Number(raw) : 300;
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 300;
   });
   const [detailLevel, setDetailLevel] = useState<DetailLevel>(() => {
     return parseDetailLevel(sessionStorage.getItem("peeps-detail-level"));
@@ -582,60 +533,11 @@ export function App() {
     return () => window.removeEventListener("resize", clampToViewport);
   }, []);
 
-  // Keep graph focus-first: left panel starts collapsed, inspector starts visible.
-  // Both states are sticky for the current browser session.
-  const [leftCollapsed, toggleLeft] = useSessionState("peeps-left-collapsed", true);
+  // Keep graph focus-first with inspector layout persisted per session.
+  // Inspector starts visible by default for a stable default layout.
   const [rightCollapsed, toggleRight] = useSessionState("peeps-right-collapsed", false);
   const [deadlockFocus, toggleDeadlockFocus] = useSessionState("peeps-deadlock-focus", true);
   const [showResources, toggleShowResources] = useSessionState("peeps-show-resources", false);
-  const [resourcesCollapsed, toggleResourcesCollapsed] = useSessionState(
-    "peeps-resources-collapsed",
-    false,
-  );
-
-  const handleSetMode = useCallback((mode: InvestigationMode) => {
-    setInvestigationMode(mode);
-  }, []);
-
-  const hasHydratedRouteRef = useRef(false);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    params.set("mode", investigationMode);
-    if (investigationMode === "resources" && resourcesProcessFilter) {
-      params.set("resource_kind", "process");
-      params.set("resource_process", resourcesProcessFilter);
-    } else {
-      params.delete("resource_kind");
-      params.delete("resource_process");
-    }
-
-    const nextSearch = params.toString();
-    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
-    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-    if (currentUrl === nextUrl) {
-      hasHydratedRouteRef.current = true;
-      sessionStorage.setItem("peeps-investigation-mode", investigationMode);
-      return;
-    }
-    if (hasHydratedRouteRef.current) {
-      window.history.pushState(null, "", nextUrl);
-    } else {
-      window.history.replaceState(null, "", nextUrl);
-      hasHydratedRouteRef.current = true;
-    }
-    sessionStorage.setItem("peeps-investigation-mode", investigationMode);
-  }, [investigationMode, resourcesProcessFilter]);
-
-  useEffect(() => {
-    const onPopState = () => {
-      const route = readRouteState();
-      setInvestigationMode(route.mode);
-      setResourcesProcessFilter(route.resourceProcess);
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
 
   const waitForSnapshotFinalization = useCallback(
     async (snapshotId: number, requested: number): Promise<SnapshotProcessInfo[]> => {
@@ -682,7 +584,6 @@ export function App() {
       setSelectedEdge(null);
       setFilteredNodeId(null);
       setGraphSearchQuery("");
-      setSelectedTimelineEventId(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -743,106 +644,10 @@ export function App() {
     };
   }, [loading]);
 
-  useEffect(() => {
-    if (!snapshot) return;
-    let cancelled = false;
-    fetchTimelineProcessOptions(snapshot.snapshot_id)
-      .then((options) => {
-        if (cancelled) return;
-        setTimelineProcessOptions(options);
-        if (timelineSelectedProcKey && !options.some((opt) => opt.proc_key === timelineSelectedProcKey)) {
-          setTimelineSelectedProcKey(null);
-        }
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setTimelineError(e instanceof Error ? e.message : String(e));
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [snapshot, timelineSelectedProcKey]);
-
-  useEffect(() => {
-    if (investigationMode !== "timeline" || !snapshot) return;
-    let cancelled = false;
-    const windowNs = Math.round(timelineWindowSeconds * 1_000_000_000);
-    const endTsNs = snapshot.captured_at_ns ?? Date.now() * 1_000_000;
-    const fromTsNs = Math.max(0, endTsNs - windowNs);
-    setTimelineLoading(true);
-    setTimelineError(null);
-
-    fetchRecentTimelineEvents(snapshot.snapshot_id, fromTsNs, timelineSelectedProcKey, 1200)
-      .then((rows) => {
-        if (cancelled) return;
-        setTimelineEvents(rows);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setTimelineError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setTimelineLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [investigationMode, snapshot, timelineSelectedProcKey, timelineWindowSeconds, timelineRefreshTick]);
-
   const enrichedGraph = useMemo(() => {
     if (!graph) return null;
     return enrichGraph(graph, snapshot?.captured_at_ns ?? null);
   }, [graph, snapshot?.captured_at_ns]);
-
-  const suspects = useMemo<SuspectItem[]>(() => {
-    if (!enrichedGraph) return [];
-    return enrichedGraph.nodes
-      .filter((n) => n.attrs._ui_deadlock_candidate === true)
-      .map((n) => {
-        const reason = firstString(n.attrs, ["_ui_deadlock_reason"]) ?? "unknown";
-        const ageNs = firstNumAttr(n.attrs, ["_ui_deadlock_age_ns", "poll_in_flight_ns", "idle_ns"]) ?? null;
-        const cycleSize = firstNumAttr(n.attrs, ["_ui_cycle_size"]) ?? 0;
-        const baseScore =
-          reason === "needs_cycle"
-            ? 1000
-            : reason === "in_poll_stuck"
-              ? 700
-              : reason === "pending_idle"
-                ? 500
-                : reason === "contended_wait"
-                  ? 350
-                  : 100;
-        const score = baseScore + Math.round((ageNs ?? 0) / 1_000_000_000) + cycleSize * 50;
-        const label =
-          firstString(n.attrs, ["method", "request.method", "label", "name"]) ??
-          n.id;
-        return {
-          id: n.id,
-          kind: n.kind,
-          label,
-          process: n.process,
-          reason,
-          age_ns: ageNs,
-          score,
-        };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 100);
-  }, [enrichedGraph]);
-
-  const handleSelectSuspect = useCallback(
-    (suspect: SuspectItem) => {
-      setFilteredNodeId(suspect.id);
-      setSelectedNodeId(suspect.id);
-      setSelectedEdge(null);
-      const node = enrichedGraph?.nodes.find((n) => n.id === suspect.id) ?? null;
-      setSelectedNode(node);
-    },
-    [enrichedGraph],
-  );
 
   const handleSelectGraphNode = useCallback(
     (nodeId: string) => {
@@ -962,28 +767,21 @@ export function App() {
     });
   }, [allProcesses]);
 
-  const handleInspectorProcessAction = useCallback(
-    (action: "show_only" | "hide" | "open_resources", process: string) => {
-      if (!process) return;
-      if (action === "show_only") {
-        setInvestigationMode("graph");
-        setHiddenProcesses(new Set(allProcesses.filter((p) => p !== process)));
-        return;
-      }
-      if (action === "hide") {
-        setInvestigationMode("graph");
-        setHiddenProcesses((prev) => {
-          const next = new Set(prev);
-          next.add(process);
-          return next;
-        });
-        return;
-      }
-      setResourcesProcessFilter(process);
-      setInvestigationMode("resources");
-    },
-    [allProcesses],
-  );
+  const handleInspectorProcessAction = useCallback((action: "show_only" | "hide", process: string) => {
+    if (!process) return;
+    if (action === "show_only") {
+      setHiddenProcesses(new Set(allProcesses.filter((p) => p !== process)));
+      return;
+    }
+    if (action === "hide") {
+      setHiddenProcesses((prev) => {
+        const next = new Set(prev);
+        next.add(process);
+        return next;
+      });
+      return;
+    }
+  }, [allProcesses]);
 
   const hasActiveFilters =
     hiddenKinds.size > 0 ||
@@ -1045,15 +843,6 @@ export function App() {
     [handleSelectGraphNode],
   );
 
-  const handleTimelineWindowChange = useCallback((seconds: number) => {
-    setTimelineWindowSeconds(seconds);
-    sessionStorage.setItem("peeps-timeline-window-seconds", String(seconds));
-  }, []);
-
-  const handleRefreshTimeline = useCallback(() => {
-    setTimelineRefreshTick((v) => v + 1);
-  }, []);
-
   const handleStartInspectorResize = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -1097,25 +886,6 @@ export function App() {
       );
     });
   }, []);
-
-  const handleSelectTimelineEvent = useCallback(
-    (event: TimelineEvent) => {
-      setSelectedTimelineEventId(event.id);
-      setFilteredNodeId(null);
-      setSelectedEdge(null);
-
-      const matchedNode = enrichedGraph?.nodes.find((n) => n.id === event.entity_id) ?? null;
-      if (!matchedNode) {
-        setSelectedNode(null);
-        setSelectedNodeId(null);
-        return;
-      }
-
-      handleSelectGraphNode(matchedNode.id);
-      handleSetMode("graph");
-    },
-    [enrichedGraph, handleSelectGraphNode, handleSetMode],
-  );
 
   const hasConnectedProcesses = connectedProcessCount > 0;
   const MAX_SHOWN_CONNECTED_PROCESSES = 12;
@@ -1230,34 +1000,9 @@ export function App() {
         </div>
       ) : (
         <>
-          <div className="mode-toggle-row">
-            <span className="mode-toggle-label">Investigation mode</span>
-            <button
-              className={`btn ${investigationMode === "graph" ? "btn--primary" : ""}`}
-              type="button"
-              onClick={() => handleSetMode("graph")}
-            >
-              Graph
-            </button>
-            <button
-              className={`btn ${investigationMode === "timeline" ? "btn--primary" : ""}`}
-              type="button"
-              onClick={() => handleSetMode("timeline")}
-            >
-              Timeline (spike)
-            </button>
-            <button
-              className={`btn ${investigationMode === "resources" ? "btn--primary" : ""}`}
-              type="button"
-              onClick={() => handleSetMode("resources")}
-            >
-              Resources
-            </button>
-          </div>
           <div
             className={[
               "main-content",
-              leftCollapsed && "main-content--left-collapsed",
               rightCollapsed && "main-content--right-collapsed",
             ].filter(Boolean).join(" ")}
             style={{
@@ -1265,87 +1010,38 @@ export function App() {
               ["--inspector-resizer-width" as string]: rightCollapsed ? "0px" : "10px",
             }}
           >
-            <SuspectsTable
-              suspects={suspects}
-              selectedId={selectedNodeId}
-              onSelect={handleSelectSuspect}
-              collapsed={leftCollapsed}
-              onToggleCollapse={toggleLeft}
-            />
-            {investigationMode === "graph" ? (
-              <div className="graph-mode-panels">
-                <GraphView
-                  graph={displayGraph}
-                  fullGraph={enrichedGraph}
-                  filteredNodeId={filteredNodeId}
-                  selectedNodeId={selectedNodeId}
-                  selectedEdge={selectedEdge}
-                  searchQuery={graphSearchQuery}
-                  searchResults={searchResults}
-                  allKinds={allKinds}
-                  hiddenKinds={hiddenKinds}
-                  onToggleKind={toggleKind}
-                  onSoloKind={soloKind}
-                  allProcesses={allProcesses}
-                  hiddenProcesses={hiddenProcesses}
-                  onToggleProcess={toggleProcess}
-                  onSoloProcess={soloProcess}
-                  deadlockFocus={deadlockFocus}
-                  onToggleDeadlockFocus={toggleDeadlockFocus}
-                  showResources={showResources}
-                  onToggleShowResources={toggleShowResources}
-                  detailLevel={detailLevel}
-                  onDetailLevelChange={handleDetailLevelChange}
-                  hasActiveFilters={hasActiveFilters}
-                  onResetFilters={handleResetFilters}
-                  onSearchQueryChange={setGraphSearchQuery}
-                  onSelectSearchResult={handleSelectSearchResult}
-                  onSelectNode={handleSelectGraphNode}
-                  onSelectEdge={handleSelectEdge}
-                  onClearSelection={handleClearSelection}
-                />
-                <ResourcesPanel
-                  graph={enrichedGraph}
-                  snapshotCapturedAtNs={snapshot?.captured_at_ns ?? null}
-                  snapshotId={snapshot?.snapshot_id ?? null}
-                  snapshotProcesses={snapshotProcesses}
-                  selectedNodeId={selectedNodeId}
-                  onSelectNode={handleSelectGraphNode}
-                  collapsed={resourcesCollapsed}
-                  onToggleCollapse={toggleResourcesCollapsed}
-                />
-              </div>
-            ) : investigationMode === "timeline" ? (
-              <TimelineView
-                events={timelineEvents}
-                loading={timelineLoading}
-                error={timelineError}
-                selectedEventId={selectedTimelineEventId}
-                selectedProcKey={timelineSelectedProcKey}
-                processOptions={timelineProcessOptions}
-                windowSeconds={timelineWindowSeconds}
-                snapshotCapturedAtNs={snapshot?.captured_at_ns ?? null}
-                onSelectProcKey={setTimelineSelectedProcKey}
-                onWindowSecondsChange={handleTimelineWindowChange}
-                onRefresh={handleRefreshTimeline}
-                onSelectEvent={handleSelectTimelineEvent}
-              />
-            ) : (
-              <ResourcesPanel
-                graph={enrichedGraph}
-                snapshotCapturedAtNs={snapshot?.captured_at_ns ?? null}
-                snapshotId={snapshot?.snapshot_id ?? null}
-                snapshotProcesses={snapshotProcesses}
+            <div className="graph-mode-panels">
+              <GraphView
+                graph={displayGraph}
+                fullGraph={enrichedGraph}
+                filteredNodeId={filteredNodeId}
                 selectedNodeId={selectedNodeId}
+                selectedEdge={selectedEdge}
+                searchQuery={graphSearchQuery}
+                searchResults={searchResults}
+                allKinds={allKinds}
+                hiddenKinds={hiddenKinds}
+                onToggleKind={toggleKind}
+                onSoloKind={soloKind}
+                allProcesses={allProcesses}
+                hiddenProcesses={hiddenProcesses}
+                onToggleProcess={toggleProcess}
+                onSoloProcess={soloProcess}
+                deadlockFocus={deadlockFocus}
+                onToggleDeadlockFocus={toggleDeadlockFocus}
+                showResources={showResources}
+                onToggleShowResources={toggleShowResources}
+                detailLevel={detailLevel}
+                onDetailLevelChange={handleDetailLevelChange}
+                hasActiveFilters={hasActiveFilters}
+                onResetFilters={handleResetFilters}
+                onSearchQueryChange={setGraphSearchQuery}
+                onSelectSearchResult={handleSelectSearchResult}
                 onSelectNode={handleSelectGraphNode}
-                collapsed={false}
-                onToggleCollapse={() => {}}
-                processFilter={resourcesProcessFilter}
-                onClearProcessFilter={() => setResourcesProcessFilter(null)}
-                fullHeight
-                allowCollapse={false}
+                onSelectEdge={handleSelectEdge}
+                onClearSelection={handleClearSelection}
               />
-            )}
+            </div>
             {!rightCollapsed && (
               <div
                 className="panel-resizer"

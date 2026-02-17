@@ -2,15 +2,17 @@ import { useMemo, useState } from "react";
 import {
   WarningCircle,
   CaretDown,
-  Check,
   CopySimple,
   ArrowSquareOut,
+  CircleNotch,
+  LinkSimple,
+  PaperPlaneTilt,
+  Timer,
 } from "@phosphor-icons/react";
 import { Panel } from "../ui/layout/Panel";
 import { PanelHeader } from "../ui/layout/PanelHeader";
 import { Row } from "../ui/layout/Row";
 import { Section } from "../ui/layout/Section";
-import { Button } from "../ui/primitives/Button";
 import { Badge, type BadgeTone } from "../ui/primitives/Badge";
 import { TextInput } from "../ui/primitives/TextInput";
 import { SearchInput } from "../ui/primitives/SearchInput";
@@ -107,7 +109,7 @@ export function LabView() {
       id: "conn-02",
       healthLabel: "WARN",
       healthTone: "warn",
-      connectionKind: "connection",
+      connectionKind: "channel_tx",
       connectionLabel: "vx-store · channel.v1.mpsc.send",
       pending: 3,
       lastRecvBasis: "P",
@@ -143,7 +145,7 @@ export function LabView() {
       id: "conn-04",
       healthLabel: "WARN",
       healthTone: "warn",
-      connectionKind: "resource",
+      connectionKind: "connection",
       connectionLabel: "vxd · connection: initiator<->acceptor",
       pending: 8,
       lastRecvBasis: "P",
@@ -161,7 +163,7 @@ export function LabView() {
       id: "conn-05",
       healthLabel: "OK",
       healthTone: "ok",
-      connectionKind: "connection",
+      connectionKind: "request",
       connectionLabel: "vx-vfsd · net.readable.wait",
       pending: 1,
       lastRecvBasis: "N",
@@ -284,11 +286,11 @@ export function LabView() {
     <Panel variant="lab">
       <PanelHeader title="Lab" hint="Primitives and tone language" />
       <div className="lab-body">
-        <Section title="Typography" subtitle="UI and mono fonts in the sizes we actually use">
+        <Section title="Typography" subtitle="UI and mono fonts in the sizes we actually use" wide>
           <div className="ui-typography-grid">
             <div className="ui-typo-card">
               <div className="ui-typo-kicker">UI font</div>
-              <div className="ui-typo-fontname ui-typo-ui">Inter</div>
+              <div className="ui-typo-fontname ui-typo-ui">Manrope</div>
               <div className="ui-typo-sample ui-typo-ui ui-typo-ui--xl">Take a snapshot</div>
               <div className="ui-typo-sample ui-typo-ui ui-typo-ui--md">Inspector, Graph, Timeline, Resources</div>
               <div className="ui-typo-sample ui-typo-ui ui-typo-ui--sm ui-typo-muted">
@@ -316,20 +318,39 @@ export function LabView() {
           </div>
         </Section>
 
-        <Section title="Buttons" subtitle="Hierarchy and states">
-          <Row>
-            <Button type="button">Default</Button>
-            <Button type="button" variant="primary">Primary</Button>
-            <Button type="button" disabled>Disabled</Button>
-            <Button type="button">
-              <WarningCircle size={14} weight="bold" />
-              With icon
-            </Button>
-            <Button type="button">
-              <Check size={14} weight="bold" />
-              Success
-            </Button>
-          </Row>
+        <Section title="Buttons" subtitle="Variants, sizes, and icon combinations">
+          <div className="ui-section-stack">
+            <Row>
+              <ActionButton>Default</ActionButton>
+              <ActionButton variant="primary">Primary</ActionButton>
+              <ActionButton variant="ghost">Ghost</ActionButton>
+              <ActionButton isDisabled>Disabled</ActionButton>
+            </Row>
+            <Row>
+              <ActionButton>
+                <WarningCircle size={14} weight="bold" />
+                With icon
+              </ActionButton>
+              <ActionButton>
+                <CopySimple size={12} weight="bold" />
+                Copy
+              </ActionButton>
+              <ActionButton>
+                <ArrowSquareOut size={12} weight="bold" />
+                Open
+              </ActionButton>
+            </Row>
+            <Row>
+              <ActionButton size="sm">Small</ActionButton>
+              <ActionButton
+                size="sm"
+                aria-label="Copy"
+                className="ui-action-button--icon-only"
+              >
+                <CopySimple size={12} weight="bold" />
+              </ActionButton>
+            </Row>
+          </div>
         </Section>
 
         <Section title="Badges" subtitle="Single token primitive with variants">
@@ -351,43 +372,46 @@ export function LabView() {
           </div>
         </Section>
 
-        <Section title="Inputs" subtitle="Text, search, checkbox, select, slider">
-          <div className="ui-section-stack">
-          <Row className="ui-row--field-grid">
-            <TextInput
-              value={textValue}
-              onChange={setTextValue}
-              placeholder="Type…"
-              aria-label="Text input"
-            />
-            <SearchInput
-              value={searchValue}
-              onChange={setSearchValue}
-              placeholder="Search…"
-              aria-label="Search input"
-              items={searchResults.map((item) => ({
-                id: item.id,
-                label: item.label,
-                meta: `${item.kind} · ${item.process}`,
-              }))}
-              showSuggestions={showSearchResults}
-              selectedId={selectedSearchId}
-              resultHint={
-                <>
-                  <span>{searchResults.length} result(s)</span>
-                  <span className="ui-search-results-hint">click to select · alt+click to filter only this kind</span>
-                </>
-              }
-              filterBadge={searchOnlyKind ? <Badge tone="neutral">{`kind:${searchOnlyKind}`}</Badge> : undefined}
-              onClearFilter={() => setSearchOnlyKind(null)}
-              onSelect={(id) => setSelectedSearchId(id)}
-              onAltSelect={(id) => {
-                const item = searchResults.find((entry) => entry.id === id);
-                if (!item) return;
-                setSearchOnlyKind((prev) => (prev === item.kind ? null : item.kind));
-              }}
-            />
-          </Row>
+        <Section title="Text Input" subtitle="Plain text field">
+          <TextInput
+            value={textValue}
+            onChange={setTextValue}
+            placeholder="Type…"
+            aria-label="Text input"
+          />
+        </Section>
+
+        <Section title="Search" subtitle="Autocomplete with results, filters, and selection" wide>
+          <SearchInput
+            value={searchValue}
+            onChange={setSearchValue}
+            placeholder="Search nodes…"
+            aria-label="Search input"
+            items={searchResults.map((item) => ({
+              id: item.id,
+              label: item.label,
+              meta: `${item.kind} · ${item.process}`,
+            }))}
+            showSuggestions={showSearchResults}
+            selectedId={selectedSearchId}
+            resultHint={
+              <>
+                <span>{searchResults.length} result(s)</span>
+                <span className="ui-search-results-hint">click to select · alt+click to filter only this kind</span>
+              </>
+            }
+            filterBadge={searchOnlyKind ? <Badge tone="neutral">{`kind:${searchOnlyKind}`}</Badge> : undefined}
+            onClearFilter={() => setSearchOnlyKind(null)}
+            onSelect={(id) => setSelectedSearchId(id)}
+            onAltSelect={(id) => {
+              const item = searchResults.find((entry) => entry.id === id);
+              if (!item) return;
+              setSearchOnlyKind((prev) => (prev === item.kind ? null : item.kind));
+            }}
+          />
+        </Section>
+
+        <Section title="Controls" subtitle="Checkbox, select">
           <Row className="ui-row--controls">
             <Checkbox
               checked={checked}
@@ -400,18 +424,20 @@ export function LabView() {
               aria-label="Select"
               options={selectOptions}
             />
-            <LabeledSlider
-              value={sliderValue}
-              min={0}
-              max={2}
-              step={1}
-              onChange={(v) => setSliderValue(v)}
-              aria-label="Detail level"
-              label="Detail"
-              valueLabel={sliderValue === 0 ? "info" : sliderValue === 1 ? "debug" : "trace"}
-            />
           </Row>
-          </div>
+        </Section>
+
+        <Section title="Slider" subtitle="Labeled slider with discrete steps">
+          <LabeledSlider
+            value={sliderValue}
+            min={0}
+            max={2}
+            step={1}
+            onChange={(v) => setSliderValue(v)}
+            aria-label="Detail level"
+            label="Detail"
+            valueLabel={sliderValue === 0 ? "info" : sliderValue === 1 ? "debug" : "trace"}
+          />
         </Section>
 
         <Section title="Menu / Dropdown" subtitle="For filters and chip actions">
@@ -459,16 +485,31 @@ export function LabView() {
 
         <Section title="Key-Value Rows" subtitle="Inspector-like metadata rows">
           <div className="ui-section-stack">
-            <KeyValueRow label="Method" labelWidth={80}>
+            <KeyValueRow
+              label="Method"
+              labelWidth={80}
+              className="kv-row--bordered"
+              icon={<PaperPlaneTilt size={12} weight="bold" />}
+            >
               DemoRpc.sleepy_forever
             </KeyValueRow>
-            <KeyValueRow label="Status" labelWidth={80}>
+            <KeyValueRow
+              label="Status"
+              labelWidth={80}
+              className="kv-row--bordered"
+              icon={<CircleNotch size={12} weight="bold" />}
+            >
               <Badge tone="warn">IN_FLIGHT</Badge>
             </KeyValueRow>
-            <KeyValueRow label="Elapsed" labelWidth={80}>
+            <KeyValueRow label="Elapsed" labelWidth={80} className="kv-row--bordered">
               <DurationDisplay ms={1245000} tone="crit" />
             </KeyValueRow>
-            <KeyValueRow label="Connection" labelWidth={80}>
+            <KeyValueRow
+              label="Connection"
+              labelWidth={80}
+              className="kv-row--bordered"
+              icon={<LinkSimple size={12} weight="bold" />}
+            >
               <NodeChip
                 kind="connection"
                 label="initiator→acceptor"
@@ -479,7 +520,12 @@ export function LabView() {
                 }}
               />
             </KeyValueRow>
-            <KeyValueRow label="Opened" labelWidth={80}>
+            <KeyValueRow
+              label="Opened"
+              labelWidth={80}
+              className="kv-row--bordered"
+              icon={<Timer size={12} weight="bold" />}
+            >
               <RelativeTimestamp
                 basis="P"
                 basisLabel="process started"
@@ -487,7 +533,12 @@ export function LabView() {
                 eventTime="2026-02-17T10:06:06.000Z"
               />
             </KeyValueRow>
-            <KeyValueRow label="Closed" labelWidth={80}>
+            <KeyValueRow
+              label="Closed"
+              labelWidth={80}
+              className="kv-row--bordered"
+              icon={<Timer size={12} weight="bold" />}
+            >
               <RelativeTimestamp
                 basis="N"
                 basisLabel="connection opened"
@@ -562,7 +613,7 @@ export function LabView() {
               }}
             />
             <NodeChip
-              kind="channel"
+              kind="channel_tx"
               label="mpsc.send"
               onClick={() => console.log("open channel chip")}
               onContextMenu={(event) => {
@@ -583,24 +634,17 @@ export function LabView() {
         </Section>
 
         <Section title="Process Identicons" subtitle="Name-derived 5x5 process avatars">
-          <div className="ui-section-stack">
-            {[16, 20, 28].map((size) => (
-              <div key={size} className="ui-identicon-size-group">
-                <div className="ui-identicon-size-label">{size}px</div>
-                <div className="ui-identicon-row">
-                  {processIdenticonNames.map((name) => (
-                    <span key={`${size}-${name}`} className="ui-identicon-cell">
-                      <ProcessIdenticon name={name} size={size} />
-                      <span>{name}</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
+          <div className="ui-identicon-list">
+            {processIdenticonNames.map((name) => (
+              <span key={name} className="ui-identicon-cell">
+                <ProcessIdenticon name={name} size={20} />
+                <span>{name}</span>
+              </span>
             ))}
           </div>
         </Section>
 
-        <Section title="Table" subtitle="Sortable, sticky header, selectable rows">
+        <Section title="Table" subtitle="Sortable, sticky header, selectable rows" wide>
           <Table
             columns={tableColumns}
             rows={tableSortedRows}
@@ -612,36 +656,6 @@ export function LabView() {
             onRowClick={(row) => setSelectedTableRow(row.id)}
             aria-label="Demo connections table"
           />
-        </Section>
-
-        <Section title="Action Buttons" subtitle="Compact utility action buttons">
-          <div className="ui-section-stack">
-            <div className="ui-row">
-              <ActionButton>Show raw</ActionButton>
-              <ActionButton>Focus</ActionButton>
-              <ActionButton>Copy JSON</ActionButton>
-            </div>
-            <div className="ui-row">
-              <ActionButton>
-                <CopySimple size={12} weight="bold" />
-                Copy
-              </ActionButton>
-              <ActionButton>
-                <ArrowSquareOut size={12} weight="bold" />
-                Open
-              </ActionButton>
-            </div>
-            <div className="ui-row">
-              <ActionButton variant="ghost">clear filter</ActionButton>
-              <ActionButton variant="ghost">reset</ActionButton>
-            </div>
-            <ActionButton
-              size="sm"
-              aria-label="Copy"
-            >
-              <CopySimple size={12} weight="bold" />
-            </ActionButton>
-          </div>
         </Section>
 
       </div>

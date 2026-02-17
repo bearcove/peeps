@@ -1,6 +1,8 @@
 *.sqlite*
 .tracey/
 target
+*.png
+.playwright-mcp/
 
 node_modules
 

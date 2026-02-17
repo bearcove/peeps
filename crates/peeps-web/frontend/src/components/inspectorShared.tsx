@@ -1,7 +1,7 @@
 import { ArrowSquareOut } from "@phosphor-icons/react";
 
 const THIRTY_DAYS_NS = 30 * 24 * 60 * 60 * 1_000_000_000;
-export type InspectorProcessAction = "show_only" | "hide" | "open_resources";
+export type InspectorProcessAction = "show_only" | "hide";
 
 function parseFiniteNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -142,13 +142,6 @@ export function CommonInspectorFields({
                   onClick={() => onProcessAction("hide", process)}
                 >
                   Hide this process
-                </button>
-                <button
-                  type="button"
-                  className="inspect-process-action"
-                  onClick={() => onProcessAction("open_resources", process)}
-                >
-                  Open in Resources
                 </button>
               </div>
             </details>

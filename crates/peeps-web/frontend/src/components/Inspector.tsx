@@ -43,6 +43,7 @@ import {
   getSource,
   resolveTimelineOriginNs,
 } from "./inspectorShared";
+import { DurationDisplay } from "../ui/primitives/DurationDisplay";
 import type {
   InspectorSnapshotNode,
   StuckRequest,
@@ -68,30 +69,14 @@ interface InspectorProps {
   onToggleCollapse: () => void;
 }
 
-function formatElapsedFull(ns: number): string {
-  const ms = ns / 1_000_000;
-  const secs = ns / 1_000_000_000;
-  if (secs >= 60) {
-    const mins = Math.floor(secs / 60);
-    const rem = secs % 60;
-    return `${mins}m ${rem.toFixed(1)}s (${ms.toLocaleString()}ms)`;
-  }
-  return `${secs.toFixed(3)}s (${ms.toLocaleString()}ms)`;
-}
-
-function formatDuration(ns: number): string {
-  const secs = ns / 1_000_000_000;
-  if (secs < 0.001) return `${(ns / 1_000).toFixed(0)}µs`;
-  if (secs < 1) return `${(ns / 1_000_000).toFixed(0)}ms`;
-  if (secs < 60) return `${secs.toFixed(3)}s`;
-  if (secs < 3600) return `${(secs / 60).toFixed(1)}m`;
-  return `${(secs / 3600).toFixed(1)}h`;
-}
-
-function durationClass(ns: number, warnNs: number, critNs: number): string {
-  if (ns >= critNs) return "inspect-val--crit";
-  if (ns >= warnNs) return "inspect-val--warn";
-  return "inspect-val--ok";
+function durationTone(
+  ns: number,
+  warnNs: number,
+  critNs: number,
+): "ok" | "warn" | "crit" {
+  if (ns >= critNs) return "crit";
+  if (ns >= warnNs) return "warn";
+  return "ok";
 }
 
 function attr(attrs: Record<string, unknown>, key: string): string | undefined {
@@ -273,7 +258,9 @@ function RequestDetail({
       <dt>Process</dt>
       <dd>{req.process}</dd>
       <dt>Elapsed</dt>
-      <dd>{formatElapsedFull(req.elapsed_ns)}</dd>
+      <dd>
+        <DurationDisplay ms={req.elapsed_ns / 1_000_000} />
+      </dd>
       <dt>Connection</dt>
       <dd>
         {req.connection ? (
@@ -925,7 +912,7 @@ function RawAttrs({ attrs }: { attrs: Record<string, unknown> }) {
     const k = key.toLowerCase();
     const maybeNs = asFiniteNumber(val);
     if (maybeNs != null && (k.endsWith("_ns") || k.includes("duration") || k.includes("age"))) {
-      return formatDuration(maybeNs);
+      return <DurationDisplay ms={maybeNs / 1_000_000} />;
     }
 
     if (typeof val === "number" && Number.isFinite(val)) {
@@ -1093,18 +1080,23 @@ function FutureDetail({ attrs }: DetailProps) {
       {lastPolledNs != null && (
         <div className="inspect-row">
           <span className="inspect-key">Idle</span>
-          <span
-            className={`inspect-val ${durationClass(lastPolledNs, 1_000_000_000, 5_000_000_000)}`}
-          >
-            {formatDuration(lastPolledNs)} ago
+          <span className="inspect-val">
+            <DurationDisplay
+              ms={lastPolledNs / 1_000_000}
+              tone={durationTone(lastPolledNs, 1_000_000_000, 5_000_000_000)}
+            />
+            {" ago"}
           </span>
         </div>
       )}
       {inPollNs != null && inPollNs > 0 && (
         <div className="inspect-row">
           <span className="inspect-key">In poll</span>
-          <span className={`inspect-val ${durationClass(inPollNs, 1_000_000_000, 5_000_000_000)}`}>
-            {formatDuration(inPollNs)}
+          <span className="inspect-val">
+            <DurationDisplay
+              ms={inPollNs / 1_000_000}
+              tone={durationTone(inPollNs, 1_000_000_000, 5_000_000_000)}
+            />
           </span>
         </div>
       )}
@@ -1142,8 +1134,11 @@ function MutexDetail({ attrs }: DetailProps) {
       {heldNs != null && (
         <div className="inspect-row">
           <span className="inspect-key">Hold duration</span>
-          <span className={`inspect-val ${durationClass(heldNs, 100_000_000, 1_000_000_000)}`}>
-            {formatDuration(heldNs)}
+          <span className="inspect-val">
+            <DurationDisplay
+              ms={heldNs / 1_000_000}
+              tone={durationTone(heldNs, 100_000_000, 1_000_000_000)}
+            />
           </span>
         </div>
       )}
@@ -1154,10 +1149,11 @@ function MutexDetail({ attrs }: DetailProps) {
       {longestWaitNs != null && longestWaitNs > 0 && (
         <div className="inspect-row">
           <span className="inspect-key">Longest wait</span>
-          <span
-            className={`inspect-val ${durationClass(longestWaitNs, 100_000_000, 1_000_000_000)}`}
-          >
-            {formatDuration(longestWaitNs)}
+          <span className="inspect-val">
+            <DurationDisplay
+              ms={longestWaitNs / 1_000_000}
+              tone={durationTone(longestWaitNs, 100_000_000, 1_000_000_000)}
+            />
           </span>
         </div>
       )}
@@ -1183,8 +1179,11 @@ function RwLockDetail({ attrs }: DetailProps) {
       {heldNs != null && (
         <div className="inspect-row">
           <span className="inspect-key">Hold duration</span>
-          <span className={`inspect-val ${durationClass(heldNs, 100_000_000, 1_000_000_000)}`}>
-            {formatDuration(heldNs)}
+          <span className="inspect-val">
+            <DurationDisplay
+              ms={heldNs / 1_000_000}
+              tone={durationTone(heldNs, 100_000_000, 1_000_000_000)}
+            />
           </span>
         </div>
       )}
@@ -1300,8 +1299,11 @@ function OneshotDetail({ attrs }: DetailProps) {
       {elapsedNs != null && (
         <div className="inspect-row">
           <span className="inspect-key">Elapsed</span>
-          <span className={`inspect-val ${durationClass(elapsedNs, 1_000_000_000, 5_000_000_000)}`}>
-            {formatDuration(elapsedNs)}
+          <span className="inspect-val">
+            <DurationDisplay
+              ms={elapsedNs / 1_000_000}
+              tone={durationTone(elapsedNs, 1_000_000_000, 5_000_000_000)}
+            />
           </span>
         </div>
       )}
@@ -1341,10 +1343,12 @@ function WatchDetail({ attrs }: DetailProps) {
       {lastUpdatedNs != null && (
         <div className="inspect-row">
           <span className="inspect-key">Last updated</span>
-          <span
-            className={`inspect-val ${durationClass(lastUpdatedNs, 5_000_000_000, 30_000_000_000)}`}
-          >
-            {formatDuration(lastUpdatedNs)} ago
+          <span className="inspect-val">
+            <DurationDisplay
+              ms={lastUpdatedNs / 1_000_000}
+              tone={durationTone(lastUpdatedNs, 5_000_000_000, 30_000_000_000)}
+            />
+            {" ago"}
           </span>
         </div>
       )}
@@ -1393,10 +1397,11 @@ function SemaphoreDetail({ attrs }: DetailProps) {
       {longestWaitNs != null && longestWaitNs > 0 && (
         <div className="inspect-row">
           <span className="inspect-key">Longest wait</span>
-          <span
-            className={`inspect-val ${durationClass(longestWaitNs, 100_000_000, 1_000_000_000)}`}
-          >
-            {formatDuration(longestWaitNs)}
+          <span className="inspect-val">
+            <DurationDisplay
+              ms={longestWaitNs / 1_000_000}
+              tone={durationTone(longestWaitNs, 100_000_000, 1_000_000_000)}
+            />
           </span>
         </div>
       )}
@@ -1422,8 +1427,11 @@ function OnceCellDetail({ attrs }: DetailProps) {
       {initNs != null && (
         <div className="inspect-row">
           <span className="inspect-key">Init duration</span>
-          <span className={`inspect-val ${durationClass(initNs, 1_000_000_000, 5_000_000_000)}`}>
-            {formatDuration(initNs)}
+          <span className="inspect-val">
+            <DurationDisplay
+              ms={initNs / 1_000_000}
+              tone={durationTone(initNs, 1_000_000_000, 5_000_000_000)}
+            />
           </span>
         </div>
       )}
@@ -1455,10 +1463,11 @@ function RpcRequestDetail({ attrs, graph, onSelectNode }: DetailProps) {
       {elapsedNs != null && (
         <div className="inspect-row">
           <span className="inspect-key">Elapsed</span>
-          <span
-            className={`inspect-val ${durationClass(elapsedNs, 1_000_000_000, 10_000_000_000)}`}
-          >
-            {formatElapsedFull(elapsedNs)}
+          <span className="inspect-val">
+            <DurationDisplay
+              ms={elapsedNs / 1_000_000}
+              tone={durationTone(elapsedNs, 1_000_000_000, 10_000_000_000)}
+            />
           </span>
         </div>
       )}
@@ -1504,26 +1513,33 @@ function RpcResponseDetail({ attrs, graph, onSelectNode }: DetailProps) {
       {elapsedNs != null && (
         <div className="inspect-row">
           <span className="inspect-key">Elapsed</span>
-          <span
-            className={`inspect-val ${durationClass(elapsedNs, 1_000_000_000, 10_000_000_000)}`}
-          >
-            {formatElapsedFull(elapsedNs)}
+          <span className="inspect-val">
+            <DurationDisplay
+              ms={elapsedNs / 1_000_000}
+              tone={durationTone(elapsedNs, 1_000_000_000, 10_000_000_000)}
+            />
           </span>
         </div>
       )}
       {handledElapsedNs != null && (
         <div className="inspect-row">
           <span className="inspect-key">Handled</span>
-          <span className={`inspect-val ${durationClass(handledElapsedNs, 500_000_000, 5_000_000_000)}`}>
-            {formatElapsedFull(handledElapsedNs)}
+          <span className="inspect-val">
+            <DurationDisplay
+              ms={handledElapsedNs / 1_000_000}
+              tone={durationTone(handledElapsedNs, 500_000_000, 5_000_000_000)}
+            />
           </span>
         </div>
       )}
       {queueWaitNs != null && (
         <div className="inspect-row">
           <span className="inspect-key">Queue wait</span>
-          <span className={`inspect-val ${durationClass(queueWaitNs, 250_000_000, 2_000_000_000)}`}>
-            {formatElapsedFull(queueWaitNs)}
+          <span className="inspect-val">
+            <DurationDisplay
+              ms={queueWaitNs / 1_000_000}
+              tone={durationTone(queueWaitNs, 250_000_000, 2_000_000_000)}
+            />
           </span>
         </div>
       )}

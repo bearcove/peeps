@@ -1,4 +1,5 @@
 import type React from "react";
+import { kindIcon } from "../../nodeKindSpec";
 
 export type NodeChipProps = {
   label: React.ReactNode;
@@ -20,14 +21,11 @@ export function NodeChip({
       type="button"
       className={["ui-node-chip", className].filter(Boolean).join(" ")}
       onClick={onClick}
-      onContextMenu={(event) => {
-        onContextMenu?.(event);
-      }}
+      onContextMenu={onContextMenu}
     >
       {kind && (
-        <span className="ui-node-chip__kind">
-          {kind}
-          <span className="ui-node-chip__sep">·</span>
+        <span className="ui-node-chip__icon" aria-hidden="true">
+          {kindIcon(kind, 12)}
         </span>
       )}
       <span className="ui-node-chip__label">{label}</span>

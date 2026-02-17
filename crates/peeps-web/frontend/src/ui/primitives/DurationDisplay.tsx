@@ -26,12 +26,12 @@ function formatDuration(ms: number): string {
   if (totalMs < 3600000) {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = Math.floor(totalSeconds % 60);
-    return `${minutes}m ${seconds}s`;
+    return `${minutes}m${seconds}s`;
   }
 
   const hours = Math.floor(totalMs / 3600000);
   const minutes = Math.floor((totalMs % 3600000) / 60000);
-  return `${hours}h ${minutes}m`;
+  return `${hours}h${minutes}m`;
 }
 
 function pickTone(ms: number): DurationTone {
