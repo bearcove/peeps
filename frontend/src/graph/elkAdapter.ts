@@ -467,14 +467,6 @@ export async function layoutGraph(
       }
     }
 
-    if (sourceAnchor && targetAnchor && points.length >= 2) {
-      const forward = distance(points[0], sourceAnchor) + distance(points[points.length - 1], targetAnchor);
-      const backward = distance(points[points.length - 1], sourceAnchor) + distance(points[0], targetAnchor);
-      if (backward < forward) {
-        points = [...points].reverse();
-      }
-    }
-
     const srcName = entityNameMap.get(def.source) ?? def.source;
     const dstName = entityNameMap.get(def.target) ?? def.target;
     const markerSize = edgeMarkerSize(def);
