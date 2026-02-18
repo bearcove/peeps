@@ -377,6 +377,7 @@ macro_rules! sleep {
 
 #[deprecated(note = "use the timeout! macro instead")]
 #[track_caller]
+#[allow(clippy::manual_async_fn)]
 pub fn timeout<F>(
     duration: std::time::Duration,
     future: F,
@@ -389,6 +390,7 @@ where
 }
 
 #[track_caller]
+#[allow(clippy::manual_async_fn)]
 pub fn timeout_with_krate<F>(
     duration: std::time::Duration,
     future: F,
@@ -2412,6 +2414,7 @@ impl<T> Sender<T> {
     }
 
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn send(
         &self,
         value: T,
@@ -2525,6 +2528,7 @@ impl<T> Receiver<T> {
     }
 
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn recv(&mut self) -> impl Future<Output = Option<T>> + '_ {
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
@@ -2714,6 +2718,7 @@ impl<T> UnboundedReceiver<T> {
     }
 
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn recv(&mut self) -> impl Future<Output = Option<T>> + '_ {
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
@@ -3305,6 +3310,7 @@ impl<T> OneshotReceiver<T> {
     }
 
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn recv(mut self) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
         async move {
             let inner = self.inner.take().expect("oneshot receiver consumed");
@@ -3572,6 +3578,7 @@ impl<T: Clone> BroadcastReceiver<T> {
     }
 
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn recv(&mut self) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
         async move {
             let result = instrument_future_on(
@@ -3723,6 +3730,7 @@ impl<T: Clone> WatchReceiver<T> {
     }
 
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn changed(&mut self) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
         async move {
             let result = instrument_future_on(
@@ -4102,6 +4110,7 @@ impl Notify {
     }
 
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn notified(&self) -> impl Future<Output = ()> + '_ {
         async move {
             let waiters = self
@@ -4196,6 +4205,7 @@ impl<T> OnceCell<T> {
     }
 
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn get_or_init<'a, F, Fut>(&'a self, f: F) -> impl Future<Output = &'a T> + 'a
     where
         F: FnOnce() -> Fut + 'a,
@@ -4237,6 +4247,7 @@ impl<T> OnceCell<T> {
     }
 
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn get_or_try_init<'a, F, Fut, E>(
         &'a self,
         f: F,
@@ -4384,6 +4395,7 @@ impl Semaphore {
     }
 
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn acquire(
         &self,
     ) -> impl Future<Output = Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_
@@ -4398,6 +4410,7 @@ impl Semaphore {
     }
 
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn acquire_many(
         &self,
         n: u32,
@@ -4416,6 +4429,7 @@ impl Semaphore {
     }
 
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn acquire_owned(
         &self,
     ) -> impl Future<Output = Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_
@@ -4433,6 +4447,7 @@ impl Semaphore {
     }
 
     #[track_caller]
+    #[allow(clippy::manual_async_fn)]
     pub fn acquire_many_owned(
         &self,
         n: u32,
