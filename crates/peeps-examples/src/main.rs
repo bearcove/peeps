@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use dialoguer::theme::ColorfulTheme;
 use dialoguer::FuzzySelect;
 
 type AnyResult<T> = Result<T, String>;
@@ -278,14 +279,15 @@ fn pick_interactively(ordered: &[String], last: Option<&str>) -> AnyResult<Strin
     let mut labels = Vec::with_capacity(ordered.len());
     for example in ordered {
         if Some(example.as_str()) == last {
-            labels.push(format!("{example} (last)"));
+            labels.push(format!("◉ {example}  [last]"));
         } else {
-            labels.push(example.clone());
+            labels.push(format!("◇ {example}"));
         }
     }
 
-    let selection = FuzzySelect::new()
-        .with_prompt("Select an example (type to filter)")
+    let theme = ColorfulTheme::default();
+    let selection = FuzzySelect::with_theme(&theme)
+        .with_prompt("Choose an example  ✨  (type to filter)")
         .items(&labels)
         .default(0)
         .interact_opt()
