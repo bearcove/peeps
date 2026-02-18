@@ -1,9 +1,9 @@
 .ui-section {
-    border: 1px solid var(--color-lit-ld-d376042d);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
-    background: var(--color-lit-ld-51056ffa);
+    background: var(--bg-surface);
     padding: 10px;
-    box-shadow: 0 6px 14px var(--color-lit-ld-d03b178b);
+    box-shadow: 0 6px 14px var(--shadow-soft);
 }
 
 .ui-section--wide {
@@ -16,14 +16,14 @@
     gap: 8px;
     font-size: var(--font-size-sm);
     font-weight: 800;
-    color: var(--color-lit-ld-d02e27bf);
+    color: var(--text-primary);
     margin-bottom: 6px;
 }
 
 .ui-section-subhead {
     font-size: var(--font-size-sm);
     font-weight: 600;
-    color: var(--color-lit-ld-92f287c6);
+    color: var(--text-muted);
 }
 
 .ui-section-stack {
@@ -37,6 +37,6 @@
 }
 
 .ui-section-stack > .ui-key-value-row:nth-child(odd) {
-    background: var(--color-lit-ld-8518efd4);
+    background: color-mix(in srgb, white 3%, transparent);
     border-radius: var(--radius-control);
 }

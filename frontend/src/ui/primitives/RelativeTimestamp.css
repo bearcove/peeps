@@ -5,19 +5,19 @@
 }
 
 .ui-relative-timestamp__prefix {
-    color: var(--color-lit-ld-022e6f16);
+    color: var(--text-secondary);
 }
 
 .ui-relative-timestamp--ok .ui-relative-timestamp__value {
-    color: var(--color-lit-ld-d59cb2c4);
+    color: var(--status-success);
 }
 
 .ui-relative-timestamp--warn .ui-relative-timestamp__value {
-    color: var(--color-lit-ld-d791833b);
+    color: var(--status-warning);
 }
 
 .ui-relative-timestamp--crit .ui-relative-timestamp__value {
-    color: var(--color-lit-ld-6cbed306);
+    color: var(--status-danger);
 }
 
 .ui-relative-timestamp-group {
@@ -34,6 +34,6 @@
 }
 
 .ui-relative-timestamp-caption {
-    color: var(--color-lit-ld-022e6f16);
+    color: var(--text-secondary);
     font-size: 11px;
 }

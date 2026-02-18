@@ -3,38 +3,68 @@
 .ui-segmented-group {
     display: inline-flex;
     align-items: center;
-    border-radius: var(--radius-control);
-    background: var(--color-lit-ld-28a0fa01);
-    padding: 2px;
-    gap: 2px;
+    gap: 0;
 }
 
 .ui-segmented-option {
-    border: none;
-    background: transparent;
-    color: var(--color-lit-ld-918c8b8c);
-    padding: 0 10px;
-    height: 24px;
-    border-radius: var(--radius-control);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    padding: 0 8px;
+    height: 28px;
+    border-radius: 0;
     font-size: var(--font-size-sm);
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
+    box-shadow: 0 1px 2px var(--shadow-soft);
+    transition: background-color 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.ui-segmented-option:first-child {
+    border-top-left-radius: var(--radius-control);
+    border-bottom-left-radius: var(--radius-control);
+}
+
+.ui-segmented-option:last-child {
+    border-top-right-radius: var(--radius-control);
+    border-bottom-right-radius: var(--radius-control);
+}
+
+.ui-segmented-option + .ui-segmented-option {
+    margin-left: -1px;
 }
 
 .ui-segmented-option--selected {
-    background: var(--color-lit-ld-2ce0cfa6);
-    color: var(--color-lit-ld-95d51f9e);
-    box-shadow: 0 1px 3px var(--color-lit-ld-35d6ab5b);
+    position: relative;
+    z-index: 1;
+    background: var(--accent);
+    color: var(--text-primary);
+    border-color: transparent;
+    box-shadow: none;
 }
 
 .ui-segmented-option:hover:not(.ui-segmented-option--selected) {
-    background: var(--color-lit-ld-12b08fe8);
+    background: color-mix(in srgb, white 4%, var(--bg-surface));
+    border-color: var(--border-default);
+    box-shadow: 0 1px 3px var(--shadow-strong);
+}
+
+.ui-segmented-option:active:not(.ui-segmented-option--selected) {
+    background: color-mix(in srgb, white 8%, var(--bg-surface));
+    box-shadow: 0 1px 2px var(--shadow-soft);
+}
+
+.ui-segmented-option[data-focus-visible] {
+    outline: none;
+    z-index: 2;
+    box-shadow: 0 0 0 2px var(--focus-ring);
+    border-color: var(--border-default);
 }
 
 .ui-segmented-group--sm .ui-segmented-option {
-    padding: 0 8px;
-    height: 20px;
+    padding: 0 6px;
+    height: 24px;
     font-size: 11px;
 }

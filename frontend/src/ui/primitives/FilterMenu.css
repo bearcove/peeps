@@ -1,38 +1,20 @@
 /* ── Filter Menu ─────────────────────────────────────── */
 
 .ui-filter-trigger {
-    display: inline-flex;
-    align-items: center;
     gap: 6px;
-    padding: 3px 8px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-control);
-    background: var(--surface-raised);
-    font-size: var(--font-size-sm);
-    font-weight: 700;
-    color: inherit;
     user-select: none;
-    cursor: pointer;
+}
+
+.ui-filter-trigger svg {
+    display: block;
+}
+
+.ui-filter-trigger:focus-visible {
+    box-shadow: none;
 }
 
 .ui-filter-trigger--active {
-    border-color: var(--color-lit-ld-4ed2e9cc);
-    background: var(--color-lit-ld-7e87d777);
-    color: var(--color-lit-ld-d1be9e2f);
-}
-
-.ui-filter-trigger[data-focused],
-.ui-filter-trigger[data-focus-visible],
-.ui-filter-trigger[data-pressed] {
-    box-shadow: 0 0 0 2px var(--focus-ring);
-    border-color: var(--color-lit-ld-cd269152);
-}
-
-.ui-filter-trigger--active[data-focused],
-.ui-filter-trigger--active[data-focus-visible],
-.ui-filter-trigger--active[data-pressed] {
-    border-color: var(--color-lit-ld-4ed2e9cc);
-    box-shadow: 0 0 0 2px var(--color-lit-ld-e3eb2eb1);
+    font-weight: 600;
 }
 
 .ui-filter-badge {
@@ -40,24 +22,17 @@
     font-weight: 600;
     padding: 0 4px;
     border-radius: var(--radius-control);
-    background: var(--color-lit-ld-e2fd553d);
-}
-
-.ui-filter-caret {
-    transition: transform 0.15s ease;
-}
-
-.ui-filter-caret--open {
-    transform: rotate(180deg);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
 .ui-filter-popover {
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
-    background: var(--surface-raised);
-    box-shadow: 0 6px 16px var(--color-lit-ld-c35dc65d);
-    padding: 3px;
+    background: var(--bg-surface);
+    box-shadow: 0 6px 16px var(--shadow-strong);
+    padding: 0;
     z-index: 20;
+    font-size: var(--font-size-sm);
 }
 
 .ui-filter-dialog {
@@ -65,18 +40,18 @@
 }
 
 .ui-filter-setting-row {
-    border-radius: var(--radius-control);
-    padding: 4px 6px;
-    margin-bottom: 1px;
+    border-radius: 0;
+    padding: 6px 10px;
+    margin: 0;
 }
 
 .ui-filter-setting-row:hover {
-    background: var(--surface-hover);
+    background: color-mix(in srgb, white 4%, var(--bg-surface));
 }
 
 .ui-filter-divider {
     height: 1px;
-    margin: 3px 2px;
+    margin: 0;
     background: var(--border-subtle);
 }
 
@@ -84,24 +59,28 @@
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: 0;
+    margin: 0;
+    padding: 0;
 }
 
 .ui-filter-item {
-    border-radius: var(--radius-control);
+    border-radius: 0;
+    background: transparent;
 }
 
 .ui-filter-item:hover {
-    background: var(--surface-hover);
+    background: color-mix(in srgb, white 4%, var(--bg-surface));
 }
 
 .ui-filter-checkbox {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 6px;
+    padding: 6px 10px;
     cursor: default;
     font-size: var(--font-size-sm);
+    color: var(--text-primary);
     outline: none;
 }
 
@@ -112,6 +91,14 @@
     flex-shrink: 0;
     width: 16px;
     color: var(--text-secondary);
+}
+
+.ui-filter-item-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    border: 1px solid var(--border-default);
+    display: inline-block;
 }
 
 .ui-filter-item-label {

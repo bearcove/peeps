@@ -45,18 +45,18 @@
 .ui-split-resizer {
     width: var(--split-resizer-width, 10px);
     cursor: col-resize;
-    border-left: 1px solid var(--border);
-    border-right: 1px solid var(--border);
-    background: var(--surface-sunken);
+    border-left: 1px solid var(--border-default);
+    border-right: 1px solid var(--border-default);
+    background: var(--bg-elevated);
     transition: background 120ms ease;
 }
 
 .ui-split-resizer:hover,
 .ui-split-resizer:focus-visible {
-    background: var(--color-lit-ld-f79617f4);
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg-surface));
     outline: none;
 }
 
 .ui-split-layout--dragging .ui-split-resizer {
-    background: var(--color-lit-ld-343ee702);
+    background: color-mix(in srgb, var(--accent) 18%, var(--bg-surface));
 }

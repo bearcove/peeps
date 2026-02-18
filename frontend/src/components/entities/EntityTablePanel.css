@@ -3,7 +3,7 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
-    background: var(--surface);
+    background: var(--bg-surface);
 }
 
 .entity-table-toolbar {
@@ -15,7 +15,7 @@
     min-height: 36px;
     box-sizing: border-box;
     border-bottom: 1px solid var(--border-subtle);
-    background: var(--surface-raised);
+    background: var(--bg-surface);
     font-size: 11px;
     flex-shrink: 0;
 }

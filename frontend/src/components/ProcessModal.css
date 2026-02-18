@@ -1,22 +1,22 @@
 .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: var(--color-lit-ld-5e4ee9ae);
+    background: color-mix(in srgb, var(--bg-base) 70%, black);
     display: grid;
     place-items: center;
     z-index: 1000;
 }
 
 .modal {
-    background: var(--surface-raised);
-    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
     width: min(560px, calc(100vw - 48px));
     max-height: 80vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 16px 48px var(--color-lit-ld-2855e449);
+    box-shadow: 0 16px 48px var(--shadow-strong);
 }
 
 .modal-header {

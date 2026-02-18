@@ -2,6 +2,7 @@ import React from "react";
 import { Crosshair, Info } from "@phosphor-icons/react";
 import { Badge } from "../../ui/primitives/Badge";
 import { ActionButton } from "../../ui/primitives/ActionButton";
+import { Popover } from "../../ui/primitives/Popover";
 import { formatProcessLabel } from "../../processLabel";
 import type { EntityDef } from "../../snapshot";
 import type { EntityDiff } from "../../recording/unionGraph";
@@ -25,6 +26,7 @@ function DetailsInfoAffordance({
 }) {
   const [hovered, setHovered] = React.useState(false);
   const [pinned, setPinned] = React.useState(false);
+  const anchorRef = React.useRef<HTMLSpanElement>(null);
   const birthAbsolute = isFinite(entity.birthApproxUnixMs) && entity.birthApproxUnixMs > 0
     ? new Date(entity.birthApproxUnixMs).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "long" })
     : null;
@@ -32,6 +34,7 @@ function DetailsInfoAffordance({
 
   return (
     <span
+      ref={anchorRef}
       className={[
         "inspector-details-popover-anchor",
         align === "end" && "inspector-details-popover-anchor--end",
@@ -49,8 +52,18 @@ function DetailsInfoAffordance({
       >
         <Info size={14} weight={pinned ? "fill" : "bold"} />
       </button>
-      {isOpen && (
-        <span className="inspector-tooltip" role="tooltip">
+      <Popover
+        open={isOpen}
+        anchorRef={anchorRef}
+        onClose={() => {
+          setHovered(false);
+          setPinned(false);
+        }}
+        side="bottom"
+        align={align}
+        className="inspector-tooltip"
+      >
+        <span role="tooltip">
           <span className="inspector-tooltip-row">
             <span className="inspector-tooltip-label">Process</span>
             <span className="inspector-tooltip-value">{formatProcessLabel(entity.processName, entity.processPid)}</span>
@@ -75,7 +88,7 @@ function DetailsInfoAffordance({
             </span>
           </span>
         </span>
-      )}
+      </Popover>
     </span>
   );
 }

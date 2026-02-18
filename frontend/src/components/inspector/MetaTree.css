@@ -24,15 +24,15 @@
 }
 
 .meta-value--string {
-    color: var(--color-lit-ld-2b3eb2c7);
+    color: var(--status-success);
 }
 
 .meta-value--number {
-    color: var(--color-lit-ld-66745883);
+    color: var(--accent-active);
 }
 
 .meta-value--boolean {
-    color: var(--color-lit-ld-22827e06);
+    color: var(--status-warning);
 }
 
 .meta-hint {

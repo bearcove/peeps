@@ -1745,8 +1745,40 @@ pub fn rpc_response_for(
     request: &EntityRef,
     source: Source,
 ) -> RpcResponseHandle {
-    #[allow(deprecated)]
-    let response = rpc_response(method, source);
+    let method = method.into();
+    let request_source_and_krate = if let Ok(db) = runtime_db().lock() {
+        db.entities
+            .get(request.id())
+            .map(|entity| (entity.source.clone(), entity.krate.clone()))
+            .or_else(|| {
+                let process_scope_id = current_process_scope_id()?;
+                db.scopes
+                    .get(&process_scope_id)
+                    .map(|scope| (scope.source.clone(), scope.krate.clone()))
+            })
+    } else {
+        None
+    };
+
+    let body = EntityBody::Response(ResponseEntity {
+        method: method.clone(),
+        status: ResponseStatus::Pending,
+    });
+    let mut builder = Entity::builder(format!("{method}"), body);
+    if let Some((request_source, request_krate)) = request_source_and_krate {
+        builder = builder.source(request_source);
+        if let Some(request_krate) = request_krate {
+            builder = builder.krate(request_krate);
+        }
+    } else {
+        builder = builder.source(source.into_compact_string());
+    }
+    let entity = builder
+        .build(&())
+        .expect("response construction with unit meta should be infallible");
+    let response = RpcResponseHandle {
+        handle: EntityHandle::from_entity(entity),
+    };
     if let Ok(mut db) = runtime_db().lock() {
         db.upsert_edge(request.id(), response.id(), EdgeKind::RpcLink);
     }

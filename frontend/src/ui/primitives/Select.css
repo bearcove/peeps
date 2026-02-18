@@ -7,8 +7,8 @@
     padding: 0 8px;
     min-width: 140px;
     border-radius: var(--radius-control);
-    border: 1px solid var(--border);
-    background: var(--surface-raised);
+    border: 1px solid var(--border-default);
+    background: var(--bg-surface);
     color: inherit;
     font-family: var(--font-ui);
     font-size: var(--font-size-sm);
@@ -25,15 +25,15 @@
 .ui-select[data-open] .ui-select-trigger {
     outline: none;
     box-shadow: 0 0 0 2px var(--focus-ring);
-    border-color: var(--color-lit-ld-cd269152);
+    border-color: var(--border-default);
 }
 
 .ui-select-popover {
     min-width: var(--trigger-width);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
-    background: var(--surface-raised);
-    box-shadow: 0 6px 16px var(--color-lit-ld-c35dc65d);
+    background: var(--bg-surface);
+    box-shadow: 0 6px 16px var(--shadow-soft);
     padding: 3px;
     z-index: 20;
 }
@@ -56,7 +56,7 @@
 
 .ui-select-item[data-focused],
 .ui-select-item[data-hovered] {
-    background: var(--surface-hover);
+    background: color-mix(in srgb, white 4%, var(--bg-elevated));
 }
 
 .ui-select-item[data-selected] {

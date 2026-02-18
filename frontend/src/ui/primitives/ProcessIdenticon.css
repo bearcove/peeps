@@ -2,7 +2,7 @@
     display: inline-block;
     vertical-align: middle;
     border-radius: var(--radius-control);
-    background: var(--color-lit-ld-835d53d9);
+    background: var(--bg-elevated);
     flex-shrink: 0;
 }
 

@@ -30,34 +30,34 @@ export const SCOPE_LIGHT_RGB = [
   [255, 237, 111],
 ] as const;
 
-// Dark mode: Set2 + Dark2 (excluding neutral greys) + Paired.
+// Dark mode: muted low-saturation variant tuned for dark surfaces.
 export const SCOPE_DARK_RGB = [
-  [102, 194, 165],
-  [252, 141, 98],
-  [141, 160, 203],
-  [231, 138, 195],
-  [166, 216, 84],
-  [255, 217, 47],
-  [229, 196, 148],
-  [27, 158, 119],
-  [217, 95, 2],
-  [117, 112, 179],
-  [231, 41, 138],
-  [102, 166, 30],
-  [230, 171, 2],
-  [166, 118, 29],
-  [166, 206, 227],
-  [31, 120, 180],
-  [178, 223, 138],
-  [51, 160, 44],
-  [251, 154, 153],
-  [227, 26, 28],
-  [253, 191, 111],
-  [255, 127, 0],
-  [202, 178, 214],
-  [106, 61, 154],
-  [255, 255, 153],
-  [177, 89, 40],
+  [69, 102, 92],
+  [140, 84, 63],
+  [83, 93, 117],
+  [139, 75, 114],
+  [93, 112, 62],
+  [121, 109, 54],
+  [139, 115, 79],
+  [42, 81, 69],
+  [88, 60, 39],
+  [75, 73, 96],
+  [107, 51, 79],
+  [62, 80, 42],
+  [93, 80, 42],
+  [81, 67, 42],
+  [87, 122, 141],
+  [42, 65, 81],
+  [103, 132, 78],
+  [47, 77, 46],
+  [162, 74, 73],
+  [100, 47, 48],
+  [146, 111, 65],
+  [102, 74, 46],
+  [119, 98, 129],
+  [62, 50, 74],
+  [162, 162, 73],
+  [81, 58, 45],
 ] as const;
 
 function rgbTripletToCss([r, g, b]: readonly [number, number, number]): string {
@@ -69,69 +69,24 @@ export type ScopeColorPair = {
   dark: string;
 };
 
-export function hashString(value: string): number {
-  // FNV-1a 32-bit gives stable distribution for short scope keys.
-  let h = 0x811c9dc5;
-  for (let i = 0; i < value.length; i++) {
-    h ^= value.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
-
 export function assignScopeColorRgbByKey(scopeKeys: Iterable<string>): Map<string, ScopeColorPair> {
   const lightPalette = SCOPE_LIGHT_RGB.map(rgbTripletToCss);
   const darkPalette = SCOPE_DARK_RGB.map(rgbTripletToCss);
   const paletteSize = Math.min(lightPalette.length, darkPalette.length);
-  const uniqueKeys = Array.from(new Set(scopeKeys)).filter((key) => key.length > 0);
+  const uniqueKeys = Array.from(new Set(scopeKeys))
+    .filter((key) => key.length > 0)
+    .sort((a, b) => a.localeCompare(b));
 
   if (paletteSize === 0 || uniqueKeys.length === 0) return new Map();
 
-  const entries = uniqueKeys
-    .map((key) => {
-      const hash = hashString(key);
-      return {
-        key,
-        hash,
-        bucket: hash % paletteSize,
-      };
-    })
-    .sort((a, b) => a.hash - b.hash || a.key.localeCompare(b.key));
-
-  const usedPaletteIndexes = new Set<number>();
   const assigned = new Map<string, ScopeColorPair>();
-
-  // First pass: reserve native hash buckets where possible.
-  for (const entry of entries) {
-    if (!usedPaletteIndexes.has(entry.bucket)) {
-      usedPaletteIndexes.add(entry.bucket);
-      assigned.set(entry.key, {
-        light: lightPalette[entry.bucket],
-        dark: darkPalette[entry.bucket],
-      });
-    }
-  }
-
-  // Second pass: collision-free linear probing if we still have free colors.
-  for (const entry of entries) {
-    if (assigned.has(entry.key)) continue;
-    let assignedIndex: number | null = null;
-    for (let offset = 1; offset < paletteSize; offset++) {
-      const candidate = (entry.bucket + offset) % paletteSize;
-      if (!usedPaletteIndexes.has(candidate)) {
-        assignedIndex = candidate;
-        break;
-      }
-    }
-
-    // If scopes exceed palette size, fall back to deterministic reuse.
-    const index = assignedIndex ?? entry.bucket;
-    usedPaletteIndexes.add(index);
-    assigned.set(entry.key, {
-      light: lightPalette[index],
-      dark: darkPalette[index],
+  uniqueKeys.forEach((key, index) => {
+    const paletteIndex = index % paletteSize;
+    assigned.set(key, {
+      light: lightPalette[paletteIndex],
+      dark: darkPalette[paletteIndex],
     });
-  }
+  });
 
   return assigned;
 }

@@ -19,8 +19,8 @@
     width: 30px;
     height: 16px;
     border-radius: var(--radius-control);
-    background: var(--color-lit-ld-eca41bb9);
-    border: 1px solid var(--color-lit-ld-37e0d2d6);
+    background: var(--border-default);
+    border: 1px solid var(--border-default);
     display: inline-flex;
     align-items: center;
     padding: 1px;
@@ -32,18 +32,19 @@
     width: 12px;
     height: 12px;
     border-radius: var(--radius-control);
-    background: var(--color-lit-ld-991d26eb);
-    box-shadow: 0 1px 2px var(--color-lit-ld-7994bf51);
+    background: var(--bg-base);
+    box-shadow: 0 1px 2px var(--shadow-soft);
     transform: translateX(0);
     transition: transform 120ms ease;
 }
 
 .ui-switch[data-selected] .ui-switch-track {
-    background: var(--color-lit-ld-44f734a5);
-    border-color: var(--color-lit-ld-97e3522c);
+    background: color-mix(in srgb, var(--accent) 58%, var(--bg-elevated));
+    border-color: color-mix(in srgb, var(--accent) 72%, var(--border-default));
 }
 
 .ui-switch[data-selected] .ui-switch-thumb {
+    background: var(--accent-hover);
     transform: translateX(14px);
 }
 

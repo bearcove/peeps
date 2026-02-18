@@ -55,8 +55,10 @@ pub async fn run() -> Result<(), String> {
 
     println!("client connected from {peer_addr}");
 
-    let mut config = HandshakeConfig::default();
-    config.name = Some("stuck-server".to_string());
+    let config = HandshakeConfig {
+        name: Some("stuck-server".to_string()),
+        ..Default::default()
+    };
 
     let dispatcher = DemoRpcDispatcher::new(DemoService);
     let (_handle, _incoming, driver) = accept(stream, config, dispatcher)

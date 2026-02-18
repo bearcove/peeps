@@ -164,6 +164,25 @@ export function GraphPanel({
     });
   }, [effectiveGeometry, scopeColorByKey]);
 
+  const crateItemsWithSwatches = useMemo<FilterMenuItem[]>(() => {
+    if (scopeColorMode !== "crate") return crateItems;
+    return crateItems.map((item) => {
+      const scopeRgb = scopeColorByKey.get(item.id);
+      if (!scopeRgb) return item;
+      return {
+        ...item,
+        icon: (
+          <span
+            className="ui-filter-item-swatch"
+            style={{
+              background: `light-dark(rgb(${scopeRgb.light}), rgb(${scopeRgb.dark}))`,
+            }}
+          />
+        ),
+      };
+    });
+  }, [crateItems, scopeColorByKey, scopeColorMode]);
+
   const ghostNodeIds = unionFrameLayout?.ghostNodeIds;
   const ghostEdgeIds = unionFrameLayout?.ghostEdgeIds;
 
@@ -190,6 +209,7 @@ export function GraphPanel({
             {entityDefs.length > 0 && (
               <>
                 <span className="graph-stat">{entityDefs.length} entities</span>
+                <span className="graph-stat-sep" aria-hidden="true">|</span>
                 <span className="graph-stat">{edgeDefs.length} edges</span>
               </>
             )}
@@ -220,7 +240,7 @@ export function GraphPanel({
             {crateItems.length > 1 && (
               <FilterMenu
                 label="Crate"
-                items={crateItems}
+                items={crateItemsWithSwatches}
                 hiddenIds={hiddenKrates}
                 onToggle={onKrateToggle}
                 onSolo={onKrateSolo}

@@ -61,12 +61,6 @@ export function RpcPairNode({ data }: { data: RpcPairNodeData }) {
         <span className="channel-pair-name">{rpcName}</span>
       </div>
       <div className="channel-pair-rows">
-        <div className="channel-pair-row channel-pair-row--out">
-          <span className="channel-pair-row-label">REQ</span>
-          <span className="inspector-mono" style={{ fontSize: "11px" }}>
-            {method}
-          </span>
-        </div>
         <div className="channel-pair-row channel-pair-row--in">
           <span className="channel-pair-row-label">RESP</span>
           <Badge tone={respTone}>{respStatus}</Badge>

@@ -56,7 +56,7 @@
 
 .channel-pair-name {
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: clip;
 }
 
 .channel-pair-rows {

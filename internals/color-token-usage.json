@@ -1,0 +1,4700 @@
+[
+  {
+    "token": "--color-lit-ld-022e6f16",
+    "total": 17,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 7
+      },
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "count": 2
+      },
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "count": 2
+      },
+      {
+        "file": "frontend/src/ui/primitives/RelativeTimestamp.css",
+        "count": 2
+      },
+      {
+        "file": "frontend/src/ui/primitives/KeyValueRow.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/NodeChip.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 17
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 48,
+        "selector": ".ui-typo-kicker",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 98,
+        "selector": ".ui-lab-hint",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/KeyValueRow.css",
+        "line": 12,
+        "selector": ".ui-key-value-row__label",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "line": 16,
+        "selector": ".ui-table-header",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 36,
+        "selector": ".ui-search-clear",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 137,
+        "selector": ".ui-search-result-meta",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/NodeChip.css",
+        "line": 35,
+        "selector": ".ui-node-chip__icon",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "line": 29,
+        "selector": ".ui-slider-label",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/RelativeTimestamp.css",
+        "line": 8,
+        "selector": ".ui-relative-timestamp__prefix",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/RelativeTimestamp.css",
+        "line": 37,
+        "selector": ".ui-relative-timestamp-caption",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 19,
+        "selector": ".panel-header",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 53,
+        "selector": ".panel-collapsed-label",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 69,
+        "selector": ".panel-collapse-btn",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 142,
+        "selector": ".resources-collapsed-label",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 154,
+        "selector": ".resources-copy-btn",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 212,
+        "selector": ".filter-clear-btn",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 233,
+        "selector": ".filter-reset-btn",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-022e6f16);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-15d73b5f",
+    "total": 12,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 10
+      },
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "count": 2
+      }
+    ],
+    "properties": [
+      {
+        "property": "border-right",
+        "count": 5
+      },
+      {
+        "property": "border-bottom",
+        "count": 3
+      },
+      {
+        "property": "border-top",
+        "count": 2
+      },
+      {
+        "property": "border",
+        "count": 1
+      },
+      {
+        "property": "border-left",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "line": 2,
+        "selector": ".ui-table",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-15d73b5f);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "line": 13,
+        "selector": ".ui-table-header",
+        "prop": "border-bottom",
+        "source": "border-bottom: 1px solid var(--color-lit-ld-15d73b5f);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 5,
+        "selector": ".panel",
+        "prop": "border-right",
+        "source": "border-right: 1px solid var(--color-lit-ld-15d73b5f);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 21,
+        "selector": ".panel-header",
+        "prop": "border-bottom",
+        "source": "border-bottom: 1px solid var(--color-lit-ld-15d73b5f);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 36,
+        "selector": ".panel--collapsed",
+        "prop": "border-right",
+        "source": "border-right: 1px solid var(--color-lit-ld-15d73b5f);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 86,
+        "selector": ".panel-resizer",
+        "prop": "border-left",
+        "source": "border-left: 1px solid var(--color-lit-ld-15d73b5f);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 87,
+        "selector": ".panel-resizer",
+        "prop": "border-right",
+        "source": "border-right: 1px solid var(--color-lit-ld-15d73b5f);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 119,
+        "selector": ".panel--resources",
+        "prop": "border-top",
+        "source": "border-top: 1px solid var(--color-lit-ld-15d73b5f);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 120,
+        "selector": ".panel--resources",
+        "prop": "border-right",
+        "source": "border-right: 1px solid var(--color-lit-ld-15d73b5f);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 135,
+        "selector": ".panel--resources-collapsed",
+        "prop": "border-top",
+        "source": "border-top: 1px solid var(--color-lit-ld-15d73b5f);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 136,
+        "selector": ".panel--resources-collapsed",
+        "prop": "border-right",
+        "source": "border-right: 1px solid var(--color-lit-ld-15d73b5f);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 283,
+        "selector": ".panel",
+        "prop": "border-bottom",
+        "source": "border-bottom: 1px solid var(--color-lit-ld-15d73b5f);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-b19fa9e1",
+    "total": 9,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 4
+      },
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 2
+      },
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/TextInput.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border",
+        "count": 7
+      },
+      {
+        "property": "border-color",
+        "count": 1
+      },
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 89,
+        "selector": ".ui-typo-pill",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-b19fa9e1);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 8,
+        "selector": ".ui-action-button",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-b19fa9e1);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 66,
+        "selector": ".ui-action-button--ghost:hover",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-b19fa9e1);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "line": 37,
+        "selector": ".badge--count",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-b19fa9e1);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/TextInput.css",
+        "line": 5,
+        "selector": ".ui-input",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-b19fa9e1);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 66,
+        "selector": ".panel-collapse-btn",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-b19fa9e1);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 209,
+        "selector": ".filter-clear-btn",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-b19fa9e1);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 220,
+        "selector": ".filter-clear-btn:hover",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-b19fa9e1);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 230,
+        "selector": ".filter-reset-btn",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-b19fa9e1);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-51056ffa",
+    "total": 6,
+    "files": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "count": 3
+      },
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/layout/Section.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 6
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 39,
+        "selector": ".ui-typo-card",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-51056ffa);"
+      },
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 111,
+        "selector": ".ui-color-group",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-51056ffa);"
+      },
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 152,
+        "selector": ".ui-color-vars",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-51056ffa);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "line": 4,
+        "selector": ".ui-table",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-51056ffa);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "line": 13,
+        "selector": ".ui-slider-panel",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-51056ffa);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Section.css",
+        "line": 4,
+        "selector": ".ui-section",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-51056ffa);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-6cbed306",
+    "total": 6,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "count": 2
+      },
+      {
+        "file": "frontend/src/ui/primitives/DurationDisplay.css",
+        "count": 2
+      },
+      {
+        "file": "frontend/src/ui/primitives/Menu.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/RelativeTimestamp.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 6
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Menu.css",
+        "line": 62,
+        "selector": ".ui-menu-item--danger",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-6cbed306);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "line": 28,
+        "selector": ".badge--crit",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-6cbed306);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "line": 55,
+        "selector": ".waiter-badge--active",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-6cbed306);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/DurationDisplay.css",
+        "line": 21,
+        "selector": ".duration--crit",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-6cbed306);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/DurationDisplay.css",
+        "line": 43,
+        "selector": ".ui-duration-display--crit",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-6cbed306);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/RelativeTimestamp.css",
+        "line": 20,
+        "selector": ".ui-relative-timestamp--crit .ui-relative-timestamp__value",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-6cbed306);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-7ae19c32",
+    "total": 5,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 4
+      },
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 5
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 45,
+        "selector": ".ui-search-clear:hover",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-7ae19c32);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 76,
+        "selector": ".panel-collapse-btn:hover",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-7ae19c32);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 163,
+        "selector": ".resources-copy-btn:hover",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-7ae19c32);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 221,
+        "selector": ".filter-clear-btn:hover",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-7ae19c32);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 242,
+        "selector": ".filter-reset-btn:hover",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-7ae19c32);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-95d51f9e",
+    "total": 5,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 2
+      },
+      {
+        "file": "frontend/src/ui/primitives/SegmentedGroup.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/Checkbox.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 3
+      },
+      {
+        "property": "background",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SegmentedGroup.css",
+        "line": 28,
+        "selector": ".ui-segmented-option--selected",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-95d51f9e);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 10,
+        "selector": ".ui-action-button",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-95d51f9e);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 41,
+        "selector": ".ui-action-button--primary",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-95d51f9e);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 132,
+        "selector": ".ui-search-result-label",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-95d51f9e);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Checkbox.css",
+        "line": 31,
+        "selector": ".ui-checkbox[data-selected] .ui-checkbox-box",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-95d51f9e);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-cd269152",
+    "total": 5,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Checkbox.css",
+        "count": 2
+      },
+      {
+        "file": "frontend/src/ui/primitives/Menu.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/Select.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border-color",
+        "count": 5
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Menu.css",
+        "line": 21,
+        "selector": ".ui-menu-trigger[data-open]",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-cd269152);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Checkbox.css",
+        "line": 27,
+        "selector": ".ui-checkbox:hover .ui-checkbox-box",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-cd269152);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Checkbox.css",
+        "line": 38,
+        "selector": ".ui-checkbox[data-focus-visible] .ui-checkbox-box",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-cd269152);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Select.css",
+        "line": 28,
+        "selector": ".ui-select[data-open] .ui-select-trigger",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-cd269152);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "line": 28,
+        "selector": ".ui-filter-trigger[data-pressed]",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-cd269152);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-d376042d",
+    "total": 5,
+    "files": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "count": 3
+      },
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/layout/Section.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border",
+        "count": 5
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 37,
+        "selector": ".ui-typo-card",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-d376042d);"
+      },
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 109,
+        "selector": ".ui-color-group",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-d376042d);"
+      },
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 150,
+        "selector": ".ui-color-vars",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-d376042d);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "line": 12,
+        "selector": ".ui-slider-panel",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-d376042d);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Section.css",
+        "line": 2,
+        "selector": ".ui-section",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-d376042d);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-d791833b",
+    "total": 5,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/DurationDisplay.css",
+        "count": 2
+      },
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/RelativeTimestamp.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 5
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "line": 54,
+        "selector": ".app-header-badge--warn",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-d791833b);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "line": 23,
+        "selector": ".badge--warn",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-d791833b);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/DurationDisplay.css",
+        "line": 16,
+        "selector": ".duration--warn",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-d791833b);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/DurationDisplay.css",
+        "line": 39,
+        "selector": ".ui-duration-display--warn",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-d791833b);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/RelativeTimestamp.css",
+        "line": 16,
+        "selector": ".ui-relative-timestamp--warn .ui-relative-timestamp__value",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-d791833b);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-015826c9",
+    "total": 4,
+    "files": [
+      {
+        "file": "frontend/src/components/graph/GraphNode.css",
+        "count": 2
+      },
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 2
+      },
+      {
+        "property": "--graph-card-border-color",
+        "count": 1
+      },
+      {
+        "property": "color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "line": 104,
+        "selector": ".recording-dot",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-015826c9);"
+      },
+      {
+        "file": "frontend/src/components/graph/GraphNode.css",
+        "line": 31,
+        "selector": ".graph-card--stat-crit",
+        "prop": "--graph-card-border-color",
+        "source": "--graph-card-border-color: var(--color-lit-ld-015826c9);"
+      },
+      {
+        "file": "frontend/src/components/graph/GraphNode.css",
+        "line": 105,
+        "selector": ".graph-node-stat--crit",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-015826c9);"
+      },
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 347,
+        "selector": ".inspector-buffer-segment--crit",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-015826c9);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-5dc74775",
+    "total": 4,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 3
+      },
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 4
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 44,
+        "selector": ".ui-search-clear:hover",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-5dc74775);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 68,
+        "selector": ".panel-collapse-btn",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-5dc74775);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 153,
+        "selector": ".resources-copy-btn",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-5dc74775);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 232,
+        "selector": ".filter-reset-btn",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-5dc74775);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-92f287c6",
+    "total": 4,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "count": 2
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/layout/Section.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 4
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 79,
+        "selector": ".ui-search-results-hint",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-92f287c6);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 142,
+        "selector": ".ui-search-empty",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-92f287c6);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 266,
+        "selector": ".ui-header-hint",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-92f287c6);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Section.css",
+        "line": 26,
+        "selector": ".ui-section-subhead",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-92f287c6);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-d59cb2c4",
+    "total": 4,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/DurationDisplay.css",
+        "count": 2
+      },
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/RelativeTimestamp.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 4
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "line": 18,
+        "selector": ".badge--ok",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-d59cb2c4);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/DurationDisplay.css",
+        "line": 12,
+        "selector": ".duration--ok",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-d59cb2c4);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/DurationDisplay.css",
+        "line": 35,
+        "selector": ".ui-duration-display--ok",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-d59cb2c4);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/RelativeTimestamp.css",
+        "line": 12,
+        "selector": ".ui-relative-timestamp--ok .ui-relative-timestamp__value",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-d59cb2c4);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-3349dec3",
+    "total": 3,
+    "files": [
+      {
+        "file": "frontend/src/components/graph/GraphNode.css",
+        "count": 2
+      },
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "--graph-card-border-color",
+        "count": 1
+      },
+      {
+        "property": "color",
+        "count": 1
+      },
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/graph/GraphNode.css",
+        "line": 35,
+        "selector": ".graph-card--stat-warn",
+        "prop": "--graph-card-border-color",
+        "source": "--graph-card-border-color: var(--color-lit-ld-3349dec3);"
+      },
+      {
+        "file": "frontend/src/components/graph/GraphNode.css",
+        "line": 110,
+        "selector": ".graph-node-stat--warn",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-3349dec3);"
+      },
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 343,
+        "selector": ".inspector-buffer-segment--warn",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-3349dec3);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-6dca8202",
+    "total": 3,
+    "files": [
+      {
+        "file": "frontend/src/components/graph/GraphNode.css",
+        "count": 2
+      },
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 2
+      },
+      {
+        "property": "--graph-card-border-color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/graph/GraphNode.css",
+        "line": 72,
+        "selector": ".graph-node--cycle",
+        "prop": "--graph-card-border-color",
+        "source": "--graph-card-border-color: var(--color-lit-ld-6dca8202);"
+      },
+      {
+        "file": "frontend/src/components/graph/GraphNode.css",
+        "line": 77,
+        "selector": ".graph-node--cycle .graph-node-icon",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-6dca8202);"
+      },
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 185,
+        "selector": ".inspector-node-icon--causal",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-6dca8202);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-84038782",
+    "total": 3,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/TextInput.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 2
+      },
+      {
+        "property": "(non-decl)",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 31,
+        "selector": ".ui-action-button:focus-visible",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 0 0 2px var(--color-lit-ld-84038782);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/TextInput.css",
+        "line": 16,
+        "selector": ".ui-input:focus-visible",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 0 0 2px var(--color-lit-ld-84038782);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "line": 70,
+        "selector": ".ui-slider-thumb[data-focus-visible]",
+        "prop": "(non-decl)",
+        "source": "0 0 0 2px var(--color-lit-ld-84038782),"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-c35dc65d",
+    "total": 3,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Menu.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/Select.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 3
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Menu.css",
+        "line": 29,
+        "selector": ".ui-menu-popover",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 6px 16px var(--color-lit-ld-c35dc65d);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Select.css",
+        "line": 36,
+        "selector": ".ui-select-popover",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 6px 16px var(--color-lit-ld-c35dc65d);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "line": 58,
+        "selector": ".ui-filter-popover",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 6px 16px var(--color-lit-ld-c35dc65d);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-c66cb479",
+    "total": 3,
+    "files": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "count": 3
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 3
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "line": 44,
+        "selector": ".app-header-badge--recording",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-c66cb479);"
+      },
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "line": 59,
+        "selector": ".app-header-error",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-c66cb479);"
+      },
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "line": 96,
+        "selector": ".proc-pill--disconnected",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-c66cb479);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-d7770536",
+    "total": 3,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 3
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 3
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 75,
+        "selector": ".panel-collapse-btn:hover",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-d7770536);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 162,
+        "selector": ".resources-copy-btn:hover",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-d7770536);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 241,
+        "selector": ".filter-reset-btn:hover",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-d7770536);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-0db1eab7",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 2
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 14,
+        "selector": ".ui-action-button",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 1px 2px var(--color-lit-ld-0db1eab7);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 67,
+        "selector": ".ui-action-button--ghost:hover",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 1px 2px var(--color-lit-ld-0db1eab7);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-12321db7",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 2
+      }
+    ],
+    "properties": [
+      {
+        "property": "--inspector-accent",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 15,
+        "selector": ".inspector",
+        "prop": "--inspector-accent",
+        "source": "--inspector-accent: var(--color-lit-ld-12321db7);"
+      },
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 139,
+        "selector": ".inspector-node-header",
+        "prop": "--inspector-accent",
+        "source": "--inspector-accent: var(--color-lit-ld-12321db7);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-43da4eab",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/TextInput.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border-color",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 32,
+        "selector": ".ui-action-button:focus-visible",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-43da4eab);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/TextInput.css",
+        "line": 17,
+        "selector": ".ui-input:focus-visible",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-43da4eab);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-4ed2e9cc",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "count": 2
+      }
+    ],
+    "properties": [
+      {
+        "property": "border-color",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "line": 19,
+        "selector": ".ui-filter-trigger--active",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-4ed2e9cc);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "line": 34,
+        "selector": ".ui-filter-trigger--active[data-pressed]",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-4ed2e9cc);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-51fce81c",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/components/graph/GraphNode.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/styles.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "outline",
+        "count": 1
+      },
+      {
+        "property": "--accent",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/graph/GraphNode.css",
+        "line": 15,
+        "selector": ".graph-card--selected",
+        "prop": "outline",
+        "source": "outline: 2px solid var(--color-lit-ld-51fce81c);"
+      },
+      {
+        "file": "frontend/src/styles.css",
+        "line": 174,
+        "selector": ":root",
+        "prop": "--accent",
+        "source": "--accent: var(--color-lit-ld-51fce81c);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-5773bd0f",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "count": 2
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "line": 39,
+        "selector": ".app-header-badge--active",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-5773bd0f);"
+      },
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "line": 91,
+        "selector": ".proc-pill--connected",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-5773bd0f);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-6d678c8a",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/components/timeline/RecordingTimeline.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/timeline/RecordingTimeline.css",
+        "line": 91,
+        "selector": ".recording-timeline-ghost-btn--active",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-6d678c8a);"
+      },
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 482,
+        "selector": ".inspector-diff-to",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-6d678c8a);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-7633e6e6",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "count": 2
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "line": 29,
+        "selector": ".badge--crit",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-7633e6e6);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "line": 56,
+        "selector": ".waiter-badge--active",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-7633e6e6);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-7f698312",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "count": 2
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "line": 43,
+        "selector": ".app-header-badge--recording",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-7f698312);"
+      },
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "line": 95,
+        "selector": ".proc-pill--disconnected",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-7f698312);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-81a50f4f",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "count": 2
+      }
+    ],
+    "properties": [
+      {
+        "property": "border",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 49,
+        "selector": ".ui-search-results",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-81a50f4f);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 60,
+        "selector": ".ui-search-popover",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-81a50f4f);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-849f65eb",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "line": 53,
+        "selector": ".app-header-badge--warn",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-849f65eb);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "line": 24,
+        "selector": ".badge--warn",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-849f65eb);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-8991f946",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "count": 2
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 51,
+        "selector": ".ui-search-results",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-8991f946);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 62,
+        "selector": ".ui-search-popover",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-8991f946);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-99b6b468",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "count": 2
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 1
+      },
+      {
+        "property": "(non-decl)",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "line": 62,
+        "selector": ".ui-slider-thumb",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 1px 2px var(--color-lit-ld-99b6b468);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "line": 71,
+        "selector": ".ui-slider-thumb[data-focus-visible]",
+        "prop": "(non-decl)",
+        "source": "0 1px 2px var(--color-lit-ld-99b6b468);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-b7ce6de6",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "count": 2
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "line": 53,
+        "selector": ".ui-slider-track-fill",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-b7ce6de6);"
+      },
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "line": 61,
+        "selector": ".ui-slider-thumb",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-b7ce6de6);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-c4249a52",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 2
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 255,
+        "selector": ".inspector-alert--crit",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-c4249a52);"
+      },
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 285,
+        "selector": ".inspector-crit",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-c4249a52);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-d02e27bf",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/layout/Section.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "line": 45,
+        "selector": ".ui-table-sort-indicator",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-d02e27bf);"
+      },
+      {
+        "file": "frontend/src/ui/layout/Section.css",
+        "line": 19,
+        "selector": ".ui-section-head",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-d02e27bf);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-f1f03f1f",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "count": 2
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "line": 38,
+        "selector": ".app-header-badge--active",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-f1f03f1f);"
+      },
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "line": 90,
+        "selector": ".proc-pill--connected",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-f1f03f1f);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-f79617f4",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/ui/layout/SplitLayout.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 94,
+        "selector": ".panel-resizer:focus-visible",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-f79617f4);"
+      },
+      {
+        "file": "frontend/src/ui/layout/SplitLayout.css",
+        "line": 56,
+        "selector": ".ui-split-resizer:focus-visible",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-f79617f4);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-f806fcd3",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "count": 1
+      },
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "line": 49,
+        "selector": ".app-header-badge--recording-warn",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-f806fcd3);"
+      },
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 291,
+        "selector": ".inspector-warn",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-f806fcd3);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-f8edd360",
+    "total": 2,
+    "files": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "count": 2
+      }
+    ],
+    "properties": [
+      {
+        "property": "border",
+        "count": 2
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 136,
+        "selector": ".ui-color-chip__swatch",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-f8edd360);"
+      },
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 176,
+        "selector": ".ui-color-var-row__swatch",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-f8edd360);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-hex-c659d630",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Checkbox.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Checkbox.css",
+        "line": 45,
+        "selector": ".ui-checkbox-icon",
+        "prop": "color",
+        "source": "color: var(--color-lit-hex-c659d630);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-02303704",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/graph/GraphNode.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "--graph-card-bg",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/graph/GraphNode.css",
+        "line": 73,
+        "selector": ".graph-node--cycle",
+        "prop": "--graph-card-bg",
+        "source": "--graph-card-bg: var(--color-lit-ld-02303704);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-0383b9fd",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 125,
+        "selector": ".ui-color-chip",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-0383b9fd);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-06c11a7f",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 48,
+        "selector": ".ui-action-button--primary:hover",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-06c11a7f);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-07faeaef",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 42,
+        "selector": ".ui-action-button--primary",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-07faeaef);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-0880f0f3",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 256,
+        "selector": ".inspector-alert--crit",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-0880f0f3);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-116e270d",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "line": 12,
+        "selector": ".ui-table-header",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-116e270d);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-12b08fe8",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/SegmentedGroup.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SegmentedGroup.css",
+        "line": 33,
+        "selector": ".ui-segmented-option:hover:not(.ui-segmented-option--selected)",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-12b08fe8);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-161340fa",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 108,
+        "selector": ".ui-search-result-item",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-161340fa);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-183c652b",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "line": 36,
+        "selector": ".ui-slider-value",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-183c652b);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-1d3a9f81",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 570,
+        "selector": ".inspector-scope-chip.ui-node-chip .ui-node-chip__icon",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-1d3a9f81);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-200ac160",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 127,
+        "selector": ".ui-color-chip",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-200ac160);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-22827e06",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/MetaTree.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/MetaTree.css",
+        "line": 35,
+        "selector": ".meta-value--boolean",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-22827e06);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-2626dd6d",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 168,
+        "selector": ".ui-color-var-row",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-2626dd6d);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-26589d81",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border-color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 125,
+        "selector": ".ui-search-result-item[data-selected]",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-26589d81);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-2855e449",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/ProcessModal.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/ProcessModal.css",
+        "line": 19,
+        "selector": ".modal",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 16px 48px var(--color-lit-ld-2855e449);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-28a0fa01",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/SegmentedGroup.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SegmentedGroup.css",
+        "line": 7,
+        "selector": ".ui-segmented-group",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-28a0fa01);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-2b3eb2c7",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/MetaTree.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/MetaTree.css",
+        "line": 27,
+        "selector": ".meta-value--string",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-2b3eb2c7);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-2ce0cfa6",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/SegmentedGroup.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SegmentedGroup.css",
+        "line": 27,
+        "selector": ".ui-segmented-option--selected",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-2ce0cfa6);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-32c3966d",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 54,
+        "selector": ".ui-action-button--primary:active",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-32c3966d);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-340243a2",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/DurationDisplay.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/DurationDisplay.css",
+        "line": 17,
+        "selector": ".duration--warn",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-340243a2);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-343ee702",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/SplitLayout.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/layout/SplitLayout.css",
+        "line": 61,
+        "selector": ".ui-split-layout--dragging .ui-split-resizer",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-343ee702);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-35d6ab5b",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/SegmentedGroup.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SegmentedGroup.css",
+        "line": 29,
+        "selector": ".ui-segmented-option--selected",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 1px 3px var(--color-lit-ld-35d6ab5b);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-374928ee",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 151,
+        "selector": ".resources-copy-btn",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-374928ee);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-37e0d2d6",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Switch.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Switch.css",
+        "line": 23,
+        "selector": ".ui-switch-track",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-37e0d2d6);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-3a6bb49e",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 450,
+        "selector": ".inspector-diff",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-3a6bb49e);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-3c7625d3",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 25,
+        "selector": ".ui-action-button:active",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-3c7625d3);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-3de56276",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 103,
+        "selector": ".inspector-close-button.ui-action-button:hover",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-3de56276);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-42159785",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "line": 67,
+        "selector": ".ui-table-row:hover",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-42159785);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-44f734a5",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Switch.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Switch.css",
+        "line": 42,
+        "selector": ".ui-switch[data-selected] .ui-switch-track",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-44f734a5);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-46835aa1",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 339,
+        "selector": ".inspector-buffer-segment--ok",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-46835aa1);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-4cca04e9",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 19,
+        "selector": ".ui-action-button:hover",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-4cca04e9);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-5445a1d2",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 449,
+        "selector": ".inspector-diff",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-5445a1d2);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-5a965613",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "(non-decl)",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 9,
+        "selector": ".inspector",
+        "prop": "(non-decl)",
+        "source": "--inspector-lum-0: var(--color-lit-ld-5a965613);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-5e4ee9ae",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/ProcessModal.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/ProcessModal.css",
+        "line": 4,
+        "selector": ".modal-backdrop",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-5e4ee9ae);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-5f7a3f7f",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/timeline/RecordingTimeline.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "accent-color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/timeline/RecordingTimeline.css",
+        "line": 38,
+        "selector": ".recording-timeline-slider",
+        "prop": "accent-color",
+        "source": "accent-color: var(--color-lit-ld-5f7a3f7f);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-61ee0df4",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border-bottom",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "line": 54,
+        "selector": ".ui-table-row",
+        "prop": "border-bottom",
+        "source": "border-bottom: 1px solid var(--color-lit-ld-61ee0df4);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-66745883",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/MetaTree.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/MetaTree.css",
+        "line": 31,
+        "selector": ".meta-value--number",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-66745883);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-69b98e4c",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Table.css",
+        "line": 71,
+        "selector": ".ui-table-row--selected",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-69b98e4c);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-6cafcd1f",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border-color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 20,
+        "selector": ".ui-action-button:hover",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-6cafcd1f);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-709a39ce",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 491,
+        "selector": ".inspector-source-link",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-709a39ce);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-7728073e",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 574,
+        "selector": ".inspector-scope-chip.ui-node-chip:hover .ui-node-chip__icon",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-7728073e);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-77822b96",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "(non-decl)",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 12,
+        "selector": ".inspector",
+        "prop": "(non-decl)",
+        "source": "--inspector-lum-3: var(--color-lit-ld-77822b96);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-7994bf51",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Switch.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Switch.css",
+        "line": 36,
+        "selector": ".ui-switch-thumb",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 1px 2px var(--color-lit-ld-7994bf51);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-7ae95182",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 564,
+        "selector": ".inspector-scope-chip.ui-node-chip:hover",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-7ae95182);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-7ae96ce2",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "--inspector-accent",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 153,
+        "selector": ".inspector-node-header--rpc",
+        "prop": "--inspector-accent",
+        "source": "--inspector-accent: var(--color-lit-ld-7ae96ce2);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-7af67c48",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "(non-decl)",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 199,
+        "selector": ".card-wrap--selected .card",
+        "prop": "(non-decl)",
+        "source": "0 0 0 2px var(--color-lit-ld-7af67c48),"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-7e87d777",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "line": 20,
+        "selector": ".ui-filter-trigger--active",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-7e87d777);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-7f43213b",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "line": 44,
+        "selector": ".ui-slider-track",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-7f43213b);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-835d53d9",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ProcessIdenticon.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ProcessIdenticon.css",
+        "line": 5,
+        "selector": ".ui-process-identicon",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-835d53d9);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-8518efd4",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Section.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/layout/Section.css",
+        "line": 40,
+        "selector": ".ui-section-stack > .ui-key-value-row:nth-child(odd)",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-8518efd4);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-882d8bab",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/DurationDisplay.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/DurationDisplay.css",
+        "line": 22,
+        "selector": ".duration--crit",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-882d8bab);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-88346e28",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 250,
+        "selector": ".inspector-alert code",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-88346e28);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-8b6f0f16",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/NodeChip.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/NodeChip.css",
+        "line": 12,
+        "selector": ".ui-node-chip",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-8b6f0f16);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-8be61a2f",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 184,
+        "selector": ".inspector-node-icon--causal",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-8be61a2f);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-914869d9",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 90,
+        "selector": ".ui-typo-pill",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-914869d9);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-918c8b8c",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/SegmentedGroup.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SegmentedGroup.css",
+        "line": 15,
+        "selector": ".ui-segmented-option",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-918c8b8c);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-93cf3b1b",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 65,
+        "selector": ".ui-action-button--ghost:hover",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-93cf3b1b);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-93d22309",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 120,
+        "selector": ".ui-search-result-item[data-focused]",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-93d22309);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-946626bc",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 254,
+        "selector": ".inspector-alert--crit",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-946626bc);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-95eb8c4a",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 20,
+        "selector": ".panel-header",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-95eb8c4a);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-9787e7fe",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/TextInput.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/TextInput.css",
+        "line": 6,
+        "selector": ".ui-input",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-9787e7fe);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-97e3522c",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Switch.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border-color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Switch.css",
+        "line": 43,
+        "selector": ".ui-switch[data-selected] .ui-switch-track",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-97e3522c);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-98c02837",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border-color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 197,
+        "selector": ".card-wrap--selected .card",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-98c02837);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-991d26eb",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Switch.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Switch.css",
+        "line": 35,
+        "selector": ".ui-switch-thumb",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-991d26eb);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-99ee6cee",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "(non-decl)",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 27,
+        "selector": ".inspector",
+        "prop": "(non-decl)",
+        "source": "inset 0 1px 0 var(--color-lit-ld-99ee6cee);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-9c0de7a9",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 63,
+        "selector": ".ui-search-popover",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 14px 30px var(--color-lit-ld-9c0de7a9);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-9f33753b",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 106,
+        "selector": ".ui-search-result-item",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-9f33753b);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-a02443ea",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "(non-decl)",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 26,
+        "selector": ".inspector",
+        "prop": "(non-decl)",
+        "source": "0 14px 30px var(--color-lit-ld-a02443ea),"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-a17f1a1e",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/graph/canvas/GraphCanvas.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "fill",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/graph/canvas/GraphCanvas.css",
+        "line": 20,
+        "selector": ".graph-canvas__dot",
+        "prop": "fill",
+        "source": "fill: var(--color-lit-ld-a17f1a1e);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-a1ef9a5a",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 61,
+        "selector": ".ui-action-button--ghost",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-a1ef9a5a);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-a9342461",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "(non-decl)",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 200,
+        "selector": ".card-wrap--selected .card",
+        "prop": "(non-decl)",
+        "source": "0 6px 18px var(--color-lit-ld-a9342461);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-afd4576c",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 334,
+        "selector": ".inspector-buffer-segment",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-afd4576c);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-b58e3fa0",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "--inspector-lum-text-mid",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 14,
+        "selector": ".inspector",
+        "prop": "--inspector-lum-text-mid",
+        "source": "--inspector-lum-text-mid: var(--color-lit-ld-b58e3fa0);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-b88afee4",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/AppHeader.css",
+        "line": 48,
+        "selector": ".app-header-badge--recording-warn",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-b88afee4);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-bb16a433",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/graph/ScopeGroupNode.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/graph/ScopeGroupNode.css",
+        "line": 14,
+        "selector": ".scope-group",
+        "prop": "box-shadow",
+        "source": "box-shadow: inset 0 1px 0 var(--color-lit-ld-bb16a433);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-be13e965",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 109,
+        "selector": ".inspector-close-button.ui-action-button:active",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-be13e965);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-c4e8c683",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "--inspector-accent",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 149,
+        "selector": ".inspector-node-header--channel",
+        "prop": "--inspector-accent",
+        "source": "--inspector-accent: var(--color-lit-ld-c4e8c683);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-c64378ce",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Badge.css",
+        "line": 19,
+        "selector": ".badge--ok",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-c64378ce);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-c95c958d",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "(non-decl)",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 212,
+        "selector": ".inspector-lane-card",
+        "prop": "(non-decl)",
+        "source": "inset 0 1px 0 var(--color-lit-ld-c95c958d),"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-ca2a7927",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "--inspector-lum-text-weak",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 13,
+        "selector": ".inspector",
+        "prop": "--inspector-lum-text-weak",
+        "source": "--inspector-lum-text-weak: var(--color-lit-ld-ca2a7927);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-cbf55c00",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/NodeChip.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/NodeChip.css",
+        "line": 25,
+        "selector": ".ui-node-chip:hover .ui-node-chip__icon",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-cbf55c00);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-d03b178b",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Section.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/layout/Section.css",
+        "line": 6,
+        "selector": ".ui-section",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 6px 14px var(--color-lit-ld-d03b178b);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-d1be9e2f",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "line": 21,
+        "selector": ".ui-filter-trigger--active",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-d1be9e2f);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-d5e8a94a",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 9,
+        "selector": ".ui-action-button",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-d5e8a94a);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-dac83f3a",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Slider.css",
+        "line": 60,
+        "selector": ".ui-slider-thumb",
+        "prop": "border",
+        "source": "border: 2px solid var(--color-lit-ld-dac83f3a);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-dd8c271e",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 518,
+        "selector": ".inspector-scope-chip.ui-node-chip",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-dd8c271e);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-dfa69f43",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "(non-decl)",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 213,
+        "selector": ".inspector-lane-card",
+        "prop": "(non-decl)",
+        "source": "0 1px 2px var(--color-lit-ld-dfa69f43);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-e002541c",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Checkbox.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Checkbox.css",
+        "line": 19,
+        "selector": ".ui-checkbox-box",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 0 0 1px var(--color-lit-ld-e002541c);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-e2fd553d",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "line": 43,
+        "selector": ".ui-filter-badge",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-e2fd553d);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-e3402a65",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 57,
+        "selector": ".ui-typo-muted",
+        "prop": "color",
+        "source": "color: var(--color-lit-ld-e3402a65);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-e3eb2eb1",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/FilterMenu.css",
+        "line": 35,
+        "selector": ".ui-filter-trigger--active[data-pressed]",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 0 0 2px var(--color-lit-ld-e3eb2eb1);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-e450a064",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 211,
+        "selector": ".filter-clear-btn",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-e450a064);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-eb2081fc",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 26,
+        "selector": ".ui-action-button:active",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 0 1px var(--color-lit-ld-eb2081fc);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-eca41bb9",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/Switch.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/Switch.css",
+        "line": 22,
+        "selector": ".ui-switch-track",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-eca41bb9);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-edf3e31a",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/pages/StorybookPage.css",
+        "line": 166,
+        "selector": ".ui-color-var-row",
+        "prop": "border",
+        "source": "border: 1px solid var(--color-lit-ld-edf3e31a);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-eead3d40",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/ActionButton.css",
+        "line": 21,
+        "selector": ".ui-action-button:hover",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 1px 3px var(--color-lit-ld-eead3d40);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-f0711097",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/NodeChip.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/NodeChip.css",
+        "line": 21,
+        "selector": ".ui-node-chip:hover",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-f0711097);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-f118821a",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "(non-decl)",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 11,
+        "selector": ".inspector",
+        "prop": "(non-decl)",
+        "source": "--inspector-lum-2: var(--color-lit-ld-f118821a);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-f28addc2",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/NodeChip.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/NodeChip.css",
+        "line": 34,
+        "selector": ".ui-node-chip__icon",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-f28addc2);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-f329f939",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/layout/Panel.css",
+        "line": 88,
+        "selector": ".panel-resizer",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-f329f939);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-f394e349",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "--inspector-accent",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 157,
+        "selector": ".inspector-node-header--crit",
+        "prop": "--inspector-accent",
+        "source": "--inspector-accent: var(--color-lit-ld-f394e349);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-f726ec88",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/timeline/RecordingTimeline.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "border-color",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/timeline/RecordingTimeline.css",
+        "line": 92,
+        "selector": ".recording-timeline-ghost-btn--active",
+        "prop": "border-color",
+        "source": "border-color: var(--color-lit-ld-f726ec88);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-f79ea81a",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 539,
+        "selector": ".inspector-entity-actions .ui-action-button.inspector-focus-button:hover",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-f79ea81a);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-fc06fffa",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "(non-decl)",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/inspector/InspectorPanel.css",
+        "line": 10,
+        "selector": ".inspector",
+        "prop": "(non-decl)",
+        "source": "--inspector-lum-1: var(--color-lit-ld-fc06fffa);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-ld-ffa8dbee",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/components/timeline/RecordingTimeline.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "background",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/components/timeline/RecordingTimeline.css",
+        "line": 90,
+        "selector": ".recording-timeline-ghost-btn--active",
+        "prop": "background",
+        "source": "background: var(--color-lit-ld-ffa8dbee);"
+      }
+    ]
+  },
+  {
+    "token": "--color-lit-rgb-05954929",
+    "total": 1,
+    "files": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "count": 1
+      }
+    ],
+    "properties": [
+      {
+        "property": "box-shadow",
+        "count": 1
+      }
+    ],
+    "sites": [
+      {
+        "file": "frontend/src/ui/primitives/SearchInput.css",
+        "line": 126,
+        "selector": ".ui-search-result-item[data-selected]",
+        "prop": "box-shadow",
+        "source": "box-shadow: 0 0 0 2px var(--color-lit-rgb-05954929);"
+      }
+    ]
+  }
+]

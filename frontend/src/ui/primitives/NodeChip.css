@@ -9,7 +9,7 @@
     height: 24px;
     border-radius: var(--radius-control);
     border: none;
-    background: var(--color-lit-ld-8b6f0f16);
+    background: var(--bg-elevated);
     font-size: var(--font-size-sm);
     cursor: pointer;
     text-decoration: none;
@@ -18,11 +18,11 @@
 }
 
 .ui-node-chip:hover {
-    background: var(--color-lit-ld-f0711097);
+    background: var(--bg-elevated);
 }
 
 .ui-node-chip:hover .ui-node-chip__icon {
-    background: var(--color-lit-ld-cbf55c00);
+    background: var(--bg-elevated);
 }
 
 .ui-node-chip__icon {
@@ -31,8 +31,8 @@
     justify-content: center;
     flex-shrink: 0;
     padding: 0 6px;
-    background: var(--color-lit-ld-f28addc2);
-    color: var(--color-lit-ld-022e6f16);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
 }
 
 .ui-node-chip__label {

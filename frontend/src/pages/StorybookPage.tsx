@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import "./StorybookPage.css";
 import {
   WarningCircle,
@@ -33,6 +33,14 @@ import { Table, type Column } from "../ui/primitives/Table";
 import { ActionButton } from "../ui/primitives/ActionButton";
 import { kindIcon } from "../nodeKindSpec";
 import { SCOPE_DARK_RGB, SCOPE_LIGHT_RGB } from "../components/graph/scopeColors";
+import { AppHeader } from "../components/AppHeader";
+import type { RecordingState, SnapshotState } from "../App";
+import { Switch } from "../ui/primitives/Switch";
+import type { EntityDef } from "../snapshot";
+import { GraphNode } from "../components/graph/GraphNode";
+import { ChannelPairNode } from "../components/graph/ChannelPairNode";
+import { RpcPairNode } from "../components/graph/RpcPairNode";
+import { InspectorPanel } from "../components/inspector/InspectorPanel";
 
 type DemoTone = "neutral" | "ok" | "warn" | "crit";
 type DemoConnectionRow = {
@@ -54,6 +62,72 @@ type DemoConnectionRow = {
   lastSentTone: DemoTone;
 };
 
+const DARK_ROLE_SWATCHES = [
+  { name: "bg.base", token: "--bg-base", hex: "#0F131A" },
+  { name: "bg.surface", token: "--bg-surface", hex: "#151A23" },
+  { name: "bg.elevated", token: "--bg-elevated", hex: "#1C2230" },
+  { name: "border.subtle", token: "--border-subtle", hex: "#232B3A" },
+  { name: "border.default", token: "--border-default", hex: "#2E384A" },
+  { name: "text.primary", token: "--text-primary", hex: "#E6EDF3" },
+  { name: "text.secondary", token: "--text-secondary", hex: "#A8B3C2" },
+  { name: "text.muted", token: "--text-muted", hex: "#6B7789" },
+  { name: "accent", token: "--accent", hex: "#5F7D96" },
+  { name: "success", token: "--status-success", hex: "#3FB950" },
+  { name: "warning", token: "--status-warning", hex: "#D29922" },
+  { name: "danger", token: "--status-danger", hex: "#F85149" },
+] as const;
+
+const PROPOSED_ACCENT_SWATCHES = [
+  {
+    name: "Graphite Blue",
+    accent: "#6A84B8",
+    hover: "#7892C5",
+    active: "#5C75A8",
+  },
+  {
+    name: "Dusty Indigo",
+    accent: "#7A7FB6",
+    hover: "#888CC2",
+    active: "#6C71A6",
+  },
+  {
+    name: "Steel Slate",
+    accent: "#5F7D96",
+    hover: "#6D8BA4",
+    active: "#516F88",
+  },
+  {
+    name: "Teal-Blue Hybrid (Desat)",
+    accent: "#5A96B6",
+    hover: "#6AA4C2",
+    active: "#4E89A8",
+  },
+  {
+    name: "Refined Teal-Blue (Desat)",
+    accent: "#5E93AD",
+    hover: "#6EA1B9",
+    active: "#52869D",
+  },
+  {
+    name: "Serious Teal-Blue (Desat)",
+    accent: "#5A8CA4",
+    hover: "#6899B0",
+    active: "#4D7E95",
+  },
+  {
+    name: "Slate Teal (Desat)",
+    accent: "#5C8A9B",
+    hover: "#6A98A8",
+    active: "#507D8D",
+  },
+  {
+    name: "Storm Blue (Desat)",
+    accent: "#607F98",
+    hover: "#6E8EA6",
+    active: "#537189",
+  },
+] as const;
+
 export function StorybookPage() {
   const [textValue, setTextValue] = useState("Hello");
   const [searchValue, setSearchValue] = useState("");
@@ -69,6 +143,12 @@ export function StorybookPage() {
   const [selectedTableRow, setSelectedTableRow] = useState<string | null>(null);
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
   const [hiddenProcesses, setHiddenProcesses] = useState<Set<string>>(new Set());
+  const [hiddenCrates, setHiddenCrates] = useState<Set<string>>(new Set());
+  const [leftPaneTab, setLeftPaneTab] = useState<"graph" | "scopes" | "entities">("graph");
+  const [showLoners, setShowLoners] = useState(false);
+  const [isLive, setIsLive] = useState(false);
+  const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const tones = useMemo<BadgeTone[]>(() => ["neutral", "ok", "warn", "crit"], []);
   const searchDataset = useMemo(() => [
     { id: "future:store.incoming.recv", label: "store.incoming.recv", kind: "future", process: "vx-store" },
@@ -110,6 +190,12 @@ export function StorybookPage() {
     { id: "peeps-collector", label: "peeps-collector" },
   ], []);
 
+  const filterCrateItems = useMemo<FilterMenuItem[]>(() => [
+    { id: "roam-session", label: "roam-session" },
+    { id: "peeps-examples", label: "peeps-examples" },
+    { id: "tokio", label: "tokio" },
+  ], []);
+
   const toggleKind = useCallback((id: string) => {
     setHiddenKinds((prev) => {
       const next = new Set(prev);
@@ -143,6 +229,23 @@ export function StorybookPage() {
       return new Set(filterProcessItems.filter((item) => item.id !== id).map((item) => item.id));
     });
   }, [filterProcessItems]);
+
+  const toggleCrate = useCallback((id: string) => {
+    setHiddenCrates((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const soloCrate = useCallback((id: string) => {
+    setHiddenCrates((prev) => {
+      const othersAllHidden = filterCrateItems.every((item) => item.id === id || prev.has(item.id));
+      if (othersAllHidden && !prev.has(id)) return new Set();
+      return new Set(filterCrateItems.filter((item) => item.id !== id).map((item) => item.id));
+    });
+  }, [filterCrateItems]);
 
   const tableRows = useMemo<DemoConnectionRow[]>(() => [
     {
@@ -346,7 +449,7 @@ export function StorybookPage() {
   const colorVariables = useMemo(() => {
     if (typeof window === "undefined") return [] as Array<{ name: string; value: string }>;
     const rootStyles = window.getComputedStyle(document.documentElement);
-    const colorVarNamePattern = /(color|surface|border|text|focus|accent)/i;
+    const colorVarNamePattern = /(color|surface|border|text|focus|accent|control)/i;
     const colorValuePattern = /(#[0-9a-f]{3,8}\b|rgb\(|hsl\(|oklch\(|oklab\(|lab\(|lch\(|hwb\(|color\()/i;
     const vars: Array<{ name: string; value: string }> = [];
 
@@ -362,14 +465,103 @@ export function StorybookPage() {
     vars.sort((a, b) => a.name.localeCompare(b.name));
     return vars;
   }, []);
-  const coreColorVariables = useMemo(
-    () => colorVariables.filter(({ name }) => !name.startsWith("--color-lit-")),
-    [colorVariables],
-  );
-  const literalColorVariables = useMemo(
-    () => colorVariables.filter(({ name }) => name.startsWith("--color-lit-")),
-    [colorVariables],
-  );
+  const roleTokenVariables = useMemo(() => {
+    const order = [
+      "--bg-base",
+      "--bg-surface",
+      "--bg-elevated",
+      "--border-subtle",
+      "--border-default",
+      "--text-primary",
+      "--text-secondary",
+      "--text-muted",
+      "--accent",
+      "--accent-hover",
+      "--accent-active",
+      "--status-success",
+      "--status-warning",
+      "--status-danger",
+      "--focus-ring",
+      "--shadow-soft",
+      "--shadow-strong",
+    ];
+    const byName = new Map(colorVariables.map((item) => [item.name, item] as const));
+    return order.flatMap((name) => {
+      const value = byName.get(name);
+      return value ? [value] : [];
+    });
+  }, [colorVariables]);
+
+  const demoSnap = useMemo<SnapshotState>(() => ({
+    phase: "ready",
+    entities: [],
+    edges: [],
+  }), []);
+
+  const demoRecording = useMemo<RecordingState>(() => ({
+    phase: "idle",
+  }), []);
+
+  const inspectorEntity = useMemo<EntityDef>(() => {
+    const now = Date.now();
+    const base = {
+      processId: "101",
+      processName: "peeps-examples",
+      processPid: 84025,
+      source: "tokio_runtime.rs:20",
+      krate: "roam-session",
+      birthPtime: 16,
+      ageMs: 739,
+      birthApproxUnixMs: now - 739,
+      inCycle: false,
+      meta: {},
+    };
+    const tx = {
+      ...base,
+      id: "101/chan_tx",
+      rawEntityId: "chan_tx",
+      name: "roam_driver:tx",
+      kind: "channel_tx",
+      body: {
+        channel_tx: {
+          lifecycle: "open",
+          details: { mpsc: { buffer: { occupancy: 0, capacity: 256 } } },
+        },
+      },
+      status: { label: "open", tone: "ok" as const },
+      stat: "0/256",
+      statTone: "ok" as const,
+    } as unknown as EntityDef;
+    const rx = {
+      ...base,
+      id: "101/chan_rx",
+      rawEntityId: "chan_rx",
+      name: "roam_driver:rx",
+      kind: "channel_rx",
+      body: {
+        channel_rx: {
+          lifecycle: "open",
+          details: { mpsc: { buffer: { occupancy: 0, capacity: 256 } } },
+        },
+      },
+      status: { label: "open", tone: "ok" as const },
+      stat: "0/256",
+      statTone: "ok" as const,
+    } as unknown as EntityDef;
+
+    return {
+      ...base,
+      id: "101/roam_driver",
+      rawEntityId: "roam_driver",
+      name: "roam_driver",
+      kind: "channel_pair",
+      body: tx.body,
+      status: { label: "open", tone: "ok" as const },
+      stat: "0/256",
+      statTone: "ok" as const,
+      channelPair: { tx, rx },
+    } as unknown as EntityDef;
+  }, []);
 
   return (
     <Panel variant="lab">
@@ -403,8 +595,254 @@ export function StorybookPage() {
           </div>
         </Section>
 
-        <Section title="Color System" subtitle="Scope palettes and root color variables" wide>
+        <Section title="Control Strip" subtitle="All core controls on one line" wide>
+          <div className="ui-control-line" aria-label="One-line controls strip">
+            <div className="ui-control-line__text">
+              <TextInput
+                value={textValue}
+                onChange={setTextValue}
+                placeholder="Type…"
+                aria-label="Control strip text input"
+              />
+            </div>
+            <div className="ui-control-line__search">
+              <SearchInput
+                value={searchValue}
+                onChange={setSearchValue}
+                placeholder="Search nodes…"
+                aria-label="Control strip search input"
+                items={searchResults.map((item) => ({
+                  id: item.id,
+                  label: item.label,
+                  meta: item.process,
+                }))}
+                showSuggestions={showSearchResults}
+                selectedId={selectedSearchId}
+                onSelect={(id) => setSelectedSearchId(id)}
+                onAltSelect={(id) => {
+                  const item = searchResults.find((entry) => entry.id === id);
+                  if (!item) return;
+                  setSearchOnlyKind((prev) => (prev === item.kind ? null : item.kind));
+                }}
+              />
+            </div>
+            <FilterMenu
+              label="Kinds"
+              items={filterKindItems}
+              hiddenIds={hiddenKinds}
+              onToggle={toggleKind}
+              onSolo={soloKind}
+            />
+            <FilterMenu
+              label="Processes"
+              items={filterProcessItems}
+              hiddenIds={hiddenProcesses}
+              onToggle={toggleProcess}
+              onSolo={soloProcess}
+            />
+            <Menu
+              label={<span className="ui-menu-label">Node types <CaretDown size={12} weight="bold" /></span>}
+              items={nodeTypeMenu}
+            />
+            <Menu
+              label={<span className="ui-menu-label">Process <CaretDown size={12} weight="bold" /></span>}
+              items={processMenu}
+            />
+            <ActionButton>Default</ActionButton>
+            <ActionButton variant="primary">Primary</ActionButton>
+            <SegmentedGroup
+              value={segmentedMode}
+              onChange={setSegmentedMode}
+              options={[
+                { value: "graph", label: "Graph" },
+                { value: "timeline", label: "Timeline" },
+                { value: "resources", label: "Resources" },
+              ]}
+              aria-label="Control strip mode switcher"
+            />
+          </div>
+        </Section>
+
+        <Section title="App Slice (Fake Data)" subtitle="Header, controls row, and floating inspector composed from real components" wide>
+          <div className="ui-app-slice">
+            <AppHeader
+              leftPaneTab={leftPaneTab}
+              onLeftPaneTabChange={setLeftPaneTab}
+              snap={demoSnap}
+              snapshotProcessCount={0}
+              recording={demoRecording}
+              connCount={0}
+              isBusy={false}
+              isLive={isLive}
+              onSetIsLive={setIsLive}
+              onShowProcessModal={() => undefined}
+              onTakeSnapshot={() => undefined}
+              onStartRecording={() => undefined}
+              onStopRecording={() => undefined}
+              onExport={() => undefined}
+              onImportClick={() => fileInputRef.current?.click()}
+              fileInputRef={fileInputRef}
+              onImportFile={() => undefined}
+            />
+            <div className="ui-app-slice-controls">
+              <Switch
+                checked={showLoners}
+                onChange={setShowLoners}
+                label="Show loners"
+                className="ui-app-slice-switch"
+              />
+              <FilterMenu
+                label="Process"
+                items={filterProcessItems}
+                hiddenIds={hiddenProcesses}
+                onToggle={toggleProcess}
+                onSolo={soloProcess}
+              />
+              <FilterMenu
+                label="Crate"
+                items={filterCrateItems}
+                hiddenIds={hiddenCrates}
+                onToggle={toggleCrate}
+                onSolo={soloCrate}
+              />
+              <FilterMenu
+                label="Kind"
+                items={filterKindItems}
+                hiddenIds={hiddenKinds}
+                onToggle={toggleKind}
+                onSolo={soloKind}
+              />
+            </div>
+            <div className="ui-floating-inspector">
+              <InspectorPanel
+                onClose={() => undefined}
+                selection={{ kind: "entity", id: inspectorEntity.id }}
+                entityDefs={[inspectorEntity]}
+                edgeDefs={[]}
+                focusedEntityId={focusedEntityId}
+                onToggleFocusEntity={(id) => setFocusedEntityId(id)}
+                onOpenScopeKind={() => undefined}
+              />
+            </div>
+            <div className="ui-graph-node-strip">
+              <GraphNode
+                data={{
+                  kind: "future",
+                  label: "roam.call.await_response",
+                  inCycle: false,
+                  selected: false,
+                  status: { label: "polling", tone: "neutral" },
+                  ageMs: 688,
+                  stat: "N+1ms",
+                  statTone: "warn",
+                }}
+              />
+              <ChannelPairNode
+                data={{
+                  nodeId: "sample-channel-pair",
+                  tx: inspectorEntity.channelPair!.tx,
+                  rx: inspectorEntity.channelPair!.rx,
+                  channelName: "roam_driver",
+                  selected: false,
+                  statTone: "ok",
+                }}
+              />
+              <RpcPairNode
+                data={{
+                  nodeId: "sample-rpc-pair",
+                  req: {
+                    ...inspectorEntity.channelPair!.tx,
+                    id: "101/rpc_req",
+                    rawEntityId: "rpc_req",
+                    name: "roam.call.await_response:req",
+                    kind: "request",
+                    body: {
+                      request: {
+                        method: "DemoRpc.sleepy_forever",
+                        args_preview: "(no args)",
+                      },
+                    },
+                    status: { label: "in_flight", tone: "warn" },
+                  } as unknown as EntityDef,
+                  resp: {
+                    ...inspectorEntity.channelPair!.rx,
+                    id: "101/rpc_resp",
+                    rawEntityId: "rpc_resp",
+                    name: "roam.call.await_response:resp",
+                    kind: "response",
+                    ageMs: 721,
+                    body: {
+                      response: {
+                        method: "DemoRpc.sleepy_forever",
+                        status: "pending",
+                      },
+                    },
+                    status: { label: "pending", tone: "warn" },
+                  } as unknown as EntityDef,
+                  rpcName: "roam.call.await_response",
+                  selected: false,
+                }}
+              />
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Color System" subtitle="Role tokens + scope palette (graph only)" wide>
           <div className="ui-section-stack">
+            <div className="ui-color-vars">
+              <div className="ui-typo-kicker">Dark Role Palette (Large Swatches)</div>
+              <div className="ui-role-swatch-grid">
+                {DARK_ROLE_SWATCHES.map((item) => (
+                  <div key={item.name} className="ui-role-swatch-card">
+                    <div
+                      className="ui-role-swatch-card__swatch"
+                      style={{ background: `var(${item.token})` }}
+                    />
+                    <div className="ui-role-swatch-card__name">{item.name}</div>
+                    <div className="ui-role-swatch-card__meta">{item.token} · {item.hex}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="ui-color-vars">
+              <div className="ui-typo-kicker">Proposed Accent Directions</div>
+              <div className="ui-accent-proposal-grid">
+                {PROPOSED_ACCENT_SWATCHES.map((item) => (
+                  <div key={item.name} className="ui-accent-proposal-card">
+                    <div className="ui-accent-proposal-card__title">{item.name}</div>
+                    <div className="ui-accent-proposal-rail">
+                      <div className="ui-accent-proposal-swatch">
+                        <span className="ui-accent-proposal-swatch__chip" style={{ background: item.accent }} />
+                        <span className="ui-accent-proposal-swatch__label">accent · {item.accent}</span>
+                      </div>
+                      <div className="ui-accent-proposal-swatch">
+                        <span className="ui-accent-proposal-swatch__chip" style={{ background: item.hover }} />
+                        <span className="ui-accent-proposal-swatch__label">hover · {item.hover}</span>
+                      </div>
+                      <div className="ui-accent-proposal-swatch">
+                        <span className="ui-accent-proposal-swatch__chip" style={{ background: item.active }} />
+                        <span className="ui-accent-proposal-swatch__label">active · {item.active}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="ui-color-vars">
+              <div className="ui-typo-kicker">Semantic Role Tokens ({roleTokenVariables.length})</div>
+              <div className="ui-color-var-grid">
+                {roleTokenVariables.map(({ name, value }) => (
+                  <div key={name} className="ui-color-var-row">
+                    <span className="ui-color-var-row__swatch" style={{ background: value }} />
+                    <span className="ui-color-var-row__name">{name}</span>
+                    <span className="ui-color-var-row__value">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="ui-color-groups">
               <div className="ui-color-group">
                 <div className="ui-typo-kicker">Scope Palette (Light)</div>
@@ -427,32 +865,6 @@ export function StorybookPage() {
                     </div>
                   ))}
                 </div>
-              </div>
-            </div>
-
-            <div className="ui-color-vars">
-              <div className="ui-typo-kicker">Core Color Variables ({coreColorVariables.length})</div>
-              <div className="ui-color-var-grid">
-                {coreColorVariables.map(({ name, value }) => (
-                  <div key={name} className="ui-color-var-row">
-                    <span className="ui-color-var-row__swatch" style={{ background: value }} />
-                    <span className="ui-color-var-row__name">{name}</span>
-                    <span className="ui-color-var-row__value">{value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="ui-color-vars">
-              <div className="ui-typo-kicker">Generated Literal Tokens ({literalColorVariables.length})</div>
-              <div className="ui-color-var-grid">
-                {literalColorVariables.map(({ name, value }) => (
-                  <div key={name} className="ui-color-var-row">
-                    <span className="ui-color-var-row__swatch" style={{ background: value }} />
-                    <span className="ui-color-var-row__name">{name}</span>
-                    <span className="ui-color-var-row__value">{value}</span>
-                  </div>
-                ))}
               </div>
             </div>
           </div>

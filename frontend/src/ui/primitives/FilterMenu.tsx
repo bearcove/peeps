@@ -1,5 +1,5 @@
 import type React from "react";
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import "./FilterMenu.css";
 import {
   Button,
@@ -51,12 +51,87 @@ export function FilterMenu({
   className,
 }: FilterMenuProps) {
   const [open, setOpen] = useState(false);
+  const [dragSelectActive, setDragSelectActive] = useState(false);
+  const suppressTriggerCloseRef = useRef(false);
+  const instanceId = useId();
   const hiddenCount = items.filter((item) => hiddenIds.has(item.id)).length;
 
+  const announceOpen = () => {
+    window.dispatchEvent(
+      new CustomEvent("ui-control-menu-open", {
+        detail: { id: instanceId },
+      }),
+    );
+  };
+
+  useEffect(() => {
+    if (!dragSelectActive) return;
+    const stop = () => setDragSelectActive(false);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    return () => {
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+  }, [dragSelectActive]);
+
+  useEffect(() => {
+    const clearSuppression = () => {
+      setTimeout(() => {
+        suppressTriggerCloseRef.current = false;
+      }, 0);
+    };
+    window.addEventListener("pointerup", clearSuppression);
+    window.addEventListener("pointercancel", clearSuppression);
+    return () => {
+      window.removeEventListener("pointerup", clearSuppression);
+      window.removeEventListener("pointercancel", clearSuppression);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onOtherMenuOpened = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string }>).detail;
+      if (!detail || detail.id === instanceId) return;
+      setOpen(false);
+      setDragSelectActive(false);
+    };
+    window.addEventListener("ui-control-menu-open", onOtherMenuOpened);
+    return () => {
+      window.removeEventListener("ui-control-menu-open", onOtherMenuOpened);
+    };
+  }, [instanceId]);
+
+  useEffect(() => {
+    if (!open) return;
+    announceOpen();
+  }, [open]);
+
   return (
-    <DialogTrigger isOpen={open} onOpenChange={setOpen}>
+    <DialogTrigger
+      isOpen={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && suppressTriggerCloseRef.current) return;
+        setOpen(nextOpen);
+      }}
+    >
       <Button
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          suppressTriggerCloseRef.current = true;
+          setOpen(true);
+          announceOpen();
+          setDragSelectActive(true);
+        }}
+        onPointerEnter={(event) => {
+          if ((event.buttons & 1) !== 1) return;
+          suppressTriggerCloseRef.current = true;
+          setOpen(true);
+          announceOpen();
+          setDragSelectActive(true);
+        }}
         className={[
+          "ui-action-button",
           "ui-filter-trigger",
           hiddenCount > 0 && "ui-filter-trigger--active",
           className,
@@ -86,6 +161,7 @@ export function FilterMenu({
         className="ui-filter-popover"
         placement="bottom start"
         offset={0}
+        isNonModal
       >
         <Dialog className="ui-filter-dialog" aria-label={`Filter ${label}`}>
           {onToggleColorBy && (
@@ -117,6 +193,14 @@ export function FilterMenu({
                 <li
                   key={item.id}
                   className="ui-filter-item"
+                  onPointerUpCapture={(e) => {
+                    if (!dragSelectActive) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragSelectActive(false);
+                    if (e.altKey) onSolo(item.id);
+                    else onToggle(item.id);
+                  }}
                   onPointerDownCapture={(e) => {
                     if (e.altKey) {
                       e.preventDefault();
@@ -155,6 +239,8 @@ function FilterCheckbox({
   label: React.ReactNode;
   meta?: React.ReactNode;
 }) {
+  const showMeta = typeof meta === "number";
+
   return (
     <AriaCheckbox
       className="ui-checkbox ui-filter-checkbox"
@@ -170,7 +256,7 @@ function FilterCheckbox({
         </span>
       )}
       <span className="ui-filter-item-label">{label}</span>
-      {meta && (
+      {showMeta && (
         <span className="ui-filter-item-meta">{meta}</span>
       )}
     </AriaCheckbox>

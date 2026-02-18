@@ -1,63 +1,71 @@
 .ui-menu-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 8px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-control);
-    background: var(--surface-raised);
-    font-size: var(--font-size-sm);
-    font-weight: 700;
-    color: inherit;
+    gap: 4px;
     user-select: none;
-    cursor: pointer;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
 }
 
-.ui-menu-trigger[data-focused],
-.ui-menu-trigger[data-focus-visible],
-.ui-menu-trigger[data-pressed],
-.ui-menu-trigger[data-open] {
-    box-shadow: 0 0 0 2px var(--focus-ring);
-    border-color: var(--color-lit-ld-cd269152);
+.ui-menu-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1;
+}
+
+.ui-menu-trigger svg {
+    display: block;
+}
+
+.ui-menu-trigger:focus-visible {
+    box-shadow: none;
 }
 
 .ui-menu-popover {
     min-width: 180px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
-    background: var(--surface-raised);
-    box-shadow: 0 6px 16px var(--color-lit-ld-c35dc65d);
-    padding: 3px;
+    background: var(--bg-surface);
+    box-shadow: 0 6px 16px var(--shadow-strong);
+    padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: 0;
     z-index: 20;
+    font-size: var(--font-size-sm);
 }
 
 .ui-menu-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 0;
+    padding: 0;
+    margin: 0;
+    list-style: none;
     outline: none;
 }
 
 .ui-menu-item {
-    border-radius: var(--radius-control);
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 0;
     background: transparent;
-    color: inherit;
+    color: var(--text-primary);
     text-align: left;
     font-family: var(--font-ui);
     font-size: var(--font-size-sm);
-    padding: 4px 8px;
+    font-weight: 500;
+    line-height: 1.2;
+    padding: 6px 10px;
     cursor: default;
     outline: none;
 }
 
 .ui-menu-item[data-focused],
 .ui-menu-item[data-hovered] {
-    background: var(--surface-hover);
+    background: color-mix(in srgb, white 4%, var(--bg-surface));
 }
 
 .ui-menu-item--danger {
-    color: var(--color-lit-ld-6cbed306);
+    color: var(--status-danger);
 }

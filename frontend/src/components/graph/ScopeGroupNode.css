@@ -2,32 +2,33 @@
     width: 100%;
     height: 100%;
     border: 1px solid
-      light-dark(
-        rgb(var(--scope-rgb-light, var(--scope-rgb-fallback-light)) / 0.64),
-        rgb(var(--scope-rgb-dark, var(--scope-rgb-fallback-dark)) / 0.54)
-      );
+        light-dark(
+            rgb(var(--scope-rgb-light, var(--scope-rgb-fallback-light)) / 0.64),
+            rgb(var(--scope-rgb-dark, var(--scope-rgb-fallback-dark)) / 0.54)
+        );
     border-radius: var(--radius-control);
     background: light-dark(
-      rgb(var(--scope-rgb-light, var(--scope-rgb-fallback-light)) / 0.34),
-      rgb(var(--scope-rgb-dark, var(--scope-rgb-fallback-dark)) / 0.3)
+        rgb(var(--scope-rgb-light, var(--scope-rgb-fallback-light)) / 0.34),
+        rgb(var(--scope-rgb-dark, var(--scope-rgb-fallback-dark)) / 0.3)
     );
-    box-shadow: inset 0 1px 0 var(--color-lit-ld-bb16a433);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
 }
 
 .scope-group-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 7px 10px;
+    padding: 4px 6px;
     border-bottom: 1px solid
-      light-dark(
-        rgb(var(--scope-rgb-light, var(--scope-rgb-fallback-light)) / 0.52),
-        rgb(var(--scope-rgb-dark, var(--scope-rgb-fallback-dark)) / 0.46)
-      );
-    background: light-dark(
+        light-dark(
+            rgb(var(--scope-rgb-light, var(--scope-rgb-fallback-light)) / 0.52),
+            rgb(var(--scope-rgb-dark, var(--scope-rgb-fallback-dark)) / 0.46)
+        );
+    background: var(--bg-surface);
+    /*background: light-dark(
       rgb(var(--scope-rgb-light, var(--scope-rgb-fallback-light)) / 0.42),
       rgb(var(--scope-rgb-dark, var(--scope-rgb-fallback-dark)) / 0.36)
-    );
+    );*/
     font-family: var(--font-ui);
     font-size: 10px;
     font-weight: 700;

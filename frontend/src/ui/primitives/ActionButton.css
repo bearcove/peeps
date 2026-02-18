@@ -3,33 +3,33 @@
     align-items: center;
     gap: 4px;
     padding: 0 8px;
-    height: 24px;
+    height: 28px;
     border-radius: var(--radius-control);
-    border: 1px solid var(--color-lit-ld-b19fa9e1);
-    background: var(--color-lit-ld-d5e8a94a);
-    color: var(--color-lit-ld-95d51f9e);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-surface);
+    color: var(--text-primary);
     font-size: var(--font-size-sm);
     font-weight: 500;
     cursor: pointer;
-    box-shadow: 0 1px 2px var(--color-lit-ld-0db1eab7);
+    box-shadow: 0 1px 2px var(--shadow-soft);
     transition: background-color 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
 }
 
 .ui-action-button:hover {
-    background: var(--color-lit-ld-4cca04e9);
-    border-color: var(--color-lit-ld-6cafcd1f);
-    box-shadow: 0 1px 3px var(--color-lit-ld-eead3d40);
+    background: color-mix(in srgb, white 4%, var(--bg-surface));
+    border-color: var(--border-default);
+    box-shadow: 0 1px 3px var(--shadow-strong);
 }
 
 .ui-action-button:active {
-    background: var(--color-lit-ld-3c7625d3);
-    box-shadow: 0 0 1px var(--color-lit-ld-eb2081fc);
+    background: color-mix(in srgb, white 8%, var(--bg-surface));
+    box-shadow: 0 1px 2px var(--shadow-soft);
 }
 
 .ui-action-button:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px var(--color-lit-ld-84038782);
-    border-color: var(--color-lit-ld-43da4eab);
+    box-shadow: 0 0 0 2px var(--focus-ring);
+    border-color: var(--border-default);
 }
 
 .ui-action-button[data-disabled] {
@@ -38,44 +38,45 @@
 }
 
 .ui-action-button--primary {
-    background: var(--color-lit-ld-95d51f9e);
-    color: var(--color-lit-ld-07faeaef);
+    background: var(--accent);
+    color: var(--text-primary);
     border-color: transparent;
     box-shadow: none;
 }
 
 .ui-action-button--primary:hover {
-    background: var(--color-lit-ld-06c11a7f);
+    background: var(--accent);
     border-color: transparent;
     box-shadow: none;
 }
 
 .ui-action-button--primary:active {
-    background: var(--color-lit-ld-32c3966d);
+    background: var(--accent);
 }
 
 .ui-action-button--ghost {
     background: transparent;
     border-color: transparent;
     box-shadow: none;
-    color: var(--color-lit-ld-a1ef9a5a);
+    color: var(--text-secondary);
 }
 
 .ui-action-button--ghost:hover {
-    background: var(--color-lit-ld-93cf3b1b);
-    border-color: var(--color-lit-ld-b19fa9e1);
-    box-shadow: 0 1px 2px var(--color-lit-ld-0db1eab7);
+    background: color-mix(in srgb, white 4%, var(--bg-surface));
+    border-color: var(--border-subtle);
+    box-shadow: 0 1px 2px var(--shadow-soft);
 }
 
 .ui-action-button--sm {
-    padding: 1px 4px;
+    height: 24px;
+    padding: 0 6px;
     font-size: 11px;
 }
 
 .ui-action-button--icon-only {
-    width: 24px;
-    min-width: 24px;
-    height: 24px;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
     padding: 0;
     justify-content: center;
 }

@@ -3,8 +3,8 @@
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface-raised);
+    border-bottom: 1px solid var(--border-default);
+    background: var(--bg-surface);
     font-size: var(--font-size-sm);
     flex-shrink: 0;
 }
@@ -30,33 +30,34 @@
     font-weight: 600;
     padding: 2px 8px;
     border-radius: var(--radius-control);
-    background: var(--surface-sunken);
+    background: var(--bg-elevated);
     color: var(--text-secondary);
 }
 
 .app-header-badge--active {
-    background: var(--color-lit-ld-f1f03f1f);
-    color: var(--color-lit-ld-5773bd0f);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
 }
 
 .app-header-badge--recording {
-    background: var(--color-lit-ld-7f698312);
-    color: var(--color-lit-ld-c66cb479);
+    background: color-mix(in srgb, var(--status-danger) 20%, transparent);
+    color: var(--status-danger);
 }
 
 .app-header-badge--recording-warn {
-    background: var(--color-lit-ld-b88afee4);
-    color: var(--color-lit-ld-f806fcd3);
+    background: color-mix(in srgb, var(--status-warning) 20%, transparent);
+    color: var(--status-warning);
 }
 
 .app-header-badge--warn {
-    background: var(--color-lit-ld-849f65eb);
-    color: var(--color-lit-ld-d791833b);
+    background: color-mix(in srgb, var(--status-warning) 20%, transparent);
+    color: var(--status-warning);
 }
 
 .app-header-error {
     font-size: 11px;
-    color: var(--color-lit-ld-c66cb479);
+    color: var(--status-danger);
     font-weight: 600;
     max-width: 300px;
     overflow: hidden;
@@ -87,13 +88,14 @@
 }
 
 .proc-pill--connected {
-    background: var(--color-lit-ld-f1f03f1f);
-    color: var(--color-lit-ld-5773bd0f);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
 }
 
 .proc-pill--disconnected {
-    background: var(--color-lit-ld-7f698312);
-    color: var(--color-lit-ld-c66cb479);
+    background: color-mix(in srgb, var(--status-danger) 20%, transparent);
+    color: var(--status-danger);
 }
 
 .recording-dot {
@@ -101,7 +103,7 @@
     width: 6px;
     height: 6px;
     border-radius: var(--radius-control);
-    background: var(--color-lit-ld-015826c9);
+    background: var(--status-danger);
     flex-shrink: 0;
     animation: pulse-danger 1.5s ease-in-out infinite;
 }

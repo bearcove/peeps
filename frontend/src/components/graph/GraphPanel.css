@@ -38,7 +38,7 @@
     min-height: 36px;
     box-sizing: border-box;
     border-bottom: 1px solid var(--border-subtle);
-    background: var(--surface-raised);
+    background: var(--bg-surface);
     font-size: 11px;
     flex-shrink: 0;
 }
@@ -51,9 +51,16 @@
 }
 
 .graph-stat {
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-    font-size: 10px;
+    color: var(--text-secondary);
+    font-family: var(--font-ui);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+}
+
+.graph-stat-sep {
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+    line-height: 1;
 }
 
 .graph-flow {

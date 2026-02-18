@@ -5,8 +5,8 @@
     align-items: center;
     gap: 10px;
     padding: 6px 12px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface-raised);
+    border-bottom: 1px solid var(--border-default);
+    background: var(--bg-surface);
     flex-shrink: 0;
 }
 
@@ -35,7 +35,7 @@
     flex: 1;
     height: 4px;
     cursor: pointer;
-    accent-color: var(--color-lit-ld-5f7a3f7f);
+    accent-color: var(--accent);
 }
 
 .recording-timeline-slider:disabled {
@@ -71,7 +71,7 @@
     justify-content: center;
     width: 24px;
     height: 24px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
     background: transparent;
     color: var(--text-muted);
@@ -82,14 +82,14 @@
 }
 
 .recording-timeline-ghost-btn:hover {
-    background: var(--surface-hover);
+    background: color-mix(in srgb, white 4%, var(--bg-elevated));
     color: var(--text-secondary);
 }
 
 .recording-timeline-ghost-btn--active {
-    background: var(--color-lit-ld-ffa8dbee);
-    color: var(--color-lit-ld-6d678c8a);
-    border-color: var(--color-lit-ld-f726ec88);
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-elevated));
+    color: var(--accent);
+    border-color: var(--border-default);
 }
 
 .recording-timeline-processed {
@@ -108,9 +108,9 @@
     font-size: 10px;
     font-family: var(--font-mono);
     padding: 2px 4px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
-    background: var(--surface);
+    background: var(--bg-surface);
     color: var(--text-secondary);
     cursor: pointer;
     height: 22px;

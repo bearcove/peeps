@@ -1,6 +1,6 @@
 .graph-card {
-    --graph-card-bg: var(--surface-raised);
-    --graph-card-border-color: var(--border);
+    --graph-card-bg: var(--bg-surface);
+    --graph-card-border-color: var(--border-default);
     --graph-card-border-width: 1px;
     font-family: var(--font-ui);
     white-space: nowrap;
@@ -12,7 +12,7 @@
 }
 
 .graph-card--selected {
-    outline: 2px solid var(--color-lit-ld-51fce81c);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
 
@@ -28,11 +28,11 @@
 }
 
 .graph-card--stat-crit {
-    --graph-card-border-color: var(--color-lit-ld-015826c9);
+    --graph-card-border-color: var(--status-danger);
 }
 
 .graph-card--stat-warn {
-    --graph-card-border-color: var(--color-lit-ld-3349dec3);
+    --graph-card-border-color: var(--status-warning);
 }
 
 .graph-card--ghost {
@@ -69,17 +69,17 @@
 
 .graph-node--cycle {
     --graph-card-border-width: 2px;
-    --graph-card-border-color: var(--color-lit-ld-6dca8202);
-    --graph-card-bg: var(--color-lit-ld-02303704);
+    --graph-card-border-color: var(--status-danger);
+    --graph-card-bg: color-mix(in srgb, var(--status-danger) 14%, var(--bg-elevated));
 }
 
 .graph-node--cycle .graph-node-icon {
-    color: var(--color-lit-ld-6dca8202);
+    color: var(--status-danger);
 }
 
 .graph-node-label {
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: clip;
 }
 
 .graph-node-details {
@@ -102,12 +102,12 @@
 }
 
 .graph-node-stat--crit {
-    color: var(--color-lit-ld-015826c9);
+    color: var(--status-danger);
     font-weight: 700;
 }
 
 .graph-node-stat--warn {
-    color: var(--color-lit-ld-3349dec3);
+    color: var(--status-warning);
     font-weight: 700;
 }
 

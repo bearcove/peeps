@@ -18,10 +18,10 @@ const elkOptions = {
 };
 
 const subgraphPaddingBase = {
-  top: 30,
-  left: 12,
-  bottom: 12,
-  right: 12,
+  top: 10,
+  left: 8,
+  bottom: 10,
+  right: 8,
 };
 
 // ── Edge styling ──────────────────────────────────────────────
@@ -113,14 +113,16 @@ export async function layoutGraph(
 
   const hasSubgraphs = subgraphScopeMode !== "none";
   const measuredHeaderHeight = Math.max(0, Math.ceil(options.subgraphHeaderHeight ?? 0));
-  const subgraphElkPadding = `[top=${measuredHeaderHeight + subgraphPaddingBase.left},left=${subgraphPaddingBase.left},bottom=${subgraphPaddingBase.bottom},right=${subgraphPaddingBase.right}]`;
+  const subgraphElkPadding = `[top=${measuredHeaderHeight + subgraphPaddingBase.top},left=${subgraphPaddingBase.left},bottom=${subgraphPaddingBase.bottom},right=${subgraphPaddingBase.right}]`;
 
   const defaultInPortId = (entityId: string) => `${entityId}:in`;
   const defaultOutPortId = (entityId: string) => `${entityId}:out`;
   const edgeSourceRef = (edge: EdgeDef) => edge.sourcePort ?? defaultOutPortId(edge.source);
   const edgeTargetRef = (edge: EdgeDef) => edge.targetPort ?? defaultInPortId(edge.target);
 
-  const portsForEntity = (entity: EntityDef): Array<{ id: string; layoutOptions: Record<string, string> }> => {
+  const portsForEntity = (
+    entity: EntityDef,
+  ): Array<{ id: string; layoutOptions: Record<string, string> }> => {
     if (entity.channelPair) {
       const mergedId = entity.id;
       return [
@@ -145,12 +147,22 @@ export async function layoutGraph(
     "elk.portConstraints": "FIXED_SIDE",
   };
 
+  const requireNodeSize = (entityId: string): { width: number; height: number } => {
+    const size = nodeSizes.get(entityId);
+    if (size) return size;
+    const message = `[elk] missing measured node size for entity ${entityId}`;
+    if (typeof window !== "undefined" && typeof window.alert === "function") {
+      window.alert(message);
+    }
+    throw new Error(message);
+  };
+
   const elkNodeForEntity = (entity: EntityDef) => {
-    const size = nodeSizes.get(entity.id);
+    const size = requireNodeSize(entity.id);
     return {
       id: entity.id,
-      width: size?.width || 150,
-      height: size?.height || 36,
+      width: size.width,
+      height: size.height,
       layoutOptions: nodeLayoutOptions,
       ports: portsForEntity(entity),
     };
@@ -297,10 +309,13 @@ export async function layoutGraph(
         let canonicalLabel = rawScopeKey === "~no-crate" ? "(no crate)" : rawScopeKey;
         if (scopeKind === "process" && memberEntities.length > 0) {
           const anchor = memberEntities[0];
-          const pidSuffix = anchor.processPid != null ? String(anchor.processPid) : anchor.processId;
+          const pidSuffix =
+            anchor.processPid != null ? String(anchor.processPid) : anchor.processId;
           canonicalLabel = `${anchor.processName}(${pidSuffix})`;
         } else if (scopeKind === "connection" && memberEntities.length > 0) {
-          const named = memberEntities.find((entity: EntityDef) => entity.kind === "connection") ?? memberEntities[0];
+          const named =
+            memberEntities.find((entity: EntityDef) => entity.kind === "connection") ??
+            memberEntities[0];
           canonicalLabel = named.name;
         }
 
@@ -331,7 +346,7 @@ export async function layoutGraph(
 
       absoluteNodePos.set(entity.id, { x: absX, y: absY });
 
-      const size = nodeSizes.get(entity.id) ?? { width: 150, height: 36 };
+      const size = requireNodeSize(entity.id);
       const { kind, data } = makeNodeData(entity);
       geoNodes.push({
         id: entity.id,
@@ -381,17 +396,6 @@ export async function layoutGraph(
 
   const entityNameMap = new Map(entityDefs.map((e) => [e.id, e.name]));
   const geoEdges: GeometryEdge[] = validEdges.map((def) => {
-    const sourcePos = absoluteNodePos.get(def.source);
-    const targetPos = absoluteNodePos.get(def.target);
-    const sourceSize = nodeSizes.get(def.source) ?? { width: 150, height: 36 };
-    const targetSize = nodeSizes.get(def.target) ?? { width: 150, height: 36 };
-    const sourceAnchor = sourcePos
-      ? { x: sourcePos.x + sourceSize.width / 2, y: sourcePos.y + sourceSize.height / 2 }
-      : null;
-    const targetAnchor = targetPos
-      ? { x: targetPos.x + targetSize.width / 2, y: targetPos.y + targetSize.height / 2 }
-      : null;
-
     const records = edgeLayoutsById.get(def.id);
     if (!records || records.length === 0) {
       throw new Error(`[elk] edge ${def.id}: no routed sections returned by ELK`);
@@ -406,7 +410,9 @@ export async function layoutGraph(
       return sourceMatch && targetMatch;
     });
     if (edgeRecords.length === 0) {
-      throw new Error(`[elk] edge ${def.id}: no matching ELK records for ${def.source} -> ${def.target}`);
+      throw new Error(
+        `[elk] edge ${def.id}: no matching ELK records for ${def.source} -> ${def.target}`,
+      );
     }
 
     const fragmentsRaw: SectionFragment[] = [];
@@ -463,14 +469,18 @@ export async function layoutGraph(
       const sameOutgoing =
         [...existing.outgoing].sort().join("|") === [...fragment.outgoing].sort().join("|");
       if (!samePoints || !sameIncoming || !sameOutgoing) {
-        throw new Error(`[elk] edge ${def.id}: conflicting records for section ${fragment.sectionId}`);
+        throw new Error(
+          `[elk] edge ${def.id}: conflicting records for section ${fragment.sectionId}`,
+        );
       }
     }
 
     let points: Point[] = [];
     if (byId.size === 0) {
       if (unnamed.length !== 1) {
-        throw new Error(`[elk] edge ${def.id}: expected exactly one unnamed section, got ${unnamed.length}`);
+        throw new Error(
+          `[elk] edge ${def.id}: expected exactly one unnamed section, got ${unnamed.length}`,
+        );
       }
       points = [...unnamed[0].points];
     } else {
@@ -510,7 +520,9 @@ export async function layoutGraph(
       }
 
       if (visited.size !== byId.size) {
-        throw new Error(`[elk] edge ${def.id}: disconnected section graph (${visited.size}/${byId.size})`);
+        throw new Error(
+          `[elk] edge ${def.id}: disconnected section graph (${visited.size}/${byId.size})`,
+        );
       }
 
       for (const id of orderedIds) {

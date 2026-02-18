@@ -6,27 +6,27 @@
     color: var(--text-secondary);
     padding: 1px 5px;
     border-radius: var(--radius-control);
-    background: var(--surface-sunken);
+    background: var(--bg-elevated);
 }
 
 .badge--neutral {
     color: var(--text-secondary);
-    background: var(--surface-sunken);
+    background: var(--bg-elevated);
 }
 
 .badge--ok {
-    color: var(--color-lit-ld-d59cb2c4);
-    background: var(--color-lit-ld-c64378ce);
+    color: var(--status-success);
+    background: color-mix(in srgb, var(--status-success) 20%, transparent);
 }
 
 .badge--warn {
-    color: var(--color-lit-ld-d791833b);
-    background: var(--color-lit-ld-849f65eb);
+    color: var(--status-warning);
+    background: color-mix(in srgb, var(--status-warning) 20%, transparent);
 }
 
 .badge--crit {
-    color: var(--color-lit-ld-6cbed306);
-    background: var(--color-lit-ld-7633e6e6);
+    color: var(--status-danger);
+    background: color-mix(in srgb, var(--status-danger) 20%, transparent);
 }
 
 .badge--count {
@@ -34,7 +34,7 @@
     text-align: center;
     border-radius: var(--radius-control);
     padding: 1px 8px;
-    border: 1px solid var(--color-lit-ld-b19fa9e1);
+    border: 1px solid var(--border-subtle);
     font-size: 11px;
     letter-spacing: 0.02em;
 }
@@ -52,6 +52,6 @@
 }
 
 .waiter-badge--active {
-    color: var(--color-lit-ld-6cbed306);
-    background: var(--color-lit-ld-7633e6e6);
+    color: var(--status-danger);
+    background: color-mix(in srgb, var(--status-danger) 20%, transparent);
 }

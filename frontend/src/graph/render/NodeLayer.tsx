@@ -44,6 +44,14 @@ export async function measureGraphLayout(
 ): Promise<GraphMeasureResult> {
   // Escape React's useEffect lifecycle so flushSync works on our measurement roots.
   await Promise.resolve();
+  // Ensure text measurement uses final webfont metrics.
+  if (typeof document !== "undefined" && "fonts" in document) {
+    try {
+      await (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts?.ready;
+    } catch {
+      // Non-fatal: fallback metrics are still better than blocking.
+    }
+  }
 
   const container = document.createElement("div");
   container.style.cssText =
