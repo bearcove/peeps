@@ -1754,7 +1754,7 @@ pub fn rpc_request(
         args_preview: args_preview.into(),
     });
     RpcRequestHandle {
-        handle: EntityHandle::new(format!("rpc.request.{method}"), body),
+        handle: EntityHandle::new(method, body),
     }
 }
 
@@ -1770,7 +1770,7 @@ pub fn rpc_request_with_krate(
         args_preview: args_preview.into(),
     });
     RpcRequestHandle {
-        handle: EntityHandle::new_with_krate(format!("rpc.request.{method}"), body, source, krate),
+        handle: EntityHandle::new_with_krate(method, body, source, krate),
     }
 }
 
