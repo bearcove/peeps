@@ -316,8 +316,9 @@ macro_rules! spawn_blocking_tracked {
     };
 }
 #[track_caller]
-pub fn sleep(duration: std::time::Duration, label: impl Into<String>) -> impl Future<Output = ()> {
-    instrument_future_named(label.into(), tokio::time::sleep(duration))
+pub fn sleep(duration: std::time::Duration, _label: impl Into<String>) -> impl Future<Output = ()> {
+    // we've decided to stop instrumenting sleeps
+    tokio::time::sleep(duration)
 }
 
 #[macro_export]
@@ -331,12 +332,13 @@ macro_rules! sleep {
 pub fn timeout<F>(
     duration: std::time::Duration,
     future: F,
-    label: impl Into<String>,
+    _label: impl Into<String>,
 ) -> impl Future<Output = Result<F::Output, tokio::time::error::Elapsed>>
 where
     F: Future,
 {
-    tokio::time::timeout(duration, instrument_future_named(label.into(), future))
+    // we've decided to stop instrumenting timeouts
+    tokio::time::timeout(duration, future)
 }
 
 #[macro_export]
@@ -5277,10 +5279,7 @@ mod tests {
         let sem_id = entity_id_by_name("test.semaphore.touch.resource")
             .expect("semaphore entity should exist");
 
-        let fut = crate::peep!(
-            sem.acquire_owned(),
-            "test.semaphore.touch.acquire"
-        );
+        let fut = crate::peep!(sem.acquire_owned(), "test.semaphore.touch.acquire");
         let fut_handle = fut.future_handle.clone();
         let fut_id = EntityId::new(fut_handle.id().as_str());
 

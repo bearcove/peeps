@@ -3,6 +3,7 @@ import type { ApiClient } from "../api/client";
 import {
   convertSnapshot,
   getConnectedSubgraph,
+  type SnapshotGroupMode,
   type EntityDef,
   type EdgeDef,
 } from "../snapshot";
@@ -52,6 +53,7 @@ export async function buildUnionLayout(
   apiClient: ApiClient,
   onProgress?: (loaded: number, total: number) => void,
   downsampleInterval: number = 1,
+  groupMode: SnapshotGroupMode = "none",
 ): Promise<UnionLayout> {
   const processedFrameIndices = selectFrameIndices(frames, downsampleInterval);
   const total = processedFrameIndices.length;
@@ -65,7 +67,7 @@ export async function buildUnionLayout(
       const frameIndex = processedFrameIndices[i];
       promises.push(
         apiClient.fetchRecordingFrame(frameIndex).then((snapshot) => {
-          const converted = convertSnapshot(snapshot);
+          const converted = convertSnapshot(snapshot, groupMode);
           frameCache.set(frameIndex, converted);
         }),
       );

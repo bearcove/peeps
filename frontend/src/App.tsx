@@ -86,8 +86,8 @@ export function App() {
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
   const [hiddenKrates, setHiddenKrates] = useState<ReadonlySet<string>>(new Set());
   const [hiddenProcesses, setHiddenProcesses] = useState<ReadonlySet<string>>(new Set());
-  const [scopeColorMode, setScopeColorMode] = useState<ScopeColorMode>("none");
-  const [subgraphScopeMode, setSubgraphScopeMode] = useState<SubgraphScopeMode>("none");
+  const [scopeColorMode, setScopeColorMode] = useState<ScopeColorMode>("crate");
+  const [subgraphScopeMode, setSubgraphScopeMode] = useState<SubgraphScopeMode>("process");
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [isLive, setIsLive] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
@@ -248,12 +248,12 @@ export function App() {
       }
       setSnap({ phase: "loading" });
       const snapshot = await apiClient.fetchSnapshot();
-      const converted = convertSnapshot(snapshot);
+      const converted = convertSnapshot(snapshot, subgraphScopeMode);
       setSnap({ phase: "ready", ...converted });
     } catch (err) {
       setSnap({ phase: "error", message: err instanceof Error ? err.message : String(err) });
     }
-  }, []);
+  }, [subgraphScopeMode]);
 
   const handleStartRecording = useCallback(async () => {
     try {
@@ -286,7 +286,7 @@ export function App() {
             if (isLiveRef.current && current.session.frame_count > 0) {
               const frameIndex = current.session.frame_count - 1;
               const frame = await apiClient.fetchRecordingFrame(frameIndex);
-              const converted = convertSnapshot(frame);
+              const converted = convertSnapshot(frame, subgraphScopeMode);
               setSnap({ phase: "ready", ...converted });
             }
           } catch (e) {
@@ -297,7 +297,7 @@ export function App() {
     } catch (err) {
       console.error(err);
     }
-  }, []);
+  }, [subgraphScopeMode]);
 
   const handleStopRecording = useCallback(async () => {
     if (pollingRef.current !== null) {
@@ -325,7 +325,7 @@ export function App() {
       if (session.frame_count > 0) {
         const lastFrameIndex = session.frame_count - 1;
         const lastFrame = await apiClient.fetchRecordingFrame(lastFrameIndex);
-        const converted = convertSnapshot(lastFrame);
+        const converted = convertSnapshot(lastFrame, subgraphScopeMode);
         setSnap({ phase: "ready", ...converted });
 
         const union = await buildUnionLayout(
@@ -338,6 +338,7 @@ export function App() {
             });
           },
           autoInterval,
+          subgraphScopeMode,
         );
         setRecording((prev) => {
           if (prev.phase !== "stopped") return prev;
@@ -358,7 +359,7 @@ export function App() {
     } catch (err) {
       console.error(err);
     }
-  }, [hiddenKrates, hiddenProcesses, focusedEntityId]);
+  }, [hiddenKrates, hiddenProcesses, focusedEntityId, subgraphScopeMode]);
 
   const handleExport = useCallback(async () => {
     try {
@@ -404,7 +405,7 @@ export function App() {
         if (session.frames.length > 0) {
           const lastFrameIndex = session.frames[session.frames.length - 1].frame_index;
           const lastFrame = await apiClient.fetchRecordingFrame(lastFrameIndex);
-          const converted = convertSnapshot(lastFrame);
+          const converted = convertSnapshot(lastFrame, subgraphScopeMode);
           setSnap({ phase: "ready", ...converted });
 
           const union = await buildUnionLayout(
@@ -417,6 +418,7 @@ export function App() {
               });
             },
             autoInterval,
+            subgraphScopeMode,
           );
           setRecording((prev) => {
             if (prev.phase !== "stopped") return prev;
@@ -437,7 +439,7 @@ export function App() {
         console.error(err);
       }
     },
-    [hiddenKrates, hiddenProcesses, focusedEntityId],
+    [hiddenKrates, hiddenProcesses, focusedEntityId, subgraphScopeMode],
   );
 
   const handleScrub = useCallback(
@@ -508,6 +510,7 @@ export function App() {
           });
         },
         downsampleInterval,
+        subgraphScopeMode,
       );
       setBuiltDownsampleInterval(downsampleInterval);
       setRecording((prev) => {
@@ -532,7 +535,7 @@ export function App() {
     } catch (err) {
       console.error(err);
     }
-  }, [recording, downsampleInterval, hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode]);
+  }, [recording, downsampleInterval, hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, subgraphScopeMode]);
 
   // Re-render union frame when filters change during playback.
   useEffect(() => {

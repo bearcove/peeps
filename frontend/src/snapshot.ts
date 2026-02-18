@@ -58,6 +58,8 @@ export type EdgeDef = {
   targetPort?: string;
 };
 
+export type SnapshotGroupMode = "none" | "process" | "crate";
+
 // ── Snapshot conversion ────────────────────────────────────────
 
 export function bodyToKind(body: EntityBody): string {
@@ -243,12 +245,32 @@ export function mergeChannelPairs(
   return { entities: newEntities, edges: newEdges };
 }
 
+function groupKeyForEntity(entity: EntityDef, mode: SnapshotGroupMode): string {
+  if (mode === "process") return `process:${entity.processId}`;
+  if (mode === "crate") return `crate:${entity.krate ?? "~no-crate"}`;
+  return "all";
+}
+
+function buildGroupKeyByEntity(
+  entities: EntityDef[],
+  mode: SnapshotGroupMode,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const entity of entities) {
+    out.set(entity.id, groupKeyForEntity(entity, mode));
+  }
+  return out;
+}
+
 export function mergeRpcPairs(
   entities: EntityDef[],
   edges: EdgeDef[],
+  groupMode: SnapshotGroupMode = "none",
 ): { entities: EntityDef[]; edges: EdgeDef[] } {
   const rpcLinks = edges.filter((e) => e.kind === "rpc_link");
   const entityById = new Map(entities.map((e) => [e.id, e]));
+  const groupKeyByEntity = buildGroupKeyByEntity(entities, groupMode);
+  const mergedRpcLinkIds = new Set<string>();
 
   const mergedIdFor = new Map<string, string>();
   const portIdFor = new Map<string, string>();
@@ -259,6 +281,7 @@ export function mergeRpcPairs(
     const reqEntity = entityById.get(link.source);
     const respEntity = entityById.get(link.target);
     if (!reqEntity || !respEntity) continue;
+    if (groupKeyByEntity.get(reqEntity.id) !== groupKeyByEntity.get(respEntity.id)) continue;
     if (mergedIdFor.has(link.source) || mergedIdFor.has(link.target)) continue;
 
     const mergedId = `rpc_pair:${link.source}:${link.target}`;
@@ -267,6 +290,7 @@ export function mergeRpcPairs(
 
     mergedIdFor.set(link.source, mergedId);
     mergedIdFor.set(link.target, mergedId);
+    mergedRpcLinkIds.add(link.id);
     portIdFor.set(link.source, reqPortId);
     portIdFor.set(link.target, respPortId);
     removedIds.add(link.source);
@@ -297,7 +321,7 @@ export function mergeRpcPairs(
   const newEntities = [...filteredEntities, ...mergedEntities];
 
   const newEdges = edges
-    .filter((e) => e.kind !== "rpc_link")
+    .filter((e) => e.kind !== "rpc_link" || !mergedRpcLinkIds.has(e.id))
     .map((e) => {
       const origSource = e.source;
       const origTarget = e.target;
@@ -327,7 +351,10 @@ function coalesceContextEdges(edges: EdgeDef[]): EdgeDef[] {
   });
 }
 
-export function convertSnapshot(snapshot: SnapshotCutResponse): {
+export function convertSnapshot(
+  snapshot: SnapshotCutResponse,
+  groupMode: SnapshotGroupMode = "none",
+): {
   entities: EntityDef[];
   edges: EdgeDef[];
 } {
@@ -405,6 +432,7 @@ export function convertSnapshot(snapshot: SnapshotCutResponse): {
   const { entities: mergedEntities, edges: mergedEdges } = mergeRpcPairs(
     channelMerged,
     channelEdges,
+    groupMode,
   );
 
   const coalescedEdges = coalesceContextEdges(mergedEdges);

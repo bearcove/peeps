@@ -85,13 +85,13 @@ type ArrowGeom = {
   right: Point;
 };
 
-function computeArrow(points: Point[], size: number): ArrowGeom | null {
+function computeArrow(points: Point[], shaftEnd: Point, size: number): ArrowGeom | null {
   if (points.length < 2) return null;
-  const tip = points[points.length - 1];
-  const lookback = Math.max(36, size * 4);
+  const endpoint = points[points.length - 1];
+  const lookback = Math.max(14, size * 2);
   const tail = pointAtDistanceFromEnd(points, lookback);
-  const dx = tip.x - tail.x;
-  const dy = tip.y - tail.y;
+  const dx = endpoint.x - tail.x;
+  const dy = endpoint.y - tail.y;
   const len = Math.hypot(dx, dy);
   if (len <= 1e-6) return null;
 
@@ -102,10 +102,8 @@ function computeArrow(points: Point[], size: number): ArrowGeom | null {
 
   const arrowLength = Math.max(6, size);
   const halfWidth = arrowLength * 0.5;
-  const base = {
-    x: tip.x - ux * arrowLength,
-    y: tip.y - uy * arrowLength,
-  };
+  const base = shaftEnd;
+  const tip = { x: base.x + ux * arrowLength, y: base.y + uy * arrowLength };
 
   return {
     tip,
@@ -171,7 +169,9 @@ export function EdgeLayer({
         const isSelected = selectedEdgeId === edge.id;
         const isGhost = ghostEdgeIds?.has(edge.id) ?? false;
         const markerSize = (edge.data?.markerSize as number | undefined) ?? 8;
-        const shaftPoints = trimPolylineEnd(edge.polyline, markerSize * 0.55);
+        const arrowLength = Math.max(6, markerSize);
+        const shaftPoints = trimPolylineEnd(edge.polyline, arrowLength);
+        const shaftEnd = shaftPoints[shaftPoints.length - 1];
         const d = polylineToPath(shaftPoints);
         const hitD = hitTestPath(edge.polyline);
         const edgeStyle = edge.data?.style ?? {};
@@ -180,7 +180,7 @@ export function EdgeLayer({
         const stroke = isSelected
           ? "var(--accent, #3b82f6)"
           : (edgeStyle.stroke ?? "light-dark(#666, #999)");
-        const arrow = computeArrow(edge.polyline, markerSize);
+        const arrow = shaftEnd ? computeArrow(edge.polyline, shaftEnd, markerSize) : null;
 
         const visibleStyle: React.CSSProperties = isSelected
           ? { stroke, strokeWidth: 2.5 }
