@@ -13,7 +13,7 @@ use peeps_types::{
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
 use std::ffi::{OsStr, OsString};
-use std::future::Future;
+use std::future::{Future, IntoFuture};
 use std::io;
 use std::pin::Pin;
 use std::process::{ExitStatus, Output, Stdio};
@@ -4834,9 +4834,12 @@ impl<F> Drop for InstrumentedFuture<F> {
 }
 
 #[track_caller]
-pub fn instrument_future_named<F>(name: impl Into<CompactString>, fut: F) -> InstrumentedFuture<F>
+pub fn instrument_future_named<F>(
+    name: impl Into<CompactString>,
+    fut: F,
+) -> InstrumentedFuture<F::IntoFuture>
 where
-    F: Future,
+    F: IntoFuture,
 {
     let location = std::panic::Location::caller();
     let source = format!("{}:{}", location.file(), location.line());
@@ -4847,10 +4850,11 @@ pub fn instrument_future_named_with_source<F>(
     name: impl Into<CompactString>,
     fut: F,
     source: impl Into<CompactString>,
-) -> InstrumentedFuture<F>
+) -> InstrumentedFuture<F::IntoFuture>
 where
-    F: Future,
+    F: IntoFuture,
 {
+    let fut = fut.into_future();
     let handle = EntityHandle::new_with_source(name, EntityBody::Future, source);
     InstrumentedFuture::new(fut, handle, None)
 }
@@ -4860,9 +4864,9 @@ pub fn instrument_future_on<F>(
     name: impl Into<CompactString>,
     on: &impl AsEntityRef,
     fut: F,
-) -> InstrumentedFuture<F>
+) -> InstrumentedFuture<F::IntoFuture>
 where
-    F: Future,
+    F: IntoFuture,
 {
     let location = std::panic::Location::caller();
     let source = format!("{}:{}", location.file(), location.line());
@@ -4874,10 +4878,11 @@ pub fn instrument_future_on_with_source<F>(
     on: &impl AsEntityRef,
     fut: F,
     source: impl Into<CompactString>,
-) -> InstrumentedFuture<F>
+) -> InstrumentedFuture<F::IntoFuture>
 where
-    F: Future,
+    F: IntoFuture,
 {
+    let fut = fut.into_future();
     let handle = EntityHandle::new_with_source(name, EntityBody::Future, source);
     InstrumentedFuture::new(fut, handle, Some(on.as_entity_ref()))
 }
@@ -4887,9 +4892,9 @@ pub fn instrument_future_named_with_krate<F>(
     fut: F,
     source: impl Into<CompactString>,
     krate: impl Into<CompactString>,
-) -> InstrumentedFuture<F>
+) -> InstrumentedFuture<F::IntoFuture>
 where
-    F: Future,
+    F: IntoFuture,
 {
     instrument_future_named_with_krate_meta(name, fut, source, krate, &facet_value::Value::NULL)
 }
@@ -4901,10 +4906,11 @@ pub fn instrument_future_named_with_krate_meta<F>(
     source: impl Into<CompactString>,
     krate: impl Into<CompactString>,
     meta: &facet_value::Value,
-) -> InstrumentedFuture<F>
+) -> InstrumentedFuture<F::IntoFuture>
 where
-    F: Future,
+    F: IntoFuture,
 {
+    let fut = fut.into_future();
     let mut entity = Entity::builder(name, EntityBody::Future)
         .source(source)
         .krate(krate)
@@ -4921,10 +4927,11 @@ pub fn instrument_future_on_with_krate<F>(
     fut: F,
     source: impl Into<CompactString>,
     krate: impl Into<CompactString>,
-) -> InstrumentedFuture<F>
+) -> InstrumentedFuture<F::IntoFuture>
 where
-    F: Future,
+    F: IntoFuture,
 {
+    let fut = fut.into_future();
     let handle = EntityHandle::new_with_krate(name, EntityBody::Future, source, krate);
     InstrumentedFuture::new(fut, handle, Some(on.as_entity_ref()))
 }

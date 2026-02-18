@@ -6,7 +6,7 @@ use peeps_types::{
     ResponseStatus, Scope, ScopeBody, SeqNo, StreamCursor, StreamId, WatchChannelDetails,
 };
 use std::ffi::OsStr;
-use std::future::Future;
+use std::future::{Future, IntoFuture};
 use std::io;
 #[cfg(not(target_arch = "wasm32"))]
 use std::process::{ExitStatus, Output, Stdio};
@@ -1338,9 +1338,12 @@ pub fn ack_cut(cut_id: impl Into<CompactString>) -> CutAck {
     }
 }
 
-pub fn instrument_future_named<F>(_name: impl Into<CompactString>, fut: F) -> F
+pub fn instrument_future_named<F>(
+    _name: impl Into<CompactString>,
+    fut: F,
+) -> F::IntoFuture
 where
-    F: core::future::Future,
+    F: IntoFuture,
 {
     instrument_future_named_with_source(_name, fut, "")
 }
@@ -1349,11 +1352,11 @@ pub fn instrument_future_named_with_source<F>(
     _name: impl Into<CompactString>,
     fut: F,
     _source: impl Into<CompactString>,
-) -> F
+) -> F::IntoFuture
 where
-    F: core::future::Future,
+    F: IntoFuture,
 {
-    fut
+    fut.into_future()
 }
 
 pub fn instrument_future_named_with_krate<F>(
@@ -1361,16 +1364,20 @@ pub fn instrument_future_named_with_krate<F>(
     fut: F,
     _source: impl Into<CompactString>,
     _krate: impl Into<CompactString>,
-) -> F
+) -> F::IntoFuture
 where
-    F: core::future::Future,
+    F: IntoFuture,
 {
-    fut
+    fut.into_future()
 }
 
-pub fn instrument_future_on<F>(_name: impl Into<CompactString>, _on: &impl AsEntityRef, fut: F) -> F
+pub fn instrument_future_on<F>(
+    _name: impl Into<CompactString>,
+    _on: &impl AsEntityRef,
+    fut: F,
+) -> F::IntoFuture
 where
-    F: core::future::Future,
+    F: IntoFuture,
 {
     instrument_future_on_with_source(_name, _on, fut, "")
 }
@@ -1380,11 +1387,11 @@ pub fn instrument_future_on_with_source<F>(
     _on: &impl AsEntityRef,
     fut: F,
     _source: impl Into<CompactString>,
-) -> F
+) -> F::IntoFuture
 where
-    F: core::future::Future,
+    F: IntoFuture,
 {
-    fut
+    fut.into_future()
 }
 
 pub fn instrument_future_on_with_krate<F>(
@@ -1393,11 +1400,11 @@ pub fn instrument_future_on_with_krate<F>(
     fut: F,
     _source: impl Into<CompactString>,
     _krate: impl Into<CompactString>,
-) -> F
+) -> F::IntoFuture
 where
-    F: core::future::Future,
+    F: IntoFuture,
 {
-    fut
+    fut.into_future()
 }
 
 #[doc(hidden)]
