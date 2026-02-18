@@ -47,6 +47,10 @@ export type EdgeDef = {
   source: string;
   target: string;
   kind: SnapshotEdgeKind;
+  meta: Record<string, MetaValue>;
+  opKind?: string;
+  state?: string;
+  pendingSincePtimeMs?: number;
   /** ELK port ID on the source node, when the source is a merged channel pair. */
   sourcePort?: string;
   /** ELK port ID on the target node, when the target is a merged channel pair. */
@@ -365,6 +369,17 @@ export function convertSnapshot(snapshot: SnapshotCutResponse): {
         source: srcComposite,
         target: dstComposite,
         kind: e.kind,
+        meta: (e.meta ?? {}) as Record<string, MetaValue>,
+        opKind:
+          e.meta && typeof e.meta.op_kind === "string"
+            ? (e.meta.op_kind as string)
+            : undefined,
+        state:
+          e.meta && typeof e.meta.state === "string" ? (e.meta.state as string) : undefined,
+        pendingSincePtimeMs:
+          e.meta && typeof e.meta.pending_since_ptime_ms === "number"
+            ? (e.meta.pending_since_ptime_ms as number)
+            : undefined,
       });
     }
   }

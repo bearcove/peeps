@@ -1239,11 +1239,7 @@ const EDGE_KIND_LABELS: Record<EdgeDef["kind"], string> = {
 function EdgeInspectorContent({ edge, entityDefs }: { edge: EdgeDef; entityDefs: EntityDef[] }) {
   const srcEntity = entityDefs.find((e) => e.id === edge.source);
   const dstEntity = entityDefs.find((e) => e.id === edge.target);
-  const tooltip = edgeTooltip(
-    edge.kind,
-    srcEntity?.name ?? edge.source,
-    dstEntity?.name ?? edge.target,
-  );
+  const tooltip = edgeTooltip(edge, srcEntity?.name ?? edge.source, dstEntity?.name ?? edge.target);
   const isStructural = edge.kind === "rpc_link" || edge.kind === "channel_link";
 
   return (
@@ -1294,6 +1290,16 @@ function EdgeInspectorContent({ edge, entityDefs }: { edge: EdgeDef; entityDefs:
             {isStructural ? "structural" : "causal"}
           </Badge>
         </KeyValueRow>
+        {edge.opKind && (
+          <KeyValueRow label="Operation">
+            <span className="mockup-inspector-mono">{edge.opKind}</span>
+          </KeyValueRow>
+        )}
+        {edge.state && (
+          <KeyValueRow label="State">
+            <span className="mockup-inspector-mono">{edge.state}</span>
+          </KeyValueRow>
+        )}
       </div>
     </>
   );

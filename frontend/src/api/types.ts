@@ -106,6 +106,7 @@ export interface SnapshotEdge {
   /** Process-local entity ID. */
   dst: string;
   kind: SnapshotEdgeKind;
+  meta?: Record<string, unknown> | null;
 }
 
 export interface ProcessSnapshot {

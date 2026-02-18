@@ -7,8 +7,9 @@ use peeps_types::{
     ChannelWaitStartedEvent, CommandEntity, CutAck, CutId, Edge, EdgeKind, Entity, EntityBody,
     EntityId, Event, EventKind, EventTarget, LockEntity, LockKind, MpscChannelDetails,
     NotifyEntity, OnceCellEntity, OnceCellState, OneshotChannelDetails, OneshotState,
-    PullChangesResponse, RequestEntity, ResponseEntity, ResponseStatus, Scope, ScopeBody, ScopeId,
-    SemaphoreEntity, SeqNo, StampedChange, StreamCursor, StreamId, WatchChannelDetails,
+    OperationEdgeMeta, OperationKind, OperationState, PullChangesResponse, RequestEntity,
+    ResponseEntity, ResponseStatus, Scope, ScopeBody, ScopeId, SemaphoreEntity, SeqNo,
+    StampedChange, StreamCursor, StreamId, WatchChannelDetails,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
@@ -914,19 +915,31 @@ impl RuntimeDb {
     }
 
     fn upsert_edge(&mut self, src: &EntityId, dst: &EntityId, kind: EdgeKind) {
+        self.upsert_edge_with_meta(src, dst, kind, facet_value::Value::NULL);
+    }
+
+    fn upsert_edge_with_meta(
+        &mut self,
+        src: &EntityId,
+        dst: &EntityId,
+        kind: EdgeKind,
+        meta: facet_value::Value,
+    ) {
         let key = EdgeKey {
             src: EntityId::new(src.as_str()),
             dst: EntityId::new(dst.as_str()),
             kind,
         };
-        if self.edges.contains_key(&key) {
-            return;
+        if let Some(existing) = self.edges.get(&key) {
+            if existing.meta == meta {
+                return;
+            }
         }
         let edge = Edge {
             src: EntityId::new(src.as_str()),
             dst: EntityId::new(dst.as_str()),
             kind,
-            meta: facet_value::Value::NULL,
+            meta,
         };
         let edge_json = facet_json::to_vec(&edge).ok();
         self.edges.insert(key, edge);
@@ -2463,9 +2476,9 @@ impl<T> Sender<T> {
                 Instant::now()
             });
 
-            let result = instrument_future_on_with_source(
-                format!("{}.send", self.name),
+            let result = instrument_operation_on_with_source(
                 &self.handle,
+                OperationKind::Send,
                 self.inner.send(value),
                 source,
             )
@@ -2576,9 +2589,9 @@ impl<T> Receiver<T> {
                 Instant::now()
             });
 
-            let result = instrument_future_on_with_source(
-                format!("{}.recv", self.name),
+            let result = instrument_operation_on_with_source(
                 &self.handle,
+                OperationKind::Recv,
                 self.inner.recv(),
                 source,
             )
@@ -2768,9 +2781,9 @@ impl<T> UnboundedReceiver<T> {
                 Instant::now()
             });
 
-            let result = instrument_future_on_with_source(
-                format!("{}.recv", self.name),
+            let result = instrument_operation_on_with_source(
                 &self.handle,
+                OperationKind::Recv,
                 self.inner.recv(),
                 source,
             )
@@ -3340,9 +3353,9 @@ impl<T> OneshotReceiver<T> {
         let source = caller_source();
         async move {
             let inner = self.inner.take().expect("oneshot receiver consumed");
-            let result = instrument_future_on_with_source(
-                format!("{}.recv", self.name),
+            let result = instrument_operation_on_with_source(
                 &self.handle,
+                OperationKind::Recv,
                 inner,
                 source,
             )
@@ -3613,9 +3626,9 @@ impl<T: Clone> BroadcastReceiver<T> {
     pub fn recv(&mut self) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
         let source = caller_source();
         async move {
-            let result = instrument_future_on_with_source(
-                format!("{}.recv", self.name),
+            let result = instrument_operation_on_with_source(
                 &self.handle,
+                OperationKind::Recv,
                 self.inner.recv(),
                 source,
             )
@@ -3767,9 +3780,9 @@ impl<T: Clone> WatchReceiver<T> {
     pub fn changed(&mut self) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
         let source = caller_source();
         async move {
-            let result = instrument_future_on_with_source(
-                format!("{}.changed", self.name),
+            let result = instrument_operation_on_with_source(
                 &self.handle,
+                OperationKind::Recv,
                 self.inner.changed(),
                 source,
             )
@@ -4157,9 +4170,9 @@ impl Notify {
                 db.update_notify_waiter_count(self.handle.id(), waiters);
             }
 
-            instrument_future_on_with_source(
-                "notify.notified",
+            instrument_operation_on_with_source(
                 &self.handle,
+                OperationKind::NotifyWait,
                 self.inner.notified(),
                 source,
             )
@@ -4263,9 +4276,9 @@ impl<T> OnceCell<T> {
                 db.update_once_cell_state(self.handle.id(), waiters, OnceCellState::Initializing);
             }
 
-            let result = instrument_future_on_with_source(
-                "once_cell.get_or_init",
+            let result = instrument_operation_on_with_source(
                 &self.handle,
+                OperationKind::OncecellWait,
                 self.inner.get_or_init(f),
                 source,
             )
@@ -4310,9 +4323,9 @@ impl<T> OnceCell<T> {
                 db.update_once_cell_state(self.handle.id(), waiters, OnceCellState::Initializing);
             }
 
-            let result = instrument_future_on_with_source(
-                "once_cell.get_or_try_init",
+            let result = instrument_operation_on_with_source(
                 &self.handle,
+                OperationKind::OncecellWait,
                 self.inner.get_or_try_init(f),
                 source,
             )
@@ -4450,9 +4463,9 @@ impl Semaphore {
         let source = caller_source();
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
-            let permit = instrument_future_on_with_source(
-                "semaphore.acquire",
+            let permit = instrument_operation_on_with_source(
                 &self.handle,
+                OperationKind::Acquire,
                 self.inner.acquire(),
                 source,
             )
@@ -4481,9 +4494,9 @@ impl Semaphore {
         let source = caller_source();
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
-            let permit = instrument_future_on_with_source(
-                "semaphore.acquire_many",
+            let permit = instrument_operation_on_with_source(
                 &self.handle,
+                OperationKind::Acquire,
                 self.inner.acquire_many(n),
                 source,
             )
@@ -4511,9 +4524,9 @@ impl Semaphore {
         let source = caller_source();
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
-            let permit = instrument_future_on_with_source(
-                "semaphore.acquire_owned",
+            let permit = instrument_operation_on_with_source(
                 &self.handle,
+                OperationKind::Acquire,
                 Arc::clone(&self.inner).acquire_owned(),
                 source,
             )
@@ -4542,9 +4555,9 @@ impl Semaphore {
         let source = caller_source();
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
-            let permit = instrument_future_on_with_source(
-                "semaphore.acquire_many_owned",
+            let permit = instrument_operation_on_with_source(
                 &self.handle,
+                OperationKind::Acquire,
                 Arc::clone(&self.inner).acquire_many_owned(n),
                 source,
             )
@@ -5245,6 +5258,135 @@ pub fn ack_cut(cut_id: impl Into<CompactString>) -> CutAck {
         cut_id: CutId(cut_id.into()),
         cursor: current_cursor(),
     }
+}
+
+struct OperationFuture<F> {
+    inner: F,
+    actor_id: Option<EntityId>,
+    resource_id: EntityId,
+    op_kind: OperationKind,
+    source: CompactString,
+    krate: Option<CompactString>,
+    poll_count: u64,
+    pending_since_ptime_ms: Option<u64>,
+    has_edge: bool,
+}
+
+impl<F> OperationFuture<F> {
+    fn new(
+        inner: F,
+        resource_id: EntityId,
+        op_kind: OperationKind,
+        source: CompactString,
+        krate: Option<CompactString>,
+    ) -> Self {
+        Self {
+            inner,
+            actor_id: current_causal_target().map(|target| target.id().clone()),
+            resource_id,
+            op_kind,
+            source,
+            krate,
+            poll_count: 0,
+            pending_since_ptime_ms: None,
+            has_edge: false,
+        }
+    }
+
+    fn edge_meta(&self, state: OperationState) -> facet_value::Value {
+        let meta = OperationEdgeMeta {
+            op_kind: self.op_kind,
+            state,
+            pending_since_ptime_ms: self.pending_since_ptime_ms,
+            last_change_ptime_ms: PTime::now().as_millis(),
+            source: CompactString::from(self.source.as_str()),
+            krate: self.krate.as_ref().map(|k| CompactString::from(k.as_str())),
+            poll_count: Some(self.poll_count),
+            details: None,
+        };
+        facet_value::to_value(&meta).unwrap_or(facet_value::Value::NULL)
+    }
+
+    fn upsert_edge(&mut self, state: OperationState) {
+        let Some(actor_id) = self.actor_id.as_ref() else {
+            return;
+        };
+        if let Ok(mut db) = runtime_db().lock() {
+            db.upsert_edge_with_meta(
+                actor_id,
+                &self.resource_id,
+                EdgeKind::Needs,
+                self.edge_meta(state),
+            );
+            self.has_edge = true;
+        }
+    }
+
+    fn clear_edge(&mut self) {
+        if !self.has_edge {
+            return;
+        }
+        let Some(actor_id) = self.actor_id.as_ref() else {
+            return;
+        };
+        if let Ok(mut db) = runtime_db().lock() {
+            db.remove_edge(actor_id, &self.resource_id, EdgeKind::Needs);
+            self.has_edge = false;
+        }
+    }
+}
+
+impl<F> Future for OperationFuture<F>
+where
+    F: Future,
+{
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = unsafe { self.get_unchecked_mut() };
+        this.poll_count = this.poll_count.saturating_add(1);
+        if !this.has_edge {
+            this.upsert_edge(OperationState::Active);
+        }
+
+        match unsafe { Pin::new_unchecked(&mut this.inner) }.poll(cx) {
+            Poll::Pending => {
+                if this.pending_since_ptime_ms.is_none() {
+                    this.pending_since_ptime_ms = Some(PTime::now().as_millis());
+                }
+                this.upsert_edge(OperationState::Pending);
+                Poll::Pending
+            }
+            Poll::Ready(output) => {
+                this.clear_edge();
+                Poll::Ready(output)
+            }
+        }
+    }
+}
+
+impl<F> Drop for OperationFuture<F> {
+    fn drop(&mut self) {
+        self.clear_edge();
+    }
+}
+
+fn instrument_operation_on_with_source<F>(
+    on: &EntityHandle,
+    op_kind: OperationKind,
+    fut: F,
+    source: impl Into<CompactString>,
+) -> OperationFuture<F::IntoFuture>
+where
+    F: IntoFuture,
+{
+    OperationFuture::new(
+        fut.into_future(),
+        EntityId::new(on.id().as_str()),
+        op_kind,
+        source.into(),
+        None,
+    )
 }
 
 pub struct InstrumentedFuture<F> {

@@ -57,6 +57,44 @@ pub enum EdgeKind {
     RpcLink,
 }
 
+/// Primitive operation represented on an operation edge.
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum OperationKind {
+    Send,
+    Recv,
+    Acquire,
+    Lock,
+    NotifyWait,
+    OncecellWait,
+}
+
+/// Runtime state for a primitive operation edge.
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum OperationState {
+    Active,
+    Pending,
+    Done,
+    Failed,
+    Cancelled,
+}
+
+/// Metadata payload for operation edges (`EdgeKind::Needs` + `op_kind`).
+#[derive(Facet, Clone, Debug, PartialEq)]
+pub struct OperationEdgeMeta {
+    pub op_kind: OperationKind,
+    pub state: OperationState,
+    pub pending_since_ptime_ms: Option<u64>,
+    pub last_change_ptime_ms: u64,
+    pub source: CompactString,
+    pub krate: Option<CompactString>,
+    pub poll_count: Option<u64>,
+    pub details: Option<facet_value::Value>,
+}
+
 #[derive(Facet)]
 pub struct Event {
     /// Opaque event identifier.

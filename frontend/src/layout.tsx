@@ -21,7 +21,12 @@ const elkOptions = {
 
 // ── Edge styling ──────────────────────────────────────────────
 
-export function edgeStyle(kind: EdgeDef["kind"]) {
+export function edgeStyle(edge: EdgeDef) {
+  const isPendingOp = edge.kind === "needs" && edge.state === "pending";
+  if (isPendingOp) {
+    return { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.8 };
+  }
+  const kind = edge.kind;
   switch (kind) {
     case "needs":
       return { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 };
@@ -38,7 +43,15 @@ export function edgeStyle(kind: EdgeDef["kind"]) {
   }
 }
 
-export function edgeTooltip(kind: EdgeDef["kind"], sourceName: string, targetName: string): string {
+export function edgeTooltip(edge: EdgeDef, sourceName: string, targetName: string): string {
+  const kind = edge.kind;
+  if (kind === "needs" && edge.opKind) {
+    const op = edge.opKind.replaceAll("_", " ");
+    if (edge.state === "pending") {
+      return `${sourceName} is blocked on ${op} for ${targetName}`;
+    }
+    return `${sourceName} is performing ${op} on ${targetName}`;
+  }
   switch (kind) {
     case "needs":
       return `${sourceName} is blocked waiting for ${targetName}`;
@@ -55,8 +68,8 @@ export function edgeTooltip(kind: EdgeDef["kind"], sourceName: string, targetNam
   }
 }
 
-export function edgeMarkerSize(kind: EdgeDef["kind"]): number {
-  return kind === "needs" ? 12 : 8;
+export function edgeMarkerSize(edge: EdgeDef): number {
+  return edge.kind === "needs" ? (edge.state === "pending" ? 14 : 10) : 8;
 }
 
 // ── Types ─────────────────────────────────────────────────────
@@ -271,7 +284,7 @@ export async function layoutGraph(
 
   const entityNameMap = new Map(entityDefs.map((e) => [e.id, e.name]));
   const edges: Edge[] = validEdges.map((def) => {
-    const sz = edgeMarkerSize(def.kind);
+    const sz = edgeMarkerSize(def);
     const sections = elkEdgeMap.get(def.id) ?? [];
     const points: ElkPoint[] = [];
     for (const section of sections) {
@@ -286,8 +299,8 @@ export async function layoutGraph(
       source: def.source,
       target: def.target,
       type: "elkrouted",
-      data: { points, tooltip: edgeTooltip(def.kind, srcName, dstName) },
-      style: edgeStyle(def.kind),
+      data: { points, tooltip: edgeTooltip(def, srcName, dstName) },
+      style: edgeStyle(def),
       markerEnd: { type: MarkerType.ArrowClosed, width: sz, height: sz },
     };
   });
