@@ -3,8 +3,8 @@
 .ui-segmented-group {
     display: inline-flex;
     align-items: center;
-    border-radius: 6px;
-    background: light-dark(#eae7e2, #0f0e0d);
+    border-radius: var(--radius-control);
+    background: var(--color-lit-ld-28a0fa01);
     padding: 2px;
     gap: 2px;
 }
@@ -12,10 +12,10 @@
 .ui-segmented-option {
     border: none;
     background: transparent;
-    color: light-dark(#6e6e73, #807a73);
+    color: var(--color-lit-ld-918c8b8c);
     padding: 0 10px;
     height: 24px;
-    border-radius: 4px;
+    border-radius: var(--radius-control);
     font-size: var(--font-size-sm);
     font-weight: 600;
     cursor: pointer;
@@ -24,13 +24,13 @@
 }
 
 .ui-segmented-option--selected {
-    background: light-dark(#fff, #33302c);
-    color: light-dark(#1d1d1f, #e5e5e7);
-    box-shadow: 0 1px 3px light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.5));
+    background: var(--color-lit-ld-2ce0cfa6);
+    color: var(--color-lit-ld-95d51f9e);
+    box-shadow: 0 1px 3px var(--color-lit-ld-35d6ab5b);
 }
 
 .ui-segmented-option:hover:not(.ui-segmented-option--selected) {
-    background: light-dark(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.06));
+    background: var(--color-lit-ld-12b08fe8);
 }
 
 .ui-segmented-group--sm .ui-segmented-option {

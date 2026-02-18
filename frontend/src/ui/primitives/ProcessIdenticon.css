@@ -1,8 +1,8 @@
 .ui-process-identicon {
     display: inline-block;
     vertical-align: middle;
-    border-radius: 2px;
-    background: light-dark(#f0f0f2, #2a2a2e);
+    border-radius: var(--radius-control);
+    background: var(--color-lit-ld-835d53d9);
     flex-shrink: 0;
 }
 

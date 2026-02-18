@@ -12,12 +12,13 @@ export type RpcPairNodeData = {
   resp: EntityDef;
   rpcName: string;
   selected: boolean;
-  scopeHue?: number;
+  scopeRgbLight?: string;
+  scopeRgbDark?: string;
   ghost?: boolean;
 };
 
 export function RpcPairNode({ data }: { data: RpcPairNodeData }) {
-  const { nodeId, req, resp, rpcName, selected, scopeHue, ghost } = data;
+  const { nodeId, req, resp, rpcName, selected, scopeRgbLight, scopeRgbDark, ghost } = data;
 
   const reqBody = typeof req.body !== "string" && "request" in req.body ? req.body.request : null;
   const respBody =
@@ -26,7 +27,7 @@ export function RpcPairNode({ data }: { data: RpcPairNodeData }) {
   const respStatus = respBody ? respBody.status : "pending";
   const respTone: Tone = respStatus === "ok" ? "ok" : respStatus === "error" ? "crit" : "warn";
   const method = respBody?.method ?? reqBody?.method ?? "?";
-  const showScopeColor = scopeHue !== undefined && respStatus !== "error";
+  const showScopeColor = scopeRgbLight !== undefined && scopeRgbDark !== undefined && respStatus !== "error";
 
   return (
     <div
@@ -43,7 +44,8 @@ export function RpcPairNode({ data }: { data: RpcPairNodeData }) {
       style={
         showScopeColor
           ? ({
-              "--scope-h": String(scopeHue),
+              "--scope-rgb-light": scopeRgbLight,
+              "--scope-rgb-dark": scopeRgbDark,
             } as React.CSSProperties)
           : undefined
       }

@@ -1,5 +1,4 @@
 import React from "react";
-import { LinkSimple } from "@phosphor-icons/react";
 import { Badge } from "../../ui/primitives/Badge";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import { kindIcon } from "../../nodeKindSpec";
@@ -8,7 +7,7 @@ import type { EntityDef, EdgeDef } from "../../snapshot";
 import { edgeTooltip } from "../../graph/elkAdapter";
 import "./InspectorPanel.css";
 
-const EDGE_KIND_LABELS: Record<EdgeDef["kind"], string> = {
+export const EDGE_KIND_LABELS: Record<EdgeDef["kind"], string> = {
   touches: "Resource context",
   needs: "Causal dependency",
   holds: "Permit ownership",
@@ -26,18 +25,6 @@ export function EdgeInspectorContent({ edge, entityDefs }: { edge: EdgeDef; enti
 
   return (
     <>
-      <div className="inspector-node-header">
-        <span
-          className={`inspector-node-icon${isStructural ? "" : " inspector-node-icon--causal"}`}
-        >
-          <LinkSimple size={16} weight="bold" />
-        </span>
-        <div className="inspector-node-header-text">
-          <div className="inspector-node-kind">{edge.kind}</div>
-          <div className="inspector-node-label">{EDGE_KIND_LABELS[edge.kind]}</div>
-        </div>
-      </div>
-
       <div className="inspector-section">
         <KeyValueRow label="From" icon={srcEntity ? kindIcon(srcEntity.kind, 12) : undefined}>
           <span className="inspector-mono">{srcEntity?.name ?? edge.source}</span>

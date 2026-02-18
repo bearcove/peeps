@@ -94,7 +94,7 @@
 .channel-pair-port {
     width: 9px;
     height: 9px;
-    border-radius: 999px;
+    border-radius: var(--radius-control);
     border: 0;
     background: transparent;
     box-shadow: none;

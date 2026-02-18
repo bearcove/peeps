@@ -32,6 +32,7 @@ import { ProcessIdenticon } from "../ui/primitives/ProcessIdenticon";
 import { Table, type Column } from "../ui/primitives/Table";
 import { ActionButton } from "../ui/primitives/ActionButton";
 import { kindIcon } from "../nodeKindSpec";
+import { SCOPE_DARK_RGB, SCOPE_LIGHT_RGB } from "../components/graph/scopeColors";
 
 type DemoTone = "neutral" | "ok" | "warn" | "crit";
 type DemoConnectionRow = {
@@ -334,6 +335,42 @@ export function StorybookPage() {
     { id: "hide-process", label: "Hide this process" },
   ], []);
 
+  const scopeLightPalette = useMemo(
+    () => SCOPE_LIGHT_RGB.map(([r, g, b]) => `rgb(${r} ${g} ${b})`),
+    [],
+  );
+  const scopeDarkPalette = useMemo(
+    () => SCOPE_DARK_RGB.map(([r, g, b]) => `rgb(${r} ${g} ${b})`),
+    [],
+  );
+  const colorVariables = useMemo(() => {
+    if (typeof window === "undefined") return [] as Array<{ name: string; value: string }>;
+    const rootStyles = window.getComputedStyle(document.documentElement);
+    const colorVarNamePattern = /(color|surface|border|text|focus|accent)/i;
+    const colorValuePattern = /(#[0-9a-f]{3,8}\b|rgb\(|hsl\(|oklch\(|oklab\(|lab\(|lch\(|hwb\(|color\()/i;
+    const vars: Array<{ name: string; value: string }> = [];
+
+    for (let i = 0; i < rootStyles.length; i++) {
+      const name = rootStyles.item(i);
+      if (!name.startsWith("--")) continue;
+      const value = rootStyles.getPropertyValue(name).trim();
+      if (!value) continue;
+      if (!colorVarNamePattern.test(name) && !colorValuePattern.test(value)) continue;
+      vars.push({ name, value });
+    }
+
+    vars.sort((a, b) => a.name.localeCompare(b.name));
+    return vars;
+  }, []);
+  const coreColorVariables = useMemo(
+    () => colorVariables.filter(({ name }) => !name.startsWith("--color-lit-")),
+    [colorVariables],
+  );
+  const literalColorVariables = useMemo(
+    () => colorVariables.filter(({ name }) => name.startsWith("--color-lit-")),
+    [colorVariables],
+  );
+
   return (
     <Panel variant="lab">
       <PanelHeader title="Lab" hint="Primitives and tone language" />
@@ -362,6 +399,61 @@ export function StorybookPage() {
             <div className="ui-typo-weights">
               <span className="ui-typo-pill ui-typo-mono ui-typo-w-400">400</span>
               <span className="ui-typo-pill ui-typo-mono ui-typo-w-700">700</span>
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Color System" subtitle="Scope palettes and root color variables" wide>
+          <div className="ui-section-stack">
+            <div className="ui-color-groups">
+              <div className="ui-color-group">
+                <div className="ui-typo-kicker">Scope Palette (Light)</div>
+                <div className="ui-color-grid">
+                  {scopeLightPalette.map((color, index) => (
+                    <div key={`light-${index}`} className="ui-color-chip">
+                      <span className="ui-color-chip__swatch" style={{ backgroundColor: color }} />
+                      <span className="ui-color-chip__label">{color}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="ui-color-group">
+                <div className="ui-typo-kicker">Scope Palette (Dark)</div>
+                <div className="ui-color-grid">
+                  {scopeDarkPalette.map((color, index) => (
+                    <div key={`dark-${index}`} className="ui-color-chip">
+                      <span className="ui-color-chip__swatch" style={{ backgroundColor: color }} />
+                      <span className="ui-color-chip__label">{color}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="ui-color-vars">
+              <div className="ui-typo-kicker">Core Color Variables ({coreColorVariables.length})</div>
+              <div className="ui-color-var-grid">
+                {coreColorVariables.map(({ name, value }) => (
+                  <div key={name} className="ui-color-var-row">
+                    <span className="ui-color-var-row__swatch" style={{ background: value }} />
+                    <span className="ui-color-var-row__name">{name}</span>
+                    <span className="ui-color-var-row__value">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="ui-color-vars">
+              <div className="ui-typo-kicker">Generated Literal Tokens ({literalColorVariables.length})</div>
+              <div className="ui-color-var-grid">
+                {literalColorVariables.map(({ name, value }) => (
+                  <div key={name} className="ui-color-var-row">
+                    <span className="ui-color-var-row__swatch" style={{ background: value }} />
+                    <span className="ui-color-var-row__name">{name}</span>
+                    <span className="ui-color-var-row__value">{value}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </Section>

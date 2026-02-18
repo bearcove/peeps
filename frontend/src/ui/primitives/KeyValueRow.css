@@ -9,7 +9,7 @@
 .ui-key-value-row__label {
     flex-shrink: 0;
     font-weight: 600;
-    color: light-dark(#6e6e73, #98989d);
+    color: var(--color-lit-ld-022e6f16);
     display: inline-flex;
     align-items: center;
 }

@@ -1,7 +1,7 @@
 .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: light-dark(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.6));
+    background: var(--color-lit-ld-5e4ee9ae);
     display: grid;
     place-items: center;
     z-index: 1000;
@@ -10,13 +10,13 @@
 .modal {
     background: var(--surface-raised);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-control);
     width: min(560px, calc(100vw - 48px));
     max-height: 80vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 16px 48px light-dark(rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.5));
+    box-shadow: 0 16px 48px var(--color-lit-ld-2855e449);
 }
 
 .modal-header {

@@ -8,9 +8,9 @@
     flex-direction: column;
     gap: 8px;
     padding: 6px 8px;
-    border-radius: 3px;
-    border: 1px solid light-dark(#ececf1, #2a2a2e);
-    background: light-dark(#ffffff, #1a1a1e);
+    border-radius: var(--radius-control);
+    border: 1px solid var(--color-lit-ld-d376042d);
+    background: var(--color-lit-ld-51056ffa);
     min-width: 0;
     width: 100%;
     max-width: 360px;
@@ -26,22 +26,22 @@
 .ui-slider-label {
     font-size: var(--font-size-sm);
     font-weight: 600;
-    color: light-dark(#6e6e73, #98989d);
+    color: var(--color-lit-ld-022e6f16);
 }
 
 .ui-slider-value {
     font-family: var(--font-mono);
     font-size: var(--font-size-sm);
     font-weight: 500;
-    color: light-dark(#44444a, #c8c8cf);
+    color: var(--color-lit-ld-183c652b);
 }
 
 .ui-slider-track {
     position: relative;
     height: 6px;
     width: 100%;
-    border-radius: 999px;
-    background: light-dark(#e6e7ec, #2a2a2f);
+    border-radius: var(--radius-control);
+    background: var(--color-lit-ld-7f43213b);
 }
 
 .ui-slider-track-fill {
@@ -49,17 +49,17 @@
     left: 0;
     top: 0;
     height: 100%;
-    border-radius: 999px;
-    background: light-dark(#1d1d1f, #c8c8cf);
+    border-radius: var(--radius-control);
+    background: var(--color-lit-ld-b7ce6de6);
 }
 
 .ui-slider-thumb {
     width: 14px;
     height: 14px;
-    border-radius: 999px;
-    border: 2px solid light-dark(#ffffff, #0f1012);
-    background: light-dark(#1d1d1f, #c8c8cf);
-    box-shadow: 0 1px 2px light-dark(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.45));
+    border-radius: var(--radius-control);
+    border: 2px solid var(--color-lit-ld-dac83f3a);
+    background: var(--color-lit-ld-b7ce6de6);
+    box-shadow: 0 1px 2px var(--color-lit-ld-99b6b468);
     top: 50%;
     transform: translate(-50%, -50%);
     outline: none;
@@ -67,6 +67,6 @@
 
 .ui-slider-thumb[data-focus-visible] {
     box-shadow:
-        0 0 0 2px light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2)),
-        0 1px 2px light-dark(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.45));
+        0 0 0 2px var(--color-lit-ld-84038782),
+        0 1px 2px var(--color-lit-ld-99b6b468);
 }

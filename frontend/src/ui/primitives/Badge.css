@@ -5,7 +5,7 @@
     font-family: var(--font-mono);
     color: var(--text-secondary);
     padding: 1px 5px;
-    border-radius: 3px;
+    border-radius: var(--radius-control);
     background: var(--surface-sunken);
 }
 
@@ -15,26 +15,26 @@
 }
 
 .badge--ok {
-    color: light-dark(#155724, #75b798);
-    background: light-dark(#d4edda, #1f3d2b);
+    color: var(--color-lit-ld-d59cb2c4);
+    background: var(--color-lit-ld-c64378ce);
 }
 
 .badge--warn {
-    color: light-dark(#856404, #ffc107);
-    background: light-dark(#fff3cd, #3a2f1a);
+    color: var(--color-lit-ld-d791833b);
+    background: var(--color-lit-ld-849f65eb);
 }
 
 .badge--crit {
-    color: light-dark(#721c24, #ff6b6b);
-    background: light-dark(#f8d7da, #3a1a1a);
+    color: var(--color-lit-ld-6cbed306);
+    background: var(--color-lit-ld-7633e6e6);
 }
 
 .badge--count {
     min-width: 28px;
     text-align: center;
-    border-radius: 999px;
+    border-radius: var(--radius-control);
     padding: 1px 8px;
-    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
+    border: 1px solid var(--color-lit-ld-b19fa9e1);
     font-size: 11px;
     letter-spacing: 0.02em;
 }
@@ -48,10 +48,10 @@
     font-size: var(--font-size-sm);
     font-weight: 600;
     padding: 0 4px;
-    border-radius: 2px;
+    border-radius: var(--radius-control);
 }
 
 .waiter-badge--active {
-    color: light-dark(#721c24, #ff6b6b);
-    background: light-dark(#f8d7da, #3a1a1a);
+    color: var(--color-lit-ld-6cbed306);
+    background: var(--color-lit-ld-7633e6e6);
 }

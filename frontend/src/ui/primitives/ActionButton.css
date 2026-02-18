@@ -4,32 +4,32 @@
     gap: 4px;
     padding: 0 8px;
     height: 24px;
-    border-radius: 3px;
-    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
-    background: light-dark(#ffffff, #2a2a2e);
-    color: light-dark(#1d1d1f, #e5e5e7);
+    border-radius: var(--radius-control);
+    border: 1px solid var(--color-lit-ld-b19fa9e1);
+    background: var(--color-lit-ld-d5e8a94a);
+    color: var(--color-lit-ld-95d51f9e);
     font-size: var(--font-size-sm);
     font-weight: 500;
     cursor: pointer;
-    box-shadow: 0 1px 2px light-dark(rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.25));
+    box-shadow: 0 1px 2px var(--color-lit-ld-0db1eab7);
     transition: background-color 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
 }
 
 .ui-action-button:hover {
-    background: light-dark(#f0f0f5, #363638);
-    border-color: light-dark(#c0c0c5, #4a4a4e);
-    box-shadow: 0 1px 3px light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.35));
+    background: var(--color-lit-ld-4cca04e9);
+    border-color: var(--color-lit-ld-6cafcd1f);
+    box-shadow: 0 1px 3px var(--color-lit-ld-eead3d40);
 }
 
 .ui-action-button:active {
-    background: light-dark(#e5e5ea, #444448);
-    box-shadow: 0 0 1px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.2));
+    background: var(--color-lit-ld-3c7625d3);
+    box-shadow: 0 0 1px var(--color-lit-ld-eb2081fc);
 }
 
 .ui-action-button:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
-    border-color: light-dark(#999, #666);
+    box-shadow: 0 0 0 2px var(--color-lit-ld-84038782);
+    border-color: var(--color-lit-ld-43da4eab);
 }
 
 .ui-action-button[data-disabled] {
@@ -38,33 +38,33 @@
 }
 
 .ui-action-button--primary {
-    background: light-dark(#1d1d1f, #e5e5e7);
-    color: light-dark(#fff, #1d1d1f);
+    background: var(--color-lit-ld-95d51f9e);
+    color: var(--color-lit-ld-07faeaef);
     border-color: transparent;
     box-shadow: none;
 }
 
 .ui-action-button--primary:hover {
-    background: light-dark(#333, #d0d0d0);
+    background: var(--color-lit-ld-06c11a7f);
     border-color: transparent;
     box-shadow: none;
 }
 
 .ui-action-button--primary:active {
-    background: light-dark(#444, #bbb);
+    background: var(--color-lit-ld-32c3966d);
 }
 
 .ui-action-button--ghost {
     background: transparent;
     border-color: transparent;
     box-shadow: none;
-    color: light-dark(#44444a, #b8b8bf);
+    color: var(--color-lit-ld-a1ef9a5a);
 }
 
 .ui-action-button--ghost:hover {
-    background: light-dark(#e8e8ec, #2a2a2e);
-    border-color: light-dark(#d2d2d7, #3a3a3e);
-    box-shadow: 0 1px 2px light-dark(rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.25));
+    background: var(--color-lit-ld-93cf3b1b);
+    border-color: var(--color-lit-ld-b19fa9e1);
+    box-shadow: 0 1px 2px var(--color-lit-ld-0db1eab7);
 }
 
 .ui-action-button--sm {

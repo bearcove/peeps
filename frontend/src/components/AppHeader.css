@@ -29,34 +29,34 @@
     font-size: 11px;
     font-weight: 600;
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-control);
     background: var(--surface-sunken);
     color: var(--text-secondary);
 }
 
 .app-header-badge--active {
-    background: light-dark(#e8f5e9, #1b3a1b);
-    color: light-dark(#2e7d32, #66bb6a);
+    background: var(--color-lit-ld-f1f03f1f);
+    color: var(--color-lit-ld-5773bd0f);
 }
 
 .app-header-badge--recording {
-    background: light-dark(#ffebee, #3a1b1b);
-    color: light-dark(#c62828, #ef9a9a);
+    background: var(--color-lit-ld-7f698312);
+    color: var(--color-lit-ld-c66cb479);
 }
 
 .app-header-badge--recording-warn {
-    background: light-dark(#fff3e0, #3a2a0a);
-    color: light-dark(#e65100, #ffab40);
+    background: var(--color-lit-ld-b88afee4);
+    color: var(--color-lit-ld-f806fcd3);
 }
 
 .app-header-badge--warn {
-    background: light-dark(#fff3cd, #3a2f1a);
-    color: light-dark(#856404, #ffc107);
+    background: var(--color-lit-ld-849f65eb);
+    color: var(--color-lit-ld-d791833b);
 }
 
 .app-header-error {
     font-size: 11px;
-    color: light-dark(#c62828, #ef9a9a);
+    color: var(--color-lit-ld-c66cb479);
     font-weight: 600;
     max-width: 300px;
     overflow: hidden;
@@ -75,7 +75,7 @@
     font-size: 11px;
     font-weight: 700;
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-control);
     border: none;
     cursor: pointer;
     font-family: var(--font-ui);
@@ -87,21 +87,21 @@
 }
 
 .proc-pill--connected {
-    background: light-dark(#e8f5e9, #1b3a1b);
-    color: light-dark(#2e7d32, #66bb6a);
+    background: var(--color-lit-ld-f1f03f1f);
+    color: var(--color-lit-ld-5773bd0f);
 }
 
 .proc-pill--disconnected {
-    background: light-dark(#ffebee, #3a1b1b);
-    color: light-dark(#c62828, #ef9a9a);
+    background: var(--color-lit-ld-7f698312);
+    color: var(--color-lit-ld-c66cb479);
 }
 
 .recording-dot {
     display: inline-block;
     width: 6px;
     height: 6px;
-    border-radius: 999px;
-    background: light-dark(#d30000, #ff6b6b);
+    border-radius: var(--radius-control);
+    background: var(--color-lit-ld-015826c9);
     flex-shrink: 0;
     animation: pulse-danger 1.5s ease-in-out infinite;
 }

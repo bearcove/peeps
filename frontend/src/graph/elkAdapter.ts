@@ -33,7 +33,7 @@ export type EdgeStyle = {
 };
 
 export function edgeStyle(edge: EdgeDef): EdgeStyle {
-  const stroke = "light-dark(#111111, #d7d9df)";
+  const stroke = "var(--edge-stroke-default)";
   const kind = edge.kind;
   switch (kind) {
     case "touches":

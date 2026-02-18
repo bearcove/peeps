@@ -110,7 +110,7 @@ export function App() {
   const [selectedScope, setSelectedScope] = useState<ScopeTableRow | null>(null);
   const [scopeEntityFilter, setScopeEntityFilter] = useState<ScopeEntityFilter | null>(null);
   const [snap, setSnap] = useState<SnapshotState>({ phase: "idle" });
-  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorPosition, setInspectorPosition] = useState<{ x: number; y: number } | null>(null);
   const [selection, setSelection] = useState<GraphSelection>(null);
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
@@ -968,10 +968,17 @@ where l.conn_id = ${connId}
                     }
                     setSelectedScopeKind(null);
                     setSelectedScope(null);
+                  } else {
+                    setFocusedEntityId(null);
+                    setInspectorOpen(false);
                   }
                 }}
                 focusedEntityId={focusedEntityId}
-                onExitFocus={() => setFocusedEntityId(null)}
+                onExitFocus={() => {
+                  setFocusedEntityId(null);
+                  setSelection(null);
+                  setInspectorOpen(false);
+                }}
                 waitingForProcesses={waitingForProcesses}
                 crateItems={crateItems}
                 hiddenKrates={hiddenKrates}

@@ -18,9 +18,9 @@
 .ui-switch-track {
     width: 30px;
     height: 16px;
-    border-radius: 999px;
-    background: light-dark(#d1d1d6, #4a4a50);
-    border: 1px solid light-dark(#c2c2c8, #55555c);
+    border-radius: var(--radius-control);
+    background: var(--color-lit-ld-eca41bb9);
+    border: 1px solid var(--color-lit-ld-37e0d2d6);
     display: inline-flex;
     align-items: center;
     padding: 1px;
@@ -31,16 +31,16 @@
 .ui-switch-thumb {
     width: 12px;
     height: 12px;
-    border-radius: 999px;
-    background: light-dark(#ffffff, #f2f2f5);
-    box-shadow: 0 1px 2px light-dark(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.45));
+    border-radius: var(--radius-control);
+    background: var(--color-lit-ld-991d26eb);
+    box-shadow: 0 1px 2px var(--color-lit-ld-7994bf51);
     transform: translateX(0);
     transition: transform 120ms ease;
 }
 
 .ui-switch[data-selected] .ui-switch-track {
-    background: light-dark(#34c759, #32d768);
-    border-color: light-dark(#28b149, #25b34f);
+    background: var(--color-lit-ld-44f734a5);
+    border-color: var(--color-lit-ld-97e3522c);
 }
 
 .ui-switch[data-selected] .ui-switch-thumb {

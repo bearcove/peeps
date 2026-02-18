@@ -2,7 +2,6 @@ import React from "react";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import type { MetaValue } from "../../snapshot";
 import { formatProcessLabel } from "../../processLabel";
-import { scopeKindIcon } from "../../scopeKindSpec";
 import type { ScopeTableRow } from "../scopes/ScopeTablePanel";
 import { MetaSection } from "./MetaTree";
 import "./InspectorPanel.css";
@@ -24,16 +23,6 @@ export function ScopeInspectorContent({ scope }: { scope: ScopeTableRow }) {
 
   return (
     <>
-      <div className="inspector-node-header">
-        <span className="inspector-node-icon">
-          {scopeKindIcon(scope.scopeKind, 16)}
-        </span>
-        <div className="inspector-node-header-text">
-          <div className="inspector-node-kind">scope</div>
-          <div className="inspector-node-label">{scope.scopeName}</div>
-        </div>
-      </div>
-
       <div className="inspector-section">
         <KeyValueRow label="Kind">
           <span className="inspector-mono">{scope.scopeKind}</span>

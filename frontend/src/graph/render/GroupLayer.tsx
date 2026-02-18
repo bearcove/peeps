@@ -15,7 +15,8 @@ export function GroupLayer({ groups }: GroupLayerProps) {
     <>
       {groups.map((group) => {
         const { x, y, width, height } = group.worldRect;
-        const scopeHue = group.data?.scopeHue as number | undefined;
+        const scopeRgbLight = group.data?.scopeRgbLight as string | undefined;
+        const scopeRgbDark = group.data?.scopeRgbDark as string | undefined;
         const scopeKey = group.data?.scopeKey as string | undefined;
         const isProcessGroup = group.scopeKind === "process";
 
@@ -34,8 +35,11 @@ export function GroupLayer({ groups }: GroupLayerProps) {
               xmlns="http://www.w3.org/1999/xhtml"
               className="scope-group"
               style={
-                scopeHue !== undefined
-                  ? ({ "--scope-h": String(scopeHue) } as React.CSSProperties)
+                scopeRgbLight !== undefined && scopeRgbDark !== undefined
+                  ? ({
+                      "--scope-rgb-light": scopeRgbLight,
+                      "--scope-rgb-dark": scopeRgbDark,
+                    } as React.CSSProperties)
                   : undefined
               }
               >

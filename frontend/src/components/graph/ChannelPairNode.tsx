@@ -11,13 +11,14 @@ export type ChannelPairNodeData = {
   channelName: string;
   selected: boolean;
   statTone?: Tone;
-  scopeHue?: number;
+  scopeRgbLight?: string;
+  scopeRgbDark?: string;
   ghost?: boolean;
 };
 
 export function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
-  const { nodeId, channelName, selected, statTone, scopeHue, ghost } = data;
-  const showScopeColor = scopeHue !== undefined && statTone !== "crit" && statTone !== "warn";
+  const { nodeId, channelName, selected, statTone, scopeRgbLight, scopeRgbDark, ghost } = data;
+  const showScopeColor = scopeRgbLight !== undefined && scopeRgbDark !== undefined && statTone !== "crit" && statTone !== "warn";
 
   return (
     <div
@@ -36,7 +37,8 @@ export function ChannelPairNode({ data }: { data: ChannelPairNodeData }) {
       style={
         showScopeColor
           ? ({
-              "--scope-h": String(scopeHue),
+              "--scope-rgb-light": scopeRgbLight,
+              "--scope-rgb-dark": scopeRgbDark,
             } as React.CSSProperties)
           : undefined
       }

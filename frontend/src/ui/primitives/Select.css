@@ -6,7 +6,7 @@
     height: 28px;
     padding: 0 8px;
     min-width: 140px;
-    border-radius: 3px;
+    border-radius: var(--radius-control);
     border: 1px solid var(--border);
     background: var(--surface-raised);
     color: inherit;
@@ -25,15 +25,15 @@
 .ui-select[data-open] .ui-select-trigger {
     outline: none;
     box-shadow: 0 0 0 2px var(--focus-ring);
-    border-color: light-dark(#a09888, #665e52);
+    border-color: var(--color-lit-ld-cd269152);
 }
 
 .ui-select-popover {
     min-width: var(--trigger-width);
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-control);
     background: var(--surface-raised);
-    box-shadow: 0 6px 16px light-dark(rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0.40));
+    box-shadow: 0 6px 16px var(--color-lit-ld-c35dc65d);
     padding: 3px;
     z-index: 20;
 }
@@ -46,7 +46,7 @@
 }
 
 .ui-select-item {
-    border-radius: 2px;
+    border-radius: var(--radius-control);
     color: inherit;
     font-size: var(--font-size-sm);
     padding: 4px 8px;

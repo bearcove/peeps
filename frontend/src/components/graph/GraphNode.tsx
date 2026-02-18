@@ -13,13 +13,13 @@ export type GraphNodeData = {
   ageMs: number;
   stat?: string;
   statTone?: Tone;
-  scopeHue?: number;
+  scopeRgb?: string;
   ghost?: boolean;
 };
 
 export function GraphNode({ data }: { data: GraphNodeData }) {
   const showScopeColor =
-    data.scopeHue !== undefined && !data.inCycle && data.statTone !== "crit" && data.statTone !== "warn";
+    data.scopeRgb !== undefined && !data.inCycle && data.statTone !== "crit" && data.statTone !== "warn";
   return (
     <div
         className={[
@@ -37,7 +37,7 @@ export function GraphNode({ data }: { data: GraphNodeData }) {
         style={
           showScopeColor
             ? ({
-                "--scope-h": String(data.scopeHue),
+                "--scope-rgb": data.scopeRgb,
               } as React.CSSProperties)
             : undefined
         }

@@ -4,7 +4,7 @@
     gap: 6px;
     padding: 3px 8px;
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-control);
     background: var(--surface-raised);
     font-size: var(--font-size-sm);
     font-weight: 700;
@@ -18,15 +18,15 @@
 .ui-menu-trigger[data-pressed],
 .ui-menu-trigger[data-open] {
     box-shadow: 0 0 0 2px var(--focus-ring);
-    border-color: light-dark(#a09888, #665e52);
+    border-color: var(--color-lit-ld-cd269152);
 }
 
 .ui-menu-popover {
     min-width: 180px;
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-control);
     background: var(--surface-raised);
-    box-shadow: 0 6px 16px light-dark(rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0.40));
+    box-shadow: 0 6px 16px var(--color-lit-ld-c35dc65d);
     padding: 3px;
     display: flex;
     flex-direction: column;
@@ -42,7 +42,7 @@
 }
 
 .ui-menu-item {
-    border-radius: 2px;
+    border-radius: var(--radius-control);
     background: transparent;
     color: inherit;
     text-align: left;
@@ -59,5 +59,5 @@
 }
 
 .ui-menu-item--danger {
-    color: light-dark(#721c24, #ff6b6b);
+    color: var(--color-lit-ld-6cbed306);
 }

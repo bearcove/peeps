@@ -1,9 +1,9 @@
 .ui-section {
-    border: 1px solid light-dark(#ececf1, #2a2a2e);
-    border-radius: 6px;
-    background: light-dark(#ffffff, #1a1a1e);
+    border: 1px solid var(--color-lit-ld-d376042d);
+    border-radius: var(--radius-control);
+    background: var(--color-lit-ld-51056ffa);
     padding: 10px;
-    box-shadow: 0 6px 14px light-dark(rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.35));
+    box-shadow: 0 6px 14px var(--color-lit-ld-d03b178b);
 }
 
 .ui-section--wide {
@@ -16,14 +16,14 @@
     gap: 8px;
     font-size: var(--font-size-sm);
     font-weight: 800;
-    color: light-dark(#3a3a3f, #d0d0d6);
+    color: var(--color-lit-ld-d02e27bf);
     margin-bottom: 6px;
 }
 
 .ui-section-subhead {
     font-size: var(--font-size-sm);
     font-weight: 600;
-    color: light-dark(#8e8e93, #8f8f95);
+    color: var(--color-lit-ld-92f287c6);
 }
 
 .ui-section-stack {
@@ -37,6 +37,6 @@
 }
 
 .ui-section-stack > .ui-key-value-row:nth-child(odd) {
-    background: light-dark(rgba(0, 0, 0, 0.025), rgba(255, 255, 255, 0.025));
-    border-radius: 3px;
+    background: var(--color-lit-ld-8518efd4);
+    border-radius: var(--radius-control);
 }

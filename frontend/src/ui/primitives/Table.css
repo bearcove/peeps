@@ -1,7 +1,7 @@
 .ui-table {
-    border: 1px solid light-dark(#d2d2d7, #2a2a2e);
-    border-radius: 3px;
-    background: light-dark(#ffffff, #1a1a1e);
+    border: 1px solid var(--color-lit-ld-15d73b5f);
+    border-radius: var(--radius-control);
+    background: var(--color-lit-ld-51056ffa);
 }
 
 .ui-table-header {
@@ -9,11 +9,11 @@
     position: sticky;
     top: 0;
     z-index: 1;
-    background: light-dark(#f6f6f8, #1c1c20);
-    border-bottom: 1px solid light-dark(#d2d2d7, #2a2a2e);
+    background: var(--color-lit-ld-116e270d);
+    border-bottom: 1px solid var(--color-lit-ld-15d73b5f);
     font-size: var(--font-size-sm);
     font-weight: 600;
-    color: light-dark(#6e6e73, #98989d);
+    color: var(--color-lit-ld-022e6f16);
 }
 
 .ui-table-header-cell {
@@ -42,7 +42,7 @@
 }
 
 .ui-table-sort-indicator {
-    color: light-dark(#3a3a3f, #d0d0d6);
+    color: var(--color-lit-ld-d02e27bf);
     font-size: 10px;
     line-height: 1;
 }
@@ -51,7 +51,7 @@
     display: grid;
     font-size: var(--font-size-sm);
     padding: 4px 0;
-    border-bottom: 1px solid light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.06));
+    border-bottom: 1px solid var(--color-lit-ld-61ee0df4);
 }
 
 .ui-table-row--clickable {
@@ -64,11 +64,11 @@
 }
 
 .ui-table-row:hover {
-    background: light-dark(#f7f7f9, #222226);
+    background: var(--color-lit-ld-42159785);
 }
 
 .ui-table-row--selected {
-    background: light-dark(#d4e4fc, #1e2d44);
+    background: var(--color-lit-ld-69b98e4c);
 }
 
 .ui-table-cell {

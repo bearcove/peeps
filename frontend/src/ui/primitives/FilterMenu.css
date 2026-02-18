@@ -6,7 +6,7 @@
     gap: 6px;
     padding: 3px 8px;
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-control);
     background: var(--surface-raised);
     font-size: var(--font-size-sm);
     font-weight: 700;
@@ -16,31 +16,31 @@
 }
 
 .ui-filter-trigger--active {
-    border-color: light-dark(#4a7dff, #6b9aff);
-    background: light-dark(#eef3ff, #1a2340);
-    color: light-dark(#2956b2, #8bb4ff);
+    border-color: var(--color-lit-ld-4ed2e9cc);
+    background: var(--color-lit-ld-7e87d777);
+    color: var(--color-lit-ld-d1be9e2f);
 }
 
 .ui-filter-trigger[data-focused],
 .ui-filter-trigger[data-focus-visible],
 .ui-filter-trigger[data-pressed] {
     box-shadow: 0 0 0 2px var(--focus-ring);
-    border-color: light-dark(#a09888, #665e52);
+    border-color: var(--color-lit-ld-cd269152);
 }
 
 .ui-filter-trigger--active[data-focused],
 .ui-filter-trigger--active[data-focus-visible],
 .ui-filter-trigger--active[data-pressed] {
-    border-color: light-dark(#4a7dff, #6b9aff);
-    box-shadow: 0 0 0 2px light-dark(rgba(74, 125, 255, 0.25), rgba(107, 154, 255, 0.25));
+    border-color: var(--color-lit-ld-4ed2e9cc);
+    box-shadow: 0 0 0 2px var(--color-lit-ld-e3eb2eb1);
 }
 
 .ui-filter-badge {
     font-size: 10px;
     font-weight: 600;
     padding: 0 4px;
-    border-radius: 2px;
-    background: light-dark(rgba(74, 125, 255, 0.15), rgba(107, 154, 255, 0.15));
+    border-radius: var(--radius-control);
+    background: var(--color-lit-ld-e2fd553d);
 }
 
 .ui-filter-caret {
@@ -53,9 +53,9 @@
 
 .ui-filter-popover {
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-control);
     background: var(--surface-raised);
-    box-shadow: 0 6px 16px light-dark(rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0.40));
+    box-shadow: 0 6px 16px var(--color-lit-ld-c35dc65d);
     padding: 3px;
     z-index: 20;
 }
@@ -65,7 +65,7 @@
 }
 
 .ui-filter-setting-row {
-    border-radius: 2px;
+    border-radius: var(--radius-control);
     padding: 4px 6px;
     margin-bottom: 1px;
 }
@@ -88,7 +88,7 @@
 }
 
 .ui-filter-item {
-    border-radius: 2px;
+    border-radius: var(--radius-control);
 }
 
 .ui-filter-item:hover {

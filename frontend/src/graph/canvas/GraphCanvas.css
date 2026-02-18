@@ -17,5 +17,5 @@
 }
 
 .graph-canvas__dot {
-  fill: light-dark(rgba(114, 114, 122, 0.42), rgba(142, 142, 147, 0.36));
+  fill: var(--color-lit-ld-a17f1a1e);
 }

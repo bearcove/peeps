@@ -40,8 +40,8 @@ export function EdgeLayer({
         const hitD = hitTestPath(polyline);
         const edgeStyle = edge.data?.style ?? {};
         const stroke = isSelected
-          ? "var(--accent, #3b82f6)"
-          : (edgeStyle.stroke ?? "light-dark(#666, #999)");
+          ? "var(--accent)"
+          : (edgeStyle.stroke ?? "var(--edge-stroke-muted)");
 
         const visibleStyle: React.CSSProperties = isSelected
           ? { stroke, strokeWidth: 2.5 }
@@ -75,7 +75,7 @@ export function EdgeLayer({
                 <path
                   d={d}
                   fill="none"
-                  stroke="var(--accent, #3b82f6)"
+                  stroke="var(--accent)"
                   strokeWidth={10}
                   strokeLinecap="round"
                   opacity={0.18}
@@ -84,7 +84,7 @@ export function EdgeLayer({
                 <path
                   d={d}
                   fill="none"
-                  stroke="var(--accent, #3b82f6)"
+                  stroke="var(--accent)"
                   strokeWidth={5}
                   strokeLinecap="round"
                   opacity={0.45}

@@ -8,25 +8,31 @@
     border: var(--graph-card-border-width) solid var(--graph-card-border-color);
     color: var(--text-primary);
     position: relative;
-    border-radius: 8px;
+    border-radius: var(--radius-control);
 }
 
 .graph-card--selected {
-    outline: 2px solid light-dark(#3b82f6, #60a5fa);
+    outline: 2px solid var(--color-lit-ld-51fce81c);
     outline-offset: 2px;
 }
 
 .graph-card--scope {
-    --graph-card-border-color: hsl(var(--scope-h) 70% 45% / 0.72);
-    --graph-card-bg: hsl(var(--scope-h) 90% 54% / 0.24);
+    --graph-card-border-color: light-dark(
+        rgb(var(--scope-rgb-light) / 0.95),
+        rgb(var(--scope-rgb-dark) / 0.9)
+    );
+    --graph-card-bg: light-dark(
+        rgb(var(--scope-rgb-light) / 0.3),
+        rgb(var(--scope-rgb-dark) / 0.34)
+    );
 }
 
 .graph-card--stat-crit {
-    --graph-card-border-color: light-dark(#d30000, #ff6b6b);
+    --graph-card-border-color: var(--color-lit-ld-015826c9);
 }
 
 .graph-card--stat-warn {
-    --graph-card-border-color: light-dark(#bf5600, #ffa94d);
+    --graph-card-border-color: var(--color-lit-ld-3349dec3);
 }
 
 .graph-card--ghost {
@@ -63,12 +69,12 @@
 
 .graph-node--cycle {
     --graph-card-border-width: 2px;
-    --graph-card-border-color: light-dark(#d7263d, #ff6b81);
-    --graph-card-bg: light-dark(#fff5f5, #2a1414);
+    --graph-card-border-color: var(--color-lit-ld-6dca8202);
+    --graph-card-bg: var(--color-lit-ld-02303704);
 }
 
 .graph-node--cycle .graph-node-icon {
-    color: light-dark(#d7263d, #ff6b81);
+    color: var(--color-lit-ld-6dca8202);
 }
 
 .graph-node-label {
@@ -96,12 +102,12 @@
 }
 
 .graph-node-stat--crit {
-    color: light-dark(#d30000, #ff6b6b);
+    color: var(--color-lit-ld-015826c9);
     font-weight: 700;
 }
 
 .graph-node-stat--warn {
-    color: light-dark(#bf5600, #ffa94d);
+    color: var(--color-lit-ld-3349dec3);
     font-weight: 700;
 }
 

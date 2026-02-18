@@ -53,10 +53,10 @@
 
 .ui-split-resizer:hover,
 .ui-split-resizer:focus-visible {
-    background: light-dark(#e4efff, #24364f);
+    background: var(--color-lit-ld-f79617f4);
     outline: none;
 }
 
 .ui-split-layout--dragging .ui-split-resizer {
-    background: light-dark(#d0e3ff, #2d4466);
+    background: var(--color-lit-ld-343ee702);
 }

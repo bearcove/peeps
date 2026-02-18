@@ -24,15 +24,15 @@
 }
 
 .meta-value--string {
-    color: light-dark(#2a7e4f, #7ec699);
+    color: var(--color-lit-ld-2b3eb2c7);
 }
 
 .meta-value--number {
-    color: light-dark(#1a5fb4, #7aadff);
+    color: var(--color-lit-ld-66745883);
 }
 
 .meta-value--boolean {
-    color: light-dark(#a0522d, #e6a86c);
+    color: var(--color-lit-ld-22827e06);
 }
 
 .meta-hint {

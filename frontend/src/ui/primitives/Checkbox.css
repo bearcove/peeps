@@ -13,10 +13,10 @@
 .ui-checkbox-box {
     width: 16px;
     height: 16px;
-    border-radius: 2px;
+    border-radius: var(--radius-control);
     border: 1px solid var(--border);
     background: var(--surface-raised);
-    box-shadow: 0 0 0 1px light-dark(rgba(0, 0, 0, 0.02), rgba(255, 255, 255, 0.02));
+    box-shadow: 0 0 0 1px var(--color-lit-ld-e002541c);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -24,25 +24,25 @@
 }
 
 .ui-checkbox:hover .ui-checkbox-box {
-    border-color: light-dark(#a09888, #665e52);
+    border-color: var(--color-lit-ld-cd269152);
 }
 
 .ui-checkbox[data-selected] .ui-checkbox-box {
-    background: light-dark(#1d1d1f, #e5e5e7);
+    background: var(--color-lit-ld-95d51f9e);
     box-shadow: none;
 }
 
 .ui-checkbox[data-focus-visible] .ui-checkbox-box {
     outline: none;
     box-shadow: 0 0 0 2px var(--focus-ring);
-    border-color: light-dark(#a09888, #665e52);
+    border-color: var(--color-lit-ld-cd269152);
 }
 
 .ui-checkbox-icon {
     width: 11px;
     height: 11px;
     display: block;
-    color: #ffffff;
+    color: var(--color-lit-hex-c659d630);
     line-height: 1;
     opacity: 0;
     transform: none;

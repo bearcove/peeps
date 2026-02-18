@@ -1,9 +1,9 @@
 .ui-input {
     height: 28px;
     padding: 0 8px;
-    border-radius: 4px;
-    border: 1px solid light-dark(#d2d2d7, #3a3a3e);
-    background: light-dark(#ffffff, #1f1f22);
+    border-radius: var(--radius-control);
+    border: 1px solid var(--color-lit-ld-b19fa9e1);
+    background: var(--color-lit-ld-9787e7fe);
     color: inherit;
     font: inherit;
     font-size: var(--font-size-sm);
@@ -13,8 +13,8 @@
 
 .ui-input:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.2));
-    border-color: light-dark(#999, #666);
+    box-shadow: 0 0 0 2px var(--color-lit-ld-84038782);
+    border-color: var(--color-lit-ld-43da4eab);
 }
 
 .ui-text-field {

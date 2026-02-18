@@ -35,7 +35,7 @@
     flex: 1;
     height: 4px;
     cursor: pointer;
-    accent-color: light-dark(#0071e3, #5ac8fa);
+    accent-color: var(--color-lit-ld-5f7a3f7f);
 }
 
 .recording-timeline-slider:disabled {
@@ -72,7 +72,7 @@
     width: 24px;
     height: 24px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-control);
     background: transparent;
     color: var(--text-muted);
     cursor: pointer;
@@ -87,9 +87,9 @@
 }
 
 .recording-timeline-ghost-btn--active {
-    background: light-dark(#e8f0fe, #1a2544);
-    color: light-dark(#1a56db, #7aadff);
-    border-color: light-dark(#b4cef9, #2f4a8a);
+    background: var(--color-lit-ld-ffa8dbee);
+    color: var(--color-lit-ld-6d678c8a);
+    border-color: var(--color-lit-ld-f726ec88);
 }
 
 .recording-timeline-processed {
@@ -109,7 +109,7 @@
     font-family: var(--font-mono);
     padding: 2px 4px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-control);
     background: var(--surface);
     color: var(--text-secondary);
     cursor: pointer;

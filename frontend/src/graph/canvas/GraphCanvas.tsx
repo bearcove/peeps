@@ -150,7 +150,7 @@ export function GraphCanvas({
               patternUnits="userSpaceOnUse"
               patternTransform={dotPatternTransform}
             >
-              <circle cx="1" cy="1" r="1" className="graph-canvas__dot" />
+              <circle cx="1" cy="1" r="0.8" className="graph-canvas__dot" />
             </pattern>
           </defs>
           <rect

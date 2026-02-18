@@ -30,7 +30,6 @@
     top: 0;
     left: 0;
     width: clamp(300px, 26vw, 420px);
-    height: min(72vh, 760px);
     max-width: calc(100% - 24px);
     max-height: calc(100% - 24px);
     pointer-events: none;

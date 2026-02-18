@@ -5,21 +5,21 @@
     font-size: var(--font-size-sm);
     font-weight: 600;
     padding: 0 3px;
-    border-radius: 2px;
+    border-radius: var(--radius-control);
 }
 
 .duration--ok {
-    color: light-dark(#155724, #75b798);
+    color: var(--color-lit-ld-d59cb2c4);
 }
 
 .duration--warn {
-    color: light-dark(#856404, #ffc107);
-    background: light-dark(rgba(255,243,205,0.5), rgba(58,47,26,0.5));
+    color: var(--color-lit-ld-d791833b);
+    background: var(--color-lit-ld-340243a2);
 }
 
 .duration--crit {
-    color: light-dark(#721c24, #ff6b6b);
-    background: light-dark(rgba(248,215,218,0.5), rgba(58,26,26,0.5));
+    color: var(--color-lit-ld-6cbed306);
+    background: var(--color-lit-ld-882d8bab);
 }
 
 .ui-duration-display {
@@ -32,15 +32,15 @@
 }
 
 .ui-duration-display--ok {
-    color: light-dark(#155724, #75b798);
+    color: var(--color-lit-ld-d59cb2c4);
 }
 
 .ui-duration-display--warn {
-    color: light-dark(#856404, #ffc107);
+    color: var(--color-lit-ld-d791833b);
 }
 
 .ui-duration-display--crit {
-    color: light-dark(#721c24, #ff6b6b);
+    color: var(--color-lit-ld-6cbed306);
 }
 
 .ui-duration-row {

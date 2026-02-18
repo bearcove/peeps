@@ -12,7 +12,8 @@ import { GroupLayer } from "../../graph/render/GroupLayer";
 import { EdgeLayer } from "../../graph/render/EdgeLayer";
 import { NodeLayer } from "../../graph/render/NodeLayer";
 import type { GraphGeometry, Point } from "../../graph/geometry";
-import { scopeHueForKey } from "./scopeColors";
+import type { ScopeColorPair } from "./scopeColors";
+import { assignScopeColorRgbByKey } from "./scopeColors";
 import type { FrameRenderResult } from "../../recording/unionGraph";
 import "./GraphPanel.css";
 
@@ -32,6 +33,12 @@ const GRAPH_EMPTY_MESSAGES: Record<SnapPhase, string> = {
   ready: "No entities in snapshot",
   error: "Snapshot failed",
 };
+
+function scopeKeyForEntity(entity: EntityDef, scopeColorMode: ScopeColorMode): string | undefined {
+  if (scopeColorMode === "process") return entity.processId;
+  if (scopeColorMode === "crate") return entity.krate ?? "~no-crate";
+  return undefined;
+}
 
 export function GraphPanel({
   entityDefs,
@@ -119,28 +126,43 @@ export function GraphPanel({
   const effectiveGeometry: GraphGeometry | null = unionFrameLayout?.geometry ?? layout;
 
   const entityById = useMemo(() => new Map(entityDefs.map((entity) => [entity.id, entity])), [entityDefs]);
+  const scopeColorByKey = useMemo<Map<string, ScopeColorPair>>(() => {
+    if (scopeColorMode === "none") return new Map<string, ScopeColorPair>();
+    return assignScopeColorRgbByKey(entityDefs.map((entity) => scopeKeyForEntity(entity, scopeColorMode) ?? ""));
+  }, [entityDefs, scopeColorMode]);
 
   const nodesWithScopeColor = useMemo(() => {
     if (!effectiveGeometry) return [];
     return effectiveGeometry.nodes.map((n) => {
       const entity = entityById.get(n.id);
-      const scopeKey =
-        !entity
-          ? undefined
-          : scopeColorMode === "process"
-            ? entity.processId
-            : scopeColorMode === "crate"
-              ? (entity.krate ?? "~no-crate")
-              : undefined;
+      const scopeKey = entity ? scopeKeyForEntity(entity, scopeColorMode) : undefined;
+      const scopeRgb = scopeKey ? scopeColorByKey.get(scopeKey) : undefined;
       return {
         ...n,
         data: {
           ...n.data,
-          scopeHue: scopeKey ? scopeHueForKey(scopeKey) : undefined,
+          scopeRgbLight: scopeRgb?.light,
+          scopeRgbDark: scopeRgb?.dark,
         },
       };
     });
-  }, [effectiveGeometry, entityById, scopeColorMode]);
+  }, [effectiveGeometry, entityById, scopeColorByKey, scopeColorMode]);
+
+  const groupsWithScopeColor = useMemo(() => {
+    if (!effectiveGeometry) return [];
+    return effectiveGeometry.groups.map((group) => {
+      const scopeKey = group.data?.scopeKey as string | undefined;
+      const scopeRgb = scopeKey ? scopeColorByKey.get(scopeKey) : undefined;
+      return {
+        ...group,
+        data: {
+          ...group.data,
+          scopeRgbLight: scopeRgb?.light,
+          scopeRgbDark: scopeRgb?.dark,
+        },
+      };
+    });
+  }, [effectiveGeometry, scopeColorByKey]);
 
   const ghostNodeIds = unionFrameLayout?.ghostNodeIds;
   const ghostEdgeIds = unionFrameLayout?.ghostEdgeIds;
@@ -272,7 +294,7 @@ export function GraphPanel({
             />
             {effectiveGeometry && (
               <>
-                <GroupLayer groups={effectiveGeometry.groups} />
+                <GroupLayer groups={groupsWithScopeColor} />
                 <GraphPortAnchors
                   geometryKey={geometryKey}
                   onAnchorsChange={setPortAnchors}
