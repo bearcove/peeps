@@ -477,11 +477,6 @@ impl<T> Sender<T> {
         &self.handle
     }
 
-    pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
-        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-            .await
-    }
-
     pub async fn send_with_cx(
         &self,
         value: T,
@@ -514,11 +509,6 @@ impl<T> Receiver<T> {
         &self.handle
     }
 
-    pub async fn recv(&mut self) -> Option<T> {
-        self.recv_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-            .await
-    }
-
     pub async fn recv_with_cx(&mut self, cx: PeepsContext) -> Option<T> {
         self.recv_with_source(Source::caller(), cx).await
     }
@@ -532,10 +522,6 @@ impl<T> UnboundedSender<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
-    }
-
-    pub fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
-        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
@@ -567,11 +553,6 @@ impl<T> UnboundedReceiver<T> {
         &self.handle
     }
 
-    pub async fn recv(&mut self) -> Option<T> {
-        self.recv_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-            .await
-    }
-
     pub async fn recv_with_cx(&mut self, cx: PeepsContext) -> Option<T> {
         self.recv_with_source(Source::caller(), cx).await
     }
@@ -585,10 +566,6 @@ impl<T> OneshotSender<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
-    }
-
-    pub fn send(self, value: T) -> Result<(), T> {
-        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
@@ -613,11 +590,6 @@ impl<T> OneshotReceiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
-    }
-
-    pub async fn recv(self) -> Result<T, oneshot::error::RecvError> {
-        self.recv_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-            .await
     }
 
     pub async fn recv_with_cx(self, cx: PeepsContext) -> Result<T, oneshot::error::RecvError> {
@@ -646,10 +618,6 @@ impl<T: Clone> BroadcastSender<T> {
         }
     }
 
-    pub fn send(&self, value: T) -> Result<usize, broadcast::error::SendError<T>> {
-        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
     #[track_caller]
     pub fn send_with_cx(
         &self,
@@ -675,11 +643,6 @@ impl<T: Clone> BroadcastReceiver<T> {
         &self.handle
     }
 
-    pub async fn recv(&mut self) -> Result<T, broadcast::error::RecvError> {
-        self.recv_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-            .await
-    }
-
     pub async fn recv_with_cx(
         &mut self,
         cx: PeepsContext,
@@ -702,10 +665,6 @@ impl<T: Clone> WatchSender<T> {
         &self.handle
     }
 
-    pub fn send(&self, value: T) -> Result<(), watch::error::SendError<T>> {
-        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
     #[track_caller]
     pub fn send_with_cx(
         &self,
@@ -722,10 +681,6 @@ impl<T: Clone> WatchSender<T> {
         _cx: PeepsContext,
     ) -> Result<(), watch::error::SendError<T>> {
         self.inner.send(value)
-    }
-
-    pub fn send_replace(&self, value: T) -> T {
-        self.send_replace_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
@@ -749,11 +704,6 @@ impl<T: Clone> WatchReceiver<T> {
     #[doc(hidden)]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
-    }
-
-    pub async fn changed(&mut self) -> Result<(), watch::error::RecvError> {
-        self.changed_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-            .await
     }
 
     pub async fn changed_with_cx(

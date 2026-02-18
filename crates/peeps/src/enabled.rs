@@ -2339,15 +2339,6 @@ impl<T> Sender<T> {
 
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
-    pub fn send(
-        &self,
-        value: T,
-    ) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + '_ {
-        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
     pub fn send_with_cx(
         &self,
         value: T,
@@ -2474,12 +2465,6 @@ impl<T> Receiver<T> {
 
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
-    pub fn recv(&mut self) -> impl Future<Output = Option<T>> + '_ {
-        self.recv_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
     pub fn recv_with_cx(&mut self, cx: PeepsContext) -> impl Future<Output = Option<T>> + '_ {
         self.recv_with_source(Source::caller(), cx)
     }
@@ -2600,11 +2585,6 @@ impl<T> UnboundedSender<T> {
     }
 
     #[track_caller]
-    pub fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
-        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
     pub fn send_with_cx(
         &self,
         value: T,
@@ -2694,12 +2674,6 @@ impl<T> UnboundedReceiver<T> {
     #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn recv(&mut self) -> impl Future<Output = Option<T>> + '_ {
-        self.recv_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
@@ -3092,11 +3066,6 @@ impl<T> OneshotSender<T> {
     }
 
     #[track_caller]
-    pub fn send(self, value: T) -> Result<(), T> {
-        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
     pub fn send_with_cx(self, value: T, cx: PeepsContext) -> Result<(), T> {
         self.send_with_source(value, Source::caller(), cx)
     }
@@ -3172,12 +3141,6 @@ impl<T> OneshotReceiver<T> {
     #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn recv(self) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
-        self.recv_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
@@ -3344,11 +3307,6 @@ impl<T: Clone> BroadcastSender<T> {
     }
 
     #[track_caller]
-    pub fn send(&self, value: T) -> Result<usize, broadcast::error::SendError<T>> {
-        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
     pub fn send_with_cx(
         &self,
         value: T,
@@ -3420,12 +3378,6 @@ impl<T: Clone> BroadcastReceiver<T> {
     #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn recv(&mut self) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
-        self.recv_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
@@ -3514,11 +3466,6 @@ impl<T: Clone> WatchSender<T> {
     }
 
     #[track_caller]
-    pub fn send(&self, value: T) -> Result<(), watch::error::SendError<T>> {
-        self.send_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
     pub fn send_with_cx(
         &self,
         value: T,
@@ -3580,11 +3527,6 @@ impl<T: Clone> WatchSender<T> {
     }
 
     #[track_caller]
-    pub fn send_replace(&self, value: T) -> T {
-        self.send_replace_with_cx(value, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
     pub fn send_replace_with_cx(&self, value: T, cx: PeepsContext) -> T {
         self.send_replace_with_source(value, Source::caller(), cx)
     }
@@ -3618,12 +3560,6 @@ impl<T: Clone> WatchReceiver<T> {
     #[track_caller]
     pub fn handle(&self) -> &EntityHandle {
         &self.handle
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn changed(&mut self) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
-        self.changed_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
