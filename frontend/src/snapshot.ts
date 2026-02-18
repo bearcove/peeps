@@ -496,25 +496,34 @@ export function collapseEdgesThroughHiddenNodes(
   visibleEntityIds: ReadonlySet<string>,
 ): EdgeDef[] {
   const outgoing = new Map<string, EdgeDef[]>();
+  const incoming = new Map<string, EdgeDef[]>();
   for (const edge of edges) {
     if (!outgoing.has(edge.source)) outgoing.set(edge.source, []);
     outgoing.get(edge.source)!.push(edge);
+    if (!incoming.has(edge.target)) incoming.set(edge.target, []);
+    incoming.get(edge.target)!.push(edge);
   }
 
   const visibleDirectEdges = edges.filter(
     (edge) => visibleEntityIds.has(edge.source) && visibleEntityIds.has(edge.target),
   );
   const resultById = new Map<string, EdgeDef>(visibleDirectEdges.map((edge) => [edge.id, edge]));
-  const visibleDirectPairs = new Set(visibleDirectEdges.map((edge) => `${edge.source}->${edge.target}`));
+  const pairKey = (a: string, b: string): string => (a < b ? `${a}<->${b}` : `${b}<->${a}`);
+  const visibleDirectPairs = new Set(visibleDirectEdges.map((edge) => pairKey(edge.source, edge.target)));
 
   for (const sourceId of visibleEntityIds) {
-    const firstHop = outgoing.get(sourceId) ?? [];
+    const firstHopOutgoing = outgoing.get(sourceId) ?? [];
+    const firstHopIncoming = incoming.get(sourceId) ?? [];
     const queue: string[] = [];
     const visitedHidden = new Set<string>();
 
-    for (const edge of firstHop) {
+    for (const edge of firstHopOutgoing) {
       if (visibleEntityIds.has(edge.target)) continue;
       queue.push(edge.target);
+    }
+    for (const edge of firstHopIncoming) {
+      if (visibleEntityIds.has(edge.source)) continue;
+      queue.push(edge.source);
     }
 
     while (queue.length > 0) {
@@ -522,29 +531,34 @@ export function collapseEdgesThroughHiddenNodes(
       if (visitedHidden.has(hiddenId)) continue;
       visitedHidden.add(hiddenId);
 
-      for (const edge of outgoing.get(hiddenId) ?? []) {
-        const targetId = edge.target;
-        if (targetId === sourceId) continue;
-
+      const visitNeighbor = (targetId: string) => {
+        if (targetId === sourceId) return;
         if (visibleEntityIds.has(targetId)) {
-          const pairKey = `${sourceId}->${targetId}`;
-          if (visibleDirectPairs.has(pairKey)) continue;
-          const collapsedId = `collapsed-${sourceId}-${targetId}`;
+          const directPairKey = pairKey(sourceId, targetId);
+          if (visibleDirectPairs.has(directPairKey)) return;
+          const [left, right] = sourceId < targetId ? [sourceId, targetId] : [targetId, sourceId];
+          const collapsedId = `collapsed-${left}-${right}`;
           if (!resultById.has(collapsedId)) {
             resultById.set(collapsedId, {
               id: collapsedId,
-              source: sourceId,
-              target: targetId,
+              source: left,
+              target: right,
               kind: "touches",
               meta: { collapsed: true },
             });
           }
-          continue;
+          return;
         }
-
         if (!visitedHidden.has(targetId)) {
           queue.push(targetId);
         }
+      };
+
+      for (const edge of outgoing.get(hiddenId) ?? []) {
+        visitNeighbor(edge.target);
+      }
+      for (const edge of incoming.get(hiddenId) ?? []) {
+        visitNeighbor(edge.source);
       }
     }
   }
