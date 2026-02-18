@@ -1,5 +1,5 @@
 [package]
-name = "peeps-example-selector-legacy"
+name = "peeps-example-selector"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

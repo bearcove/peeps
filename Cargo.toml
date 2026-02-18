@@ -7,10 +7,7 @@ members = [
   "crates/peeps-types",
   "crates/peeps-wire",
   "crates/peeps-sqlite-facet",
-  "crates/peeps-legacy",
-  "crates/peeps-types-legacy",
-  "crates/peeps-web-legacy",
-  "crates/peeps-example-selector-legacy",
+  "crates/peeps-example-selector",
 ]
 
 [workspace.package]
@@ -26,9 +23,6 @@ peeps-web = { path = "crates/peeps-web" }
 peeps-types = { path = "crates/peeps-types" }
 peeps-wire = { path = "crates/peeps-wire" }
 peeps-sqlite-facet = { path = "crates/peeps-sqlite-facet" }
-peeps-legacy = { path = "crates/peeps-legacy" }
-peeps-types-legacy = { path = "crates/peeps-types-legacy" }
-peeps-web-legacy = { path = "crates/peeps-web-legacy" }
 
 # External
 backtrace = "0.3"

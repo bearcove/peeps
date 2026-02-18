@@ -16,7 +16,7 @@ cleaned_up="0"
 run_selector() {
   (
     cd "$ROOT_DIR"
-    cargo run --quiet -p peeps-example-selector-legacy -- \
+    cargo run --quiet -p peeps-example-selector -- \
       --examples-dir "$EXAMPLES_DIR" \
       --last-file "$LAST_EXAMPLE_FILE" \
       "$@"
