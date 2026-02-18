@@ -63,6 +63,7 @@ export function edgeMarkerSize(kind: EdgeDef["kind"]): number {
 
 export type ElkPoint = { x: number; y: number };
 export type LayoutResult = { nodes: Node[]; edges: Edge[] };
+export type SubgraphScopeMode = "none" | "process" | "crate";
 
 /** Callback that renders a measurement-mode React node for a given EntityDef. */
 export type RenderNodeForMeasure = (def: EntityDef) => React.ReactNode;
@@ -111,18 +112,60 @@ export async function layoutGraph(
   entityDefs: EntityDef[],
   edgeDefs: EdgeDef[],
   nodeSizes: Map<string, { width: number; height: number }>,
+  subgraphScopeMode: SubgraphScopeMode = "none",
 ): Promise<LayoutResult> {
   const nodeIds = new Set(entityDefs.map((n) => n.id));
   const validEdges = edgeDefs.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
 
+  const entityById = new Map(entityDefs.map((entity) => [entity.id, entity]));
+  const groupKeyFor = (entity: EntityDef): string | null => {
+    if (subgraphScopeMode === "process") return entity.processId;
+    if (subgraphScopeMode === "crate") return entity.krate ?? "~no-crate";
+    return null;
+  };
+
+  const hasSubgraphs = subgraphScopeMode !== "none";
+  const groupedChildren = (() => {
+    if (!hasSubgraphs) {
+      return entityDefs.map((entity) => {
+        const size = nodeSizes.get(entity.id);
+        return {
+          id: entity.id,
+          width: size?.width || 150,
+          height: size?.height || 36,
+        };
+      });
+    }
+
+    const grouped = new Map<string, EntityDef[]>();
+    for (const entity of entityDefs) {
+      const key = groupKeyFor(entity) ?? "~unknown";
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(entity);
+    }
+
+    return Array.from(grouped.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, members]) => ({
+        id: `scope-group:${subgraphScopeMode}:${key}`,
+        children: members.map((entity) => {
+          const size = nodeSizes.get(entity.id);
+          return {
+            id: entity.id,
+            width: size?.width || 150,
+            height: size?.height || 36,
+          };
+        }),
+      }));
+  })();
+
   const result = await elk.layout({
     id: "root",
-    layoutOptions: elkOptions,
-    children: entityDefs.map((n) => {
-      const sz = nodeSizes.get(n.id);
-      const base = { id: n.id, width: sz?.width || 150, height: sz?.height || 36 };
-      return base;
-    }),
+    layoutOptions: {
+      ...elkOptions,
+      ...(hasSubgraphs ? { "elk.hierarchyHandling": "INCLUDE_CHILDREN" } : {}),
+    },
+    children: groupedChildren,
     edges: validEdges.map((e) => ({
       id: e.id,
       sources: [e.source],
@@ -130,16 +173,18 @@ export async function layoutGraph(
     })),
   });
 
-  const posMap = new Map((result.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]));
   const elkEdgeMap = new Map((result.edges ?? []).map((e: any) => [e.id, e.sections ?? []]));
 
-  const nodes: Node[] = entityDefs.map((def) => {
-    const position = posMap.get(def.id) ?? { x: 0, y: 0 };
+  const nodes: Node[] = [];
+
+  const makeEntityNode = (def: EntityDef, position: { x: number; y: number }, parentId?: string): Node => {
     if (def.channelPair) {
       return {
         id: def.id,
         type: "channelPairNode",
         position,
+        parentId,
+        extent: parentId ? "parent" : undefined,
         data: {
           tx: def.channelPair.tx,
           rx: def.channelPair.rx,
@@ -154,6 +199,8 @@ export async function layoutGraph(
         id: def.id,
         type: "rpcPairNode",
         position,
+        parentId,
+        extent: parentId ? "parent" : undefined,
         data: {
           req: def.rpcPair.req,
           resp: def.rpcPair.resp,
@@ -166,6 +213,8 @@ export async function layoutGraph(
       id: def.id,
       type: "mockNode",
       position,
+      parentId,
+      extent: parentId ? "parent" : undefined,
       data: {
         kind: def.kind,
         label: def.name,
@@ -177,7 +226,48 @@ export async function layoutGraph(
         statTone: def.statTone,
       },
     };
-  });
+  };
+
+  const walkChildren = (children: any[] | undefined, parentId?: string) => {
+    for (const child of children ?? []) {
+      const isGroupNode = typeof child.id === "string" && child.id.startsWith("scope-group:");
+      if (isGroupNode) {
+        const groupId = String(child.id);
+        const firstColon = groupId.indexOf(":");
+        const secondColon = groupId.indexOf(":", firstColon + 1);
+        const scopeKind = secondColon > -1 ? groupId.slice(firstColon + 1, secondColon) : "scope";
+        const rawScopeKey = secondColon > -1 ? groupId.slice(secondColon + 1) : groupId;
+        const memberCount = (child.children ?? []).length;
+        nodes.push({
+          id: child.id,
+          type: "scopeGroupNode",
+          position: { x: child.x ?? 0, y: child.y ?? 0 },
+          data: {
+            isScopeGroup: true,
+            scopeKind,
+            scopeKey: rawScopeKey,
+            label: rawScopeKey === "~no-crate" ? "(no crate)" : rawScopeKey,
+            count: memberCount,
+            selected: false,
+          },
+          selectable: false,
+          draggable: false,
+          style: {
+            width: child.width ?? 260,
+            height: child.height ?? 180,
+          },
+        });
+        walkChildren(child.children, child.id);
+        continue;
+      }
+
+      const entity = entityById.get(child.id);
+      if (!entity) continue;
+      nodes.push(makeEntityNode(entity, { x: child.x ?? 0, y: child.y ?? 0 }, parentId));
+    }
+  };
+
+  walkChildren(result.children);
 
   const entityNameMap = new Map(entityDefs.map((e) => [e.id, e.name]));
   const edges: Edge[] = validEdges.map((def) => {

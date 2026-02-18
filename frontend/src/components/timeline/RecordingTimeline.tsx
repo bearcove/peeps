@@ -29,6 +29,13 @@ function formatChangeSummary(s: FrameChangeSummary): string {
   return parts.join(", ");
 }
 
+const DOWNSAMPLE_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: "All frames" },
+  { value: 2, label: "Every 2nd" },
+  { value: 5, label: "Every 5th" },
+  { value: 10, label: "Every 10th" },
+];
+
 interface RecordingTimelineProps {
   frames: FrameSummary[];
   frameCount: number;
@@ -47,6 +54,16 @@ interface RecordingTimelineProps {
   totalCaptureMs?: number;
   ghostMode?: boolean;
   onGhostToggle?: () => void;
+  /** Number of frames actually processed in the union (may differ from frameCount when downsampling). */
+  processedFrameCount?: number;
+  /** Current downsample interval (1 = all frames). */
+  downsampleInterval?: number;
+  /** Called when user changes the downsample interval. */
+  onDownsampleChange?: (interval: number) => void;
+  /** When true, show a "Rebuild" button to rebuild the union with the new interval. */
+  canRebuild?: boolean;
+  /** Called when user clicks Rebuild. */
+  onRebuild?: () => void;
 }
 
 export function RecordingTimeline({
@@ -63,6 +80,11 @@ export function RecordingTimeline({
   totalCaptureMs,
   ghostMode,
   onGhostToggle,
+  processedFrameCount,
+  downsampleInterval,
+  onDownsampleChange,
+  canRebuild,
+  onRebuild,
 }: RecordingTimelineProps) {
   const firstMs = frames[0]?.captured_at_unix_ms ?? 0;
   const currentMs = frames[currentFrameIndex]?.captured_at_unix_ms ?? firstMs;
@@ -80,6 +102,9 @@ export function RecordingTimeline({
     ? changeFrames.find((f) => f > currentFrameIndex)
     : undefined;
 
+  const isDownsampled =
+    processedFrameCount !== undefined && processedFrameCount < frameCount;
+
   return (
     <div className="recording-timeline">
       {buildingUnion ? (
@@ -95,6 +120,9 @@ export function RecordingTimeline({
       ) : (
         <span className="recording-timeline-label">
           Frame {currentFrameIndex + 1} / {frameCount}
+          {isDownsampled && (
+            <span className="recording-timeline-processed"> · {processedFrameCount} proc</span>
+          )}
           {deltaText && (
             <span className="recording-timeline-delta">{deltaText}</span>
           )}
@@ -140,6 +168,27 @@ export function RecordingTimeline({
       <span className="recording-timeline-time">
         {formatElapsed(elapsedMs)}
       </span>
+      {onDownsampleChange && frameCount >= 100 && (
+        <div className="recording-timeline-downsample">
+          <select
+            className="recording-timeline-select"
+            value={downsampleInterval ?? 1}
+            onChange={(e) => onDownsampleChange(Number(e.target.value))}
+            disabled={buildingUnion}
+          >
+            {DOWNSAMPLE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          {canRebuild && onRebuild && (
+            <ActionButton size="sm" variant="default" onPress={onRebuild}>
+              Rebuild
+            </ActionButton>
+          )}
+        </div>
+      )}
       {hasStats && (
         <span className="recording-timeline-stats">
           Avg {formatMs(avgCaptureMs!)} · Max {formatMs(maxCaptureMs!)} · Total{" "}

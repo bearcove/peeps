@@ -50,3 +50,8 @@
 .ui-switch[data-focus-visible] .ui-switch-track {
     box-shadow: 0 0 0 2px var(--focus-ring);
 }
+
+.ui-switch[data-disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

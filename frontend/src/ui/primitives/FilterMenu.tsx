@@ -28,6 +28,10 @@ export type FilterMenuProps = {
   colorByActive?: boolean;
   onToggleColorBy?: () => void;
   colorByLabel?: React.ReactNode;
+  subgraphsActive?: boolean;
+  onToggleSubgraphs?: () => void;
+  subgraphsLabel?: React.ReactNode;
+  subgraphsDisabled?: boolean;
   className?: string;
 };
 
@@ -40,6 +44,10 @@ export function FilterMenu({
   colorByActive = false,
   onToggleColorBy,
   colorByLabel,
+  subgraphsActive = false,
+  onToggleSubgraphs,
+  subgraphsLabel,
+  subgraphsDisabled = false,
   className,
 }: FilterMenuProps) {
   const [open, setOpen] = useState(false);
@@ -89,6 +97,16 @@ export function FilterMenu({
                   label={colorByLabel ?? `Color by ${label}`}
                 />
               </div>
+              {onToggleSubgraphs && (
+                <div className="ui-filter-setting-row">
+                  <Switch
+                    checked={subgraphsActive}
+                    onChange={onToggleSubgraphs}
+                    isDisabled={subgraphsDisabled}
+                    label={subgraphsLabel ?? "Use subgraphs"}
+                  />
+                </div>
+              )}
               <div className="ui-filter-divider" />
             </>
           )}

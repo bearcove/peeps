@@ -26,27 +26,43 @@ export interface UnionLayout {
   nodePresence: Map<string, Set<number>>;
   /** Which edge IDs exist at each frame index. */
   edgePresence: Map<string, Set<number>>;
+  /** Sorted list of frame indices that were actually fetched and processed. */
+  processedFrameIndices: number[];
 }
 
 // ── Build ─────────────────────────────────────────────────────
 
 const BATCH_SIZE = 20;
 
+function selectFrameIndices(frames: FrameSummary[], interval: number): number[] {
+  if (frames.length === 0) return [];
+  if (interval <= 1) return frames.map((f) => f.frame_index);
+  const indices: number[] = [];
+  for (let i = 0; i < frames.length; i++) {
+    if (i === 0 || i === frames.length - 1 || i % interval === 0) {
+      indices.push(frames[i].frame_index);
+    }
+  }
+  return indices;
+}
+
 export async function buildUnionLayout(
   frames: FrameSummary[],
   apiClient: ApiClient,
   renderNode: RenderNodeForMeasure,
   onProgress?: (loaded: number, total: number) => void,
+  downsampleInterval: number = 1,
 ): Promise<UnionLayout> {
-  const total = frames.length;
+  const processedFrameIndices = selectFrameIndices(frames, downsampleInterval);
+  const total = processedFrameIndices.length;
   const frameCache = new Map<number, { entities: EntityDef[]; edges: EdgeDef[] }>();
 
-  // Fetch all frames in parallel batches.
+  // Fetch processed frames in parallel batches.
   for (let batchStart = 0; batchStart < total; batchStart += BATCH_SIZE) {
     const batchEnd = Math.min(batchStart + BATCH_SIZE, total);
     const promises: Promise<void>[] = [];
     for (let i = batchStart; i < batchEnd; i++) {
-      const frameIndex = frames[i].frame_index;
+      const frameIndex = processedFrameIndices[i];
       promises.push(
         apiClient.fetchRecordingFrame(frameIndex).then((snapshot) => {
           const converted = convertSnapshot(snapshot);
@@ -91,7 +107,28 @@ export async function buildUnionLayout(
     frameCache,
     nodePresence,
     edgePresence,
+    processedFrameIndices,
   };
+}
+
+// ── Nearest processed frame ───────────────────────────────────
+
+/** Returns the processed frame index nearest to frameIndex. */
+export function nearestProcessedFrame(frameIndex: number, processedFrameIndices: number[]): number {
+  if (processedFrameIndices.length === 0) return 0;
+  // Binary search: find the first index where processedFrameIndices[i] >= frameIndex.
+  let lo = 0;
+  let hi = processedFrameIndices.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (processedFrameIndices[mid] < frameIndex) lo = mid + 1;
+    else hi = mid;
+  }
+  if (lo === processedFrameIndices.length) return processedFrameIndices[processedFrameIndices.length - 1];
+  if (lo === 0) return processedFrameIndices[0];
+  const lower = processedFrameIndices[lo - 1];
+  const upper = processedFrameIndices[lo];
+  return frameIndex - lower <= upper - frameIndex ? lower : upper;
 }
 
 // ── Entity diffs ──────────────────────────────────────────────
@@ -151,9 +188,9 @@ export interface FrameChangeSummary {
 
 export function computeFrameChangeSummary(
   frameIndex: number,
+  prevFrameIndex: number | undefined,
   unionLayout: UnionLayout,
 ): FrameChangeSummary {
-  const prevIndex = frameIndex - 1;
   let nodesAdded = 0;
   let nodesRemoved = 0;
   let edgesAdded = 0;
@@ -161,14 +198,14 @@ export function computeFrameChangeSummary(
 
   for (const [, frames] of unionLayout.nodePresence) {
     const inCurrent = frames.has(frameIndex);
-    const inPrev = prevIndex >= 0 && frames.has(prevIndex);
+    const inPrev = prevFrameIndex !== undefined && frames.has(prevFrameIndex);
     if (inCurrent && !inPrev) nodesAdded++;
     if (!inCurrent && inPrev) nodesRemoved++;
   }
 
   for (const [, frames] of unionLayout.edgePresence) {
     const inCurrent = frames.has(frameIndex);
-    const inPrev = prevIndex >= 0 && frames.has(prevIndex);
+    const inPrev = prevFrameIndex !== undefined && frames.has(prevFrameIndex);
     if (inCurrent && !inPrev) edgesAdded++;
     if (!inCurrent && inPrev) edgesRemoved++;
   }
@@ -176,32 +213,41 @@ export function computeFrameChangeSummary(
   return { nodesAdded, nodesRemoved, edgesAdded, edgesRemoved };
 }
 
-export function computeChangeSummaries(unionLayout: UnionLayout): FrameChangeSummary[] {
-  const frameCount = unionLayout.frameCache.size;
-  return Array.from({ length: frameCount }, (_, i) => computeFrameChangeSummary(i, unionLayout));
+export function computeChangeSummaries(unionLayout: UnionLayout): Map<number, FrameChangeSummary> {
+  const result = new Map<number, FrameChangeSummary>();
+  const processed = unionLayout.processedFrameIndices;
+  for (let i = 0; i < processed.length; i++) {
+    const frameIdx = processed[i];
+    const prevIdx = i > 0 ? processed[i - 1] : undefined;
+    result.set(frameIdx, computeFrameChangeSummary(frameIdx, prevIdx, unionLayout));
+  }
+  return result;
 }
 
 export function computeChangeFrames(unionLayout: UnionLayout): number[] {
-  const frameCount = unionLayout.frameCache.size;
-  const result: number[] = [0];
+  const processed = unionLayout.processedFrameIndices;
+  if (processed.length === 0) return [];
+  const result: number[] = [processed[0]];
 
-  for (let i = 1; i < frameCount; i++) {
+  for (let i = 1; i < processed.length; i++) {
+    const frameIdx = processed[i];
+    const prevIdx = processed[i - 1];
     let changed = false;
     for (const [, frames] of unionLayout.nodePresence) {
-      if (frames.has(i) !== frames.has(i - 1)) {
+      if (frames.has(frameIdx) !== frames.has(prevIdx)) {
         changed = true;
         break;
       }
     }
     if (!changed) {
       for (const [, frames] of unionLayout.edgePresence) {
-        if (frames.has(i) !== frames.has(i - 1)) {
+        if (frames.has(frameIdx) !== frames.has(prevIdx)) {
           changed = true;
           break;
         }
       }
     }
-    if (changed) result.push(i);
+    if (changed) result.push(frameIdx);
   }
 
   return result;
@@ -217,7 +263,8 @@ export function renderFrameFromUnion(
   focusedEntityId: string | null,
   ghostMode?: boolean,
 ): LayoutResult {
-  const frameData = unionLayout.frameCache.get(frameIndex);
+  const snappedIndex = nearestProcessedFrame(frameIndex, unionLayout.processedFrameIndices);
+  const frameData = unionLayout.frameCache.get(snappedIndex);
   if (!frameData) return { nodes: [], edges: [] };
 
   // Apply krate/process filters.

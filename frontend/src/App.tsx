@@ -70,12 +70,14 @@ import {
   type ElkPoint,
   type LayoutResult,
   type RenderNodeForMeasure,
+  type SubgraphScopeMode,
 } from "./layout";
 import {
   buildUnionLayout,
   computeChangeFrames,
   computeChangeSummaries,
   diffEntityBetweenFrames,
+  nearestProcessedFrame,
   renderFrameFromUnion,
   type EntityDiff,
   type FrameChangeSummary,
@@ -374,6 +376,24 @@ function RpcPairNode({ data }: { data: RpcPairNodeData }) {
   );
 }
 
+type ScopeGroupNodeData = {
+  isScopeGroup: true;
+  label: string;
+  count: number;
+  selected: boolean;
+};
+
+function ScopeGroupNode({ data }: { data: ScopeGroupNodeData }) {
+  return (
+    <div className="mockup-scope-group">
+      <div className="mockup-scope-group-header">
+        <span className="mockup-scope-group-label">{data.label}</span>
+        <span className="mockup-scope-group-meta">{data.count}</span>
+      </div>
+    </div>
+  );
+}
+
 function ElkRoutedEdge({ id, data, style, markerEnd, selected }: EdgeProps) {
   const edgeData = data as { points?: ElkPoint[]; tooltip?: string; ghost?: boolean } | undefined;
   const points = edgeData?.points ?? [];
@@ -447,12 +467,13 @@ const mockNodeTypes = {
   mockNode: MockNodeComponent,
   channelPairNode: ChannelPairNode,
   rpcPairNode: RpcPairNode,
+  scopeGroupNode: ScopeGroupNode,
 };
 const mockEdgeTypes = { elkrouted: ElkRoutedEdge };
 
 // ── Render callback for layout measurement ────────────────────
 
-export const renderNodeForMeasure: RenderNodeForMeasure = (def) => {
+const renderNodeForMeasure: RenderNodeForMeasure = (def) => {
   if (def.channelPair) {
     return (
       <ChannelPairNode
@@ -569,7 +590,10 @@ function GraphFlow({
       edges={edges}
       nodeTypes={mockNodeTypes}
       edgeTypes={mockEdgeTypes}
-      onNodeClick={(_event, node) => onSelect({ kind: "entity", id: node.id })}
+      onNodeClick={(_event, node) => {
+        if ((node.data as { isScopeGroup?: boolean } | undefined)?.isScopeGroup) return;
+        onSelect({ kind: "entity", id: node.id });
+      }}
       onEdgeClick={(_event, edge) => onSelect({ kind: "edge", id: edge.id })}
       onPaneClick={() => onSelect(null)}
       proOptions={{ hideAttribution: true }}
@@ -606,6 +630,9 @@ function GraphPanel({
   scopeColorMode,
   onToggleProcessColorBy,
   onToggleCrateColorBy,
+  useSubgraphs,
+  onToggleProcessSubgraphs,
+  onToggleCrateSubgraphs,
   unionFrameLayout,
 }: {
   entityDefs: EntityDef[];
@@ -627,20 +654,24 @@ function GraphPanel({
   scopeColorMode: ScopeColorMode;
   onToggleProcessColorBy: () => void;
   onToggleCrateColorBy: () => void;
+  useSubgraphs: boolean;
+  onToggleProcessSubgraphs: () => void;
+  onToggleCrateSubgraphs: () => void;
   /** When provided, use this pre-computed layout (union mode) instead of measuring + ELK. */
   unionFrameLayout?: LayoutResult;
 }) {
   const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
+  const subgraphScopeMode: SubgraphScopeMode = useSubgraphs ? scopeColorMode : "none";
 
   // In snapshot mode (no unionFrameLayout), measure and lay out from scratch.
   React.useEffect(() => {
     if (unionFrameLayout) return; // skip — union mode provides layout directly
     if (entityDefs.length === 0) return;
     measureNodeDefs(entityDefs, renderNodeForMeasure)
-      .then((sizes) => layoutGraph(entityDefs, edgeDefs, sizes))
+      .then((sizes) => layoutGraph(entityDefs, edgeDefs, sizes, subgraphScopeMode))
       .then(setLayout)
       .catch(console.error);
-  }, [entityDefs, edgeDefs, unionFrameLayout]);
+  }, [entityDefs, edgeDefs, subgraphScopeMode, unionFrameLayout]);
 
   const effectiveLayout = unionFrameLayout ?? layout;
 
@@ -651,11 +682,13 @@ function GraphPanel({
       effectiveLayout.nodes.map((n) => {
         const entity = entityById.get(n.id);
         const scopeKey =
-          scopeColorMode === "process"
-            ? entity?.processId
-            : scopeColorMode === "crate"
-              ? (entity?.krate ?? "~no-crate")
-              : undefined;
+          !entity
+            ? undefined
+            : scopeColorMode === "process"
+              ? entity.processId
+              : scopeColorMode === "crate"
+                ? (entity.krate ?? "~no-crate")
+                : undefined;
         return {
           ...n,
           data: {
@@ -691,6 +724,8 @@ function GraphPanel({
                 <span className="mockup-graph-stat">{edgeDefs.length} edges</span>
               </>
             )}
+          </div>
+          <div className="mockup-graph-toolbar-right">
             {processItems.length > 0 && (
               <FilterMenu
                 label="Process"
@@ -701,6 +736,9 @@ function GraphPanel({
                 colorByActive={scopeColorMode === "process"}
                 onToggleColorBy={onToggleProcessColorBy}
                 colorByLabel="Use process colors"
+                subgraphsActive={scopeColorMode === "process" && useSubgraphs}
+                onToggleSubgraphs={onToggleProcessSubgraphs}
+                subgraphsLabel="Use subgraphs"
               />
             )}
             {crateItems.length > 1 && (
@@ -713,17 +751,18 @@ function GraphPanel({
                 colorByActive={scopeColorMode === "crate"}
                 onToggleColorBy={onToggleCrateColorBy}
                 colorByLabel="Use crate colors"
+                subgraphsActive={scopeColorMode === "crate" && useSubgraphs}
+                onToggleSubgraphs={onToggleCrateSubgraphs}
+                subgraphsLabel="Use subgraphs"
               />
             )}
-          </div>
-          {focusedEntityId && (
-            <div className="mockup-graph-toolbar-right">
+            {focusedEntityId && (
               <ActionButton onPress={onExitFocus}>
                 <Crosshair size={14} weight="bold" />
                 Exit Focus
               </ActionButton>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
       {entityDefs.length === 0 ? (
@@ -1508,10 +1547,13 @@ export function App() {
   const [hiddenKrates, setHiddenKrates] = useState<ReadonlySet<string>>(new Set());
   const [hiddenProcesses, setHiddenProcesses] = useState<ReadonlySet<string>>(new Set());
   const [scopeColorMode, setScopeColorMode] = useState<ScopeColorMode>("none");
+  const [useSubgraphs, setUseSubgraphs] = useState(false);
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [isLive, setIsLive] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
   const [unionFrameLayout, setUnionFrameLayout] = useState<LayoutResult | undefined>(undefined);
+  const [downsampleInterval, setDownsampleInterval] = useState(1);
+  const [builtDownsampleInterval, setBuiltDownsampleInterval] = useState(1);
   const pollingRef = useRef<number | null>(null);
   const isLiveRef = useRef(isLive);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1590,11 +1632,33 @@ export function App() {
   );
 
   const handleToggleProcessColorBy = useCallback(() => {
-    setScopeColorMode((prev) => (prev === "process" ? "none" : "process"));
+    setScopeColorMode((prev) => {
+      const next = prev === "process" ? "none" : "process";
+      if (next === "none") setUseSubgraphs(false);
+      return next;
+    });
   }, []);
 
   const handleToggleCrateColorBy = useCallback(() => {
-    setScopeColorMode((prev) => (prev === "crate" ? "none" : "crate"));
+    setScopeColorMode((prev) => {
+      const next = prev === "crate" ? "none" : "crate";
+      if (next === "none") setUseSubgraphs(false);
+      return next;
+    });
+  }, []);
+
+  const handleToggleProcessSubgraphs = useCallback(() => {
+    setScopeColorMode((prevScope) => {
+      setUseSubgraphs((prevOn) => (prevScope === "process" ? !prevOn : true));
+      return "process";
+    });
+  }, []);
+
+  const handleToggleCrateSubgraphs = useCallback(() => {
+    setScopeColorMode((prevScope) => {
+      setUseSubgraphs((prevOn) => (prevScope === "crate" ? !prevOn : true));
+      return "crate";
+    });
   }, []);
 
   const { entities, edges } = useMemo(() => {
@@ -1678,6 +1742,10 @@ export function App() {
     }
     try {
       const session = await apiClient.stopRecording();
+      const autoInterval =
+        session.frame_count > 500 ? 5 : session.frame_count >= 100 ? 2 : 1;
+      setDownsampleInterval(autoInterval);
+      setBuiltDownsampleInterval(autoInterval);
       setRecording({
         phase: "stopped",
         sessionId: session.session_id,
@@ -1708,6 +1776,7 @@ export function App() {
               return { ...prev, buildProgress: [loaded, total] };
             });
           },
+          autoInterval,
         );
         setRecording((prev) => {
           if (prev.phase !== "stopped") return prev;
@@ -1715,8 +1784,9 @@ export function App() {
         });
 
         // Render last frame from union layout.
+        const snappedLast = nearestProcessedFrame(lastFrameIndex, union.processedFrameIndices);
         const unionFrame = renderFrameFromUnion(
-          lastFrameIndex,
+          snappedLast,
           union,
           hiddenKrates,
           hiddenProcesses,
@@ -1755,6 +1825,10 @@ export function App() {
       e.target.value = "";
       try {
         const session = await apiClient.importRecording(file);
+        const autoInterval =
+          session.frame_count > 500 ? 5 : session.frame_count >= 100 ? 2 : 1;
+        setDownsampleInterval(autoInterval);
+        setBuiltDownsampleInterval(autoInterval);
         setRecording({
           phase: "stopped",
           sessionId: session.session_id,
@@ -1783,14 +1857,16 @@ export function App() {
                 return { ...prev, buildProgress: [loaded, total] };
               });
             },
+            autoInterval,
           );
           setRecording((prev) => {
             if (prev.phase !== "stopped") return prev;
             return { ...prev, unionLayout: union, buildingUnion: false };
           });
 
+          const snappedLast = nearestProcessedFrame(lastFrameIndex, union.processedFrameIndices);
           const unionFrame = renderFrameFromUnion(
-            lastFrameIndex,
+            snappedLast,
             union,
             hiddenKrates,
             hiddenProcesses,
@@ -1827,7 +1903,8 @@ export function App() {
         setUnionFrameLayout(result);
 
         // Update snapshot state with this frame's entities/edges for the inspector.
-        const frameData = unionLayout.frameCache.get(frameIndex);
+        const snapped = nearestProcessedFrame(frameIndex, unionLayout.processedFrameIndices);
+        const frameData = unionLayout.frameCache.get(snapped);
         if (frameData) {
           setSnap({ phase: "ready", entities: frameData.entities, edges: frameData.edges });
         }
@@ -1847,6 +1924,60 @@ export function App() {
     },
     [hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode],
   );
+
+  const handleRebuildUnion = useCallback(async () => {
+    if (recording.phase !== "stopped" && recording.phase !== "scrubbing") return;
+    const { frames, sessionId, frameCount, avgCaptureMs, maxCaptureMs, totalCaptureMs } =
+      recording;
+    setRecording({
+      phase: "stopped",
+      sessionId,
+      frameCount,
+      frames,
+      unionLayout: null,
+      buildingUnion: true,
+      buildProgress: [0, frames.length],
+      avgCaptureMs,
+      maxCaptureMs,
+      totalCaptureMs,
+    });
+    try {
+      const union = await buildUnionLayout(
+        frames,
+        apiClient,
+        renderNodeForMeasure,
+        (loaded, total) => {
+          setRecording((prev) => {
+            if (prev.phase !== "stopped") return prev;
+            return { ...prev, buildProgress: [loaded, total] };
+          });
+        },
+        downsampleInterval,
+      );
+      setBuiltDownsampleInterval(downsampleInterval);
+      setRecording((prev) => {
+        if (prev.phase !== "stopped") return prev;
+        return { ...prev, unionLayout: union, buildingUnion: false };
+      });
+      const lastFrameIdx = frames[frames.length - 1]?.frame_index ?? 0;
+      const snapped = nearestProcessedFrame(lastFrameIdx, union.processedFrameIndices);
+      const unionFrame = renderFrameFromUnion(
+        snapped,
+        union,
+        hiddenKrates,
+        hiddenProcesses,
+        focusedEntityId,
+        ghostMode,
+      );
+      setUnionFrameLayout(unionFrame);
+      const frameData = union.frameCache.get(snapped);
+      if (frameData) {
+        setSnap({ phase: "ready", entities: frameData.entities, edges: frameData.edges });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, [recording, downsampleInterval, hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode]);
 
   // Re-render union frame when filters change during playback.
   useEffect(() => {
@@ -1946,21 +2077,24 @@ export function App() {
         ? recording.frames.length - 1
         : 0;
 
-  const changeSummaries = useMemo<FrameChangeSummary[] | null>(() => {
-    const unionLayout =
-      (recording.phase === "stopped" || recording.phase === "scrubbing") && recording.unionLayout
-        ? recording.unionLayout
-        : null;
-    return unionLayout ? computeChangeSummaries(unionLayout) : null;
-  }, [recording]);
+  const unionLayoutForDerived =
+    (recording.phase === "stopped" || recording.phase === "scrubbing") && recording.unionLayout
+      ? recording.unionLayout
+      : null;
+
+  const snappedFrameIndex = unionLayoutForDerived
+    ? nearestProcessedFrame(currentFrameIndex, unionLayoutForDerived.processedFrameIndices)
+    : currentFrameIndex;
+
+  const processedFrameCount = unionLayoutForDerived?.processedFrameIndices.length;
+
+  const changeSummaries = useMemo<Map<number, FrameChangeSummary> | null>(() => {
+    return unionLayoutForDerived ? computeChangeSummaries(unionLayoutForDerived) : null;
+  }, [recording]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const changeFrames = useMemo<number[] | null>(() => {
-    const unionLayout =
-      (recording.phase === "stopped" || recording.phase === "scrubbing") && recording.unionLayout
-        ? recording.unionLayout
-        : null;
-    return unionLayout ? computeChangeFrames(unionLayout) : null;
-  }, [recording]);
+    return unionLayoutForDerived ? computeChangeFrames(unionLayoutForDerived) : null;
+  }, [recording]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (recording.phase !== "stopped" && recording.phase !== "scrubbing") return;
@@ -2085,13 +2219,18 @@ export function App() {
             onScrub={handleScrub}
             buildingUnion={recording.phase === "stopped" && recording.buildingUnion}
             buildProgress={recording.phase === "stopped" ? recording.buildProgress : undefined}
-            changeSummary={changeSummaries?.[currentFrameIndex]}
+            changeSummary={changeSummaries?.get(snappedFrameIndex)}
             changeFrames={changeFrames ?? undefined}
             avgCaptureMs={recording.avgCaptureMs}
             maxCaptureMs={recording.maxCaptureMs}
             totalCaptureMs={recording.totalCaptureMs}
             ghostMode={ghostMode}
             onGhostToggle={() => setGhostMode((v) => !v)}
+            processedFrameCount={processedFrameCount}
+            downsampleInterval={downsampleInterval}
+            onDownsampleChange={setDownsampleInterval}
+            canRebuild={downsampleInterval !== builtDownsampleInterval}
+            onRebuild={handleRebuildUnion}
           />
         )}
       <SplitLayout
@@ -2116,6 +2255,9 @@ export function App() {
             scopeColorMode={scopeColorMode}
             onToggleProcessColorBy={handleToggleProcessColorBy}
             onToggleCrateColorBy={handleToggleCrateColorBy}
+            useSubgraphs={useSubgraphs}
+            onToggleProcessSubgraphs={handleToggleProcessSubgraphs}
+            onToggleCrateSubgraphs={handleToggleCrateSubgraphs}
             unionFrameLayout={unionFrameLayout}
           />
         }

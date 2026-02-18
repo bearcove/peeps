@@ -91,3 +91,32 @@
     color: light-dark(#1a56db, #7aadff);
     border-color: light-dark(#b4cef9, #2f4a8a);
 }
+
+.recording-timeline-processed {
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.recording-timeline-downsample {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.recording-timeline-select {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    padding: 2px 4px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    height: 22px;
+}
+
+.recording-timeline-select:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
