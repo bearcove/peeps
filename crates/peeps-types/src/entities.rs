@@ -1,7 +1,9 @@
 use compact_str::CompactString;
 use facet::Facet;
 
-use crate::{caller_source, next_entity_id, EntityId, MetaSerializeError, PTime};
+use crate::{
+    caller_source, infer_krate_from_source, next_entity_id, EntityId, MetaSerializeError, PTime,
+};
 
 /// A: future, a lock, a channel end (tx, rx), a connection leg, a socket, etc.
 #[derive(Facet)]
@@ -20,8 +22,8 @@ pub struct Entity {
     pub source: CompactString,
 
     /// Rust crate that created this entity, if known.
-    /// Populated when entities are created through macros (which can access `env!("CARGO_PKG_NAME")`),
-    /// `None` for entities created through `#[track_caller]`-based APIs.
+    /// Populated explicitly by macros when available, otherwise inferred from `source`
+    /// by walking to the nearest `Cargo.toml` at runtime.
     pub krate: Option<CompactString>,
 
     /// Human-facing name for this entity.
@@ -85,11 +87,16 @@ impl EntityBuilder {
     where
         M: for<'facet> Facet<'facet>,
     {
+        let source = self.source.unwrap_or_else(caller_source);
+        let krate = self
+            .krate
+            .or_else(|| infer_krate_from_source(source.as_str()));
+
         Ok(Entity {
             id: next_entity_id(),
             birth: PTime::now(),
-            source: self.source.unwrap_or_else(caller_source),
-            krate: self.krate,
+            source,
+            krate,
             name: self.name,
             body: self.body,
             meta: facet_value::to_value(meta)?,

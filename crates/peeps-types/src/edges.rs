@@ -2,8 +2,8 @@ use compact_str::CompactString;
 use facet::Facet;
 
 use crate::{
-    ChannelCloseCause, EntityId, EventId, MetaSerializeError, PTime, ScopeId, caller_source,
-    next_event_id,
+    caller_source, infer_krate_from_source, next_event_id, ChannelCloseCause, EntityId, EventId,
+    MetaSerializeError, PTime, ScopeId,
 };
 
 /// Relationship between two entities.
@@ -66,6 +66,8 @@ pub struct Event {
     /// Event source site as `{path}:{line}`.
     pub source: CompactString,
     /// Rust crate that created this event, if known.
+    /// Populated explicitly by macros when available, otherwise inferred from `source`
+    /// by walking to the nearest `Cargo.toml` at runtime.
     pub krate: Option<CompactString>,
     /// Event target (entity or scope).
     pub target: EventTarget,
@@ -86,11 +88,14 @@ impl Event {
     where
         M: for<'facet> Facet<'facet>,
     {
+        let source = caller_source();
+        let krate = infer_krate_from_source(source.as_str());
+
         Ok(Self {
             id: next_event_id(),
             at: PTime::now(),
-            source: caller_source(),
-            krate: None,
+            source,
+            krate,
             target,
             kind,
             meta: facet_value::to_value(meta)?,

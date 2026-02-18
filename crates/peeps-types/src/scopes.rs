@@ -1,7 +1,9 @@
 use compact_str::CompactString;
 use facet::Facet;
 
-use crate::{caller_source, next_scope_id, MetaSerializeError, PTime, ScopeId};
+use crate::{
+    caller_source, infer_krate_from_source, next_scope_id, MetaSerializeError, PTime, ScopeId,
+};
 
 /// A scope groups execution context over time (for example process/thread/task/connection).
 #[derive(Facet)]
@@ -16,6 +18,8 @@ pub struct Scope {
     pub source: CompactString,
 
     /// Rust crate that created this scope, if known.
+    /// Populated explicitly by macros when available, otherwise inferred from `source`
+    /// by walking to the nearest `Cargo.toml` at runtime.
     pub krate: Option<CompactString>,
 
     /// Human-facing name for this scope.
@@ -78,11 +82,16 @@ impl ScopeBuilder {
     where
         M: for<'facet> Facet<'facet>,
     {
+        let source = self.source.unwrap_or_else(caller_source);
+        let krate = self
+            .krate
+            .or_else(|| infer_krate_from_source(source.as_str()));
+
         Ok(Scope {
             id: next_scope_id(),
             birth: PTime::now(),
-            source: self.source.unwrap_or_else(caller_source),
-            krate: self.krate,
+            source,
+            krate,
             name: self.name,
             body: self.body,
             meta: facet_value::to_value(meta)?,
