@@ -15,24 +15,25 @@ When debugging transient stalls and recoveries, we can hit `Record`, let the app
 
 ### M0 - Groundwork
 
-- [ ] Confirm product semantics for record sessions (`start`/`stop`, single active session, interval defaults)
-- [ ] Confirm retention policy (frame cap and eviction behavior)
-- [ ] Confirm whether recording is global (all connected processes) or filterable (future)
-- [ ] Confirm minimum UI behavior while recording (live latest frame + elapsed + frame count)
+- [x] Confirm product semantics for record sessions (`start`/`stop`, single active session, interval defaults)
+- [x] Confirm retention policy (frame cap and eviction behavior) — max_frames=1000 default, drop oldest on overflow
+- [x] Confirm whether recording is global (all connected processes) or filterable (future) — global for now
+- [x] Confirm minimum UI behavior while recording (live latest frame + elapsed + frame count)
 
-### M1 - Record V1 (Thin Slice)
+### M1 - Record V1 (Thin Slice) ✓
 
-- [ ] Backend: add recording session state (`session_id`, `interval_ms`, `started_at`, `stopped_at`, `status`)
-- [ ] Backend: periodic snapshot loop every `interval_ms` (default `500ms`)
-- [ ] Backend: store frames in order with capture timestamp
-- [ ] Backend: add APIs:
-- [ ] `POST /api/record/start`
-- [ ] `POST /api/record/stop`
-- [ ] `GET /api/record/current`
-- [ ] Frontend: add `Record`/`Stop` button
-- [ ] Frontend: add basic timeline scrubber over captured frames
-- [ ] Frontend: render selected frame as normal graph (no layout stabilization yet)
-- [ ] Frontend: add `Live` toggle to follow newest frame while recording
+- [x] Backend: add recording session state (`session_id`, `interval_ms`, `started_at`, `stopped_at`, `status`)
+- [x] Backend: periodic snapshot loop every `interval_ms` (default `500ms`)
+- [x] Backend: store frames in order with capture timestamp (pre-serialized JSON)
+- [x] Backend: add APIs:
+- [x] `POST /api/record/start`
+- [x] `POST /api/record/stop`
+- [x] `GET /api/record/current`
+- [x] `GET /api/record/current/frame/{frame_index}`
+- [x] Frontend: add `Record`/`Stop` button
+- [x] Frontend: add basic timeline scrubber over captured frames
+- [x] Frontend: render selected frame as normal graph (no layout stabilization yet)
+- [x] Frontend: add `Live` toggle to follow newest frame while recording
 
 ### M2 - Final Data Model (Historical Union + Stable Layout)
 
@@ -118,29 +119,29 @@ This is the target model we should design toward, even if V1 only implements a s
 - `start_frame: u32`
 - `end_frame: u32`
 
-## API Shape (Planned)
+## API Shape
 
-- [ ] `POST /api/record/start`
+- [x] `POST /api/record/start`
   - request: `{ interval_ms?: number, max_frames?: number }`
-  - response: `{ session_id, interval_ms, started_at_unix_ms, status }`
-- [ ] `POST /api/record/stop`
-  - request: `{ session_id }` (or implicit current)
-  - response: `{ session_id, stopped_at_unix_ms, frame_count, status }`
-- [ ] `GET /api/record/current`
-  - response: current session metadata + frame list
-- [ ] `GET /api/record/:session_id/frame/:frame_index`
-  - response: frame data (V1 path)
+  - response: `RecordCurrentResponse { session: RecordingSessionInfo }`
+- [x] `POST /api/record/stop`
+  - request: `{}` (implicit current session)
+  - response: `RecordCurrentResponse { session: RecordingSessionInfo }`
+- [x] `GET /api/record/current`
+  - response: `RecordCurrentResponse { session: RecordingSessionInfo | null }`
+- [x] `GET /api/record/current/frame/{frame_index}`
+  - response: `SnapshotCutResponse` (pre-serialized, same shape as `/api/snapshot`)
 - [ ] `GET /api/record/:session_id/union`
-  - response: union graph + intervals (+ layout if precomputed)
+  - response: union graph + intervals (+ layout if precomputed) — M2
 
-## UI Interaction Model (Planned)
+## UI Interaction Model
 
-- [ ] `Record` button starts session and switches UI to recording mode
-- [ ] `Stop` ends session and keeps timeline available
-- [ ] Scrubber selects frame index
-- [ ] `Live` mode auto-follows newest frame while recording
-- [ ] Frame label shows absolute timestamp + relative elapsed
-- [ ] Optional ghost toggle for non-active nodes
+- [x] `Record` button starts session and switches UI to recording mode
+- [x] `Stop` ends session and keeps timeline available
+- [x] Scrubber selects frame index (range slider in RecordingTimeline component)
+- [x] `Live` mode auto-follows newest frame while recording
+- [x] Frame label shows frame N/total + relative elapsed
+- [ ] Optional ghost toggle for non-active nodes — M3
 
 ## Risks
 
@@ -152,6 +153,7 @@ This is the target model we should design toward, even if V1 only implements a s
 ## Decisions Log
 
 - [x] Recording default interval target is `500ms`
-- [ ] Decide whether to allow only one active session at a time
+- [x] Only one active session at a time (409 Conflict if already recording)
+- [x] Frames stored as pre-serialized JSON to avoid Clone on Snapshot types
 - [ ] Decide whether to compute layout in backend, frontend, or both
 - [ ] Decide when union graph is built (on stop vs incremental during recording)
