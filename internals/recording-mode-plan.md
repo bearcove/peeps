@@ -35,14 +35,18 @@ When debugging transient stalls and recoveries, we can hit `Record`, let the app
 - [x] Frontend: render selected frame as normal graph (no layout stabilization yet)
 - [x] Frontend: add `Live` toggle to follow newest frame while recording
 
-### M2 - Final Data Model (Historical Union + Stable Layout)
+### M2 - Stable Layout via Union Graph ✓
 
-- [ ] Backend: build session-level union graph (`all nodes/edges ever seen`)
-- [ ] Backend: compute activity intervals per node/edge
-- [ ] Backend: expose union graph + frame-indexed visibility metadata
-- [ ] Frontend: run ELK on union graph (or backend-provided layout)
-- [ ] Frontend: apply visibility masks when scrubbing (show only active at frame `t`)
-- [ ] Frontend: keep stable positions across frames
+Frontend-only approach: union graph is built client-side from fetched frames, no backend union API needed for now.
+
+- [x] Frontend: build union graph from all recording frames (`unionGraph.ts:buildUnionLayout()`)
+- [x] Frontend: track per-node/per-edge frame presence (`nodePresence`, `edgePresence` maps)
+- [x] Frontend: run ELK on union graph once, cache positions
+- [x] Frontend: apply visibility masks when scrubbing (filter to active nodes/edges at frame `t`)
+- [x] Frontend: keep stable positions across frames (union positions locked, auto-fit suppressed)
+- [ ] Backend: build session-level union graph — deferred, not needed while frontend approach works
+- [ ] Backend: compute activity intervals per node/edge — deferred
+- [ ] Backend: expose union graph + frame-indexed visibility metadata — deferred
 
 ### M3 - Temporal Diagnostics UX
 
@@ -145,7 +149,7 @@ This is the target model we should design toward, even if V1 only implements a s
 
 ## Risks
 
-- [ ] Layout jitter if we re-run ELK per frame instead of union graph
+- [x] Layout jitter if we re-run ELK per frame instead of union graph — solved by union graph approach
 - [ ] Memory growth for long sessions with full attr history
 - [ ] Snapshot latency drift at small intervals
 - [ ] UX overload if we show too much temporal detail by default
@@ -155,5 +159,5 @@ This is the target model we should design toward, even if V1 only implements a s
 - [x] Recording default interval target is `500ms`
 - [x] Only one active session at a time (409 Conflict if already recording)
 - [x] Frames stored as pre-serialized JSON to avoid Clone on Snapshot types
-- [ ] Decide whether to compute layout in backend, frontend, or both
-- [ ] Decide when union graph is built (on stop vs incremental during recording)
+- [x] Decide whether to compute layout in backend, frontend, or both — frontend-only for now
+- [x] Decide when union graph is built (on stop vs incremental during recording) — built on transition to scrubbing, after all frames fetched
