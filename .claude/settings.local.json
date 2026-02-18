@@ -12,7 +12,8 @@
       "Bash(npx tsc:*)",
       "Bash(xargs:*)",
       "Bash(rg:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(tmux list-panes:*)"
     ]
   }
 }
