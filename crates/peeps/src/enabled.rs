@@ -92,12 +92,12 @@ impl PeepsContext {
 pub fn __init_from_macro(manifest_dir: &str) {
     set_inference_source_root(std::path::PathBuf::from(manifest_dir));
     let process_name = process_name_auto();
-    ensure_process_scope(&process_name);
+    ensure_process_scope(&process_name, Source::caller());
     init_dashboard_push_loop(&process_name);
 }
 
-fn ensure_process_scope(process_name: &str) {
-    PROCESS_SCOPE.get_or_init(|| ScopeHandle::new(process_name, ScopeBody::Process, Source::caller()));
+fn ensure_process_scope(process_name: &str, source: Source) {
+    PROCESS_SCOPE.get_or_init(|| ScopeHandle::new(process_name, ScopeBody::Process, source));
 }
 
 fn process_name_auto() -> CompactString {
@@ -1672,10 +1672,13 @@ impl RpcResponseHandle {
         if !changed {
             return;
         }
-        if let Ok(event) = Event::new(
+        let source = Source::caller();
+        if let Ok(event) = Event::new_with_source(
             EventTarget::Entity(self.handle.id().clone()),
             EventKind::StateChanged,
             &status,
+            source.into_compact_string(),
+            None,
         ) {
             if let Ok(mut db) = runtime_db().lock() {
                 db.record_event(event);
@@ -2096,6 +2099,16 @@ fn record_event_with_source(mut event: Event, source: Source, cx: PeepsContext) 
     }
 }
 
+fn record_event_with_entity_source(mut event: Event, entity_id: &EntityId) {
+    if let Ok(mut db) = runtime_db().lock() {
+        if let Some(entity) = db.entities.get(entity_id) {
+            event.source = CompactString::from(entity.source.as_str());
+            event.krate = entity.krate.as_ref().map(|k| CompactString::from(k.as_str()));
+        }
+        db.record_event(event);
+    }
+}
+
 fn emit_channel_wait_started(target: &EntityId, kind: ChannelWaitKind, source: Source, cx: PeepsContext) {
     if let Ok(event) = Event::channel_wait_started_with_source(
         EventTarget::Entity(target.clone()),
@@ -2134,9 +2147,7 @@ fn emit_channel_closed(target: &EntityId, cause: ChannelCloseCause) {
         EventTarget::Entity(target.clone()),
         &ChannelClosedEvent { cause },
     ) {
-        if let Ok(mut db) = runtime_db().lock() {
-            db.record_event(event);
-        }
+        record_event_with_entity_source(event, target);
     }
 }
 
@@ -5216,11 +5227,9 @@ where
                 }
 
                 if let Ok(event) =
-                    Event::new(EventTarget::Entity(future_id), EventKind::StateChanged, &())
+                    Event::new(EventTarget::Entity(EntityId::new(future_id.as_str())), EventKind::StateChanged, &())
                 {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    record_event_with_entity_source(event, &future_id);
                 }
 
                 Poll::Ready(output)
