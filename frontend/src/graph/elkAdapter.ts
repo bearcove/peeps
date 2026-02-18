@@ -16,6 +16,8 @@ const elkOptions = {
   "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
 };
 
+const subgraphElkPadding = "[top=30,left=12,bottom=12,right=12]";
+
 // ── Edge styling ──────────────────────────────────────────────
 
 export type EdgeStyle = {
@@ -130,6 +132,9 @@ export async function layoutGraph(
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, members]) => ({
         id: `scope-group:${subgraphScopeMode}:${key}`,
+        layoutOptions: {
+          "elk.padding": subgraphElkPadding,
+        },
         children: members.map((entity) => {
           const size = nodeSizes.get(entity.id);
           return {
@@ -341,48 +346,216 @@ export async function layoutGraph(
 
   walkChildren(result.children, { x: 0, y: 0 });
 
+  type SectionFragment = {
+    sectionId: string | null;
+    incoming: string[];
+    outgoing: string[];
+    points: Point[];
+    depth: number;
+  };
+
+  const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
+
+  const pathLength = (points: Point[]): number => {
+    let total = 0;
+    for (let i = 1; i < points.length; i++) {
+      total += distance(points[i - 1], points[i]);
+    }
+    return total;
+  };
+
+  const orientationScore = (points: Point[], source: Point | null, target: Point | null): number => {
+    if (points.length < 2) return Number.POSITIVE_INFINITY;
+    if (!source || !target) return 0;
+    return distance(points[0], source) + distance(points[points.length - 1], target);
+  };
+
+  const orientForAnchors = (
+    points: Point[],
+    source: Point | null,
+    target: Point | null,
+  ): { points: Point[]; score: number } => {
+    if (points.length < 2) return { points, score: Number.POSITIVE_INFINITY };
+    const forwardScore = orientationScore(points, source, target);
+    const reversed = [...points].reverse();
+    const reverseScore = orientationScore(reversed, source, target);
+    if (reverseScore < forwardScore) return { points: reversed, score: reverseScore };
+    return { points, score: forwardScore };
+  };
+
+  const appendSection = (polyline: Point[], sectionPoints: Point[]): Point[] => {
+    if (sectionPoints.length === 0) return polyline;
+    if (polyline.length === 0) return [...sectionPoints];
+    const last = polyline[polyline.length - 1];
+    const startDist = distance(last, sectionPoints[0]);
+    const endDist = distance(last, sectionPoints[sectionPoints.length - 1]);
+    const oriented = endDist < startDist ? [...sectionPoints].reverse() : sectionPoints;
+    if (oriented.length === 0) return polyline;
+    const shouldSkipFirst = distance(last, oriented[0]) < 0.0001;
+    return shouldSkipFirst ? [...polyline, ...oriented.slice(1)] : [...polyline, ...oriented];
+  };
+
+  const pointsKey = (points: Point[]): string =>
+    points.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join("|");
+
   const entityNameMap = new Map(entityDefs.map((e) => [e.id, e.name]));
   const geoEdges: GeometryEdge[] = validEdges.map((def) => {
-    const points: Point[] = [];
+    const sourcePos = absoluteNodePos.get(def.source);
+    const targetPos = absoluteNodePos.get(def.target);
+    const sourceSize = nodeSizes.get(def.source) ?? { width: 150, height: 36 };
+    const targetSize = nodeSizes.get(def.target) ?? { width: 150, height: 36 };
+    const sourceAnchor = sourcePos
+      ? { x: sourcePos.x + sourceSize.width / 2, y: sourcePos.y + sourceSize.height / 2 }
+      : null;
+    const targetAnchor = targetPos
+      ? { x: targetPos.x + targetSize.width / 2, y: targetPos.y + targetSize.height / 2 }
+      : null;
+
     const records = edgeLayoutsById.get(def.id) ?? [];
-    if (records.length > 0) {
-      const exact = records.filter(
-        (record) =>
-          record.sources.includes(def.source) && record.targets.includes(def.target),
-      );
-      const candidates = exact.length > 0 ? exact : records;
-      candidates.sort((a, b) => {
-        if (b.sections.length !== a.sections.length) return b.sections.length - a.sections.length;
-        return a.depth - b.depth;
-      });
-      const selected = candidates[0];
-      const orderedSections = orderSections(selected.sections);
+    const exactRecords = records.filter(
+      (record) =>
+        record.sources.includes(def.source) && record.targets.includes(def.target),
+    );
+    const edgeRecords = exactRecords.length > 0 ? exactRecords : records;
+
+    const fragmentsRaw: SectionFragment[] = [];
+    for (const record of edgeRecords) {
+      const orderedSections = orderSections(record.sections);
       for (const section of orderedSections) {
         const sectionPoints: Point[] = [];
         if (section.startPoint) {
           sectionPoints.push({
-            x: section.startPoint.x + selected.graphOffset.x,
-            y: section.startPoint.y + selected.graphOffset.y,
+            x: section.startPoint.x + record.graphOffset.x,
+            y: section.startPoint.y + record.graphOffset.y,
           });
         }
         if (section.bendPoints) {
           sectionPoints.push(
             ...section.bendPoints.map((p) => ({
-              x: p.x + selected.graphOffset.x,
-              y: p.y + selected.graphOffset.y,
+              x: p.x + record.graphOffset.x,
+              y: p.y + record.graphOffset.y,
             })),
           );
         }
         if (section.endPoint) {
           sectionPoints.push({
-            x: section.endPoint.x + selected.graphOffset.x,
-            y: section.endPoint.y + selected.graphOffset.y,
+            x: section.endPoint.x + record.graphOffset.x,
+            y: section.endPoint.y + record.graphOffset.y,
           });
         }
-        if (sectionPoints.length === 0) continue;
-        if (points.length === 0) points.push(...sectionPoints);
-        else points.push(...sectionPoints.slice(1));
+        if (sectionPoints.length < 2) continue;
+        fragmentsRaw.push({
+          sectionId: section.id ?? null,
+          incoming: [...(section.incomingSections ?? [])],
+          outgoing: [...(section.outgoingSections ?? [])],
+          points: sectionPoints,
+          depth: record.depth,
+        });
       }
+    }
+
+    const fragmentsById = new Map<string, SectionFragment>();
+    const fragmentsByShape = new Map<string, SectionFragment>();
+
+    for (const fragment of fragmentsRaw) {
+      if (fragment.sectionId) {
+        const existing = fragmentsById.get(fragment.sectionId);
+        if (!existing) {
+          fragmentsById.set(fragment.sectionId, fragment);
+        } else {
+          const existingScore = orientForAnchors(existing.points, sourceAnchor, targetAnchor).score;
+          const nextScore = orientForAnchors(fragment.points, sourceAnchor, targetAnchor).score;
+          if (nextScore < existingScore || (nextScore === existingScore && fragment.depth < existing.depth)) {
+            fragmentsById.set(fragment.sectionId, fragment);
+          }
+        }
+        continue;
+      }
+      const key = pointsKey(fragment.points);
+      if (!fragmentsByShape.has(key)) fragmentsByShape.set(key, fragment);
+    }
+
+    const fragments = [...fragmentsById.values(), ...fragmentsByShape.values()];
+
+    const linked = new Map<string, SectionFragment>();
+    for (const fragment of fragments) {
+      if (fragment.sectionId) linked.set(fragment.sectionId, fragment);
+    }
+
+    const polylineCandidates: Point[][] = [];
+
+    if (linked.size > 0) {
+      const roots = Array.from(linked.values()).filter((fragment) => {
+        const linkedIncoming = fragment.incoming.filter((id) => linked.has(id));
+        return linkedIncoming.length === 0;
+      });
+      const startIds = (roots.length > 0 ? roots : Array.from(linked.values()))
+        .map((fragment) => fragment.sectionId!)
+        .sort();
+
+      const pushChain = (ids: string[]) => {
+        let polyline: Point[] = [];
+        for (const id of ids) {
+          const fragment = linked.get(id);
+          if (!fragment) continue;
+          polyline = appendSection(polyline, fragment.points);
+        }
+        if (polyline.length >= 2) polylineCandidates.push(polyline);
+      };
+
+      const walk = (currentId: string, path: string[], visiting: Set<string>) => {
+        if (visiting.has(currentId)) {
+          pushChain(path);
+          return;
+        }
+        const current = linked.get(currentId);
+        if (!current) {
+          pushChain(path);
+          return;
+        }
+
+        const nextIds = current.outgoing.filter((id) => linked.has(id));
+        if (nextIds.length === 0) {
+          pushChain(path);
+          return;
+        }
+
+        const nextVisiting = new Set(visiting);
+        nextVisiting.add(currentId);
+        for (const nextId of nextIds.sort()) {
+          walk(nextId, [...path, nextId], nextVisiting);
+        }
+      };
+
+      for (const startId of startIds) {
+        walk(startId, [startId], new Set());
+      }
+    }
+
+    // Fragments without section linkage still provide fallback candidates.
+    for (const fragment of fragments) {
+      if (fragment.sectionId && linked.has(fragment.sectionId)) continue;
+      if (fragment.points.length >= 2) polylineCandidates.push(fragment.points);
+    }
+
+    let points: Point[] = [];
+    if (polylineCandidates.length > 0) {
+      const ranked = polylineCandidates
+        .map((candidate) => {
+          const oriented = orientForAnchors(candidate, sourceAnchor, targetAnchor);
+          return {
+            points: oriented.points,
+            score: oriented.score,
+            length: pathLength(oriented.points),
+          };
+        })
+        .sort((a, b) => {
+          if (a.score !== b.score) return a.score - b.score;
+          return b.length - a.length;
+        });
+      points = ranked[0].points;
+    } else if (sourceAnchor && targetAnchor) {
+      points = [sourceAnchor, targetAnchor];
     }
 
     const srcName = entityNameMap.get(def.source) ?? def.source;

@@ -144,7 +144,7 @@ export function GraphCanvas({
           <rect
             width="100%"
             height="100%"
-            fill="var(--graph-canvas-bg)"
+            fill="var(--surface-bg)"
             data-background="true"
           />
           <rect

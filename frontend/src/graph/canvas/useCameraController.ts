@@ -59,7 +59,7 @@ export function useCameraController(
           y: cursorY,
         });
 
-        const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+        const factor = e.deltaY < 0 ? 1.04 : 1 / 1.04;
         const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev.zoom * factor));
 
         return {
