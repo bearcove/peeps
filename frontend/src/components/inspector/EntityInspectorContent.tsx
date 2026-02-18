@@ -2,17 +2,49 @@ import React from "react";
 import { Timer, File, Crosshair } from "@phosphor-icons/react";
 import { Badge } from "../../ui/primitives/Badge";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
-import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import { ActionButton } from "../../ui/primitives/ActionButton";
 import { kindIcon, kindDisplayName } from "../../nodeKindSpec";
 import { formatProcessLabel } from "../../processLabel";
-import type { EntityDef, Tone } from "../../snapshot";
+import type { EntityDef } from "../../snapshot";
 import type { EntityDiff } from "../../recording/unionGraph";
-import { ChannelPairInspectorContent } from "./ChannelPairInspectorContent";
 import { EntityBodySection } from "./EntityBodySection";
 import { MetaSection } from "./MetaTree";
 import { Source } from "./Source";
 import "./InspectorPanel.css";
+
+function BirthTimestamp({
+  birthPtime,
+  ageMs,
+  birthAbsolute,
+}: {
+  birthPtime: number;
+  ageMs: number;
+  birthAbsolute: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    <span
+      className="inspector-birth-popover-anchor"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <span
+        className="inspector-mono inspector-birth-trigger"
+        tabIndex={0}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+      >
+        P+{birthPtime}ms ({ageMs}ms old)
+      </span>
+      {open && (
+        <span className="inspector-tooltip" role="tooltip">
+          {birthAbsolute}
+        </span>
+      )}
+    </span>
+  );
+}
 
 export function EntityInspectorContent({
   entity,
@@ -23,12 +55,21 @@ export function EntityInspectorContent({
   onFocus: (id: string) => void;
   entityDiff?: EntityDiff | null;
 }) {
-  if (entity.channelPair) {
-    return <ChannelPairInspectorContent entity={entity} onFocus={onFocus} />;
-  }
+  const birthAbsolute = isFinite(entity.birthApproxUnixMs) && entity.birthApproxUnixMs > 0
+    ? new Date(entity.birthApproxUnixMs).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "long" })
+    : null;
 
-  const ageTone: Tone =
-    entity.ageMs > 600_000 ? "crit" : entity.ageMs > 60_000 ? "warn" : "neutral";
+  if (entity.channelPair) {
+    return (
+      <>
+        <div className="inspector-subsection-label">TX</div>
+        <EntityInspectorContent entity={entity.channelPair.tx} onFocus={onFocus} />
+
+        <div className="inspector-subsection-label">RX</div>
+        <EntityInspectorContent entity={entity.channelPair.rx} onFocus={onFocus} />
+      </>
+    );
+  }
 
   return (
     <>
@@ -91,19 +132,13 @@ export function EntityInspectorContent({
             <span className="inspector-mono">{entity.krate}</span>
           </KeyValueRow>
         )}
-        <KeyValueRow label="Age" icon={<Timer size={12} weight="bold" />}>
-          <DurationDisplay ms={entity.ageMs} tone={ageTone} />
+        <KeyValueRow label="Birth" icon={<Timer size={12} weight="bold" />}>
+          {birthAbsolute ? (
+            <BirthTimestamp birthPtime={entity.birthPtime} ageMs={entity.ageMs} birthAbsolute={birthAbsolute} />
+          ) : (
+            <span className="inspector-mono">P+{entity.birthPtime}ms ({entity.ageMs}ms old)</span>
+          )}
         </KeyValueRow>
-        <KeyValueRow label="PTime birth">
-          <span className="inspector-mono">{entity.birthPtime}ms</span>
-        </KeyValueRow>
-        {isFinite(entity.birthApproxUnixMs) && entity.birthApproxUnixMs > 0 && (
-          <KeyValueRow label="Born ~">
-            <span className="inspector-mono">
-              {new Date(entity.birthApproxUnixMs).toLocaleTimeString()}
-            </span>
-          </KeyValueRow>
-        )}
       </div>
 
       <EntityBodySection entity={entity} />

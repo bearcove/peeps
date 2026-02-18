@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Camera, CircleNotch, Crosshair } from "@phosphor-icons/react";
 import { ActionButton } from "../../ui/primitives/ActionButton";
 import { FilterMenu, type FilterMenuItem } from "../../ui/primitives/FilterMenu";
+import { Switch } from "../../ui/primitives/Switch";
 import type { EntityDef, EdgeDef } from "../../snapshot";
 import { layoutGraph, type SubgraphScopeMode } from "../../graph/elkAdapter";
 import { measureEntityDefs } from "../../graph/render/NodeLayer";
@@ -48,6 +49,10 @@ export function GraphPanel({
   hiddenProcesses,
   onProcessToggle,
   onProcessSolo,
+  kindItems,
+  hiddenKinds,
+  onKindToggle,
+  onKindSolo,
   scopeColorMode,
   onToggleProcessColorBy,
   onToggleCrateColorBy,
@@ -74,6 +79,10 @@ export function GraphPanel({
   hiddenProcesses: ReadonlySet<string>;
   onProcessToggle: (pid: string) => void;
   onProcessSolo: (pid: string) => void;
+  kindItems: FilterMenuItem[];
+  hiddenKinds: ReadonlySet<string>;
+  onKindToggle: (kind: string) => void;
+  onKindSolo: (kind: string) => void;
   scopeColorMode: ScopeColorMode;
   onToggleProcessColorBy: () => void;
   onToggleCrateColorBy: () => void;
@@ -128,7 +137,8 @@ export function GraphPanel({
   const ghostEdgeIds = unionFrameLayout?.ghostEdgeIds;
 
   const isBusy = snapPhase === "cutting" || snapPhase === "loading";
-  const showToolbar = crateItems.length > 1 || processItems.length > 0 || focusedEntityId || entityDefs.length > 0;
+  const showToolbar =
+    crateItems.length > 1 || processItems.length > 0 || kindItems.length > 1 || focusedEntityId || entityDefs.length > 0;
 
   // Keep track of whether we've fitted the view at least once for this layout.
   const [hasFitted, setHasFitted] = useState(false);
@@ -154,6 +164,13 @@ export function GraphPanel({
             )}
           </div>
           <div className="graph-toolbar-right">
+            <Switch
+              checked={showLoners}
+              onChange={(checked) => {
+                if (checked !== showLoners) onToggleShowLoners();
+              }}
+              label="Show loners"
+            />
             {processItems.length > 0 && (
               <FilterMenu
                 label="Process"
@@ -184,12 +201,15 @@ export function GraphPanel({
                 subgraphsLabel="Use subgraphs"
               />
             )}
-            <ActionButton
-              variant={showLoners ? "default" : "ghost"}
-              onPress={onToggleShowLoners}
-            >
-              Show loners: {showLoners ? "on" : "off"}
-            </ActionButton>
+            {kindItems.length > 1 && (
+              <FilterMenu
+                label="Kind"
+                items={kindItems}
+                hiddenIds={hiddenKinds}
+                onToggle={onKindToggle}
+                onSolo={onKindSolo}
+              />
+            )}
             {focusedEntityId && (
               <ActionButton onPress={onExitFocus}>
                 <Crosshair size={14} weight="bold" />

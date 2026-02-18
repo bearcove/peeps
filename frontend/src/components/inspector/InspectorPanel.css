@@ -230,6 +230,40 @@
     font-size: 12px;
 }
 
+.inspector-birth-popover-anchor {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.inspector-birth-trigger {
+    cursor: help;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+    white-space: nowrap;
+    word-break: normal;
+}
+
+.inspector-tooltip {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 20;
+    max-width: 320px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    font-size: 11px;
+    line-height: 1.35;
+    font-family: var(--font-mono);
+    padding: 6px 8px;
+    box-shadow: var(--shadow-popover);
+    white-space: nowrap;
+    word-break: normal;
+}
+
 /* ── Inspector diff section ──────────────────────────────── */
 
 .inspector-diff {

@@ -3,6 +3,15 @@ import type { RefObject } from "react";
 import type { Rect } from "../geometry";
 import { type Camera, MIN_ZOOM, MAX_ZOOM, fitBounds, screenToWorld } from "./camera";
 
+const WHEEL_PIXEL_SENSITIVITY = 0.0042;
+const WHEEL_ZOOM_DAMPING_AT_MAX = 0.55;
+
+function normalizeWheelDeltaY(e: WheelEvent): number {
+  if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) return e.deltaY * 16;
+  if (e.deltaMode === WheelEvent.DOM_DELTA_PAGE) return e.deltaY * 800;
+  return e.deltaY;
+}
+
 export function useCameraController(
   svgRef: RefObject<SVGSVGElement | null>,
   bounds: Rect | null,
@@ -59,7 +68,10 @@ export function useCameraController(
           y: cursorY,
         });
 
-        const factor = e.deltaY < 0 ? 1.04 : 1 / 1.04;
+        const deltaY = normalizeWheelDeltaY(e);
+        const zoomProgress = (prev.zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM);
+        const zoomDamping = 1 - Math.max(0, Math.min(1, zoomProgress)) * WHEEL_ZOOM_DAMPING_AT_MAX;
+        const factor = Math.exp(-deltaY * WHEEL_PIXEL_SENSITIVITY * zoomDamping);
         const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev.zoom * factor));
 
         return {
@@ -78,7 +90,7 @@ export function useCameraController(
       const target = e.target as Element;
       const svg = svgRef.current;
       if (!svg) return;
-      if (target.closest("[data-pan-block=\"true\"]")) return;
+      if (target.closest('[data-pan-block="true"]')) return;
       e.preventDefault();
       if (svg.setPointerCapture) {
         svg.setPointerCapture(e.pointerId);
@@ -93,38 +105,41 @@ export function useCameraController(
     [camera, svgRef],
   );
 
-  const onPointerMove = useCallback(
+  const onPointerMove = useCallback((e: PointerEvent) => {
+    const state = panState.current;
+    if (!state.active) return;
+    const dx = e.clientX - state.startClientX;
+    const dy = e.clientY - state.startClientY;
+    setCamera({
+      ...state.startCamera,
+      x: state.startCamera.x - dx / state.startCamera.zoom,
+      y: state.startCamera.y - dy / state.startCamera.zoom,
+    });
+  }, []);
+
+  const onPointerUp = useCallback(
     (e: PointerEvent) => {
-      const state = panState.current;
-      if (!state.active) return;
-      const dx = e.clientX - state.startClientX;
-      const dy = e.clientY - state.startClientY;
-      setCamera({
-        ...state.startCamera,
-        x: state.startCamera.x - dx / state.startCamera.zoom,
-        y: state.startCamera.y - dy / state.startCamera.zoom,
-      });
+      if (!panState.current.active) return;
+      panState.current.active = false;
+      const svg = svgRef.current;
+      if (svg && svg.hasPointerCapture?.(e.pointerId)) {
+        svg.releasePointerCapture(e.pointerId);
+      }
     },
-    [],
+    [svgRef],
   );
 
-  const onPointerUp = useCallback((e: PointerEvent) => {
-    if (!panState.current.active) return;
-    panState.current.active = false;
-    const svg = svgRef.current;
-    if (svg && svg.hasPointerCapture?.(e.pointerId)) {
-      svg.releasePointerCapture(e.pointerId);
-    }
-  }, [svgRef]);
-
-  const onPointerCancel = useCallback((e: PointerEvent) => {
-    if (!panState.current.active) return;
-    panState.current.active = false;
-    const svg = svgRef.current;
-    if (svg && svg.hasPointerCapture?.(e.pointerId)) {
-      svg.releasePointerCapture(e.pointerId);
-    }
-  }, [svgRef]);
+  const onPointerCancel = useCallback(
+    (e: PointerEvent) => {
+      if (!panState.current.active) return;
+      panState.current.active = false;
+      const svg = svgRef.current;
+      if (svg && svg.hasPointerCapture?.(e.pointerId)) {
+        svg.releasePointerCapture(e.pointerId);
+      }
+    },
+    [svgRef],
+  );
 
   const onLostPointerCapture = useCallback(() => {
     panState.current.active = false;

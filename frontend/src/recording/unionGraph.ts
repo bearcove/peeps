@@ -1,5 +1,6 @@
 import type { FrameSummary } from "../api/types";
 import type { ApiClient } from "../api/client";
+import { canonicalNodeKind } from "../nodeKindSpec";
 import {
   convertSnapshot,
   filterLoners,
@@ -262,6 +263,7 @@ export function renderFrameFromUnion(
   unionLayout: UnionLayout,
   hiddenKrates: ReadonlySet<string>,
   hiddenProcesses: ReadonlySet<string>,
+  hiddenKinds: ReadonlySet<string>,
   focusedEntityId: string | null,
   ghostMode?: boolean,
   showLoners: boolean = true,
@@ -275,7 +277,8 @@ export function renderFrameFromUnion(
   let filteredEntities = frameData.entities.filter(
     (e) =>
       (hiddenKrates.size === 0 || !hiddenKrates.has(e.krate ?? "~no-crate")) &&
-      (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)),
+      (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)) &&
+      (hiddenKinds.size === 0 || !hiddenKinds.has(canonicalNodeKind(e.kind))),
   );
   let filteredEdges = frameData.edges;
   const filteredEntityIds = new Set(filteredEntities.map((entity) => entity.id));

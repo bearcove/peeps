@@ -8,6 +8,7 @@ export interface Camera {
 
 export const MIN_ZOOM = 0.1;
 export const MAX_ZOOM = 3.0;
+export const MAX_FIT_ZOOM = 1.2;
 
 export function worldToScreen(
   camera: Camera,
@@ -46,12 +47,13 @@ export function fitBounds(
   viewportWidth: number,
   viewportHeight: number,
   padding = 40,
+  maxZoom = MAX_FIT_ZOOM,
 ): Camera {
   const availW = viewportWidth - 2 * padding;
   const availH = viewportHeight - 2 * padding;
   const zoom = Math.min(
     Math.max(MIN_ZOOM, Math.min(availW / bounds.width, availH / bounds.height)),
-    MAX_ZOOM,
+    Math.min(maxZoom, MAX_ZOOM),
   );
   return {
     x: bounds.x + bounds.width / 2,

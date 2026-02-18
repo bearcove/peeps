@@ -33,6 +33,26 @@ impl Source {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PeepsContext {
+    manifest_dir: &'static str,
+}
+
+impl PeepsContext {
+    pub const fn new(manifest_dir: &'static str) -> Self {
+        Self { manifest_dir }
+    }
+
+    #[track_caller]
+    pub const fn caller(manifest_dir: &'static str) -> Self {
+        Self::new(manifest_dir)
+    }
+
+    pub const fn manifest_dir(self) -> &'static str {
+        self.manifest_dir
+    }
+}
+
 pub struct Mutex<T> {
     inner: parking_lot::Mutex<T>,
 }
@@ -63,12 +83,20 @@ impl<T> Mutex<T> {
     }
 
     pub fn lock(&self) -> MutexGuard<'_, T> {
+        self.lock_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    pub fn lock_with_cx(&self, _cx: PeepsContext) -> MutexGuard<'_, T> {
         MutexGuard {
             inner: self.inner.lock(),
         }
     }
 
     pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
+        self.try_lock_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
+    }
+
+    pub fn try_lock_with_cx(&self, _cx: PeepsContext) -> Option<MutexGuard<'_, T>> {
         self.inner.try_lock().map(|inner| MutexGuard { inner })
     }
 }
