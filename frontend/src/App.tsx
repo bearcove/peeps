@@ -26,11 +26,13 @@ import {
 import { GraphPanel, type GraphSelection, type ScopeColorMode, type SnapPhase } from "./components/graph/GraphPanel";
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
 import { ScopeTablePanel, type ScopeTableRow } from "./components/scopes/ScopeTablePanel";
+import { EntityTablePanel } from "./components/entities/EntityTablePanel";
 import { ProcessModal } from "./components/ProcessModal";
 import { AppHeader } from "./components/AppHeader";
 import { ProcessIdenticon } from "./ui/primitives/ProcessIdenticon";
 import { formatProcessLabel } from "./processLabel";
 import { canonicalNodeKind, kindDisplayName, kindIcon } from "./nodeKindSpec";
+import { canonicalScopeKind } from "./scopeKindSpec";
 
 // ── Snapshot state machine ─────────────────────────────────────
 
@@ -78,12 +80,34 @@ export type RecordingState =
       totalCaptureMs: number;
     };
 
+type ScopeEntityFilter = {
+  scopeToken: string;
+  scopeLabel: string;
+  entityIds: Set<string>;
+};
+
+function sqlEscape(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+function entityMatchesScopeFilter(entity: EntityDef, scopeEntityIds: ReadonlySet<string>): boolean {
+  if (scopeEntityIds.has(entity.id)) return true;
+  if (entity.channelPair) {
+    return scopeEntityIds.has(entity.channelPair.tx.id) || scopeEntityIds.has(entity.channelPair.rx.id);
+  }
+  if (entity.rpcPair) {
+    return scopeEntityIds.has(entity.rpcPair.req.id) || scopeEntityIds.has(entity.rpcPair.resp.id);
+  }
+  return false;
+}
+
 // ── App ────────────────────────────────────────────────────────
 
 export function App() {
-  const [leftPaneTab, setLeftPaneTab] = useState<"graph" | "scopes">("graph");
+  const [leftPaneTab, setLeftPaneTab] = useState<"graph" | "scopes" | "entities">("graph");
   const [selectedScopeKind, setSelectedScopeKind] = useState<string | null>(null);
   const [selectedScope, setSelectedScope] = useState<ScopeTableRow | null>(null);
+  const [scopeEntityFilter, setScopeEntityFilter] = useState<ScopeEntityFilter | null>(null);
   const [snap, setSnap] = useState<SnapshotState>({ phase: "idle" });
   const [inspectorWidth, setInspectorWidth] = useState(340);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
@@ -126,9 +150,14 @@ export function App() {
         entities = withoutLoners.entities;
         edges = withoutLoners.edges;
       }
+      if (scopeEntityFilter) {
+        entities = entities.filter((entity) => entityMatchesScopeFilter(entity, scopeEntityFilter.entityIds));
+        const entityIds = new Set(entities.map((entity) => entity.id));
+        edges = edges.filter((edge) => entityIds.has(edge.source) && entityIds.has(edge.target));
+      }
       return { entities, edges };
     },
-    [allEntities, allEdges, hiddenKrates, hiddenProcesses, hiddenKinds, showLoners],
+    [allEntities, allEdges, hiddenKrates, hiddenProcesses, hiddenKinds, showLoners, scopeEntityFilter],
   );
 
   const crateItems = useMemo<FilterMenuItem[]>(() => {
@@ -288,6 +317,44 @@ export function App() {
     if (!focusedEntityId) return { entities: filteredEntities, edges: filteredEdges };
     return getConnectedSubgraph(focusedEntityId, filteredEntities, filteredEdges);
   }, [applyBaseFilters, focusedEntityId]);
+
+  const queryEntities = useMemo(() => {
+    if (!scopeEntityFilter) return allEntities;
+    return allEntities.filter((entity) => entityMatchesScopeFilter(entity, scopeEntityFilter.entityIds));
+  }, [allEntities, scopeEntityFilter]);
+
+  const snapshotProcessCount = useMemo(() => {
+    return new Set(allEntities.map((entity) => entity.processId)).size;
+  }, [allEntities]);
+
+  const applyScopeEntityFilter = useCallback(async (scope: ScopeTableRow) => {
+    const connId = Number(scope.processId);
+    if (!Number.isFinite(connId)) return;
+    const streamId = sqlEscape(scope.streamId);
+    const scopeId = sqlEscape(scope.scopeId);
+    const sql = `
+select l.entity_id
+from entity_scope_links l
+where l.conn_id = ${connId}
+  and l.stream_id = '${streamId}'
+  and l.scope_id = '${scopeId}'
+`;
+    const response = await apiClient.fetchSql(sql);
+    const ids = new Set<string>();
+    for (const row of response.rows) {
+      if (!Array.isArray(row) || row.length < 1) continue;
+      const rawEntityId = String(row[0]);
+      ids.add(`${scope.processId}/${rawEntityId}`);
+    }
+    setScopeEntityFilter({
+      scopeToken: scope.scopeId,
+      scopeLabel:
+        scope.scopeKind === "process"
+          ? formatProcessLabel(scope.processName, scope.pid)
+          : (scope.scopeName || scope.scopeId),
+      entityIds: ids,
+    });
+  }, []);
 
   const takeSnapshot = useCallback(async () => {
     setSnap({ phase: "cutting" });
@@ -750,6 +817,7 @@ export function App() {
         leftPaneTab={leftPaneTab}
         onLeftPaneTabChange={setLeftPaneTab}
         snap={snap}
+        snapshotProcessCount={snapshotProcessCount}
         recording={recording}
         connCount={connCount}
         isBusy={isBusy}
@@ -827,11 +895,12 @@ export function App() {
                   onToggleCrateSubgraphs={handleToggleCrateSubgraphs}
                   showLoners={showLoners}
                   onToggleShowLoners={() => setShowLoners((prev) => !prev)}
+                  scopeFilterLabel={scopeEntityFilter?.scopeToken ?? null}
+                  onClearScopeFilter={() => setScopeEntityFilter(null)}
                   unionFrameLayout={unionFrameLayout}
                 />
-              ) : (
+              ) : leftPaneTab === "scopes" ? (
                 <ScopeTablePanel
-                  connCount={connCount}
                   selectedKind={selectedScopeKind}
                   selectedScopeKey={selectedScope?.key ?? null}
                   onSelectKind={(kind) => {
@@ -846,6 +915,33 @@ export function App() {
                     if (scope) {
                       setSelection(null);
                     }
+                  }}
+                  onShowGraphScope={(scope) => {
+                    void (async () => {
+                      await applyScopeEntityFilter(scope);
+                      setLeftPaneTab("graph");
+                      setSelection(null);
+                      setFocusedEntityId(null);
+                    })();
+                  }}
+                  onViewScopeEntities={(scope) => {
+                    void (async () => {
+                      await applyScopeEntityFilter(scope);
+                      setLeftPaneTab("entities");
+                      setSelection(null);
+                      setFocusedEntityId(null);
+                    })();
+                  }}
+                />
+              ) : (
+                <EntityTablePanel
+                  entityDefs={queryEntities}
+                  selectedEntityId={selection?.kind === "entity" ? selection.id : null}
+                  scopeFilterLabel={scopeEntityFilter?.scopeLabel ?? null}
+                  onClearScopeFilter={() => setScopeEntityFilter(null)}
+                  onSelectEntity={(entityId) => {
+                    setSelection({ kind: "entity", id: entityId });
+                    setLeftPaneTab("graph");
                   }}
                 />
               )}
@@ -867,7 +963,7 @@ export function App() {
               setLeftPaneTab("scopes");
               setSelection(null);
               setSelectedScope(null);
-              setSelectedScopeKind(kind);
+              setSelectedScopeKind(canonicalScopeKind(kind));
             }}
             scrubbingUnionLayout={recording.phase === "scrubbing" ? recording.unionLayout : undefined}
             currentFrameIndex={recording.phase === "scrubbing" ? recording.currentFrameIndex : undefined}

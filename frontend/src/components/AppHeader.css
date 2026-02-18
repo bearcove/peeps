@@ -22,12 +22,6 @@
     gap: 4px;
 }
 
-.app-header-tab-warning {
-    color: light-dark(#b35a00, #ffb267);
-    font-size: 10px;
-    line-height: 1;
-}
-
 .app-header-badge {
     display: inline-flex;
     align-items: center;
@@ -53,6 +47,11 @@
 .app-header-badge--recording-warn {
     background: light-dark(#fff3e0, #3a2a0a);
     color: light-dark(#e65100, #ffab40);
+}
+
+.app-header-badge--warn {
+    background: light-dark(#fff3cd, #3a2f1a);
+    color: light-dark(#856404, #ffc107);
 }
 
 .app-header-error {

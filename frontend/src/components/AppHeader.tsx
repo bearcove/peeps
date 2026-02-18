@@ -25,6 +25,7 @@ export function AppHeader({
   leftPaneTab,
   onLeftPaneTabChange,
   snap,
+  snapshotProcessCount,
   recording,
   connCount,
   isBusy,
@@ -39,9 +40,10 @@ export function AppHeader({
   fileInputRef,
   onImportFile,
 }: {
-  leftPaneTab: "graph" | "scopes";
-  onLeftPaneTabChange: (tab: "graph" | "scopes") => void;
+  leftPaneTab: "graph" | "scopes" | "entities";
+  onLeftPaneTabChange: (tab: "graph" | "scopes" | "entities") => void;
   snap: SnapshotState;
+  snapshotProcessCount: number;
   recording: RecordingState;
   connCount: number;
   isBusy: boolean;
@@ -67,18 +69,14 @@ export function AppHeader({
         size="sm"
         aria-label="Primary page"
         value={leftPaneTab}
-        onChange={(value) => onLeftPaneTabChange(value as "graph" | "scopes")}
+        onChange={(value) => onLeftPaneTabChange(value as "graph" | "scopes" | "entities")}
         options={[
           { value: "graph", label: "Graph" },
           {
             value: "scopes",
-            label: (
-              <span className="app-header-tab-label">
-                Scopes
-                {connCount === 0 && <span className="app-header-tab-warning">⚠</span>}
-              </span>
-            ),
+            label: <span className="app-header-tab-label">Scopes</span>,
           },
+          { value: "entities", label: "Entities" },
         ]}
       />
       {connCount > 0 && (
@@ -94,8 +92,14 @@ export function AppHeader({
       {apiMode === "lab" ? (
         <span className="app-header-badge">mock data</span>
       ) : null}
+      {snap.phase === "ready" && (
+        <span className="app-header-badge">Snapshot: {snapshotProcessCount} processes</span>
+      )}
       {snap.phase === "error" && <span className="app-header-error">{snap.message}</span>}
       <span className="app-header-spacer" />
+      {connCount === 0 && (
+        <span className="app-header-badge app-header-badge--warn">Live: 0 processes</span>
+      )}
       {recording.phase === "recording" && (
         <span
           className={[

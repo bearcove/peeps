@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Camera, CircleNotch, Crosshair } from "@phosphor-icons/react";
 import { ActionButton } from "../../ui/primitives/ActionButton";
+import { Badge } from "../../ui/primitives/Badge";
 import { FilterMenu, type FilterMenuItem } from "../../ui/primitives/FilterMenu";
 import { Switch } from "../../ui/primitives/Switch";
 import type { EntityDef, EdgeDef } from "../../snapshot";
@@ -61,6 +62,8 @@ export function GraphPanel({
   onToggleCrateSubgraphs,
   showLoners,
   onToggleShowLoners,
+  scopeFilterLabel,
+  onClearScopeFilter,
   unionFrameLayout,
 }: {
   entityDefs: EntityDef[];
@@ -91,6 +94,8 @@ export function GraphPanel({
   onToggleCrateSubgraphs: () => void;
   showLoners: boolean;
   onToggleShowLoners: () => void;
+  scopeFilterLabel?: string | null;
+  onClearScopeFilter?: () => void;
   /** When provided, use this pre-computed layout (union mode) instead of measuring + ELK. */
   unionFrameLayout?: FrameRenderResult;
 }) {
@@ -215,6 +220,12 @@ export function GraphPanel({
                 <Crosshair size={14} weight="bold" />
                 Exit Focus
               </ActionButton>
+            )}
+            {scopeFilterLabel && (
+              <>
+                <Badge tone="warn">in:{scopeFilterLabel}</Badge>
+                <ActionButton size="sm" onPress={onClearScopeFilter}>Clear scope</ActionButton>
+              </>
             )}
           </div>
         </div>

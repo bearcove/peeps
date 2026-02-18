@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowsClockwise, CircleNotch, WarningCircle } from "@phosphor-icons/react";
+import { ArrowsClockwise, CircleNotch } from "@phosphor-icons/react";
 import { apiClient } from "../../api";
 import { Table, type Column } from "../../ui/primitives/Table";
 import { ActionButton } from "../../ui/primitives/ActionButton";
@@ -22,7 +22,7 @@ export type ScopeTableRow = {
   scopeJson: string;
 };
 
-type SortKey = "process" | "kind" | "name" | "members";
+type SortKey = "process" | "kind" | "name" | "entities";
 type SortDir = "asc" | "desc";
 
 const SCOPE_ROWS_SQL = `
@@ -110,7 +110,7 @@ function parseScopeRows(rows: unknown[]): ScopeTableRow[] {
 }
 
 function compareRows(a: ScopeTableRow, b: ScopeTableRow, key: SortKey): number {
-  if (key === "members") return a.memberCount - b.memberCount;
+  if (key === "entities") return a.memberCount - b.memberCount;
   if (key === "process") {
     return (
       a.processName.localeCompare(b.processName) ||
@@ -132,17 +132,19 @@ function sortRows(rows: ScopeTableRow[], key: SortKey, dir: SortDir): ScopeTable
 const ALL_KINDS_VALUE = "__all_scope_kinds__";
 
 export function ScopeTablePanel({
-  connCount,
   selectedKind,
   onSelectKind,
   selectedScopeKey,
   onSelectScope,
+  onShowGraphScope,
+  onViewScopeEntities,
 }: {
-  connCount: number;
   selectedKind: string | null;
   onSelectKind: (kind: string | null) => void;
   selectedScopeKey: string | null;
   onSelectScope: (scope: ScopeTableRow | null) => void;
+  onShowGraphScope: (scope: ScopeTableRow) => void;
+  onViewScopeEntities: (scope: ScopeTableRow) => void;
 }) {
   const [rows, setRows] = useState<ScopeTableRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -178,11 +180,11 @@ export function ScopeTablePanel({
 
   const kindOptions = useMemo(() => {
     const kinds = Array.from(new Set(rows.map((row) => row.scopeKind))).sort((a, b) =>
-      a.localeCompare(b),
+      scopeKindDisplayName(a).localeCompare(scopeKindDisplayName(b)),
     );
     return [
       { value: ALL_KINDS_VALUE, label: "All kinds" },
-      ...kinds.map((kind) => ({ value: kind, label: kind })),
+      ...kinds.map((kind) => ({ value: kind, label: scopeKindDisplayName(kind) })),
     ];
   }, [rows]);
 
@@ -239,23 +241,49 @@ export function ScopeTablePanel({
         key: "name",
         label: "Scope",
         sortable: true,
-        width: "1.7fr",
+        width: "1.6fr",
         render: (row) => (
-          <div className="scope-table-scope-cell" title={`${row.scopeName} (${row.scopeId})`}>
-            <span>{row.scopeName}</span>
-            <span className="scope-table-subtle">{row.scopeId}</span>
+          <div className="scope-table-scope-cell" title={`${row.scopeName} · ${row.streamId}/${row.scopeId}`}>
+            <span>
+              {row.scopeKind === "process"
+                ? formatProcessLabel(row.processName, row.pid)
+                : row.scopeName}
+            </span>
           </div>
         ),
       },
       {
-        key: "members",
-        label: "Members",
+        key: "entities",
+        label: "Entities",
         sortable: true,
-        width: "0.7fr",
+        width: "0.6fr",
         render: (row) => <span className="scope-table-mono">{row.memberCount}</span>,
       },
+      {
+        key: "actions",
+        label: "Actions",
+        width: "0.9fr",
+        render: (row) => (
+          <div className="scope-table-actions">
+            <ActionButton
+              size="sm"
+              onClick={(event) => event.stopPropagation()}
+              onPress={() => onShowGraphScope(row)}
+            >
+              Show Graph
+            </ActionButton>
+            <ActionButton
+              size="sm"
+              onClick={(event) => event.stopPropagation()}
+              onPress={() => onViewScopeEntities(row)}
+            >
+              View Entities
+            </ActionButton>
+          </div>
+        ),
+      },
     ],
-    [],
+    [onShowGraphScope, onViewScopeEntities],
   );
 
   return (
@@ -288,13 +316,6 @@ export function ScopeTablePanel({
           </ActionButton>
         </div>
       </div>
-
-      {connCount === 0 && (
-        <div className="scope-table-alert">
-          <WarningCircle size={14} weight="fill" />
-          No connected processes. Scope data will appear after a process connects.
-        </div>
-      )}
 
       {error && <div className="scope-table-error">{error}</div>}
 
