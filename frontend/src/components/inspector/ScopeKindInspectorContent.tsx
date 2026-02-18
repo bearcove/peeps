@@ -1,6 +1,6 @@
 import React from "react";
-import { StackSimple } from "@phosphor-icons/react";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
+import { scopeKindIcon } from "../../scopeKindSpec";
 import "./InspectorPanel.css";
 
 type ScopeKindInfo = {
@@ -49,7 +49,7 @@ export function ScopeKindInspectorContent({ kind }: { kind: string }) {
     <>
       <div className="inspector-node-header">
         <span className="inspector-node-icon">
-          <StackSimple size={16} weight="bold" />
+          {scopeKindIcon(kind, 16)}
         </span>
         <div className="inspector-node-header-text">
           <div className="inspector-node-kind">scope kind</div>

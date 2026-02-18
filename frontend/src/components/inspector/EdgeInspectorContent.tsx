@@ -3,6 +3,7 @@ import { LinkSimple } from "@phosphor-icons/react";
 import { Badge } from "../../ui/primitives/Badge";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import { kindIcon } from "../../nodeKindSpec";
+import { formatProcessLabel } from "../../processLabel";
 import type { EntityDef, EdgeDef } from "../../snapshot";
 import { edgeTooltip } from "../../graph/elkAdapter";
 import "./InspectorPanel.css";
@@ -43,16 +44,16 @@ export function EdgeInspectorContent({ edge, entityDefs }: { edge: EdgeDef; enti
         <KeyValueRow label="From" icon={srcEntity ? kindIcon(srcEntity.kind, 12) : undefined}>
           <span className="inspector-mono">{srcEntity?.name ?? edge.source}</span>
           {srcEntity && (
-            <span className="inspector-muted" style={{ fontSize: "0.75em", marginLeft: 4 }}>
-              {srcEntity.processName}
+            <span className="inspector-mono" style={{ fontSize: "0.75em", marginLeft: 4 }}>
+              {formatProcessLabel(srcEntity.processName, srcEntity.processPid)}
             </span>
           )}
         </KeyValueRow>
         <KeyValueRow label="To" icon={dstEntity ? kindIcon(dstEntity.kind, 12) : undefined}>
           <span className="inspector-mono">{dstEntity?.name ?? edge.target}</span>
           {dstEntity && (
-            <span className="inspector-muted" style={{ fontSize: "0.75em", marginLeft: 4 }}>
-              {dstEntity.processName}
+            <span className="inspector-mono" style={{ fontSize: "0.75em", marginLeft: 4 }}>
+              {formatProcessLabel(dstEntity.processName, dstEntity.processPid)}
             </span>
           )}
         </KeyValueRow>

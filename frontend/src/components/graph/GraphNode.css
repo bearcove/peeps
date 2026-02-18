@@ -1,14 +1,18 @@
 .graph-node {
+    --graph-node-bg: var(--surface-raised);
+    --graph-node-border-color: var(--border);
+    --graph-node-border-width: 1px;
     display: flex;
     gap: 8px;
     padding: 8px 10px;
     border-radius: 8px;
     font-family: var(--font-mono);
     white-space: nowrap;
-    background: var(--surface-raised);
-    border: 1px solid var(--border);
+    background: var(--graph-node-bg);
+    border: var(--graph-node-border-width) solid var(--graph-node-border-color);
     color: var(--text-primary);
     align-items: center;
+    position: relative;
 }
 
 .graph-node-icon {
@@ -32,8 +36,9 @@
 }
 
 .graph-node--cycle {
-    border: 2px solid light-dark(#d7263d, #ff6b81);
-    background: light-dark(#fff5f5, #2a1414);
+    --graph-node-border-width: 2px;
+    --graph-node-border-color: light-dark(#d7263d, #ff6b81);
+    --graph-node-bg: light-dark(#fff5f5, #2a1414);
 }
 
 .graph-node--cycle .graph-node-icon {
@@ -45,9 +50,62 @@
     outline-offset: 2px;
 }
 
+.graph-node--half-out {
+    padding-right: 18px;
+    border-right-color: transparent;
+}
+
+.graph-node--half-in {
+    padding-left: 18px;
+    border-left-color: transparent;
+}
+
+.graph-node--half-out::before,
+.graph-node--half-out::after,
+.graph-node--half-in::before,
+.graph-node--half-in::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.graph-node--half-out::before {
+    right: calc(-1 * (11px + var(--graph-node-border-width)));
+    width: 13px;
+    height: 22px;
+    background: var(--graph-node-border-color);
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+.graph-node--half-out::after {
+    right: -10px;
+    width: 11px;
+    height: 18px;
+    background: var(--graph-node-bg);
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+.graph-node--half-in::before {
+    left: calc(-1 * (11px + var(--graph-node-border-width)));
+    width: 13px;
+    height: 22px;
+    background: var(--graph-node-border-color);
+    clip-path: polygon(100% 0, 0 50%, 100% 100%);
+}
+
+.graph-node--half-in::after {
+    left: -10px;
+    width: 11px;
+    height: 18px;
+    background: var(--graph-node-bg);
+    clip-path: polygon(100% 0, 0 50%, 100% 100%);
+}
+
 .graph-node--scope {
-    border-color: hsl(var(--scope-h) 70% 45% / 0.58);
-    background: hsl(var(--scope-h) 90% 54% / 0.1);
+    --graph-node-border-color: hsl(var(--scope-h) 70% 45% / 0.58);
+    --graph-node-bg: hsl(var(--scope-h) 90% 54% / 0.1);
 }
 
 .graph-node--scope .graph-node-icon {
@@ -89,7 +147,7 @@
 }
 
 .graph-node--stat-crit {
-    border-color: light-dark(#d30000, #ff6b6b);
+    --graph-node-border-color: light-dark(#d30000, #ff6b6b);
 }
 
 .graph-node--stat-crit .graph-node-icon {
@@ -97,7 +155,7 @@
 }
 
 .graph-node--stat-warn {
-    border-color: light-dark(#bf5600, #ffa94d);
+    --graph-node-border-color: light-dark(#bf5600, #ffa94d);
 }
 
 .graph-node--stat-warn .graph-node-icon {

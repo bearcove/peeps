@@ -465,3 +465,28 @@ export function getConnectedSubgraph(
     edges: edges.filter((e) => connectedIds.has(e.source) && connectedIds.has(e.target)),
   };
 }
+
+export function filterLoners(
+  entities: EntityDef[],
+  edges: EdgeDef[],
+): { entities: EntityDef[]; edges: EdgeDef[] } {
+  const entityIds = new Set(entities.map((entity) => entity.id));
+  const inScopeEdges = edges.filter(
+    (edge) => entityIds.has(edge.source) && entityIds.has(edge.target),
+  );
+
+  const connectedIds = new Set<string>();
+  for (const edge of inScopeEdges) {
+    // Self-loops do not connect to "any other node".
+    if (edge.source === edge.target) continue;
+    connectedIds.add(edge.source);
+    connectedIds.add(edge.target);
+  }
+
+  return {
+    entities: entities.filter((entity) => connectedIds.has(entity.id)),
+    edges: inScopeEdges.filter(
+      (edge) => connectedIds.has(edge.source) && connectedIds.has(edge.target),
+    ),
+  };
+}

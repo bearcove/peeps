@@ -1,6 +1,7 @@
 import React from "react";
 import type { GeometryGroup } from "../geometry";
 import "../../components/graph/ScopeGroupNode.css";
+import { scopeKindIcon } from "../../scopeKindSpec";
 
 interface GroupLayerProps {
   groups: GeometryGroup[];
@@ -35,9 +36,12 @@ export function GroupLayer({ groups }: GroupLayerProps) {
                   ? ({ "--scope-h": String(scopeHue) } as React.CSSProperties)
                   : undefined
               }
-            >
+              >
               <div className="scope-group-header">
-                <span className="scope-group-label">{group.label}</span>
+                <span className="scope-group-label">
+                  <span className="scope-group-icon">{scopeKindIcon(group.scopeKind, 12)}</span>
+                  <span>{group.label}</span>
+                </span>
                 <span className="scope-group-meta">{count}</span>
               </div>
             </div>

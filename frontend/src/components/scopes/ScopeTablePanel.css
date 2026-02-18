@@ -55,6 +55,12 @@
     font-family: var(--font-mono);
 }
 
+.scope-table-kind {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
 .scope-table-scope-cell {
     display: flex;
     flex-direction: column;

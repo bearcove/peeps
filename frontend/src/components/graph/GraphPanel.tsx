@@ -54,6 +54,8 @@ export function GraphPanel({
   subgraphScopeMode,
   onToggleProcessSubgraphs,
   onToggleCrateSubgraphs,
+  showLoners,
+  onToggleShowLoners,
   unionFrameLayout,
 }: {
   entityDefs: EntityDef[];
@@ -78,6 +80,8 @@ export function GraphPanel({
   subgraphScopeMode: SubgraphScopeMode;
   onToggleProcessSubgraphs: () => void;
   onToggleCrateSubgraphs: () => void;
+  showLoners: boolean;
+  onToggleShowLoners: () => void;
   /** When provided, use this pre-computed layout (union mode) instead of measuring + ELK. */
   unionFrameLayout?: FrameRenderResult;
 }) {
@@ -123,7 +127,7 @@ export function GraphPanel({
   const ghostEdgeIds = unionFrameLayout?.ghostEdgeIds;
 
   const isBusy = snapPhase === "cutting" || snapPhase === "loading";
-  const showToolbar = crateItems.length > 1 || processItems.length > 0 || focusedEntityId;
+  const showToolbar = crateItems.length > 1 || processItems.length > 0 || focusedEntityId || entityDefs.length > 0;
 
   // Keep track of whether we've fitted the view at least once for this layout.
   const [hasFitted, setHasFitted] = useState(false);
@@ -179,6 +183,12 @@ export function GraphPanel({
                 subgraphsLabel="Use subgraphs"
               />
             )}
+            <ActionButton
+              variant={showLoners ? "default" : "ghost"}
+              onPress={onToggleShowLoners}
+            >
+              Show loners: {showLoners ? "on" : "off"}
+            </ActionButton>
             {focusedEntityId && (
               <ActionButton onPress={onExitFocus}>
                 <Crosshair size={14} weight="bold" />

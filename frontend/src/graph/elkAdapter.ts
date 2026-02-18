@@ -9,9 +9,10 @@ const elk = new ELK({ workerUrl: elkWorkerUrl });
 
 const elkOptions = {
   "elk.algorithm": "layered",
-  "elk.direction": "DOWN",
-  "elk.spacing.nodeNode": "24",
-  "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+  "elk.direction": "RIGHT",
+  "elk.spacing.nodeNode": "36",
+  "elk.spacing.edgeNode": "20",
+  "elk.layered.spacing.nodeNodeBetweenLayers": "56",
   "elk.padding": "[top=24,left=24,bottom=24,right=24]",
   "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
 };
@@ -81,11 +82,6 @@ export function edgeMarkerSize(edge: EdgeDef): number {
   return edge.kind === "needs" ? (edge.state === "pending" ? 14 : 10) : 8;
 }
 
-export function edgeLabel(edge: EdgeDef): string | undefined {
-  if (edge.kind !== "needs" || !edge.opKind) return undefined;
-  return edge.opKind.replaceAll("_", " ");
-}
-
 // ── Types ─────────────────────────────────────────────────────
 
 export type SubgraphScopeMode = "none" | "process" | "crate";
@@ -109,16 +105,51 @@ export async function layoutGraph(
   };
 
   const hasSubgraphs = subgraphScopeMode !== "none";
+
+  const defaultInPortId = (entityId: string) => `${entityId}:in`;
+  const defaultOutPortId = (entityId: string) => `${entityId}:out`;
+  const edgeSourceRef = (edge: EdgeDef) => edge.sourcePort ?? defaultOutPortId(edge.source);
+  const edgeTargetRef = (edge: EdgeDef) => edge.targetPort ?? defaultInPortId(edge.target);
+
+  const portsForEntity = (entity: EntityDef): Array<{ id: string; layoutOptions: Record<string, string> }> => {
+    if (entity.channelPair) {
+      const mergedId = entity.id;
+      return [
+        { id: `${mergedId}:tx`, layoutOptions: { "elk.port.side": "EAST" } },
+        { id: `${mergedId}:rx`, layoutOptions: { "elk.port.side": "WEST" } },
+      ];
+    }
+    if (entity.rpcPair) {
+      const mergedId = entity.id;
+      return [
+        { id: `${mergedId}:req`, layoutOptions: { "elk.port.side": "EAST" } },
+        { id: `${mergedId}:resp`, layoutOptions: { "elk.port.side": "WEST" } },
+      ];
+    }
+    return [
+      { id: defaultInPortId(entity.id), layoutOptions: { "elk.port.side": "WEST" } },
+      { id: defaultOutPortId(entity.id), layoutOptions: { "elk.port.side": "EAST" } },
+    ];
+  };
+
+  const nodeLayoutOptions = {
+    "elk.portConstraints": "FIXED_SIDE",
+  };
+
+  const elkNodeForEntity = (entity: EntityDef) => {
+    const size = nodeSizes.get(entity.id);
+    return {
+      id: entity.id,
+      width: size?.width || 150,
+      height: size?.height || 36,
+      layoutOptions: nodeLayoutOptions,
+      ports: portsForEntity(entity),
+    };
+  };
+
   const groupedChildren = (() => {
     if (!hasSubgraphs) {
-      return entityDefs.map((entity) => {
-        const size = nodeSizes.get(entity.id);
-        return {
-          id: entity.id,
-          width: size?.width || 150,
-          height: size?.height || 36,
-        };
-      });
+      return entityDefs.map(elkNodeForEntity);
     }
 
     const grouped = new Map<string, EntityDef[]>();
@@ -135,14 +166,7 @@ export async function layoutGraph(
         layoutOptions: {
           "elk.padding": subgraphElkPadding,
         },
-        children: members.map((entity) => {
-          const size = nodeSizes.get(entity.id);
-          return {
-            id: entity.id,
-            width: size?.width || 150,
-            height: size?.height || 36,
-          };
-        }),
+        children: members.map(elkNodeForEntity),
       }));
   })();
 
@@ -157,8 +181,8 @@ export async function layoutGraph(
     children: groupedChildren,
     edges: validEdges.map((e) => ({
       id: e.id,
-      sources: [e.source],
-      targets: [e.target],
+      sources: [edgeSourceRef(e)],
+      targets: [edgeTargetRef(e)],
     })),
   });
 
@@ -206,6 +230,7 @@ export async function layoutGraph(
       return {
         kind: "channelPairNode",
         data: {
+          nodeId: def.id,
           tx: def.channelPair.tx,
           rx: def.channelPair.rx,
           channelName: def.name,
@@ -255,11 +280,24 @@ export async function layoutGraph(
         const memberIds = (child.children ?? [])
           .filter((c: any) => !String(c.id).startsWith("scope-group:"))
           .map((c: any) => String(c.id));
+        const memberEntities = memberIds
+          .map((id: string) => entityById.get(id))
+          .filter((entity: EntityDef | undefined): entity is EntityDef => !!entity);
+
+        let canonicalLabel = rawScopeKey === "~no-crate" ? "(no crate)" : rawScopeKey;
+        if (scopeKind === "process" && memberEntities.length > 0) {
+          const anchor = memberEntities[0];
+          const pidSuffix = anchor.processPid != null ? String(anchor.processPid) : anchor.processId;
+          canonicalLabel = `${anchor.processName}(${pidSuffix})`;
+        } else if (scopeKind === "connection" && memberEntities.length > 0) {
+          const named = memberEntities.find((entity: EntityDef) => entity.kind === "connection") ?? memberEntities[0];
+          canonicalLabel = named.name;
+        }
 
         geoGroups.push({
           id: groupId,
           scopeKind,
-          label: rawScopeKey === "~no-crate" ? "(no crate)" : rawScopeKey,
+          label: canonicalLabel,
           worldRect: {
             x: absX,
             y: absY,
@@ -348,10 +386,15 @@ export async function layoutGraph(
     if (!records || records.length === 0) {
       throw new Error(`[elk] edge ${def.id}: no routed sections returned by ELK`);
     }
-    const edgeRecords = records.filter(
-      (record) =>
-        record.sources.includes(def.source) && record.targets.includes(def.target),
-    );
+    const expectedSourceRef = edgeSourceRef(def);
+    const expectedTargetRef = edgeTargetRef(def);
+    const edgeRecords = records.filter((record) => {
+      const sourceMatch =
+        record.sources.includes(expectedSourceRef) || record.sources.includes(def.source);
+      const targetMatch =
+        record.targets.includes(expectedTargetRef) || record.targets.includes(def.target);
+      return sourceMatch && targetMatch;
+    });
     if (edgeRecords.length === 0) {
       throw new Error(`[elk] edge ${def.id}: no matching ELK records for ${def.source} -> ${def.target}`);
     }
@@ -480,8 +523,6 @@ export async function layoutGraph(
       data: {
         style: edgeStyle(def),
         tooltip: edgeTooltip(def, srcName, dstName),
-        edgeLabel: edgeLabel(def),
-        edgePending: def.state === "pending",
         markerSize,
       },
     };

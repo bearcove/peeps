@@ -2,12 +2,12 @@ import React, { useEffect } from "react";
 import { ActionButton } from "../ui/primitives/ActionButton";
 import { Table, type Column } from "../ui/primitives/Table";
 import type { ConnectedProcessInfo, ConnectionsResponse } from "../api/types";
+import { formatProcessLabel } from "../processLabel";
 import "./ProcessModal.css";
 
 const PROCESS_COLUMNS: readonly Column<ConnectedProcessInfo>[] = [
   { key: "conn_id", label: "Conn", width: "60px", render: (r) => r.conn_id },
-  { key: "process_name", label: "Name", render: (r) => r.process_name },
-  { key: "pid", label: "PID", width: "80px", render: (r) => r.pid },
+  { key: "process", label: "Process", render: (r) => formatProcessLabel(r.process_name, r.pid) },
 ];
 
 export function ProcessModal({

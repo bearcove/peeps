@@ -2,6 +2,7 @@ import type { FrameSummary } from "../api/types";
 import type { ApiClient } from "../api/client";
 import {
   convertSnapshot,
+  filterLoners,
   getConnectedSubgraph,
   type SnapshotGroupMode,
   type EntityDef,
@@ -263,6 +264,7 @@ export function renderFrameFromUnion(
   hiddenProcesses: ReadonlySet<string>,
   focusedEntityId: string | null,
   ghostMode?: boolean,
+  showLoners: boolean = true,
 ): FrameRenderResult {
   const snappedIndex = nearestProcessedFrame(frameIndex, unionLayout.processedFrameIndices);
   const frameData = unionLayout.frameCache.get(snappedIndex);
@@ -276,6 +278,16 @@ export function renderFrameFromUnion(
       (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)),
   );
   let filteredEdges = frameData.edges;
+  const filteredEntityIds = new Set(filteredEntities.map((entity) => entity.id));
+  filteredEdges = filteredEdges.filter(
+    (edge) => filteredEntityIds.has(edge.source) && filteredEntityIds.has(edge.target),
+  );
+
+  if (!showLoners) {
+    const withoutLoners = filterLoners(filteredEntities, filteredEdges);
+    filteredEntities = withoutLoners.entities;
+    filteredEdges = withoutLoners.edges;
+  }
 
   // Apply focused entity subgraph filtering.
   if (focusedEntityId) {

@@ -3,9 +3,11 @@ import { CaretLeft, CaretRight, MagnifyingGlass } from "@phosphor-icons/react";
 import { ActionButton } from "../../ui/primitives/ActionButton";
 import type { EntityDef, EdgeDef } from "../../snapshot";
 import type { UnionLayout } from "../../recording/unionGraph";
+import type { ScopeTableRow } from "../scopes/ScopeTablePanel";
 import { diffEntityBetweenFrames } from "../../recording/unionGraph";
 import { EntityInspectorContent } from "./EntityInspectorContent";
 import { EdgeInspectorContent } from "./EdgeInspectorContent";
+import { ScopeInspectorContent } from "./ScopeInspectorContent";
 import { ScopeKindInspectorContent } from "./ScopeKindInspectorContent";
 import type { GraphSelection } from "../graph/GraphPanel";
 import "./InspectorPanel.css";
@@ -20,6 +22,7 @@ export function InspectorPanel({
   scrubbingUnionLayout,
   currentFrameIndex,
   selectedScopeKind,
+  selectedScope,
 }: {
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -30,6 +33,7 @@ export function InspectorPanel({
   scrubbingUnionLayout?: UnionLayout;
   currentFrameIndex?: number;
   selectedScopeKind?: string | null;
+  selectedScope?: ScopeTableRow | null;
 }) {
   if (collapsed) {
     return (
@@ -55,6 +59,8 @@ export function InspectorPanel({
   } else if (selection?.kind === "edge") {
     const edge = edgeDefs.find((e) => e.id === selection.id);
     content = edge ? <EdgeInspectorContent edge={edge} entityDefs={entityDefs} /> : null;
+  } else if (selectedScope) {
+    content = <ScopeInspectorContent scope={selectedScope} />;
   } else if (selectedScopeKind) {
     content = <ScopeKindInspectorContent kind={selectedScopeKind} />;
   } else {

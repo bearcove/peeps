@@ -43,6 +43,7 @@ export async function measureEntityDefs(
       card = (
         <ChannelPairNode
           data={{
+            nodeId: def.id,
             tx: def.channelPair.tx,
             rx: def.channelPair.rx,
             channelName: def.name,

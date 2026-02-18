@@ -1633,7 +1633,7 @@ pub fn rpc_response(method: impl Into<CompactString>) -> RpcResponseHandle {
         status: ResponseStatus::Pending,
     });
     RpcResponseHandle {
-        handle: EntityHandle::new(format!("rpc.response.{method}"), body),
+        handle: EntityHandle::new(format!("{method}"), body),
     }
 }
 

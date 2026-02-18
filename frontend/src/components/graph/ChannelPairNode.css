@@ -19,6 +19,26 @@
     min-width: 196px;
 }
 
+.channel-pair--compact {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+}
+
+.channel-pair-compact-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.channel-pair--compact .channel-pair-name {
+    font-size: 11px;
+    font-weight: 600;
+}
+
 .channel-pair--selected {
     outline: 2px solid light-dark(#3b82f6, #60a5fa);
     outline-offset: 2px;
@@ -82,12 +102,39 @@
     font-size: 11px;
 }
 
+.channel-pair-row--out {
+    justify-content: flex-start;
+}
+
+.channel-pair-row--in {
+    justify-content: flex-start;
+}
+
 .channel-pair-row-label {
     font-size: 10px;
     font-weight: 700;
     color: var(--text-tertiary);
-    width: 16px;
+    width: 30px;
     flex-shrink: 0;
     text-transform: uppercase;
     letter-spacing: 0.03em;
+}
+
+.channel-pair-port {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    border: 1.5px solid light-dark(#8a8d94, #a0a4ad);
+    background: light-dark(#f7f8fa, #16191d);
+    align-self: center;
+    flex-shrink: 0;
+}
+
+.channel-pair-port--in {
+    margin-right: 4px;
+}
+
+.channel-pair-port--out {
+    margin-left: auto;
+    margin-right: 4px;
 }

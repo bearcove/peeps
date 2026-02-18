@@ -7,6 +7,7 @@ import type { ConnectionsResponse, FrameSummary } from "./api/types";
 import { RecordingTimeline } from "./components/timeline/RecordingTimeline";
 import {
   convertSnapshot,
+  filterLoners,
   getConnectedSubgraph,
   type EntityDef,
   type EdgeDef,
@@ -24,11 +25,12 @@ import {
 } from "./recording/unionGraph";
 import { GraphPanel, type GraphSelection, type ScopeColorMode, type SnapPhase } from "./components/graph/GraphPanel";
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
-import { ScopeTablePanel } from "./components/scopes/ScopeTablePanel";
+import { ScopeTablePanel, type ScopeTableRow } from "./components/scopes/ScopeTablePanel";
 import { ProcessModal } from "./components/ProcessModal";
 import { AppHeader } from "./components/AppHeader";
 import { ProcessIdenticon } from "./ui/primitives/ProcessIdenticon";
 import { SegmentedGroup } from "./ui/primitives/SegmentedGroup";
+import { formatProcessLabel } from "./processLabel";
 
 // ── Snapshot state machine ─────────────────────────────────────
 
@@ -81,6 +83,7 @@ export type RecordingState =
 export function App() {
   const [leftPaneTab, setLeftPaneTab] = useState<"graph" | "scopes">("graph");
   const [selectedScopeKind, setSelectedScopeKind] = useState<string | null>(null);
+  const [selectedScope, setSelectedScope] = useState<ScopeTableRow | null>(null);
   const [snap, setSnap] = useState<SnapshotState>({ phase: "idle" });
   const [inspectorWidth, setInspectorWidth] = useState(340);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
@@ -92,6 +95,7 @@ export function App() {
   const [hiddenProcesses, setHiddenProcesses] = useState<ReadonlySet<string>>(new Set());
   const [scopeColorMode, setScopeColorMode] = useState<ScopeColorMode>("crate");
   const [subgraphScopeMode, setSubgraphScopeMode] = useState<SubgraphScopeMode>("process");
+  const [showLoners, setShowLoners] = useState(false);
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [isLive, setIsLive] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
@@ -146,11 +150,6 @@ export function App() {
       count: counts.get(id) ?? 0,
     }));
 
-    const duplicateNameCounts = new Map<string, number>();
-    for (const row of rows) {
-      duplicateNameCounts.set(row.name, (duplicateNameCounts.get(row.name) ?? 0) + 1);
-    }
-
     return rows
       .sort(
         (a, b) =>
@@ -159,9 +158,8 @@ export function App() {
           a.id.localeCompare(b.id),
       )
       .map((row) => {
-        const hasDuplicateName = (duplicateNameCounts.get(row.name) ?? 0) > 1;
-        const suffix = row.pid == null ? row.id : String(row.pid);
-        const label = hasDuplicateName ? `${row.name}(${suffix})` : row.name;
+        const suffix = row.pid == null ? "?" : String(row.pid);
+        const label = formatProcessLabel(row.name, row.pid);
         return {
           id: row.id,
           label,
@@ -230,14 +228,25 @@ export function App() {
   }, []);
 
   const { entities, edges } = useMemo(() => {
-    const filtered = allEntities.filter(
+    let filteredEntities = allEntities.filter(
       (e) =>
         (hiddenKrates.size === 0 || !hiddenKrates.has(e.krate ?? "~no-crate")) &&
         (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)),
     );
-    if (!focusedEntityId) return { entities: filtered, edges: allEdges };
-    return getConnectedSubgraph(focusedEntityId, filtered, allEdges);
-  }, [focusedEntityId, allEntities, allEdges, hiddenKrates, hiddenProcesses]);
+    const filteredEntityIds = new Set(filteredEntities.map((entity) => entity.id));
+    let filteredEdges = allEdges.filter(
+      (edge) => filteredEntityIds.has(edge.source) && filteredEntityIds.has(edge.target),
+    );
+
+    if (!showLoners) {
+      const withoutLoners = filterLoners(filteredEntities, filteredEdges);
+      filteredEntities = withoutLoners.entities;
+      filteredEdges = withoutLoners.edges;
+    }
+
+    if (!focusedEntityId) return { entities: filteredEntities, edges: filteredEdges };
+    return getConnectedSubgraph(focusedEntityId, filteredEntities, filteredEdges);
+  }, [focusedEntityId, allEntities, allEdges, hiddenKrates, hiddenProcesses, showLoners]);
 
   const takeSnapshot = useCallback(async () => {
     setSnap({ phase: "cutting" });
@@ -357,13 +366,14 @@ export function App() {
           hiddenProcesses,
           focusedEntityId,
           ghostMode,
+          showLoners,
         );
         setUnionFrameLayout(unionFrame);
       }
     } catch (err) {
       console.error(err);
     }
-  }, [hiddenKrates, hiddenProcesses, focusedEntityId, subgraphScopeMode]);
+  }, [hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, showLoners, subgraphScopeMode]);
 
   const handleExport = useCallback(async () => {
     try {
@@ -436,6 +446,8 @@ export function App() {
             hiddenKrates,
             hiddenProcesses,
             focusedEntityId,
+            ghostMode,
+            showLoners,
           );
           setUnionFrameLayout(unionFrame);
         }
@@ -443,7 +455,7 @@ export function App() {
         console.error(err);
       }
     },
-    [hiddenKrates, hiddenProcesses, focusedEntityId, subgraphScopeMode],
+    [hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, showLoners, subgraphScopeMode],
   );
 
   const handleScrub = useCallback(
@@ -462,6 +474,7 @@ export function App() {
           hiddenProcesses,
           focusedEntityId,
           ghostMode,
+          showLoners,
         );
         setUnionFrameLayout(result);
 
@@ -484,7 +497,7 @@ export function App() {
         };
       });
     },
-    [hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode],
+    [hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, showLoners],
   );
 
   const handleRebuildUnion = useCallback(async () => {
@@ -530,6 +543,7 @@ export function App() {
         hiddenProcesses,
         focusedEntityId,
         ghostMode,
+        showLoners,
       );
       setUnionFrameLayout(unionFrame);
       const frameData = union.frameCache.get(snapped);
@@ -539,7 +553,7 @@ export function App() {
     } catch (err) {
       console.error(err);
     }
-  }, [recording, downsampleInterval, hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, subgraphScopeMode]);
+  }, [recording, downsampleInterval, hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, showLoners, subgraphScopeMode]);
 
   // Re-render union frame when filters change during playback.
   useEffect(() => {
@@ -551,6 +565,7 @@ export function App() {
         hiddenProcesses,
         focusedEntityId,
         ghostMode,
+        showLoners,
       );
       setUnionFrameLayout(result);
     } else if (recording.phase === "stopped" && recording.unionLayout) {
@@ -562,10 +577,11 @@ export function App() {
         hiddenProcesses,
         focusedEntityId,
         ghostMode,
+        showLoners,
       );
       setUnionFrameLayout(result);
     }
-  }, [hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, recording]);
+  }, [hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, showLoners, recording]);
 
   // Clear union frame layout when going back to idle or starting a new recording.
   useEffect(() => {
@@ -740,7 +756,10 @@ export function App() {
                   selection={selection}
                   onSelect={(next) => {
                     setSelection(next);
-                    if (next) setSelectedScopeKind(null);
+                    if (next) {
+                      setSelectedScopeKind(null);
+                      setSelectedScope(null);
+                    }
                   }}
                   focusedEntityId={focusedEntityId}
                   onExitFocus={() => setFocusedEntityId(null)}
@@ -759,14 +778,26 @@ export function App() {
                   subgraphScopeMode={subgraphScopeMode}
                   onToggleProcessSubgraphs={handleToggleProcessSubgraphs}
                   onToggleCrateSubgraphs={handleToggleCrateSubgraphs}
+                  showLoners={showLoners}
+                  onToggleShowLoners={() => setShowLoners((prev) => !prev)}
                   unionFrameLayout={unionFrameLayout}
                 />
               ) : (
                 <ScopeTablePanel
                   selectedKind={selectedScopeKind}
+                  selectedScopeKey={selectedScope?.key ?? null}
                   onSelectKind={(kind) => {
                     setSelectedScopeKind(kind);
-                    if (kind) setSelection(null);
+                    if (kind) {
+                      setSelection(null);
+                      setSelectedScope(null);
+                    }
+                  }}
+                  onSelectScope={(scope) => {
+                    setSelectedScope(scope);
+                    if (scope) {
+                      setSelection(null);
+                    }
                   }}
                 />
               )}
@@ -784,6 +815,7 @@ export function App() {
             scrubbingUnionLayout={recording.phase === "scrubbing" ? recording.unionLayout : undefined}
             currentFrameIndex={recording.phase === "scrubbing" ? recording.currentFrameIndex : undefined}
             selectedScopeKind={selectedScopeKind}
+            selectedScope={selectedScope}
           />
         }
         rightWidth={inspectorWidth}

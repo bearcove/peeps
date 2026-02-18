@@ -21,9 +21,19 @@
 }
 
 .scope-group-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.scope-group-icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
 }
 
 .scope-group-meta {

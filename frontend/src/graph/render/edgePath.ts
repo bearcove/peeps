@@ -1,25 +1,12 @@
 import type { Point } from "../geometry";
 
-// Generate SVG path string from polyline points using quadratic bezier smoothing.
-// Start and end points are preserved exactly; bend points are smoothed through midpoints.
+// Generate SVG path string from polyline points using straight segments.
 export function polylineToPath(points: Point[]): string {
   if (points.length < 2) return "";
   const [start, ...rest] = points;
   let d = `M ${start.x} ${start.y}`;
-  if (rest.length === 1) {
-    d += ` L ${rest[0].x} ${rest[0].y}`;
-  } else {
-    for (let i = 0; i < rest.length - 1; i++) {
-      const curr = rest[i];
-      const next = rest[i + 1];
-      if (i < rest.length - 2) {
-        const midX = (curr.x + next.x) / 2;
-        const midY = (curr.y + next.y) / 2;
-        d += ` Q ${curr.x} ${curr.y}, ${midX} ${midY}`;
-      } else {
-        d += ` Q ${curr.x} ${curr.y}, ${next.x} ${next.y}`;
-      }
-    }
+  for (const point of rest) {
+    d += ` L ${point.x} ${point.y}`;
   }
   return d;
 }

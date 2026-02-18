@@ -5,6 +5,7 @@ import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import { ActionButton } from "../../ui/primitives/ActionButton";
 import { kindIcon, kindDisplayName } from "../../nodeKindSpec";
+import { formatProcessLabel } from "../../processLabel";
 import type { EntityDef, Tone } from "../../snapshot";
 import type { EntityDiff } from "../../recording/unionGraph";
 import { ChannelPairInspectorContent } from "./ChannelPairInspectorContent";
@@ -79,10 +80,7 @@ export function EntityInspectorContent({
 
       <div className="inspector-section">
         <KeyValueRow label="Process">
-          <span className="inspector-mono">{entity.processName}</span>
-          <span className="inspector-muted" style={{ fontSize: "0.75em", marginLeft: 4 }}>
-            {entity.processId}
-          </span>
+          <span className="inspector-mono">{formatProcessLabel(entity.processName, entity.processPid)}</span>
         </KeyValueRow>
         <KeyValueRow label="Source" icon={<FileRs size={12} weight="bold" />}>
           <a
