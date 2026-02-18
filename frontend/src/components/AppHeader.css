@@ -13,6 +13,7 @@
     font-weight: 800;
     font-size: var(--font-size-md);
     letter-spacing: -0.02em;
+    margin-right: 4px;
 }
 
 .app-header-badge {

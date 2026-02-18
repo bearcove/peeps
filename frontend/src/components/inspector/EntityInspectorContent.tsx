@@ -12,6 +12,11 @@ import { MetaSection } from "./MetaTree";
 import { Source } from "./Source";
 import "./InspectorPanel.css";
 
+type MergedSection = {
+  label: string;
+  entity: EntityDef;
+};
+
 function BirthTimestamp({
   birthPtime,
   ageMs,
@@ -46,52 +51,172 @@ function BirthTimestamp({
   );
 }
 
+function EntityInspectorHeader({
+  entity,
+  focusedEntityId,
+  onToggleFocus,
+}: {
+  entity: EntityDef;
+  focusedEntityId: string | null;
+  onToggleFocus: (id: string) => void;
+}) {
+  const isFocused = focusedEntityId === entity.id;
+
+  return (
+    <div className="inspector-node-header">
+      <span className="inspector-node-icon">{kindIcon(entity.kind, 16)}</span>
+      <div className="inspector-node-header-text">
+        <div className="inspector-node-kind">{kindDisplayName(entity.kind)}</div>
+        <div className="inspector-node-label">{entity.name}</div>
+      </div>
+      <ActionButton onPress={() => onToggleFocus(entity.id)}>
+        <Crosshair size={14} weight="bold" />
+        {isFocused ? "Unfocus" : "Focus"}
+      </ActionButton>
+    </div>
+  );
+}
+
+function MergedEntityInspectorContent({
+  merged,
+  sections,
+  focusedEntityId,
+  onToggleFocus,
+  entityDiff,
+}: {
+  merged: EntityDef;
+  sections: readonly MergedSection[];
+  focusedEntityId: string | null;
+  onToggleFocus: (id: string) => void;
+  entityDiff?: EntityDiff | null;
+}) {
+  return (
+    <>
+      <EntityInspectorHeader entity={merged} focusedEntityId={focusedEntityId} onToggleFocus={onToggleFocus} />
+      <div className="inspector-alert-slot" />
+      {entityDiff && (entityDiff.appeared || entityDiff.disappeared || entityDiff.statusChanged || entityDiff.statChanged) && (
+        <div className="inspector-diff">
+          {entityDiff.appeared && (
+            <Badge tone="ok">appeared this frame</Badge>
+          )}
+          {entityDiff.disappeared && (
+            <Badge tone="warn">disappeared this frame</Badge>
+          )}
+          {entityDiff.statusChanged && (
+            <div className="inspector-diff-row">
+              <span className="inspector-diff-label">Status</span>
+              <span className="inspector-diff-from">{entityDiff.statusChanged.from}</span>
+              <span className="inspector-diff-arrow">→</span>
+              <span className="inspector-diff-to">{entityDiff.statusChanged.to}</span>
+            </div>
+          )}
+          {entityDiff.statChanged && (
+            <div className="inspector-diff-row">
+              <span className="inspector-diff-label">Stat</span>
+              <span className="inspector-diff-from">{entityDiff.statChanged.from ?? "—"}</span>
+              <span className="inspector-diff-arrow">→</span>
+              <span className="inspector-diff-to">{entityDiff.statChanged.to ?? "—"}</span>
+            </div>
+          )}
+        </div>
+      )}
+      {sections.map((section) => (
+        <React.Fragment key={`${merged.id}:${section.label}`}>
+          <div className="inspector-subsection-label">{section.label}</div>
+          <EntityInspectorBody entity={section.entity} focusedEntityId={focusedEntityId} onToggleFocus={onToggleFocus} showHeader={false} />
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
 export function EntityInspectorContent({
   entity,
-  onFocus,
+  focusedEntityId,
+  onToggleFocus,
   entityDiff,
 }: {
   entity: EntityDef;
-  onFocus: (id: string) => void;
+  focusedEntityId: string | null;
+  onToggleFocus: (id: string) => void;
   entityDiff?: EntityDiff | null;
+}) {
+  if (entity.channelPair) {
+    return (
+      <MergedEntityInspectorContent
+        merged={entity}
+        sections={[
+          { label: "TX", entity: entity.channelPair.tx },
+          { label: "RX", entity: entity.channelPair.rx },
+        ]}
+        focusedEntityId={focusedEntityId}
+        onToggleFocus={onToggleFocus}
+        entityDiff={entityDiff}
+      />
+    );
+  }
+
+  if (entity.rpcPair) {
+    return (
+      <MergedEntityInspectorContent
+        merged={entity}
+        sections={[
+          { label: "REQ", entity: entity.rpcPair.req },
+          { label: "RESP", entity: entity.rpcPair.resp },
+        ]}
+        focusedEntityId={focusedEntityId}
+        onToggleFocus={onToggleFocus}
+        entityDiff={entityDiff}
+      />
+    );
+  }
+
+  return (
+    <EntityInspectorBody
+      entity={entity}
+      focusedEntityId={focusedEntityId}
+      onToggleFocus={onToggleFocus}
+      entityDiff={entityDiff}
+    />
+  );
+}
+
+function EntityInspectorBody({
+  entity,
+  focusedEntityId,
+  onToggleFocus,
+  entityDiff,
+  showHeader = true,
+}: {
+  entity: EntityDef;
+  focusedEntityId: string | null;
+  onToggleFocus: (id: string) => void;
+  entityDiff?: EntityDiff | null;
+  showHeader?: boolean;
 }) {
   const birthAbsolute = isFinite(entity.birthApproxUnixMs) && entity.birthApproxUnixMs > 0
     ? new Date(entity.birthApproxUnixMs).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "long" })
     : null;
 
-  if (entity.channelPair) {
-    return (
-      <>
-        <div className="inspector-subsection-label">TX</div>
-        <EntityInspectorContent entity={entity.channelPair.tx} onFocus={onFocus} />
-
-        <div className="inspector-subsection-label">RX</div>
-        <EntityInspectorContent entity={entity.channelPair.rx} onFocus={onFocus} />
-      </>
-    );
-  }
-
   return (
     <>
-      <div className="inspector-node-header">
-        <span className="inspector-node-icon">{kindIcon(entity.kind, 16)}</span>
-        <div className="inspector-node-header-text">
-          <div className="inspector-node-kind">{kindDisplayName(entity.kind)}</div>
-          <div className="inspector-node-label">{entity.name}</div>
-        </div>
-        <ActionButton onPress={() => onFocus(entity.id)}>
-          <Crosshair size={14} weight="bold" />
-          Focus
-        </ActionButton>
-      </div>
+      {showHeader && (
+        <EntityInspectorHeader
+          entity={entity}
+          focusedEntityId={focusedEntityId}
+          onToggleFocus={onToggleFocus}
+        />
+      )}
 
-      <div className="inspector-alert-slot">
-        {entity.inCycle && (
-          <div className="inspector-alert inspector-alert--crit">
-            Part of <code>needs</code> cycle — possible deadlock
-          </div>
-        )}
-      </div>
+      {showHeader && (
+        <div className="inspector-alert-slot">
+          {entity.inCycle && (
+            <div className="inspector-alert inspector-alert--crit">
+              Part of <code>needs</code> cycle — possible deadlock
+            </div>
+          )}
+        </div>
+      )}
 
       {entityDiff && (entityDiff.appeared || entityDiff.disappeared || entityDiff.statusChanged || entityDiff.statChanged) && (
         <div className="inspector-diff">

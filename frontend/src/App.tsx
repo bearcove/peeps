@@ -29,7 +29,6 @@ import { ScopeTablePanel, type ScopeTableRow } from "./components/scopes/ScopeTa
 import { ProcessModal } from "./components/ProcessModal";
 import { AppHeader } from "./components/AppHeader";
 import { ProcessIdenticon } from "./ui/primitives/ProcessIdenticon";
-import { SegmentedGroup } from "./ui/primitives/SegmentedGroup";
 import { formatProcessLabel } from "./processLabel";
 import { canonicalNodeKind, kindDisplayName, kindIcon } from "./nodeKindSpec";
 
@@ -748,6 +747,8 @@ export function App() {
         <ProcessModal connections={connections} onClose={() => setShowProcessModal(false)} />
       )}
       <AppHeader
+        leftPaneTab={leftPaneTab}
+        onLeftPaneTabChange={setLeftPaneTab}
         snap={snap}
         recording={recording}
         connCount={connCount}
@@ -790,18 +791,6 @@ export function App() {
       <SplitLayout
         left={
           <div className="app-left-pane">
-            <div className="app-left-pane-tabs">
-              <SegmentedGroup
-                size="sm"
-                aria-label="Left panel mode"
-                value={leftPaneTab}
-                onChange={(value) => setLeftPaneTab(value as "graph" | "scopes")}
-                options={[
-                  { value: "graph", label: "Graph" },
-                  { value: "scopes", label: "Scopes" },
-                ]}
-              />
-            </div>
             <div className="app-left-pane-body">
               {leftPaneTab === "graph" ? (
                 <GraphPanel
@@ -870,7 +859,10 @@ export function App() {
             selection={selection}
             entityDefs={allEntities}
             edgeDefs={allEdges}
-            onFocusEntity={setFocusedEntityId}
+            focusedEntityId={focusedEntityId}
+            onToggleFocusEntity={(id) => {
+              setFocusedEntityId((prev) => (prev === id ? null : id));
+            }}
             scrubbingUnionLayout={recording.phase === "scrubbing" ? recording.unionLayout : undefined}
             currentFrameIndex={recording.phase === "scrubbing" ? recording.currentFrameIndex : undefined}
             selectedScopeKind={selectedScopeKind}

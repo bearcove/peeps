@@ -10,6 +10,7 @@ import {
   UploadSimple,
 } from "@phosphor-icons/react";
 import { ActionButton } from "../ui/primitives/ActionButton";
+import { SegmentedGroup } from "../ui/primitives/SegmentedGroup";
 import { formatElapsed } from "./timeline/RecordingTimeline";
 import { apiMode } from "../api";
 import type { RecordingState, SnapshotState } from "../App";
@@ -22,6 +23,8 @@ function formatBytes(bytes: number): string {
 }
 
 export function AppHeader({
+  leftPaneTab,
+  onLeftPaneTabChange,
   snap,
   recording,
   connCount,
@@ -38,6 +41,8 @@ export function AppHeader({
   fileInputRef,
   onImportFile,
 }: {
+  leftPaneTab: "graph" | "scopes";
+  onLeftPaneTabChange: (tab: "graph" | "scopes") => void;
   snap: SnapshotState;
   recording: RecordingState;
   connCount: number;
@@ -61,6 +66,16 @@ export function AppHeader({
     <div className="app-header">
       <Aperture size={16} weight="bold" />
       <span className="app-header-title">peeps</span>
+      <SegmentedGroup
+        size="sm"
+        aria-label="Primary page"
+        value={leftPaneTab}
+        onChange={(value) => onLeftPaneTabChange(value as "graph" | "scopes")}
+        options={[
+          { value: "graph", label: "Graph" },
+          { value: "scopes", label: "Scopes" },
+        ]}
+      />
       <button
         type="button"
         className={`proc-pill${connCount > 0 ? " proc-pill--connected" : " proc-pill--disconnected"}`}

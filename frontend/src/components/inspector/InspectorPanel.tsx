@@ -18,7 +18,8 @@ export function InspectorPanel({
   selection,
   entityDefs,
   edgeDefs,
-  onFocusEntity,
+  focusedEntityId,
+  onToggleFocusEntity,
   scrubbingUnionLayout,
   currentFrameIndex,
   selectedScopeKind,
@@ -29,7 +30,8 @@ export function InspectorPanel({
   selection: GraphSelection;
   entityDefs: EntityDef[];
   edgeDefs: EdgeDef[];
-  onFocusEntity: (id: string) => void;
+  focusedEntityId: string | null;
+  onToggleFocusEntity: (id: string) => void;
   scrubbingUnionLayout?: UnionLayout;
   currentFrameIndex?: number;
   selectedScopeKind?: string | null;
@@ -55,7 +57,14 @@ export function InspectorPanel({
       entity && scrubbingUnionLayout && currentFrameIndex !== undefined && currentFrameIndex > 0
         ? diffEntityBetweenFrames(entity.id, currentFrameIndex, currentFrameIndex - 1, scrubbingUnionLayout)
         : null;
-    content = entity ? <EntityInspectorContent entity={entity} onFocus={onFocusEntity} entityDiff={entityDiff} /> : null;
+    content = entity ? (
+      <EntityInspectorContent
+        entity={entity}
+        focusedEntityId={focusedEntityId}
+        onToggleFocus={onToggleFocusEntity}
+        entityDiff={entityDiff}
+      />
+    ) : null;
   } else if (selection?.kind === "edge") {
     const edge = edgeDefs.find((e) => e.id === selection.id);
     content = edge ? <EdgeInspectorContent edge={edge} entityDefs={entityDefs} /> : null;
