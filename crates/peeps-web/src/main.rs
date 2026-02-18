@@ -54,6 +54,7 @@ struct ServerState {
     connections: HashMap<u64, ConnectedProcess>,
     cuts: BTreeMap<String, CutState>,
     pending_snapshots: HashMap<i64, SnapshotPending>,
+    last_snapshot_json: Option<String>,
     recording: Option<RecordingState>,
 }
 
@@ -302,6 +303,7 @@ async fn run() -> Result<(), String> {
             connections: HashMap::new(),
             cuts: BTreeMap::new(),
             pending_snapshots: HashMap::new(),
+            last_snapshot_json: None,
             recording: None,
         })),
         db_path: Arc::new(db_path),
@@ -335,6 +337,7 @@ async fn run() -> Result<(), String> {
         .route("/api/sql", post(api_sql))
         .route("/api/query", post(api_query))
         .route("/api/snapshot", post(api_snapshot))
+        .route("/api/snapshot/current", get(api_snapshot_current))
         .route("/api/record/start", post(api_record_start))
         .route("/api/record/stop", post(api_record_stop))
         .route("/api/record/current", get(api_record_current))
@@ -515,6 +518,31 @@ async fn api_snapshot(State(state): State<AppState>) -> impl IntoResponse {
     json_ok(&take_snapshot_internal(&state).await)
 }
 
+async fn api_snapshot_current(State(state): State<AppState>) -> impl IntoResponse {
+    let snapshot_json = {
+        let guard = state.inner.lock().await;
+        guard.last_snapshot_json.clone()
+    };
+    match snapshot_json {
+        Some(body) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+            body,
+        )
+            .into_response(),
+        None => json_error(StatusCode::NOT_FOUND, "no snapshot available"),
+    }
+}
+
+async fn remember_snapshot(state: &AppState, snapshot: &SnapshotCutResponse) {
+    let Ok(json) = facet_json::to_string(snapshot) else {
+        warn!("failed to serialize snapshot for cache");
+        return;
+    };
+    let mut guard = state.inner.lock().await;
+    guard.last_snapshot_json = Some(json);
+}
+
 async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
     const SNAPSHOT_TIMEOUT_MS: u64 = 5000;
 
@@ -549,11 +577,13 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
     }
 
     if txs.is_empty() {
-        return SnapshotCutResponse {
+        let response = SnapshotCutResponse {
             captured_at_unix_ms: now_ms(),
             processes: vec![],
             timed_out_processes: vec![],
         };
+        remember_snapshot(state, &response).await;
+        return response;
     }
 
     let request_frame =
@@ -570,11 +600,13 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
                     .await
                     .pending_snapshots
                     .remove(&snapshot_id);
-                return SnapshotCutResponse {
+                let response = SnapshotCutResponse {
                     captured_at_unix_ms: now_ms(),
                     processes: vec![],
                     timed_out_processes: vec![],
                 };
+                remember_snapshot(state, &response).await;
+                return response;
             }
         };
 
@@ -647,11 +679,13 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
         }
     };
 
-    SnapshotCutResponse {
+    let response = SnapshotCutResponse {
         captured_at_unix_ms,
         processes,
         timed_out_processes,
-    }
+    };
+    remember_snapshot(state, &response).await;
+    response
 }
 
 async fn api_record_start(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {

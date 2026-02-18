@@ -34,6 +34,17 @@ async function getJson<T>(url: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function getJsonOrNullOn404<T>(url: string): Promise<T | null> {
+  const res = await fetch(url);
+  if (res.status === 404) {
+    return null;
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json() as Promise<T>;
+}
+
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
@@ -65,6 +76,7 @@ export function createLiveApiClient(): ApiClient {
     triggerCut: () => postJson<TriggerCutResponse>("/api/cuts", {}),
     fetchCutStatus: (cutId: string) =>
       getJson<CutStatusResponse>(`/api/cuts/${encodeURIComponent(cutId)}`),
+    fetchExistingSnapshot: () => getJsonOrNullOn404<SnapshotCutResponse>("/api/snapshot/current"),
     fetchSnapshot: () => postJson<SnapshotCutResponse>("/api/snapshot", {}),
     startRecording: async (req?: RecordStartRequest) =>
       expectRecordingSession(

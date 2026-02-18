@@ -16,6 +16,7 @@ export interface ApiClient {
   fetchSql(sql: string): Promise<SqlResponse>;
   triggerCut(): Promise<TriggerCutResponse>;
   fetchCutStatus(cutId: string): Promise<CutStatusResponse>;
+  fetchExistingSnapshot(): Promise<SnapshotCutResponse | null>;
   fetchSnapshot(): Promise<SnapshotCutResponse>;
   startRecording(req?: RecordStartRequest): Promise<RecordingSessionInfo>;
   stopRecording(): Promise<RecordingSessionInfo>;

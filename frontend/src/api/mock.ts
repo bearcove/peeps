@@ -296,6 +296,7 @@ export function createMockApiClient(): ApiClient {
       };
       return delay(activeCut);
     },
+    fetchExistingSnapshot: () => delay(MOCK_SNAPSHOT, 150),
     fetchSnapshot: () => delay(MOCK_SNAPSHOT, 300),
     startRecording: (req) => {
       const session: RecordingSessionInfo = {

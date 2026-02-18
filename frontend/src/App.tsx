@@ -31,6 +31,7 @@ import { AppHeader } from "./components/AppHeader";
 import { ProcessIdenticon } from "./ui/primitives/ProcessIdenticon";
 import { SegmentedGroup } from "./ui/primitives/SegmentedGroup";
 import { formatProcessLabel } from "./processLabel";
+import { canonicalNodeKind, kindDisplayName, kindIcon } from "./nodeKindSpec";
 
 // ── Snapshot state machine ─────────────────────────────────────
 
@@ -93,6 +94,7 @@ export function App() {
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
   const [hiddenKrates, setHiddenKrates] = useState<ReadonlySet<string>>(new Set());
   const [hiddenProcesses, setHiddenProcesses] = useState<ReadonlySet<string>>(new Set());
+  const [hiddenKinds, setHiddenKinds] = useState<ReadonlySet<string>>(new Set());
   const [scopeColorMode, setScopeColorMode] = useState<ScopeColorMode>("crate");
   const [subgraphScopeMode, setSubgraphScopeMode] = useState<SubgraphScopeMode>("process");
   const [showLoners, setShowLoners] = useState(false);
@@ -108,39 +110,58 @@ export function App() {
 
   const allEntities = snap.phase === "ready" ? snap.entities : [];
   const allEdges = snap.phase === "ready" ? snap.edges : [];
+  const applyBaseFilters = useCallback(
+    (ignore: "crate" | "process" | "kind" | null) => {
+      let entities = allEntities.filter(
+        (e) =>
+          (ignore === "crate" || hiddenKrates.size === 0 || !hiddenKrates.has(e.krate ?? "~no-crate")) &&
+          (ignore === "process" || hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)) &&
+          (ignore === "kind" || hiddenKinds.size === 0 || !hiddenKinds.has(canonicalNodeKind(e.kind))),
+      );
+      const entityIds = new Set(entities.map((entity) => entity.id));
+      let edges = allEdges.filter(
+        (edge) => entityIds.has(edge.source) && entityIds.has(edge.target),
+      );
+      if (!showLoners) {
+        const withoutLoners = filterLoners(entities, edges);
+        entities = withoutLoners.entities;
+        edges = withoutLoners.edges;
+      }
+      return { entities, edges };
+    },
+    [allEntities, allEdges, hiddenKrates, hiddenProcesses, hiddenKinds, showLoners],
+  );
 
   const crateItems = useMemo<FilterMenuItem[]>(() => {
     const counts = new Map<string, number>();
-    for (const e of allEntities) {
-      const k = e.krate ?? "~no-crate";
-      counts.set(k, (counts.get(k) ?? 0) + 1);
+    for (const entity of applyBaseFilters("crate").entities) {
+      const crate = entity.krate ?? "~no-crate";
+      counts.set(crate, (counts.get(crate) ?? 0) + 1);
     }
     return Array.from(counts.keys())
       .sort()
-      .map((k) => ({
-        id: k,
-        label: k === "~no-crate" ? "(no crate)" : k,
-        meta: counts.get(k),
+      .map((crate) => ({
+        id: crate,
+        label: crate === "~no-crate" ? "(no crate)" : crate,
+        meta: counts.get(crate) ?? 0,
       }));
-  }, [allEntities]);
+  }, [applyBaseFilters]);
 
   const processItems = useMemo<FilterMenuItem[]>(() => {
     const counts = new Map<string, number>();
     const processMeta = new Map<string, { name: string; pid: number | null }>();
 
-    for (const e of allEntities) {
-      counts.set(e.processId, (counts.get(e.processId) ?? 0) + 1);
-      if (!processMeta.has(e.processId)) {
-        processMeta.set(e.processId, { name: e.processName, pid: e.processPid });
+    for (const entity of applyBaseFilters("process").entities) {
+      counts.set(entity.processId, (counts.get(entity.processId) ?? 0) + 1);
+      if (!processMeta.has(entity.processId)) {
+        processMeta.set(entity.processId, { name: entity.processName, pid: entity.processPid });
       }
     }
 
     for (const proc of connections?.processes ?? []) {
       const processId = String(proc.conn_id);
       processMeta.set(processId, { name: proc.process_name, pid: proc.pid });
-      if (!counts.has(processId)) {
-        counts.set(processId, 0);
-      }
+      if (!counts.has(processId)) counts.set(processId, 0);
     }
 
     const rows = Array.from(processMeta.entries()).map(([id, meta]) => ({
@@ -159,15 +180,30 @@ export function App() {
       )
       .map((row) => {
         const suffix = row.pid == null ? "?" : String(row.pid);
-        const label = formatProcessLabel(row.name, row.pid);
         return {
           id: row.id,
-          label,
+          label: formatProcessLabel(row.name, row.pid),
           icon: <ProcessIdenticon name={row.name} seed={`${row.name}:${suffix}`} size={14} />,
           meta: row.count,
         };
       });
-  }, [allEntities, connections]);
+  }, [applyBaseFilters, connections]);
+
+  const kindItems = useMemo<FilterMenuItem[]>(() => {
+    const counts = new Map<string, number>();
+    for (const entity of applyBaseFilters("kind").entities) {
+      const kind = canonicalNodeKind(entity.kind);
+      counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort(([a], [b]) => kindDisplayName(a).localeCompare(kindDisplayName(b)))
+      .map(([kind, count]) => ({
+        id: kind,
+        label: kindDisplayName(kind),
+        icon: kindIcon(kind, 14),
+        meta: count,
+      }));
+  }, [applyBaseFilters]);
 
   const handleKrateToggle = useCallback((krate: string) => {
     setHiddenKrates((prev) => {
@@ -211,6 +247,27 @@ export function App() {
     [processItems],
   );
 
+  const handleKindToggle = useCallback((kind: string) => {
+    setHiddenKinds((prev) => {
+      const next = new Set(prev);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
+      return next;
+    });
+  }, []);
+
+  const handleKindSolo = useCallback(
+    (kind: string) => {
+      setHiddenKinds((prev) => {
+        const otherKinds = kindItems.filter((item) => item.id !== kind).map((item) => item.id);
+        const alreadySolo = otherKinds.every((id) => prev.has(id)) && !prev.has(kind);
+        if (alreadySolo) return new Set();
+        return new Set(otherKinds);
+      });
+    },
+    [kindItems],
+  );
+
   const handleToggleProcessColorBy = useCallback(() => {
     setScopeColorMode((prev) => (prev === "process" ? "none" : "process"));
   }, []);
@@ -228,25 +285,10 @@ export function App() {
   }, []);
 
   const { entities, edges } = useMemo(() => {
-    let filteredEntities = allEntities.filter(
-      (e) =>
-        (hiddenKrates.size === 0 || !hiddenKrates.has(e.krate ?? "~no-crate")) &&
-        (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)),
-    );
-    const filteredEntityIds = new Set(filteredEntities.map((entity) => entity.id));
-    let filteredEdges = allEdges.filter(
-      (edge) => filteredEntityIds.has(edge.source) && filteredEntityIds.has(edge.target),
-    );
-
-    if (!showLoners) {
-      const withoutLoners = filterLoners(filteredEntities, filteredEdges);
-      filteredEntities = withoutLoners.entities;
-      filteredEdges = withoutLoners.edges;
-    }
-
+    const { entities: filteredEntities, edges: filteredEdges } = applyBaseFilters(null);
     if (!focusedEntityId) return { entities: filteredEntities, edges: filteredEdges };
     return getConnectedSubgraph(focusedEntityId, filteredEntities, filteredEdges);
-  }, [focusedEntityId, allEntities, allEdges, hiddenKrates, hiddenProcesses, showLoners]);
+  }, [applyBaseFilters, focusedEntityId]);
 
   const takeSnapshot = useCallback(async () => {
     setSnap({ phase: "cutting" });
@@ -364,6 +406,7 @@ export function App() {
           union,
           hiddenKrates,
           hiddenProcesses,
+          hiddenKinds,
           focusedEntityId,
           ghostMode,
           showLoners,
@@ -373,7 +416,7 @@ export function App() {
     } catch (err) {
       console.error(err);
     }
-  }, [hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, showLoners, subgraphScopeMode]);
+  }, [hiddenKrates, hiddenProcesses, hiddenKinds, focusedEntityId, ghostMode, showLoners, subgraphScopeMode]);
 
   const handleExport = useCallback(async () => {
     try {
@@ -445,6 +488,7 @@ export function App() {
             union,
             hiddenKrates,
             hiddenProcesses,
+            hiddenKinds,
             focusedEntityId,
             ghostMode,
             showLoners,
@@ -455,7 +499,7 @@ export function App() {
         console.error(err);
       }
     },
-    [hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, showLoners, subgraphScopeMode],
+    [hiddenKrates, hiddenProcesses, hiddenKinds, focusedEntityId, ghostMode, showLoners, subgraphScopeMode],
   );
 
   const handleScrub = useCallback(
@@ -472,6 +516,7 @@ export function App() {
           unionLayout,
           hiddenKrates,
           hiddenProcesses,
+          hiddenKinds,
           focusedEntityId,
           ghostMode,
           showLoners,
@@ -497,7 +542,7 @@ export function App() {
         };
       });
     },
-    [hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, showLoners],
+    [hiddenKrates, hiddenProcesses, hiddenKinds, focusedEntityId, ghostMode, showLoners],
   );
 
   const handleRebuildUnion = useCallback(async () => {
@@ -541,6 +586,7 @@ export function App() {
         union,
         hiddenKrates,
         hiddenProcesses,
+        hiddenKinds,
         focusedEntityId,
         ghostMode,
         showLoners,
@@ -553,7 +599,7 @@ export function App() {
     } catch (err) {
       console.error(err);
     }
-  }, [recording, downsampleInterval, hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, showLoners, subgraphScopeMode]);
+  }, [recording, downsampleInterval, hiddenKrates, hiddenProcesses, hiddenKinds, focusedEntityId, ghostMode, showLoners, subgraphScopeMode]);
 
   // Re-render union frame when filters change during playback.
   useEffect(() => {
@@ -563,6 +609,7 @@ export function App() {
         recording.unionLayout,
         hiddenKrates,
         hiddenProcesses,
+        hiddenKinds,
         focusedEntityId,
         ghostMode,
         showLoners,
@@ -575,13 +622,14 @@ export function App() {
         recording.unionLayout,
         hiddenKrates,
         hiddenProcesses,
+        hiddenKinds,
         focusedEntityId,
         ghostMode,
         showLoners,
       );
       setUnionFrameLayout(result);
     }
-  }, [hiddenKrates, hiddenProcesses, focusedEntityId, ghostMode, showLoners, recording]);
+  }, [hiddenKrates, hiddenProcesses, hiddenKinds, focusedEntityId, ghostMode, showLoners, recording]);
 
   // Clear union frame layout when going back to idle or starting a new recording.
   useEffect(() => {
@@ -598,6 +646,13 @@ export function App() {
           const conns = await apiClient.fetchConnections();
           if (cancelled) break;
           setConnections(conns);
+          const existingSnapshot = await apiClient.fetchExistingSnapshot();
+          if (cancelled) break;
+          if (existingSnapshot) {
+            const converted = convertSnapshot(existingSnapshot, subgraphScopeMode);
+            setSnap({ phase: "ready", ...converted });
+            break;
+          }
           if (conns.connected_processes > 0) {
             takeSnapshot();
             break;
@@ -612,7 +667,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [takeSnapshot]);
+  }, [takeSnapshot, subgraphScopeMode]);
 
   useEffect(() => {
     isLiveRef.current = isLive;
@@ -772,6 +827,10 @@ export function App() {
                   hiddenProcesses={hiddenProcesses}
                   onProcessToggle={handleProcessToggle}
                   onProcessSolo={handleProcessSolo}
+                  kindItems={kindItems}
+                  hiddenKinds={hiddenKinds}
+                  onKindToggle={handleKindToggle}
+                  onKindSolo={handleKindSolo}
                   scopeColorMode={scopeColorMode}
                   onToggleProcessColorBy={handleToggleProcessColorBy}
                   onToggleCrateColorBy={handleToggleCrateColorBy}
