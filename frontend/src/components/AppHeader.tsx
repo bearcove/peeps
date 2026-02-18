@@ -27,7 +27,6 @@ export function AppHeader({
   snap,
   recording,
   connCount,
-  waitingForProcesses,
   isBusy,
   isLive,
   onSetIsLive,
@@ -45,7 +44,6 @@ export function AppHeader({
   snap: SnapshotState;
   recording: RecordingState;
   connCount: number;
-  waitingForProcesses: boolean;
   isBusy: boolean;
   isLive: boolean;
   onSetIsLive: (v: boolean | ((prev: boolean) => boolean)) => void;
@@ -83,22 +81,16 @@ export function AppHeader({
           },
         ]}
       />
-      <button
-        type="button"
-        className={`proc-pill${connCount > 0 ? " proc-pill--connected" : " proc-pill--disconnected"}`}
-        onClick={onShowProcessModal}
-        title="Click to see connected processes"
-      >
-        {waitingForProcesses ? (
-          <>
-            <CircleNotch size={11} weight="bold" className="spinning" /> waiting…
-          </>
-        ) : (
-          <>
-            {connCount} {connCount === 1 ? "process" : "processes"}
-          </>
-        )}
-      </button>
+      {connCount > 0 && (
+        <button
+          type="button"
+          className="proc-pill proc-pill--connected"
+          onClick={onShowProcessModal}
+          title="Click to see connected processes"
+        >
+          {connCount} {connCount === 1 ? "process" : "processes"}
+        </button>
+      )}
       {apiMode === "lab" ? (
         <span className="app-header-badge">mock data</span>
       ) : null}
@@ -155,7 +147,7 @@ export function AppHeader({
           Stop
         </ActionButton>
       )}
-      <ActionButton variant="primary" onPress={onTakeSnapshot} isDisabled={isBusy}>
+      <ActionButton variant="primary" onPress={onTakeSnapshot} isDisabled={isBusy || connCount === 0}>
         {isBusy ? <CircleNotch size={14} weight="bold" /> : <Camera size={14} weight="bold" />}
         {buttonLabel}
       </ActionButton>

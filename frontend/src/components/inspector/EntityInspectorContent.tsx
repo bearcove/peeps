@@ -8,6 +8,7 @@ import { formatProcessLabel } from "../../processLabel";
 import type { EntityDef } from "../../snapshot";
 import type { EntityDiff } from "../../recording/unionGraph";
 import { EntityBodySection } from "./EntityBodySection";
+import { EntityScopeLinksSection } from "./EntityScopeLinksSection";
 import { MetaSection } from "./MetaTree";
 import { Source } from "./Source";
 import "./InspectorPanel.css";
@@ -266,6 +267,7 @@ function EntityInspectorBody({
         </KeyValueRow>
       </div>
 
+      <EntityScopeLinksSection entity={entity} />
       <EntityBodySection entity={entity} />
       <MetaSection meta={entity.meta} />
     </>

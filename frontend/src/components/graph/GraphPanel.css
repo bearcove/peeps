@@ -35,6 +35,8 @@
     justify-content: space-between;
     gap: 8px;
     padding: 4px 8px;
+    min-height: 36px;
+    box-sizing: border-box;
     border-bottom: 1px solid var(--border-subtle);
     background: var(--surface-raised);
     font-size: 11px;
@@ -58,4 +60,17 @@
     flex: 1;
     min-height: 0;
     position: relative;
+}
+
+.graph-toolbar .ui-filter-trigger {
+    height: 28px;
+    padding: 0 8px;
+}
+
+.graph-toolbar .ui-action-button {
+    height: 28px;
+}
+
+.graph-toolbar .ui-switch {
+    min-height: 28px;
 }

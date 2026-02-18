@@ -752,7 +752,6 @@ export function App() {
         snap={snap}
         recording={recording}
         connCount={connCount}
-        waitingForProcesses={waitingForProcesses}
         isBusy={isBusy}
         isLive={isLive}
         onSetIsLive={setIsLive}

@@ -12,6 +12,8 @@
     justify-content: space-between;
     gap: 8px;
     padding: 4px 8px;
+    min-height: 36px;
+    box-sizing: border-box;
     border-bottom: 1px solid var(--border-subtle);
     background: var(--surface-raised);
     font-size: 11px;
@@ -46,15 +48,20 @@
 
 .scope-table-alert {
     margin: 8px 8px 0;
-    border: 1px solid color-mix(in oklab, var(--warning) 45%, transparent);
-    background: color-mix(in oklab, var(--warning) 12%, transparent);
-    color: color-mix(in oklab, var(--warning) 78%, var(--text-primary));
+    border: 1px solid light-dark(#f3bd6b, #9b620e);
+    background: light-dark(#fff4dd, #3d2a08);
+    color: light-dark(#7a4b00, #ffcf85);
     border-radius: 4px;
     padding: 8px;
     font-size: 12px;
+    font-weight: 600;
     display: flex;
     align-items: center;
     gap: 6px;
+}
+
+.scope-table-toolbar .ui-action-button {
+    height: 28px;
 }
 
 .scope-table-body {

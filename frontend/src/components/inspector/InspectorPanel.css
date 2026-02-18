@@ -321,3 +321,22 @@
 .inspector-source-link:hover {
     text-decoration: underline;
 }
+
+.inspector-scope-link {
+    margin-top: 4px;
+    padding-left: 84px;
+}
+
+.inspector-scope-link-name {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-primary);
+}
+
+.inspector-scope-link-meta {
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
