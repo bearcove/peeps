@@ -13,15 +13,7 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
   const { body } = entity;
 
   if (typeof body === "string") {
-    return (
-      <div className="inspector-section">
-        <KeyValueRow label="Body">
-          <span className="inspector-mono inspector-muted">
-            Future (no body fields)
-          </span>
-        </KeyValueRow>
-      </div>
-    );
+    return null;
   }
 
   if ("request" in body) {

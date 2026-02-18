@@ -1,5 +1,5 @@
 import React from "react";
-import { Timer, File, Crosshair, CaretRight } from "@phosphor-icons/react";
+import { Timer, File, Crosshair, CaretRight, Info } from "@phosphor-icons/react";
 import { Badge } from "../../ui/primitives/Badge";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import { ActionButton } from "../../ui/primitives/ActionButton";
@@ -92,31 +92,32 @@ function DetailsInfoAffordance({ entity }: { entity: EntityDef }) {
         aria-label="Show details"
         title="Details"
       >
-        (i)
+        <Info size={14} weight={pinned ? "fill" : "bold"} />
       </button>
       {isOpen && (
         <span className="inspector-tooltip" role="tooltip">
           <span className="inspector-tooltip-row">
             <span className="inspector-tooltip-label">Process</span>
-            <span className="inspector-mono">{formatProcessLabel(entity.processName, entity.processPid)}</span>
+            <span className="inspector-tooltip-value">{formatProcessLabel(entity.processName, entity.processPid)}</span>
           </span>
           <span className="inspector-tooltip-row">
             <span className="inspector-tooltip-label">Source</span>
-            <Source source={entity.source} />
+            <span className="inspector-tooltip-value"><Source source={entity.source} /></span>
           </span>
           {entity.krate && (
             <span className="inspector-tooltip-row">
               <span className="inspector-tooltip-label">Crate</span>
-              <span className="inspector-mono">{entity.krate}</span>
+              <span className="inspector-tooltip-value">{entity.krate}</span>
             </span>
           )}
           <span className="inspector-tooltip-row">
             <span className="inspector-tooltip-label">Birth</span>
-            {birthAbsolute ? (
-              <BirthTimestamp birthPtime={entity.birthPtime} ageMs={entity.ageMs} birthAbsolute={birthAbsolute} />
-            ) : (
-              <span className="inspector-mono">P+{entity.birthPtime}ms ({entity.ageMs}ms old)</span>
-            )}
+            <span className="inspector-tooltip-value">
+              P+{entity.birthPtime}ms ({entity.ageMs}ms old)
+              {birthAbsolute && (
+                <span className="inspector-tooltip-subvalue">{birthAbsolute}</span>
+              )}
+            </span>
           </span>
         </span>
       )}

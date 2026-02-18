@@ -2,7 +2,8 @@ import React from "react";
 import { apiClient } from "../../api";
 import { formatProcessLabel } from "../../processLabel";
 import type { EntityDef } from "../../snapshot";
-import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
+import { scopeKindDisplayName, scopeKindIcon, canonicalScopeKind } from "../../scopeKindSpec";
+import { NodeChip } from "../../ui/primitives/NodeChip";
 import "./InspectorPanel.css";
 
 type EntityScopeLink = {
@@ -51,7 +52,13 @@ function parseScopeLinks(rows: unknown[]): EntityScopeLink[] {
   return out;
 }
 
-export function EntityScopeLinksSection({ entity }: { entity: EntityDef }) {
+export function EntityScopeLinksSection({
+  entity,
+  onOpenScopeKind,
+}: {
+  entity: EntityDef;
+  onOpenScopeKind?: (kind: string) => void;
+}) {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [links, setLinks] = React.useState<EntityScopeLink[]>([]);
@@ -104,31 +111,56 @@ order by l.stream_id asc, l.scope_id asc
     };
   }, [entity.processId, entity.rawEntityId]);
 
+  if (loading) {
+    return (
+      <div className="inspector-section">
+        <div className="inspector-scope-links-head">Scopes</div>
+        <div className="inspector-scope-link-meta">loading…</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="inspector-section">
+        <div className="inspector-scope-links-head">Scopes</div>
+        <div className="inspector-crit">unavailable</div>
+      </div>
+    );
+  }
+
+  if (links.length === 0) {
+    return null;
+  }
+
   return (
     <div className="inspector-section">
-      <KeyValueRow label="Scopes">
-        <span className="inspector-mono">
-          {loading ? "loading…" : `${links.length}`}
-        </span>
-      </KeyValueRow>
-      {error && (
-        <div className="inspector-scope-link-meta inspector-crit">
-          unavailable
-        </div>
-      )}
-      {links.map((link) => (
-        <div className="inspector-scope-link" key={`${link.processId}:${link.streamId}:${link.scopeId}`}>
-          <div className="inspector-scope-link-name">
-            {link.scopeName || link.scopeId}
-          </div>
-          <div className="inspector-scope-link-meta">
-            {link.scopeKind} · {formatProcessLabel(link.processName, link.pid)} · {link.streamId}/{link.scopeId}
-          </div>
-        </div>
-      ))}
-      {!loading && !error && links.length === 0 && (
-        <div className="inspector-scope-link-meta">none</div>
-      )}
+      <div className="inspector-scope-links-head">Scopes</div>
+      <div className="inspector-scope-links">
+        {links.map((link) => {
+          const kind = canonicalScopeKind(link.scopeKind);
+          const kindLabel = scopeKindDisplayName(kind);
+          const displayName =
+            kind === "process"
+              ? formatProcessLabel(link.processName, link.pid)
+              : (link.scopeName || link.scopeId);
+          return (
+            <NodeChip
+              key={`${link.processId}:${link.streamId}:${link.scopeId}`}
+              className="inspector-scope-chip"
+              icon={scopeKindIcon(kind, 12)}
+              label={(
+                <span className="inspector-scope-chip-label">
+                  <span className="inspector-scope-chip-name">{displayName}</span>
+                  <span className="inspector-scope-chip-meta">{kindLabel}</span>
+                </span>
+              )}
+              onClick={() => onOpenScopeKind?.(kind)}
+              title={`${formatProcessLabel(link.processName, link.pid)} · ${link.streamId}/${link.scopeId}`}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }

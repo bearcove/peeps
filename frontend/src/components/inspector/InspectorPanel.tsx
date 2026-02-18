@@ -1,5 +1,5 @@
 import React from "react";
-import { CaretLeft, CaretRight, MagnifyingGlass } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { ActionButton } from "../../ui/primitives/ActionButton";
 import type { EntityDef, EdgeDef } from "../../snapshot";
 import type { UnionLayout } from "../../recording/unionGraph";
@@ -20,6 +20,7 @@ export function InspectorPanel({
   edgeDefs,
   focusedEntityId,
   onToggleFocusEntity,
+  onOpenScopeKind,
   scrubbingUnionLayout,
   currentFrameIndex,
   selectedScopeKind,
@@ -32,6 +33,7 @@ export function InspectorPanel({
   edgeDefs: EdgeDef[];
   focusedEntityId: string | null;
   onToggleFocusEntity: (id: string) => void;
+  onOpenScopeKind: (kind: string) => void;
   scrubbingUnionLayout?: UnionLayout;
   currentFrameIndex?: number;
   selectedScopeKind?: string | null;
@@ -62,6 +64,7 @@ export function InspectorPanel({
         entity={entity}
         focusedEntityId={focusedEntityId}
         onToggleFocus={onToggleFocusEntity}
+        onOpenScopeKind={onOpenScopeKind}
         entityDiff={entityDiff}
       />
     ) : null;
@@ -79,8 +82,7 @@ export function InspectorPanel({
   return (
     <div className="inspector">
       <div className="inspector-header">
-        <MagnifyingGlass size={14} weight="bold" />
-        <span>Inspector</span>
+        <span className="inspector-header-title">Inspector</span>
         <ActionButton size="sm" onPress={onToggleCollapse} aria-label="Collapse inspector">
           <CaretRight size={14} weight="bold" />
         </ActionButton>

@@ -863,6 +863,12 @@ export function App() {
             onToggleFocusEntity={(id) => {
               setFocusedEntityId((prev) => (prev === id ? null : id));
             }}
+            onOpenScopeKind={(kind) => {
+              setLeftPaneTab("scopes");
+              setSelection(null);
+              setSelectedScope(null);
+              setSelectedScopeKind(kind);
+            }}
             scrubbingUnionLayout={recording.phase === "scrubbing" ? recording.unionLayout : undefined}
             currentFrameIndex={recording.phase === "scrubbing" ? recording.currentFrameIndex : undefined}
             selectedScopeKind={selectedScopeKind}
