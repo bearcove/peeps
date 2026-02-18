@@ -27,13 +27,13 @@ function inspectorKindLabel(entity: EntityDef): string {
 
   const ep = "channel_tx" in body ? body.channel_tx : body.channel_rx;
   const channelKind = "mpsc" in ep.details
-    ? "MPSC"
+    ? "mpsc"
     : "broadcast" in ep.details
-      ? "Broadcast"
+      ? "broadcast"
       : "watch" in ep.details
-        ? "Watch"
-        : "Oneshot";
-  return `${channelKind} Channel`;
+        ? "watch"
+        : "oneshot";
+  return `${channelKind} channel`;
 }
 
 function BirthTimestamp({
@@ -70,6 +70,60 @@ function BirthTimestamp({
   );
 }
 
+function DetailsInfoAffordance({ entity }: { entity: EntityDef }) {
+  const [hovered, setHovered] = React.useState(false);
+  const [pinned, setPinned] = React.useState(false);
+  const birthAbsolute = isFinite(entity.birthApproxUnixMs) && entity.birthApproxUnixMs > 0
+    ? new Date(entity.birthApproxUnixMs).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "long" })
+    : null;
+  const isOpen = hovered || pinned;
+
+  return (
+    <span
+      className="inspector-details-popover-anchor"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <button
+        type="button"
+        className={["inspector-details-trigger", pinned && "inspector-details-trigger--pinned"].filter(Boolean).join(" ")}
+        onClick={() => setPinned((v) => !v)}
+        aria-expanded={isOpen}
+        aria-label="Show details"
+        title="Details"
+      >
+        (i)
+      </button>
+      {isOpen && (
+        <span className="inspector-tooltip" role="tooltip">
+          <span className="inspector-tooltip-row">
+            <span className="inspector-tooltip-label">Process</span>
+            <span className="inspector-mono">{formatProcessLabel(entity.processName, entity.processPid)}</span>
+          </span>
+          <span className="inspector-tooltip-row">
+            <span className="inspector-tooltip-label">Source</span>
+            <Source source={entity.source} />
+          </span>
+          {entity.krate && (
+            <span className="inspector-tooltip-row">
+              <span className="inspector-tooltip-label">Crate</span>
+              <span className="inspector-mono">{entity.krate}</span>
+            </span>
+          )}
+          <span className="inspector-tooltip-row">
+            <span className="inspector-tooltip-label">Birth</span>
+            {birthAbsolute ? (
+              <BirthTimestamp birthPtime={entity.birthPtime} ageMs={entity.ageMs} birthAbsolute={birthAbsolute} />
+            ) : (
+              <span className="inspector-mono">P+{entity.birthPtime}ms ({entity.ageMs}ms old)</span>
+            )}
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
 function EntityInspectorHeader({
   entity,
   focusedEntityId,
@@ -83,9 +137,10 @@ function EntityInspectorHeader({
 
   return (
     <div className="inspector-node-header">
-      <span className="inspector-node-icon">{kindIcon(entity.kind, 16)}</span>
+      <span className="inspector-node-icon" title={inspectorKindLabel(entity)}>
+        {kindIcon(entity.kind, 20)}
+      </span>
       <div className="inspector-node-header-text">
-        <div className="inspector-node-kind">{inspectorKindLabel(entity)}</div>
         <div className="inspector-node-label">{entity.name}</div>
       </div>
       <ActionButton onPress={() => onToggleFocus(entity.id)}>
@@ -140,17 +195,24 @@ function MergedEntityInspectorContent({
           )}
         </div>
       )}
+      <EntityScopeLinksSection entity={merged} onOpenScopeKind={onOpenScopeKind} />
       {sections.map((section) => (
-        <React.Fragment key={`${merged.id}:${section.label}`}>
-          <div className="inspector-subsection-label">{section.label}</div>
+        <fieldset className="inspector-lane-card" key={`${merged.id}:${section.label}`}>
+          <legend className="inspector-lane-legend">
+            <span>{section.label}</span>
+            <DetailsInfoAffordance entity={section.entity} />
+          </legend>
           <EntityInspectorBody
             entity={section.entity}
             focusedEntityId={focusedEntityId}
             onToggleFocus={onToggleFocus}
             onOpenScopeKind={onOpenScopeKind}
             showHeader={false}
+            showDetails={false}
+            showScopeLinks={false}
+            showMeta={false}
           />
-        </React.Fragment>
+        </fieldset>
       ))}
     </>
   );
@@ -219,6 +281,9 @@ function EntityInspectorBody({
   onOpenScopeKind,
   entityDiff,
   showHeader = true,
+  showDetails = true,
+  showScopeLinks = true,
+  showMeta = true,
 }: {
   entity: EntityDef;
   focusedEntityId: string | null;
@@ -226,6 +291,9 @@ function EntityInspectorBody({
   onOpenScopeKind?: (kind: string) => void;
   entityDiff?: EntityDiff | null;
   showHeader?: boolean;
+  showDetails?: boolean;
+  showScopeLinks?: boolean;
+  showMeta?: boolean;
 }) {
   const [detailsExpanded, setDetailsExpanded] = React.useState(false);
   const birthAbsolute = isFinite(entity.birthApproxUnixMs) && entity.birthApproxUnixMs > 0
@@ -277,47 +345,49 @@ function EntityInspectorBody({
         </div>
       )}
 
-      <div className="inspector-section">
-        <button
-          type="button"
-          className="inspector-disclosure"
-          onClick={() => setDetailsExpanded((v) => !v)}
-          aria-expanded={detailsExpanded}
-        >
-          <CaretRight
-            size={12}
-            weight="bold"
-            className={detailsExpanded ? "inspector-disclosure-caret inspector-disclosure-caret--expanded" : "inspector-disclosure-caret"}
-          />
-          <span>Details</span>
-        </button>
-        {detailsExpanded && (
-          <div className="inspector-details">
-            <KeyValueRow label="Process">
-              <span className="inspector-mono">{formatProcessLabel(entity.processName, entity.processPid)}</span>
-            </KeyValueRow>
-            <KeyValueRow label="Source" icon={<File size={12} weight="bold" />}>
-              <Source source={entity.source} />
-            </KeyValueRow>
-            {entity.krate && (
-              <KeyValueRow label="Crate">
-                <span className="inspector-mono">{entity.krate}</span>
+      {showDetails && (
+        <div className="inspector-section">
+          <button
+            type="button"
+            className="inspector-disclosure"
+            onClick={() => setDetailsExpanded((v) => !v)}
+            aria-expanded={detailsExpanded}
+          >
+            <CaretRight
+              size={12}
+              weight="bold"
+              className={detailsExpanded ? "inspector-disclosure-caret inspector-disclosure-caret--expanded" : "inspector-disclosure-caret"}
+            />
+            <span>Details</span>
+          </button>
+          {detailsExpanded && (
+            <div className="inspector-details">
+              <KeyValueRow label="Process">
+                <span className="inspector-mono">{formatProcessLabel(entity.processName, entity.processPid)}</span>
               </KeyValueRow>
-            )}
-            <KeyValueRow label="Birth" icon={<Timer size={12} weight="bold" />}>
-              {birthAbsolute ? (
-                <BirthTimestamp birthPtime={entity.birthPtime} ageMs={entity.ageMs} birthAbsolute={birthAbsolute} />
-              ) : (
-                <span className="inspector-mono">P+{entity.birthPtime}ms ({entity.ageMs}ms old)</span>
+              <KeyValueRow label="Source" icon={<File size={12} weight="bold" />}>
+                <Source source={entity.source} />
+              </KeyValueRow>
+              {entity.krate && (
+                <KeyValueRow label="Crate">
+                  <span className="inspector-mono">{entity.krate}</span>
+                </KeyValueRow>
               )}
-            </KeyValueRow>
-          </div>
-        )}
-      </div>
+              <KeyValueRow label="Birth" icon={<Timer size={12} weight="bold" />}>
+                {birthAbsolute ? (
+                  <BirthTimestamp birthPtime={entity.birthPtime} ageMs={entity.ageMs} birthAbsolute={birthAbsolute} />
+                ) : (
+                  <span className="inspector-mono">P+{entity.birthPtime}ms ({entity.ageMs}ms old)</span>
+                )}
+              </KeyValueRow>
+            </div>
+          )}
+        </div>
+      )}
 
-      <EntityScopeLinksSection entity={entity} onOpenScopeKind={onOpenScopeKind} />
+      {showScopeLinks && <EntityScopeLinksSection entity={entity} onOpenScopeKind={onOpenScopeKind} />}
       <EntityBodySection entity={entity} />
-      <MetaSection meta={entity.meta} />
+      {showMeta && <MetaSection meta={entity.meta} />}
     </>
   );
 }

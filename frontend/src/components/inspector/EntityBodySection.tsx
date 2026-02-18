@@ -71,6 +71,20 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
     const lifecycleLabel = typeof lc === "string" ? lc : `closed (${Object.values(lc)[0]})`;
     const lifecycleTone: Tone = lc === "open" ? "ok" : "neutral";
     const mpscBuffer = "mpsc" in ep.details ? ep.details.mpsc.buffer : null;
+    const segmentCount = 8;
+    const ratio =
+      mpscBuffer && mpscBuffer.capacity != null && mpscBuffer.capacity > 0
+        ? Math.max(0, Math.min(1, mpscBuffer.occupancy / mpscBuffer.capacity))
+        : 0;
+    const filledSegments = Math.round(ratio * segmentCount);
+    const queueToneClass =
+      mpscBuffer && mpscBuffer.capacity != null
+        ? mpscBuffer.occupancy >= mpscBuffer.capacity
+          ? "inspector-buffer-segment--crit"
+          : mpscBuffer.occupancy / mpscBuffer.capacity >= 0.75
+            ? "inspector-buffer-segment--warn"
+            : "inspector-buffer-segment--ok"
+        : "inspector-buffer-segment--ok";
     return (
       <div className="inspector-section">
         <KeyValueRow label="Lifecycle">
@@ -84,19 +98,17 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
               </span>
               {mpscBuffer.capacity != null && (
                 <span className="inspector-buffer-bar" aria-hidden="true">
-                  <span
-                    className={[
-                      "inspector-buffer-fill",
-                      mpscBuffer.occupancy >= mpscBuffer.capacity
-                        ? "inspector-buffer-fill--crit"
-                        : mpscBuffer.occupancy / mpscBuffer.capacity >= 0.75
-                          ? "inspector-buffer-fill--warn"
-                          : "inspector-buffer-fill--ok",
-                    ].join(" ")}
-                    style={{
-                      width: `${Math.min(100, (mpscBuffer.occupancy / mpscBuffer.capacity) * 100)}%`,
-                    }}
-                  />
+                  {Array.from({ length: segmentCount }, (_, i) => (
+                    <span
+                      key={i}
+                      className={[
+                        "inspector-buffer-segment",
+                        i < filledSegments && queueToneClass,
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    />
+                  ))}
                 </span>
               )}
             </span>
