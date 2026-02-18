@@ -107,8 +107,10 @@ fn spawn_client_process(addr: &str) -> Result<Child, String> {
 }
 
 async fn run_client(addr: String) -> Result<(), String> {
-    let mut config = HandshakeConfig::default();
-    config.name = Some("stuck-client".to_string());
+    let config = HandshakeConfig {
+        name: Some("stuck-client".to_string()),
+        ..Default::default()
+    };
 
     let connector = TcpConnector { addr };
     let client_transport = connect(connector, config, NoDispatcher);

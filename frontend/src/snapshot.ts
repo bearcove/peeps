@@ -490,3 +490,64 @@ export function filterLoners(
     ),
   };
 }
+
+export function collapseEdgesThroughHiddenNodes(
+  edges: EdgeDef[],
+  visibleEntityIds: ReadonlySet<string>,
+): EdgeDef[] {
+  const outgoing = new Map<string, EdgeDef[]>();
+  for (const edge of edges) {
+    if (!outgoing.has(edge.source)) outgoing.set(edge.source, []);
+    outgoing.get(edge.source)!.push(edge);
+  }
+
+  const visibleDirectEdges = edges.filter(
+    (edge) => visibleEntityIds.has(edge.source) && visibleEntityIds.has(edge.target),
+  );
+  const resultById = new Map<string, EdgeDef>(visibleDirectEdges.map((edge) => [edge.id, edge]));
+  const visibleDirectPairs = new Set(visibleDirectEdges.map((edge) => `${edge.source}->${edge.target}`));
+
+  for (const sourceId of visibleEntityIds) {
+    const firstHop = outgoing.get(sourceId) ?? [];
+    const queue: string[] = [];
+    const visitedHidden = new Set<string>();
+
+    for (const edge of firstHop) {
+      if (visibleEntityIds.has(edge.target)) continue;
+      queue.push(edge.target);
+    }
+
+    while (queue.length > 0) {
+      const hiddenId = queue.shift()!;
+      if (visitedHidden.has(hiddenId)) continue;
+      visitedHidden.add(hiddenId);
+
+      for (const edge of outgoing.get(hiddenId) ?? []) {
+        const targetId = edge.target;
+        if (targetId === sourceId) continue;
+
+        if (visibleEntityIds.has(targetId)) {
+          const pairKey = `${sourceId}->${targetId}`;
+          if (visibleDirectPairs.has(pairKey)) continue;
+          const collapsedId = `collapsed-${sourceId}-${targetId}`;
+          if (!resultById.has(collapsedId)) {
+            resultById.set(collapsedId, {
+              id: collapsedId,
+              source: sourceId,
+              target: targetId,
+              kind: "touches",
+              meta: { collapsed: true },
+            });
+          }
+          continue;
+        }
+
+        if (!visitedHidden.has(targetId)) {
+          queue.push(targetId);
+        }
+      }
+    }
+  }
+
+  return Array.from(resultById.values());
+}

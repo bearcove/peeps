@@ -2,6 +2,7 @@ import type { FrameSummary } from "../api/types";
 import type { ApiClient } from "../api/client";
 import { canonicalNodeKind } from "../nodeKindSpec";
 import {
+  collapseEdgesThroughHiddenNodes,
   convertSnapshot,
   filterLoners,
   getConnectedSubgraph,
@@ -284,9 +285,7 @@ export function renderFrameFromUnion(
   );
   let filteredEdges = frameData.edges;
   const filteredEntityIds = new Set(filteredEntities.map((entity) => entity.id));
-  filteredEdges = filteredEdges.filter(
-    (edge) => filteredEntityIds.has(edge.source) && filteredEntityIds.has(edge.target),
-  );
+  filteredEdges = collapseEdgesThroughHiddenNodes(filteredEdges, filteredEntityIds);
 
   if (!showLoners) {
     const withoutLoners = filterLoners(filteredEntities, filteredEdges);

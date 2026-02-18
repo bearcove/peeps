@@ -7,6 +7,7 @@ use crate::{Edge, EdgeKind, Entity, EntityId, Event, Scope, ScopeId, Snapshot};
 ///
 /// Sequence numbers are append-only and strictly increasing.
 #[derive(Facet, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[facet(transparent)]
 pub struct SeqNo(pub u64);
 
 impl SeqNo {
@@ -22,10 +23,12 @@ impl SeqNo {
 /// This should come from protocol handshake/session identity and stay stable
 /// for the lifetime of that runtime stream.
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[facet(transparent)]
 pub struct StreamId(pub CompactString);
 
 /// Logical barrier identifier used to coordinate multi-process "cuts".
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[facet(transparent)]
 pub struct CutId(pub CompactString);
 
 /// One canonical graph mutation in the append-only stream.

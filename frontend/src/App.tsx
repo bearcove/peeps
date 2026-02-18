@@ -5,6 +5,7 @@ import { apiClient } from "./api";
 import type { ConnectionsResponse, FrameSummary } from "./api/types";
 import { RecordingTimeline } from "./components/timeline/RecordingTimeline";
 import {
+  collapseEdgesThroughHiddenNodes,
   convertSnapshot,
   filterLoners,
   getConnectedSubgraph,
@@ -217,9 +218,7 @@ export function App() {
           (ignore === "kind" || hiddenKinds.size === 0 || !hiddenKinds.has(canonicalNodeKind(e.kind))),
       );
       const entityIds = new Set(entities.map((entity) => entity.id));
-      let edges = allEdges.filter(
-        (edge) => entityIds.has(edge.source) && entityIds.has(edge.target),
-      );
+      let edges = collapseEdgesThroughHiddenNodes(allEdges, entityIds);
       if (!showLoners) {
         const withoutLoners = filterLoners(entities, edges);
         entities = withoutLoners.entities;
@@ -228,7 +227,7 @@ export function App() {
       if (scopeEntityFilter) {
         entities = entities.filter((entity) => entityMatchesScopeFilter(entity, scopeEntityFilter.entityIds));
         const entityIds = new Set(entities.map((entity) => entity.id));
-        edges = edges.filter((edge) => entityIds.has(edge.source) && entityIds.has(edge.target));
+        edges = collapseEdgesThroughHiddenNodes(allEdges, entityIds);
       }
       return { entities, edges };
     },

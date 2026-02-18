@@ -210,3 +210,90 @@ pub fn decode_server_message(
 pub fn decode_server_message_default(frame: &[u8]) -> Result<ServerMessage, WireError> {
     decode_server_message(frame, DEFAULT_MAX_FRAME_BYTES)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use peeps_types::{CutId, SeqNo, Snapshot, StreamCursor, StreamId};
+
+    fn client_payload_json(message: &ClientMessage) -> String {
+        let frame = encode_client_message_default(message).expect("client frame should encode");
+        let payload = decode_frame_default(&frame).expect("frame should decode");
+        std::str::from_utf8(payload)
+            .expect("payload should be utf8 json")
+            .to_string()
+    }
+
+    fn server_payload_json(message: &ServerMessage) -> String {
+        let frame = encode_server_message_default(message).expect("server frame should encode");
+        let payload = decode_frame_default(&frame).expect("frame should decode");
+        std::str::from_utf8(payload)
+            .expect("payload should be utf8 json")
+            .to_string()
+    }
+
+    #[test]
+    fn client_handshake_wire_shape() {
+        let json = client_payload_json(&ClientMessage::Handshake(Handshake {
+            process_name: "vixenfs-swift".into(),
+            pid: 42,
+        }));
+        assert_eq!(
+            json,
+            r#"{"handshake":{"process_name":"vixenfs-swift","pid":42}}"#
+        );
+    }
+
+    #[test]
+    fn client_snapshot_reply_wire_shape() {
+        let json = client_payload_json(&ClientMessage::SnapshotReply(SnapshotReply {
+            snapshot_id: 7,
+            ptime_now_ms: 1234,
+            snapshot: Some(Snapshot {
+                entities: vec![],
+                scopes: vec![],
+                edges: vec![],
+                events: vec![],
+            }),
+        }));
+        assert_eq!(
+            json,
+            r#"{"snapshot_reply":{"snapshot_id":7,"ptime_now_ms":1234,"snapshot":{"entities":[],"scopes":[],"edges":[],"events":[]}}}"#
+        );
+    }
+
+    #[test]
+    fn client_cut_ack_wire_shape() {
+        let json = client_payload_json(&ClientMessage::CutAck(peeps_types::CutAck {
+            cut_id: CutId("cut-1".into()),
+            cursor: StreamCursor {
+                stream_id: StreamId("vixenfs-swift-42".into()),
+                next_seq_no: SeqNo(0),
+            },
+        }));
+        assert_eq!(
+            json,
+            r#"{"cut_ack":{"cut_id":"cut-1","cursor":{"stream_id":"vixenfs-swift-42","next_seq_no":0}}}"#
+        );
+    }
+
+    #[test]
+    fn server_snapshot_request_wire_shape() {
+        let json = server_payload_json(&ServerMessage::SnapshotRequest(SnapshotRequest {
+            snapshot_id: 7,
+            timeout_ms: 5000,
+        }));
+        assert_eq!(
+            json,
+            r#"{"snapshot_request":{"snapshot_id":7,"timeout_ms":5000}}"#
+        );
+    }
+
+    #[test]
+    fn server_cut_request_wire_shape() {
+        let json = server_payload_json(&ServerMessage::CutRequest(peeps_types::CutRequest {
+            cut_id: CutId("cut-1".into()),
+        }));
+        assert_eq!(json, r#"{"cut_request":{"cut_id":"cut-1"}}"#);
+    }
+}
