@@ -1,6 +1,8 @@
 *.sqlite*
 .tracey/
 target
+.build
+.swiftpm
 *.png
 .playwright-mcp/
 

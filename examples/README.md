@@ -83,3 +83,37 @@ Terminal 3:
 PEEPS_DASHBOARD=127.0.0.1:9119 \
   cargo run --manifest-path examples/roam-rpc-stuck-request/Cargo.toml
 ```
+
+## 3) Semaphore starvation (`tokio::sync::Semaphore`)
+
+Path: `examples/semaphore-starvation`
+
+What it does:
+- Creates a semaphore with one permit
+- `permit_holder` acquires and keeps that permit forever
+- `permit_waiter` blocks forever trying to acquire a permit
+
+### Run it
+
+```bash
+scripts/run-example semaphore-starvation
+```
+
+## 4) Roam Rust↔Swift stuck request
+
+Path: `examples/roam-rust-swift-stuck-request`
+
+What it does:
+- Rust host starts a TCP listener and spawns a Swift roam-runtime peer (`swift run`)
+- Rust accepts handshake and issues one raw RPC call
+- Swift intentionally never answers that request, so Rust stays blocked waiting
+
+### Run it
+
+```bash
+scripts/run-example roam-rust-swift-stuck-request
+```
+
+Requirements:
+- Swift toolchain (`swift`) installed locally
+- Local `../roam/swift/roam-runtime` checkout available (used as a path dependency by the peer package)
