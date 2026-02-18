@@ -1,6 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
-import { flushSync } from "react-dom";
 import "./App.css";
 import "./components/graph/graph.css";
 import "./components/inspector/inspector.css";
@@ -15,14 +13,11 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MarkerType,
   type Node,
   type Edge,
   type EdgeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import ELK from "elkjs/lib/elk-api.js";
-import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
 import {
   CaretDown,
   CaretLeft,
@@ -54,616 +49,34 @@ import type {
   ConnectionsResponse,
   EntityBody,
   FrameSummary,
-  SnapshotEdgeKind,
-  SnapshotCutResponse,
 } from "./api/types";
 import { Table, type Column } from "./ui/primitives/Table";
 import { RecordingTimeline, formatElapsed } from "./components/timeline/RecordingTimeline";
+import {
+  convertSnapshot,
+  getConnectedSubgraph,
+  type EntityDef,
+  type EdgeDef,
+  type Tone,
+  type MetaValue,
+} from "./snapshot";
+import {
+  measureNodeDefs,
+  layoutGraph,
+  edgeTooltip,
+  type ElkPoint,
+  type LayoutResult,
+  type RenderNodeForMeasure,
+} from "./layout";
+import {
+  buildUnionLayout,
+  renderFrameFromUnion,
+  type UnionLayout,
+} from "./recording/unionGraph";
 
-// ── Body type helpers ──────────────────────────────────────────
-
-// TypeScript's `in` narrowing on complex union types produces `unknown` for
-// nested property types. Use `Extract` to safely reference specific variants.
+// Body type helpers used locally for the inspector
 type RequestBody = Extract<EntityBody, { request: unknown }>;
 type ResponseBody = Extract<EntityBody, { response: unknown }>;
-
-// ── Display types ──────────────────────────────────────────────
-
-type Tone = "ok" | "warn" | "crit" | "neutral";
-
-type MetaValue = string | number | boolean | null | MetaValue[] | { [key: string]: MetaValue };
-
-export type EntityDef = {
-  /** Composite identity: "${processId}/${rawEntityId}". Unique across all processes. */
-  id: string;
-  /** Original entity ID as reported by the process. */
-  rawEntityId: string;
-  processId: string;
-  processName: string;
-  name: string;
-  kind: string;
-  body: EntityBody;
-  source: string;
-  krate?: string;
-  /** Process-relative birth time in ms (PTime). Not comparable across processes. */
-  birthPtime: number;
-  /** Age at capture time: ptime_now_ms - birthPtime (clamped to 0). */
-  ageMs: number;
-  /** Approximate wall-clock birth: (captured_at_unix_ms - ptime_now_ms) + birthPtime. */
-  birthApproxUnixMs: number;
-  meta: Record<string, MetaValue>;
-  inCycle: boolean;
-  status: { label: string; tone: Tone };
-  stat?: string;
-  statTone?: Tone;
-  /** Present when this is a merged TX/RX channel pair node. */
-  channelPair?: { tx: EntityDef; rx: EntityDef };
-  /** Present when this is a merged request/response RPC pair node. */
-  rpcPair?: { req: EntityDef; resp: EntityDef };
-};
-
-export type EdgeDef = {
-  id: string;
-  source: string;
-  target: string;
-  kind: SnapshotEdgeKind;
-  /** ELK port ID on the source node, when the source is a merged channel pair. */
-  sourcePort?: string;
-  /** ELK port ID on the target node, when the target is a merged channel pair. */
-  targetPort?: string;
-};
-
-// ── Snapshot conversion ────────────────────────────────────────
-
-function bodyToKind(body: EntityBody): string {
-  return typeof body === "string" ? body : Object.keys(body)[0];
-}
-
-function deriveStatus(body: EntityBody): { label: string; tone: Tone } {
-  if (typeof body === "string") return { label: "polling", tone: "neutral" };
-  if ("request" in body) return { label: "in_flight", tone: "warn" };
-  if ("response" in body) {
-    const s = (body as ResponseBody).response.status;
-    if (s === "ok") return { label: "ok", tone: "ok" };
-    if (s === "error") return { label: "error", tone: "crit" };
-    if (s === "cancelled") return { label: "cancelled", tone: "neutral" };
-    return { label: "pending", tone: "warn" };
-  }
-  if ("lock" in body) return { label: "held", tone: "crit" };
-  if ("channel_tx" in body || "channel_rx" in body) {
-    const ep = "channel_tx" in body ? body.channel_tx : body.channel_rx;
-    return ep.lifecycle === "open"
-      ? { label: "open", tone: "ok" }
-      : { label: "closed", tone: "neutral" };
-  }
-  if ("semaphore" in body) {
-    const { max_permits, handed_out_permits } = body.semaphore;
-    const available = max_permits - handed_out_permits;
-    return {
-      label: `${available}/${max_permits} permits`,
-      tone: handed_out_permits > 0 ? "warn" : "ok",
-    };
-  }
-  if ("notify" in body) return { label: "waiting", tone: "neutral" };
-  if ("once_cell" in body) {
-    const s = body.once_cell.state;
-    if (s === "initialized") return { label: "initialized", tone: "ok" };
-    if (s === "initializing") return { label: "initializing", tone: "warn" };
-    return { label: "empty", tone: "neutral" };
-  }
-  if ("command" in body) return { label: "running", tone: "neutral" };
-  if ("file_op" in body) return { label: body.file_op.op, tone: "ok" };
-  if ("net_connect" in body || "net_accept" in body || "net_read" in body || "net_write" in body) {
-    return { label: "connected", tone: "ok" };
-  }
-  return { label: "unknown", tone: "neutral" };
-}
-
-function deriveStat(body: EntityBody): string | undefined {
-  if (typeof body === "string") return undefined;
-  if ("semaphore" in body) {
-    const { max_permits, handed_out_permits } = body.semaphore;
-    return `${max_permits - handed_out_permits}/${max_permits}`;
-  }
-  if ("channel_tx" in body || "channel_rx" in body) {
-    const ep = "channel_tx" in body ? body.channel_tx : body.channel_rx;
-    if ("mpsc" in ep.details && ep.details.mpsc.buffer) {
-      const { occupancy, capacity } = ep.details.mpsc.buffer;
-      return `${occupancy}/${capacity ?? "∞"}`;
-    }
-  }
-  if ("notify" in body) {
-    return body.notify.waiter_count > 0 ? `${body.notify.waiter_count} waiters` : undefined;
-  }
-  if ("once_cell" in body) {
-    return body.once_cell.waiter_count > 0 ? `${body.once_cell.waiter_count} waiter` : undefined;
-  }
-  return undefined;
-}
-
-function deriveStatTone(body: EntityBody): Tone | undefined {
-  if (typeof body === "string") return undefined;
-  if ("channel_tx" in body || "channel_rx" in body) {
-    const ep = "channel_tx" in body ? body.channel_tx : body.channel_rx;
-    if ("mpsc" in ep.details && ep.details.mpsc.buffer) {
-      const { occupancy, capacity } = ep.details.mpsc.buffer;
-      if (capacity == null) return undefined;
-      if (occupancy >= capacity) return "crit";
-      if (occupancy / capacity >= 0.75) return "warn";
-    }
-  }
-  return undefined;
-}
-
-function detectCycleNodes(entities: EntityDef[], edges: EdgeDef[]): Set<string> {
-  const adj = new Map<string, string[]>();
-  for (const e of edges) {
-    if (e.kind !== "needs") continue;
-    if (!adj.has(e.source)) adj.set(e.source, []);
-    adj.get(e.source)!.push(e.target);
-  }
-
-  const inCycle = new Set<string>();
-  const color = new Map<string, "gray" | "black">();
-
-  function dfs(id: string, stack: string[]) {
-    color.set(id, "gray");
-    stack.push(id);
-    for (const neighbor of adj.get(id) ?? []) {
-      if (color.get(neighbor) === "gray") {
-        const start = stack.indexOf(neighbor);
-        for (const n of stack.slice(start)) inCycle.add(n);
-      } else if (!color.has(neighbor)) {
-        dfs(neighbor, stack);
-      }
-    }
-    stack.pop();
-    color.set(id, "black");
-  }
-
-  for (const entity of entities) {
-    if (!color.has(entity.id)) dfs(entity.id, []);
-  }
-  return inCycle;
-}
-
-function mergeChannelPairs(
-  entities: EntityDef[],
-  edges: EdgeDef[],
-): { entities: EntityDef[]; edges: EdgeDef[] } {
-  const channelLinks = edges.filter((e) => e.kind === "channel_link");
-  const entityById = new Map(entities.map((e) => [e.id, e]));
-
-  // Maps from original TX/RX entity id → merged id and port id
-  const mergedIdFor = new Map<string, string>();
-  const portIdFor = new Map<string, string>();
-  const removedIds = new Set<string>();
-  const mergedEntities: EntityDef[] = [];
-
-  for (const link of channelLinks) {
-    const txEntity = entityById.get(link.source);
-    const rxEntity = entityById.get(link.target);
-    if (!txEntity || !rxEntity) continue;
-    // Guard against a TX or RX being part of multiple links (shouldn't happen)
-    if (mergedIdFor.has(link.source) || mergedIdFor.has(link.target)) continue;
-
-    const mergedId = `pair:${link.source}:${link.target}`;
-    const txPortId = `${mergedId}:tx`;
-    const rxPortId = `${mergedId}:rx`;
-
-    mergedIdFor.set(link.source, mergedId);
-    mergedIdFor.set(link.target, mergedId);
-    portIdFor.set(link.source, txPortId);
-    portIdFor.set(link.target, rxPortId);
-    removedIds.add(link.source);
-    removedIds.add(link.target);
-
-    const channelName = txEntity.name.endsWith(":tx") ? txEntity.name.slice(0, -3) : txEntity.name;
-
-    const mergedStatus =
-      txEntity.status.tone === "ok" && rxEntity.status.tone === "ok"
-        ? ({ label: "open", tone: "ok" } as const)
-        : ({ label: "closed", tone: "neutral" } as const);
-
-    mergedEntities.push({
-      ...txEntity,
-      id: mergedId,
-      name: channelName,
-      kind: "channel_pair",
-      status: mergedStatus,
-      stat: txEntity.stat,
-      statTone: txEntity.statTone,
-      inCycle: false, // set later by detectCycleNodes
-      channelPair: { tx: txEntity, rx: rxEntity },
-    });
-  }
-
-  const filteredEntities = entities.filter((e) => !removedIds.has(e.id));
-  const newEntities = [...filteredEntities, ...mergedEntities];
-
-  // Remove channel_link edges; remap sources/targets that pointed at TX/RX entities
-  const newEdges = edges
-    .filter((e) => e.kind !== "channel_link")
-    .map((e) => {
-      const origSource = e.source;
-      const origTarget = e.target;
-      const newSource = mergedIdFor.get(origSource) ?? origSource;
-      const newTarget = mergedIdFor.get(origTarget) ?? origTarget;
-      const sourcePort = mergedIdFor.has(origSource) ? portIdFor.get(origSource) : undefined;
-      const targetPort = mergedIdFor.has(origTarget) ? portIdFor.get(origTarget) : undefined;
-      if (newSource === origSource && newTarget === origTarget) return e;
-      return { ...e, source: newSource, target: newTarget, sourcePort, targetPort };
-    });
-
-  return { entities: newEntities, edges: newEdges };
-}
-
-function mergeRpcPairs(
-  entities: EntityDef[],
-  edges: EdgeDef[],
-): { entities: EntityDef[]; edges: EdgeDef[] } {
-  const rpcLinks = edges.filter((e) => e.kind === "rpc_link");
-  const entityById = new Map(entities.map((e) => [e.id, e]));
-
-  const mergedIdFor = new Map<string, string>();
-  const portIdFor = new Map<string, string>();
-  const removedIds = new Set<string>();
-  const mergedEntities: EntityDef[] = [];
-
-  for (const link of rpcLinks) {
-    const reqEntity = entityById.get(link.source);
-    const respEntity = entityById.get(link.target);
-    if (!reqEntity || !respEntity) continue;
-    if (mergedIdFor.has(link.source) || mergedIdFor.has(link.target)) continue;
-
-    const mergedId = `rpc_pair:${link.source}:${link.target}`;
-    const reqPortId = `${mergedId}:req`;
-    const respPortId = `${mergedId}:resp`;
-
-    mergedIdFor.set(link.source, mergedId);
-    mergedIdFor.set(link.target, mergedId);
-    portIdFor.set(link.source, reqPortId);
-    portIdFor.set(link.target, respPortId);
-    removedIds.add(link.source);
-    removedIds.add(link.target);
-
-    const rpcName = reqEntity.name.endsWith(":req") ? reqEntity.name.slice(0, -4) : reqEntity.name;
-
-    const respBody =
-      typeof respEntity.body !== "string" && "response" in respEntity.body
-        ? respEntity.body.response
-        : null;
-    const mergedStatus = respBody
-      ? deriveStatus(respEntity.body)
-      : { label: "in_flight", tone: "warn" as Tone };
-
-    mergedEntities.push({
-      ...reqEntity,
-      id: mergedId,
-      name: rpcName,
-      kind: "rpc_pair",
-      status: mergedStatus,
-      inCycle: false,
-      rpcPair: { req: reqEntity, resp: respEntity },
-    });
-  }
-
-  const filteredEntities = entities.filter((e) => !removedIds.has(e.id));
-  const newEntities = [...filteredEntities, ...mergedEntities];
-
-  const newEdges = edges
-    .filter((e) => e.kind !== "rpc_link")
-    .map((e) => {
-      const origSource = e.source;
-      const origTarget = e.target;
-      const newSource = mergedIdFor.get(origSource) ?? origSource;
-      const newTarget = mergedIdFor.get(origTarget) ?? origTarget;
-      const sourcePort = mergedIdFor.has(origSource) ? portIdFor.get(origSource) : undefined;
-      const targetPort = mergedIdFor.has(origTarget) ? portIdFor.get(origTarget) : undefined;
-      if (newSource === origSource && newTarget === origTarget) return e;
-      return { ...e, source: newSource, target: newTarget, sourcePort, targetPort };
-    });
-
-  return { entities: newEntities, edges: newEdges };
-}
-
-function convertSnapshot(snapshot: SnapshotCutResponse): {
-  entities: EntityDef[];
-  edges: EdgeDef[];
-} {
-  const allEntities: EntityDef[] = [];
-  const allEdges: EdgeDef[] = [];
-
-  // First pass: collect all entities so we can do cross-process edge resolution.
-  for (const proc of snapshot.processes) {
-    const { process_id, process_name, ptime_now_ms } = proc;
-    const anchorUnixMs = snapshot.captured_at_unix_ms - ptime_now_ms;
-
-    for (const e of proc.snapshot.entities) {
-      const compositeId = `${process_id}/${e.id}`;
-      const ageMs = Math.max(0, ptime_now_ms - e.birth);
-      allEntities.push({
-        id: compositeId,
-        rawEntityId: e.id,
-        processId: String(process_id),
-        processName: process_name,
-        name: e.name,
-        kind: bodyToKind(e.body),
-        body: e.body,
-        source: e.source,
-        krate: e.krate,
-        birthPtime: e.birth,
-        ageMs,
-        birthApproxUnixMs: anchorUnixMs + e.birth,
-        meta: (e.meta ?? {}) as Record<string, MetaValue>,
-        inCycle: false,
-        status: deriveStatus(e.body),
-        stat: deriveStat(e.body),
-        statTone: deriveStatTone(e.body),
-      });
-    }
-  }
-
-  // Build raw entity ID → composite ID lookup for cross-process edge resolution.
-  // rpc_link edges have their src set to the request's raw ID from the other process.
-  const rawToCompositeId = new Map<string, string>();
-  for (const entity of allEntities) {
-    rawToCompositeId.set(entity.rawEntityId, entity.id);
-  }
-
-  // Second pass: build edges, resolving cross-process src IDs for rpc_link.
-  for (const proc of snapshot.processes) {
-    const { process_id } = proc;
-    for (let i = 0; i < proc.snapshot.edges.length; i++) {
-      const e = proc.snapshot.edges[i];
-      const localSrc = `${process_id}/${e.src}`;
-      const srcComposite =
-        e.kind === "rpc_link" ? (rawToCompositeId.get(e.src) ?? localSrc) : localSrc;
-      const dstComposite = `${process_id}/${e.dst}`;
-      allEdges.push({
-        id: `e${i}-${srcComposite}-${dstComposite}-${e.kind}`,
-        source: srcComposite,
-        target: dstComposite,
-        kind: e.kind,
-      });
-    }
-  }
-
-  const { entities: channelMerged, edges: channelEdges } = mergeChannelPairs(allEntities, allEdges);
-  const { entities: mergedEntities, edges: mergedEdges } = mergeRpcPairs(
-    channelMerged,
-    channelEdges,
-  );
-
-  const cycleIds = detectCycleNodes(mergedEntities, mergedEdges);
-  for (const entity of mergedEntities) {
-    entity.inCycle = cycleIds.has(entity.id);
-  }
-
-  return { entities: mergedEntities, edges: mergedEdges };
-}
-
-// ── ELK layout ────────────────────────────────────────────────
-
-const elk = new ELK({ workerUrl: elkWorkerUrl });
-
-const elkOptions = {
-  "elk.algorithm": "layered",
-  "elk.direction": "DOWN",
-  "elk.spacing.nodeNode": "24",
-  "elk.layered.spacing.nodeNodeBetweenLayers": "48",
-  "elk.padding": "[top=24,left=24,bottom=24,right=24]",
-  "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
-};
-
-async function measureNodeDefs(
-  defs: EntityDef[],
-): Promise<Map<string, { width: number; height: number }>> {
-  // Escape React's useEffect lifecycle so flushSync works on our measurement roots.
-  await Promise.resolve();
-
-  const container = document.createElement("div");
-  container.style.cssText =
-    "position:fixed;top:-9999px;left:-9999px;visibility:hidden;pointer-events:none;display:flex;flex-direction:column;align-items:flex-start;gap:4px;";
-  document.body.appendChild(container);
-
-  const sizes = new Map<string, { width: number; height: number }>();
-
-  for (const def of defs) {
-    const el = document.createElement("div");
-    container.appendChild(el);
-    const root = createRoot(el);
-
-    let node: React.ReactNode;
-    if (def.channelPair) {
-      node = (
-        <ChannelPairNode
-          data={{
-            tx: def.channelPair.tx,
-            rx: def.channelPair.rx,
-            channelName: def.name,
-            selected: false,
-            statTone: def.statTone,
-          }}
-        />
-      );
-    } else if (def.rpcPair) {
-      node = (
-        <RpcPairNode
-          data={{
-            req: def.rpcPair.req,
-            resp: def.rpcPair.resp,
-            rpcName: def.name,
-            selected: false,
-          }}
-        />
-      );
-    } else {
-      node = (
-        <MockNodeComponent
-          data={{
-            kind: def.kind,
-            label: def.name,
-            inCycle: def.inCycle,
-            selected: false,
-            status: def.status,
-            ageMs: def.ageMs,
-            stat: def.stat,
-            statTone: def.statTone,
-          }}
-        />
-      );
-    }
-
-    flushSync(() => {
-      root.render(<ReactFlowProvider>{node}</ReactFlowProvider>);
-    });
-
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
-    console.log("[measure]", def.id, w, h);
-    sizes.set(def.id, { width: w, height: h });
-    root.unmount();
-  }
-
-  document.body.removeChild(container);
-  return sizes;
-}
-
-function edgeStyle(kind: EdgeDef["kind"]) {
-  switch (kind) {
-    case "needs":
-      return { stroke: "light-dark(#d7263d, #ff6b81)", strokeWidth: 2.4 };
-    case "polls":
-      return { stroke: "light-dark(#8e7cc3, #b4a7d6)", strokeWidth: 1.2, strokeDasharray: "2 3" };
-    case "closed_by":
-      return { stroke: "light-dark(#e08614, #f0a840)", strokeWidth: 1.5 };
-    case "channel_link":
-      return { stroke: "light-dark(#888, #666)", strokeWidth: 1, strokeDasharray: "6 3" };
-    case "rpc_link":
-      return { stroke: "light-dark(#888, #666)", strokeWidth: 1, strokeDasharray: "6 3" };
-  }
-}
-
-function edgeTooltip(kind: EdgeDef["kind"], sourceName: string, targetName: string): string {
-  switch (kind) {
-    case "needs":
-      return `${sourceName} is blocked waiting for ${targetName}`;
-    case "polls":
-      return `${sourceName} polls ${targetName} (non-blocking)`;
-    case "closed_by":
-      return `${sourceName} was closed by ${targetName}`;
-    case "channel_link":
-      return `Channel endpoint: ${sourceName} → ${targetName}`;
-    case "rpc_link":
-      return `RPC pair: ${sourceName} → ${targetName}`;
-  }
-}
-
-function edgeMarkerSize(kind: EdgeDef["kind"]): number {
-  return kind === "needs" ? 12 : 8;
-}
-
-type ElkPoint = { x: number; y: number };
-type LayoutResult = { nodes: Node[]; edges: Edge[] };
-
-async function layoutGraph(
-  entityDefs: EntityDef[],
-  edgeDefs: EdgeDef[],
-  nodeSizes: Map<string, { width: number; height: number }>,
-): Promise<LayoutResult> {
-  const nodeIds = new Set(entityDefs.map((n) => n.id));
-  const validEdges = edgeDefs.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
-
-  const result = await elk.layout({
-    id: "root",
-    layoutOptions: elkOptions,
-    children: entityDefs.map((n) => {
-      const sz = nodeSizes.get(n.id);
-      const base = { id: n.id, width: sz?.width || 150, height: sz?.height || 36 };
-      return base;
-    }),
-    edges: validEdges.map((e) => ({
-      id: e.id,
-      sources: [e.source],
-      targets: [e.target],
-    })),
-  });
-
-  const posMap = new Map((result.children ?? []).map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]));
-  const elkEdgeMap = new Map((result.edges ?? []).map((e: any) => [e.id, e.sections ?? []]));
-
-  const nodes: Node[] = entityDefs.map((def) => {
-    const position = posMap.get(def.id) ?? { x: 0, y: 0 };
-    if (def.channelPair) {
-      return {
-        id: def.id,
-        type: "channelPairNode",
-        position,
-        data: {
-          tx: def.channelPair.tx,
-          rx: def.channelPair.rx,
-          channelName: def.name,
-          selected: false,
-          statTone: def.statTone,
-        },
-      };
-    }
-    if (def.rpcPair) {
-      return {
-        id: def.id,
-        type: "rpcPairNode",
-        position,
-        data: {
-          req: def.rpcPair.req,
-          resp: def.rpcPair.resp,
-          rpcName: def.name,
-          selected: false,
-        },
-      };
-    }
-    return {
-      id: def.id,
-      type: "mockNode",
-      position,
-      data: {
-        kind: def.kind,
-        label: def.name,
-        inCycle: def.inCycle,
-        selected: false,
-        status: def.status,
-        ageMs: def.ageMs,
-        stat: def.stat,
-        statTone: def.statTone,
-      },
-    };
-  });
-
-  const entityNameMap = new Map(entityDefs.map((e) => [e.id, e.name]));
-  const edges: Edge[] = validEdges.map((def) => {
-    const sz = edgeMarkerSize(def.kind);
-    const sections = elkEdgeMap.get(def.id) ?? [];
-    const points: ElkPoint[] = [];
-    for (const section of sections) {
-      points.push(section.startPoint);
-      if (section.bendPoints) points.push(...section.bendPoints);
-      points.push(section.endPoint);
-    }
-    const srcName = entityNameMap.get(def.source) ?? def.source;
-    const dstName = entityNameMap.get(def.target) ?? def.target;
-    return {
-      id: def.id,
-      source: def.source,
-      target: def.target,
-      type: "elkrouted",
-      data: { points, tooltip: edgeTooltip(def.kind, srcName, dstName) },
-      style: edgeStyle(def.kind),
-      markerEnd: { type: MarkerType.ArrowClosed, width: sz, height: sz },
-    };
-  });
-
-  return { nodes, edges };
-}
 
 // ── Custom node component ──────────────────────────────────────
 
@@ -985,6 +398,50 @@ const mockNodeTypes = {
 };
 const mockEdgeTypes = { elkrouted: ElkRoutedEdge };
 
+// ── Render callback for layout measurement ────────────────────
+
+export const renderNodeForMeasure: RenderNodeForMeasure = (def) => {
+  if (def.channelPair) {
+    return (
+      <ChannelPairNode
+        data={{
+          tx: def.channelPair.tx,
+          rx: def.channelPair.rx,
+          channelName: def.name,
+          selected: false,
+          statTone: def.statTone,
+        }}
+      />
+    );
+  }
+  if (def.rpcPair) {
+    return (
+      <RpcPairNode
+        data={{
+          req: def.rpcPair.req,
+          resp: def.rpcPair.resp,
+          rpcName: def.name,
+          selected: false,
+        }}
+      />
+    );
+  }
+  return (
+    <MockNodeComponent
+      data={{
+        kind: def.kind,
+        label: def.name,
+        inCycle: def.inCycle,
+        selected: false,
+        status: def.status,
+        ageMs: def.ageMs,
+        stat: def.stat,
+        statTone: def.statTone,
+      }}
+    />
+  );
+};
+
 // ── Graph panel ────────────────────────────────────────────────
 
 type GraphSelection = { kind: "entity"; id: string } | { kind: "edge"; id: string } | null;
@@ -1002,12 +459,16 @@ function GraphFlow({
   nodes,
   edges,
   onSelect,
+  suppressAutoFit,
 }: {
   nodes: Node[];
   edges: Edge[];
   onSelect: (sel: GraphSelection) => void;
+  /** When true, skip automatic fitView on structure changes (used during scrubbing). */
+  suppressAutoFit?: boolean;
 }) {
   const { fitView } = useReactFlow();
+  const hasFittedRef = useRef(false);
 
   // Only refit when the graph structure changes (nodes/edges added or removed),
   // not on selection changes which also mutate the nodes array.
@@ -1016,8 +477,10 @@ function GraphFlow({
     [nodes, edges],
   );
   useEffect(() => {
+    if (suppressAutoFit && hasFittedRef.current) return;
     fitView({ padding: 0.3, maxZoom: 1.2, duration: 0 });
-  }, [layoutKey, fitView]);
+    hasFittedRef.current = true;
+  }, [layoutKey, fitView, suppressAutoFit]);
 
   // Press F to fit the view.
   useEffect(() => {
@@ -1055,28 +518,6 @@ function GraphFlow({
   );
 }
 
-function getConnectedSubgraph(
-  entityId: string,
-  entities: EntityDef[],
-  edges: EdgeDef[],
-): { entities: EntityDef[]; edges: EdgeDef[] } {
-  const connectedIds = new Set<string>();
-  const queue = [entityId];
-  while (queue.length > 0) {
-    const id = queue.pop()!;
-    if (connectedIds.has(id)) continue;
-    connectedIds.add(id);
-    for (const e of edges) {
-      if (e.source === id && !connectedIds.has(e.target)) queue.push(e.target);
-      if (e.target === id && !connectedIds.has(e.source)) queue.push(e.source);
-    }
-  }
-  return {
-    entities: entities.filter((e) => connectedIds.has(e.id)),
-    edges: edges.filter((e) => connectedIds.has(e.source) && connectedIds.has(e.target)),
-  };
-}
-
 function GraphPanel({
   entityDefs,
   edgeDefs,
@@ -1094,6 +535,7 @@ function GraphPanel({
   hiddenProcesses,
   onProcessToggle,
   onProcessSolo,
+  unionFrameLayout,
 }: {
   entityDefs: EntityDef[];
   edgeDefs: EdgeDef[];
@@ -1111,37 +553,43 @@ function GraphPanel({
   hiddenProcesses: ReadonlySet<string>;
   onProcessToggle: (pid: string) => void;
   onProcessSolo: (pid: string) => void;
+  /** When provided, use this pre-computed layout (union mode) instead of measuring + ELK. */
+  unionFrameLayout?: LayoutResult;
 }) {
   const [layout, setLayout] = useState<LayoutResult>({ nodes: [], edges: [] });
 
+  // In snapshot mode (no unionFrameLayout), measure and lay out from scratch.
   React.useEffect(() => {
+    if (unionFrameLayout) return; // skip — union mode provides layout directly
     if (entityDefs.length === 0) return;
-    measureNodeDefs(entityDefs)
+    measureNodeDefs(entityDefs, renderNodeForMeasure)
       .then((sizes) => layoutGraph(entityDefs, edgeDefs, sizes))
       .then(setLayout)
       .catch(console.error);
-  }, [entityDefs, edgeDefs]);
+  }, [entityDefs, edgeDefs, unionFrameLayout]);
+
+  const effectiveLayout = unionFrameLayout ?? layout;
 
   const nodesWithSelection = useMemo(
     () =>
-      layout.nodes.map((n) => ({
+      effectiveLayout.nodes.map((n) => ({
         ...n,
         data: { ...n.data, selected: selection?.kind === "entity" && n.id === selection.id },
       })),
-    [layout.nodes, selection],
+    [effectiveLayout.nodes, selection],
   );
 
   const edgesWithSelection = useMemo(
     () =>
-      layout.edges.map((e) => ({
+      effectiveLayout.edges.map((e) => ({
         ...e,
         selected: selection?.kind === "edge" && e.id === selection.id,
       })),
-    [layout.edges, selection],
+    [effectiveLayout.edges, selection],
   );
 
   const isBusy = snapPhase === "cutting" || snapPhase === "loading";
-  const showToolbar = crateItems.length > 1 || processItems.length > 1 || focusedEntityId;
+  const showToolbar = crateItems.length > 1 || processItems.length > 0 || focusedEntityId;
 
   return (
     <div className="mockup-graph-panel">
@@ -1154,7 +602,7 @@ function GraphPanel({
                 <span className="mockup-graph-stat">{edgeDefs.length} edges</span>
               </>
             )}
-            {processItems.length > 1 && (
+            {processItems.length > 0 && (
               <FilterMenu
                 label="Process"
                 items={processItems}
@@ -1210,7 +658,12 @@ function GraphPanel({
       ) : (
         <div className="mockup-graph-flow">
           <ReactFlowProvider>
-            <GraphFlow nodes={nodesWithSelection} edges={edgesWithSelection} onSelect={onSelect} />
+            <GraphFlow
+              nodes={nodesWithSelection}
+              edges={edgesWithSelection}
+              onSelect={onSelect}
+              suppressAutoFit={!!unionFrameLayout}
+            />
           </ReactFlowProvider>
         </div>
       )}
@@ -1613,6 +1066,7 @@ function EntityInspectorContent({
 
 const EDGE_KIND_LABELS: Record<EdgeDef["kind"], string> = {
   needs: "Causal dependency",
+  holds: "Permit ownership",
   polls: "Non-blocking observation",
   closed_by: "Closure cause",
   channel_link: "Channel pairing",
@@ -1669,7 +1123,11 @@ function EdgeInspectorContent({ edge, entityDefs }: { edge: EdgeDef; entityDefs:
           <span className="mockup-inspector-mono">{tooltip}</span>
         </KeyValueRow>
         <KeyValueRow label="Type">
-          <Badge tone={isStructural ? "neutral" : edge.kind === "needs" ? "crit" : "warn"}>
+          <Badge
+            tone={
+              isStructural ? "neutral" : edge.kind === "needs" ? "crit" : edge.kind === "holds" ? "ok" : "warn"
+            }
+          >
             {isStructural ? "structural" : "causal"}
           </Badge>
         </KeyValueRow>
@@ -1825,13 +1283,22 @@ type RecordingState =
       frameCount: number;
       elapsed: number;
     }
-  | { phase: "stopped"; sessionId: string; frameCount: number; frames: FrameSummary[] }
+  | {
+      phase: "stopped";
+      sessionId: string;
+      frameCount: number;
+      frames: FrameSummary[];
+      unionLayout: UnionLayout | null;
+      buildingUnion: boolean;
+      buildProgress?: [number, number];
+    }
   | {
       phase: "scrubbing";
       sessionId: string;
       frameCount: number;
       frames: FrameSummary[];
       currentFrameIndex: number;
+      unionLayout: UnionLayout;
     };
 
 // ── Process modal ──────────────────────────────────────────────
@@ -1902,6 +1369,7 @@ export function App() {
   const [hiddenProcesses, setHiddenProcesses] = useState<ReadonlySet<string>>(new Set());
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [isLive, setIsLive] = useState(true);
+  const [unionFrameLayout, setUnionFrameLayout] = useState<LayoutResult | undefined>(undefined);
   const pollingRef = useRef<number | null>(null);
   const isLiveRef = useRef(isLive);
 
@@ -2057,32 +1525,118 @@ export function App() {
         sessionId: session.session_id,
         frameCount: session.frame_count,
         frames: session.frames,
+        unionLayout: null,
+        buildingUnion: true,
+        buildProgress: [0, session.frame_count],
       });
       if (session.frame_count > 0) {
-        const frameIndex = session.frame_count - 1;
-        const frame = await apiClient.fetchRecordingFrame(frameIndex);
-        const converted = convertSnapshot(frame);
+        // Show last frame while union builds.
+        const lastFrameIndex = session.frame_count - 1;
+        const lastFrame = await apiClient.fetchRecordingFrame(lastFrameIndex);
+        const converted = convertSnapshot(lastFrame);
         setSnap({ phase: "ready", ...converted });
+
+        // Build union layout.
+        const union = await buildUnionLayout(
+          session.frames,
+          apiClient,
+          renderNodeForMeasure,
+          (loaded, total) => {
+            setRecording((prev) => {
+              if (prev.phase !== "stopped") return prev;
+              return { ...prev, buildProgress: [loaded, total] };
+            });
+          },
+        );
+        setRecording((prev) => {
+          if (prev.phase !== "stopped") return prev;
+          return { ...prev, unionLayout: union, buildingUnion: false };
+        });
+
+        // Render last frame from union layout.
+        const unionFrame = renderFrameFromUnion(
+          lastFrameIndex,
+          union,
+          hiddenKrates,
+          hiddenProcesses,
+          focusedEntityId,
+        );
+        setUnionFrameLayout(unionFrame);
       }
     } catch (err) {
       console.error(err);
     }
-  }, []);
+  }, [hiddenKrates, hiddenProcesses, focusedEntityId]);
 
-  const handleScrub = useCallback(async (frameIndex: number) => {
-    setRecording((prev) => {
-      if (prev.phase !== "stopped" && prev.phase !== "scrubbing") return prev;
-      const { frames, frameCount, sessionId } = prev;
-      return { phase: "scrubbing", sessionId, frameCount, frames, currentFrameIndex: frameIndex };
-    });
-    try {
-      const frame = await apiClient.fetchRecordingFrame(frameIndex);
-      const converted = convertSnapshot(frame);
-      setSnap({ phase: "ready", ...converted });
-    } catch (err) {
-      console.error(err);
+  const handleScrub = useCallback(
+    (frameIndex: number) => {
+      setRecording((prev) => {
+        if (prev.phase !== "stopped" && prev.phase !== "scrubbing") return prev;
+        const { frames, frameCount, sessionId } = prev;
+        // Both "stopped" and "scrubbing" have unionLayout. Narrow for TS:
+        const unionLayout =
+          prev.phase === "stopped" ? prev.unionLayout : prev.unionLayout;
+        if (!unionLayout) return prev; // union not ready yet
+
+        // Render the frame from the union layout.
+        const result = renderFrameFromUnion(
+          frameIndex,
+          unionLayout,
+          hiddenKrates,
+          hiddenProcesses,
+          focusedEntityId,
+        );
+        setUnionFrameLayout(result);
+
+        // Update snapshot state with this frame's entities/edges for the inspector.
+        const frameData = unionLayout.frameCache.get(frameIndex);
+        if (frameData) {
+          setSnap({ phase: "ready", entities: frameData.entities, edges: frameData.edges });
+        }
+
+        return {
+          phase: "scrubbing" as const,
+          sessionId,
+          frameCount,
+          frames,
+          currentFrameIndex: frameIndex,
+          unionLayout,
+        };
+      });
+    },
+    [hiddenKrates, hiddenProcesses, focusedEntityId],
+  );
+
+  // Re-render union frame when filters change during playback.
+  useEffect(() => {
+    if (recording.phase === "scrubbing") {
+      const result = renderFrameFromUnion(
+        recording.currentFrameIndex,
+        recording.unionLayout,
+        hiddenKrates,
+        hiddenProcesses,
+        focusedEntityId,
+      );
+      setUnionFrameLayout(result);
+    } else if (recording.phase === "stopped" && recording.unionLayout) {
+      const lastFrame = recording.frames.length - 1;
+      const result = renderFrameFromUnion(
+        recording.frames[lastFrame]?.frame_index ?? 0,
+        recording.unionLayout,
+        hiddenKrates,
+        hiddenProcesses,
+        focusedEntityId,
+      );
+      setUnionFrameLayout(result);
     }
-  }, []);
+  }, [hiddenKrates, hiddenProcesses, focusedEntityId, recording]);
+
+  // Clear union frame layout when going back to idle or starting a new recording.
+  useEffect(() => {
+    if (recording.phase === "idle" || recording.phase === "recording") {
+      setUnionFrameLayout(undefined);
+    }
+  }, [recording.phase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2226,6 +1780,8 @@ export function App() {
             frameCount={recording.frameCount}
             currentFrameIndex={currentFrameIndex}
             onScrub={handleScrub}
+            buildingUnion={recording.phase === "stopped" && recording.buildingUnion}
+            buildProgress={recording.phase === "stopped" ? recording.buildProgress : undefined}
           />
         )}
       <SplitLayout
@@ -2247,6 +1803,7 @@ export function App() {
             hiddenProcesses={hiddenProcesses}
             onProcessToggle={handleProcessToggle}
             onProcessSolo={handleProcessSolo}
+            unionFrameLayout={unionFrameLayout}
           />
         }
         right={

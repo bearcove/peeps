@@ -19,11 +19,28 @@
     min-width: 90px;
 }
 
+.recording-timeline-building {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 180px;
+}
+
+.recording-timeline-progress {
+    font-weight: 400;
+    opacity: 0.7;
+}
+
 .recording-timeline-slider {
     flex: 1;
     height: 4px;
     cursor: pointer;
     accent-color: light-dark(#0071e3, #5ac8fa);
+}
+
+.recording-timeline-slider:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
 }
 
 .recording-timeline-time {
