@@ -24,9 +24,11 @@ import {
 } from "./recording/unionGraph";
 import { GraphPanel, type GraphSelection, type ScopeColorMode, type SnapPhase } from "./components/graph/GraphPanel";
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
+import { ScopeTablePanel } from "./components/scopes/ScopeTablePanel";
 import { ProcessModal } from "./components/ProcessModal";
 import { AppHeader } from "./components/AppHeader";
 import { ProcessIdenticon } from "./ui/primitives/ProcessIdenticon";
+import { SegmentedGroup } from "./ui/primitives/SegmentedGroup";
 
 // ── Snapshot state machine ─────────────────────────────────────
 
@@ -77,6 +79,8 @@ export type RecordingState =
 // ── App ────────────────────────────────────────────────────────
 
 export function App() {
+  const [leftPaneTab, setLeftPaneTab] = useState<"graph" | "scopes">("graph");
+  const [selectedScopeKind, setSelectedScopeKind] = useState<string | null>(null);
   const [snap, setSnap] = useState<SnapshotState>({ phase: "idle" });
   const [inspectorWidth, setInspectorWidth] = useState(340);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
@@ -714,31 +718,60 @@ export function App() {
         )}
       <SplitLayout
         left={
-          <GraphPanel
-            entityDefs={entities}
-            edgeDefs={edges}
-            snapPhase={snap.phase}
-            selection={selection}
-            onSelect={setSelection}
-            focusedEntityId={focusedEntityId}
-            onExitFocus={() => setFocusedEntityId(null)}
-            waitingForProcesses={waitingForProcesses}
-            crateItems={crateItems}
-            hiddenKrates={hiddenKrates}
-            onKrateToggle={handleKrateToggle}
-            onKrateSolo={handleKrateSolo}
-            processItems={processItems}
-            hiddenProcesses={hiddenProcesses}
-            onProcessToggle={handleProcessToggle}
-            onProcessSolo={handleProcessSolo}
-            scopeColorMode={scopeColorMode}
-            onToggleProcessColorBy={handleToggleProcessColorBy}
-            onToggleCrateColorBy={handleToggleCrateColorBy}
-            subgraphScopeMode={subgraphScopeMode}
-            onToggleProcessSubgraphs={handleToggleProcessSubgraphs}
-            onToggleCrateSubgraphs={handleToggleCrateSubgraphs}
-            unionFrameLayout={unionFrameLayout}
-          />
+          <div className="app-left-pane">
+            <div className="app-left-pane-tabs">
+              <SegmentedGroup
+                size="sm"
+                aria-label="Left panel mode"
+                value={leftPaneTab}
+                onChange={(value) => setLeftPaneTab(value as "graph" | "scopes")}
+                options={[
+                  { value: "graph", label: "Graph" },
+                  { value: "scopes", label: "Scopes" },
+                ]}
+              />
+            </div>
+            <div className="app-left-pane-body">
+              {leftPaneTab === "graph" ? (
+                <GraphPanel
+                  entityDefs={entities}
+                  edgeDefs={edges}
+                  snapPhase={snap.phase}
+                  selection={selection}
+                  onSelect={(next) => {
+                    setSelection(next);
+                    if (next) setSelectedScopeKind(null);
+                  }}
+                  focusedEntityId={focusedEntityId}
+                  onExitFocus={() => setFocusedEntityId(null)}
+                  waitingForProcesses={waitingForProcesses}
+                  crateItems={crateItems}
+                  hiddenKrates={hiddenKrates}
+                  onKrateToggle={handleKrateToggle}
+                  onKrateSolo={handleKrateSolo}
+                  processItems={processItems}
+                  hiddenProcesses={hiddenProcesses}
+                  onProcessToggle={handleProcessToggle}
+                  onProcessSolo={handleProcessSolo}
+                  scopeColorMode={scopeColorMode}
+                  onToggleProcessColorBy={handleToggleProcessColorBy}
+                  onToggleCrateColorBy={handleToggleCrateColorBy}
+                  subgraphScopeMode={subgraphScopeMode}
+                  onToggleProcessSubgraphs={handleToggleProcessSubgraphs}
+                  onToggleCrateSubgraphs={handleToggleCrateSubgraphs}
+                  unionFrameLayout={unionFrameLayout}
+                />
+              ) : (
+                <ScopeTablePanel
+                  selectedKind={selectedScopeKind}
+                  onSelectKind={(kind) => {
+                    setSelectedScopeKind(kind);
+                    if (kind) setSelection(null);
+                  }}
+                />
+              )}
+            </div>
+          </div>
         }
         right={
           <InspectorPanel
@@ -750,6 +783,7 @@ export function App() {
             onFocusEntity={setFocusedEntityId}
             scrubbingUnionLayout={recording.phase === "scrubbing" ? recording.unionLayout : undefined}
             currentFrameIndex={recording.phase === "scrubbing" ? recording.currentFrameIndex : undefined}
+            selectedScopeKind={selectedScopeKind}
           />
         }
         rightWidth={inspectorWidth}

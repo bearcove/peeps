@@ -6,6 +6,7 @@ import type { UnionLayout } from "../../recording/unionGraph";
 import { diffEntityBetweenFrames } from "../../recording/unionGraph";
 import { EntityInspectorContent } from "./EntityInspectorContent";
 import { EdgeInspectorContent } from "./EdgeInspectorContent";
+import { ScopeKindInspectorContent } from "./ScopeKindInspectorContent";
 import type { GraphSelection } from "../graph/GraphPanel";
 import "./InspectorPanel.css";
 
@@ -18,6 +19,7 @@ export function InspectorPanel({
   onFocusEntity,
   scrubbingUnionLayout,
   currentFrameIndex,
+  selectedScopeKind,
 }: {
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -27,6 +29,7 @@ export function InspectorPanel({
   onFocusEntity: (id: string) => void;
   scrubbingUnionLayout?: UnionLayout;
   currentFrameIndex?: number;
+  selectedScopeKind?: string | null;
 }) {
   if (collapsed) {
     return (
@@ -52,6 +55,8 @@ export function InspectorPanel({
   } else if (selection?.kind === "edge") {
     const edge = edgeDefs.find((e) => e.id === selection.id);
     content = edge ? <EdgeInspectorContent edge={edge} entityDefs={entityDefs} /> : null;
+  } else if (selectedScopeKind) {
+    content = <ScopeKindInspectorContent kind={selectedScopeKind} />;
   } else {
     content = <div className="inspector-empty">Select an entity or edge</div>;
   }

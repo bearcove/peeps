@@ -5,6 +5,7 @@ import type {
   FrameSummary,
   RecordCurrentResponse,
   RecordingSessionInfo,
+  SqlResponse,
   SnapshotCutResponse,
   TriggerCutResponse,
 } from "./types";
@@ -206,6 +207,27 @@ export function createMockApiClient(): ApiClient {
   let activeCut: CutStatusResponse | null = null;
   return {
     fetchConnections: () => delay(sampleConnections),
+    fetchSql: (_sql: string) => {
+      const response: SqlResponse = {
+        columns: [
+          "process_id",
+          "process_name",
+          "pid",
+          "stream_id",
+          "scope_id",
+          "scope_name",
+          "scope_kind",
+          "member_count",
+        ],
+        rows: [
+          [101, "lab-server", 4242, "runtime", "scope_conn_1", "incoming_connections", "connection", 4],
+          [101, "lab-server", 4242, "runtime", "scope_tasks_1", "rpc handlers", "task", 3],
+          [202, "lab-loader", 1313, "runtime", "scope_thread_1", "tokio worker", "thread", 2],
+        ],
+        row_count: 3,
+      };
+      return delay(response);
+    },
     triggerCut: () => {
       const cut: CutStatusResponse = {
         cut_id: `lab-mock-${String(nextCutId).padStart(3, "0")}`,

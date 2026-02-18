@@ -4,6 +4,7 @@ import type {
   RecordCurrentResponse,
   RecordingSessionInfo,
   RecordStartRequest,
+  SqlResponse,
   SnapshotCutResponse,
   TriggerCutResponse,
 } from "./types";
@@ -12,6 +13,7 @@ export type ApiMode = "live" | "lab";
 
 export interface ApiClient {
   fetchConnections(): Promise<ConnectionsResponse>;
+  fetchSql(sql: string): Promise<SqlResponse>;
   triggerCut(): Promise<TriggerCutResponse>;
   fetchCutStatus(cutId: string): Promise<CutStatusResponse>;
   fetchSnapshot(): Promise<SnapshotCutResponse>;

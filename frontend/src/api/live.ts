@@ -5,6 +5,7 @@ import type {
   RecordCurrentResponse,
   RecordingSessionInfo,
   RecordStartRequest,
+  SqlResponse,
   SnapshotCutResponse,
   TriggerCutResponse,
 } from "./types";
@@ -60,6 +61,7 @@ function expectRecordingSession(
 export function createLiveApiClient(): ApiClient {
   return {
     fetchConnections: () => getJson<ConnectionsResponse>("/api/connections"),
+    fetchSql: (sql: string) => postJson<SqlResponse>("/api/sql", { sql }),
     triggerCut: () => postJson<TriggerCutResponse>("/api/cuts", {}),
     fetchCutStatus: (cutId: string) =>
       getJson<CutStatusResponse>(`/api/cuts/${encodeURIComponent(cutId)}`),

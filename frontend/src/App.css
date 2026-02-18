@@ -6,3 +6,25 @@
     height: 100vh;
     overflow: hidden;
 }
+
+.app-left-pane {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.app-left-pane-tabs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-raised);
+    flex-shrink: 0;
+}
+
+.app-left-pane-body {
+    flex: 1;
+    min-height: 0;
+}
