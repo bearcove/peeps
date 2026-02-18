@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-import { SplitLayout } from "./ui/layout/SplitLayout";
 import type { FilterMenuItem } from "./ui/primitives/FilterMenu";
 import { apiClient } from "./api";
 import type { ConnectionsResponse, FrameSummary } from "./api/types";
@@ -101,6 +100,9 @@ function entityMatchesScopeFilter(entity: EntityDef, scopeEntityIds: ReadonlySet
   return false;
 }
 
+const INSPECTOR_MARGIN = 12;
+const INSPECTOR_DEFAULT_TOP = 132;
+
 // ── App ────────────────────────────────────────────────────────
 
 export function App() {
@@ -109,8 +111,8 @@ export function App() {
   const [selectedScope, setSelectedScope] = useState<ScopeTableRow | null>(null);
   const [scopeEntityFilter, setScopeEntityFilter] = useState<ScopeEntityFilter | null>(null);
   const [snap, setSnap] = useState<SnapshotState>({ phase: "idle" });
-  const [inspectorWidth, setInspectorWidth] = useState(340);
-  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [inspectorPosition, setInspectorPosition] = useState<{ x: number; y: number } | null>(null);
   const [selection, setSelection] = useState<GraphSelection>(null);
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
@@ -130,6 +132,50 @@ export function App() {
   const pollingRef = useRef<number | null>(null);
   const isLiveRef = useRef(isLive);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mainPaneRef = useRef<HTMLDivElement>(null);
+  const inspectorOverlayRef = useRef<HTMLDivElement>(null);
+
+  const clampInspectorPosition = useCallback((x: number, y: number) => {
+    const main = mainPaneRef.current;
+    const overlay = inspectorOverlayRef.current;
+    if (!main || !overlay) return { x, y };
+    const maxX = Math.max(INSPECTOR_MARGIN, main.clientWidth - overlay.offsetWidth - INSPECTOR_MARGIN);
+    const maxY = Math.max(INSPECTOR_MARGIN, main.clientHeight - overlay.offsetHeight - INSPECTOR_MARGIN);
+    return {
+      x: Math.min(Math.max(x, INSPECTOR_MARGIN), maxX),
+      y: Math.min(Math.max(y, INSPECTOR_MARGIN), maxY),
+    };
+  }, []);
+
+  const handleInspectorHeaderPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      const main = mainPaneRef.current;
+      const overlay = inspectorOverlayRef.current;
+      if (!main || !overlay) return;
+      event.preventDefault();
+
+      const mainRect = main.getBoundingClientRect();
+      const overlayRect = overlay.getBoundingClientRect();
+      const offsetX = event.clientX - overlayRect.left;
+      const offsetY = event.clientY - overlayRect.top;
+
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        const rawX = moveEvent.clientX - mainRect.left - offsetX;
+        const rawY = moveEvent.clientY - mainRect.top - offsetY;
+        setInspectorPosition(clampInspectorPosition(rawX, rawY));
+      };
+
+      const onPointerUp = () => {
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+      };
+
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+    },
+    [clampInspectorPosition],
+  );
 
   const allEntities = snap.phase === "ready" ? snap.entities : [];
   const allEdges = snap.phase === "ready" ? snap.edges : [];
@@ -740,6 +786,32 @@ where l.conn_id = ${connId}
   }, [isLive]);
 
   useEffect(() => {
+    if (!inspectorOpen || inspectorPosition) return;
+    const main = mainPaneRef.current;
+    const overlay = inspectorOverlayRef.current;
+    if (!main || !overlay) return;
+    const startX = main.clientWidth - overlay.offsetWidth - INSPECTOR_MARGIN;
+    const startY = Math.min(
+      INSPECTOR_DEFAULT_TOP,
+      Math.max(INSPECTOR_MARGIN, main.clientHeight - overlay.offsetHeight - INSPECTOR_MARGIN),
+    );
+    setInspectorPosition(clampInspectorPosition(startX, startY));
+  }, [inspectorOpen, inspectorPosition, clampInspectorPosition]);
+
+  useEffect(() => {
+    if (!inspectorOpen) return;
+    const onResize = () => {
+      if (!inspectorPosition) return;
+      setInspectorPosition((prev) => {
+        if (!prev) return prev;
+        return clampInspectorPosition(prev.x, prev.y);
+      });
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [inspectorOpen, inspectorPosition, clampInspectorPosition]);
+
+  useEffect(() => {
     return () => {
       if (pollingRef.current !== null) {
         window.clearInterval(pollingRef.current);
@@ -855,128 +927,135 @@ where l.conn_id = ${connId}
             onRebuild={handleRebuildUnion}
           />
         )}
-      <SplitLayout
-        left={
-          <div className="app-left-pane">
-            <div className="app-left-pane-body">
-              {leftPaneTab === "graph" ? (
-                <GraphPanel
-                  entityDefs={entities}
-                  edgeDefs={edges}
-                  snapPhase={snap.phase}
-                  selection={selection}
-                  onSelect={(next) => {
-                    setSelection(next);
-                    if (next) {
-                      setSelectedScopeKind(null);
-                      setSelectedScope(null);
+      <div className="app-main" ref={mainPaneRef}>
+        <div className="app-left-pane">
+          <div className="app-left-pane-body">
+            {leftPaneTab === "graph" ? (
+              <GraphPanel
+                entityDefs={entities}
+                edgeDefs={edges}
+                snapPhase={snap.phase}
+                selection={selection}
+                onSelect={(next) => {
+                  setSelection(next);
+                  if (next) {
+                    if (!inspectorOpen) {
+                      setInspectorPosition(null);
+                      setInspectorOpen(true);
                     }
-                  }}
-                  focusedEntityId={focusedEntityId}
-                  onExitFocus={() => setFocusedEntityId(null)}
-                  waitingForProcesses={waitingForProcesses}
-                  crateItems={crateItems}
-                  hiddenKrates={hiddenKrates}
-                  onKrateToggle={handleKrateToggle}
-                  onKrateSolo={handleKrateSolo}
-                  processItems={processItems}
-                  hiddenProcesses={hiddenProcesses}
-                  onProcessToggle={handleProcessToggle}
-                  onProcessSolo={handleProcessSolo}
-                  kindItems={kindItems}
-                  hiddenKinds={hiddenKinds}
-                  onKindToggle={handleKindToggle}
-                  onKindSolo={handleKindSolo}
-                  scopeColorMode={scopeColorMode}
-                  onToggleProcessColorBy={handleToggleProcessColorBy}
-                  onToggleCrateColorBy={handleToggleCrateColorBy}
-                  subgraphScopeMode={subgraphScopeMode}
-                  onToggleProcessSubgraphs={handleToggleProcessSubgraphs}
-                  onToggleCrateSubgraphs={handleToggleCrateSubgraphs}
-                  showLoners={showLoners}
-                  onToggleShowLoners={() => setShowLoners((prev) => !prev)}
-                  scopeFilterLabel={scopeEntityFilter?.scopeToken ?? null}
-                  onClearScopeFilter={() => setScopeEntityFilter(null)}
-                  unionFrameLayout={unionFrameLayout}
-                />
-              ) : leftPaneTab === "scopes" ? (
-                <ScopeTablePanel
-                  selectedKind={selectedScopeKind}
-                  selectedScopeKey={selectedScope?.key ?? null}
-                  onSelectKind={(kind) => {
-                    setSelectedScopeKind(kind);
-                    if (kind) {
-                      setSelection(null);
-                      setSelectedScope(null);
-                    }
-                  }}
-                  onSelectScope={(scope) => {
-                    setSelectedScope(scope);
-                    if (scope) {
-                      setSelection(null);
-                    }
-                  }}
-                  onShowGraphScope={(scope) => {
-                    void (async () => {
-                      await applyScopeEntityFilter(scope);
-                      setLeftPaneTab("graph");
-                      setSelection(null);
-                      setFocusedEntityId(null);
-                    })();
-                  }}
-                  onViewScopeEntities={(scope) => {
-                    void (async () => {
-                      await applyScopeEntityFilter(scope);
-                      setLeftPaneTab("entities");
-                      setSelection(null);
-                      setFocusedEntityId(null);
-                    })();
-                  }}
-                />
-              ) : (
-                <EntityTablePanel
-                  entityDefs={queryEntities}
-                  selectedEntityId={selection?.kind === "entity" ? selection.id : null}
-                  scopeFilterLabel={scopeEntityFilter?.scopeLabel ?? null}
-                  onClearScopeFilter={() => setScopeEntityFilter(null)}
-                  onSelectEntity={(entityId) => {
-                    setSelection({ kind: "entity", id: entityId });
+                    setSelectedScopeKind(null);
+                    setSelectedScope(null);
+                  }
+                }}
+                focusedEntityId={focusedEntityId}
+                onExitFocus={() => setFocusedEntityId(null)}
+                waitingForProcesses={waitingForProcesses}
+                crateItems={crateItems}
+                hiddenKrates={hiddenKrates}
+                onKrateToggle={handleKrateToggle}
+                onKrateSolo={handleKrateSolo}
+                processItems={processItems}
+                hiddenProcesses={hiddenProcesses}
+                onProcessToggle={handleProcessToggle}
+                onProcessSolo={handleProcessSolo}
+                kindItems={kindItems}
+                hiddenKinds={hiddenKinds}
+                onKindToggle={handleKindToggle}
+                onKindSolo={handleKindSolo}
+                scopeColorMode={scopeColorMode}
+                onToggleProcessColorBy={handleToggleProcessColorBy}
+                onToggleCrateColorBy={handleToggleCrateColorBy}
+                subgraphScopeMode={subgraphScopeMode}
+                onToggleProcessSubgraphs={handleToggleProcessSubgraphs}
+                onToggleCrateSubgraphs={handleToggleCrateSubgraphs}
+                showLoners={showLoners}
+                onToggleShowLoners={() => setShowLoners((prev) => !prev)}
+                scopeFilterLabel={scopeEntityFilter?.scopeToken ?? null}
+                onClearScopeFilter={() => setScopeEntityFilter(null)}
+                unionFrameLayout={unionFrameLayout}
+              />
+            ) : leftPaneTab === "scopes" ? (
+              <ScopeTablePanel
+                selectedKind={selectedScopeKind}
+                selectedScopeKey={selectedScope?.key ?? null}
+                onSelectKind={(kind) => {
+                  setSelectedScopeKind(kind);
+                  if (kind) {
+                    setSelection(null);
+                    setSelectedScope(null);
+                  }
+                }}
+                onSelectScope={(scope) => {
+                  setSelectedScope(scope);
+                  if (scope) {
+                    setSelection(null);
+                  }
+                }}
+                onShowGraphScope={(scope) => {
+                  void (async () => {
+                    await applyScopeEntityFilter(scope);
                     setLeftPaneTab("graph");
-                  }}
-                />
-              )}
-            </div>
+                    setSelection(null);
+                    setFocusedEntityId(null);
+                  })();
+                }}
+                onViewScopeEntities={(scope) => {
+                  void (async () => {
+                    await applyScopeEntityFilter(scope);
+                    setLeftPaneTab("entities");
+                    setSelection(null);
+                    setFocusedEntityId(null);
+                  })();
+                }}
+              />
+            ) : (
+              <EntityTablePanel
+                entityDefs={queryEntities}
+                selectedEntityId={selection?.kind === "entity" ? selection.id : null}
+                scopeFilterLabel={scopeEntityFilter?.scopeLabel ?? null}
+                onClearScopeFilter={() => setScopeEntityFilter(null)}
+                onSelectEntity={(entityId) => {
+                  setSelection({ kind: "entity", id: entityId });
+                  if (!inspectorOpen) {
+                    setInspectorPosition(null);
+                    setInspectorOpen(true);
+                  }
+                  setLeftPaneTab("graph");
+                }}
+              />
+            )}
           </div>
-        }
-        right={
-          <InspectorPanel
-            collapsed={inspectorCollapsed}
-            onToggleCollapse={() => setInspectorCollapsed((v) => !v)}
-            selection={selection}
-            entityDefs={allEntities}
-            edgeDefs={allEdges}
-            focusedEntityId={focusedEntityId}
-            onToggleFocusEntity={(id) => {
-              setFocusedEntityId((prev) => (prev === id ? null : id));
-            }}
-            onOpenScopeKind={(kind) => {
-              setLeftPaneTab("scopes");
-              setSelection(null);
-              setSelectedScope(null);
-              setSelectedScopeKind(canonicalScopeKind(kind));
-            }}
-            scrubbingUnionLayout={recording.phase === "scrubbing" ? recording.unionLayout : undefined}
-            currentFrameIndex={recording.phase === "scrubbing" ? recording.currentFrameIndex : undefined}
-            selectedScopeKind={selectedScopeKind}
-            selectedScope={selectedScope}
-          />
-        }
-        rightWidth={inspectorWidth}
-        onRightWidthChange={setInspectorWidth}
-        rightMinWidth={260}
-        rightMaxWidth={600}
-        rightCollapsed={inspectorCollapsed}
-      />
+        </div>
+        {inspectorOpen && (
+          <div
+            className="app-inspector-overlay"
+            ref={inspectorOverlayRef}
+            style={inspectorPosition ? { left: inspectorPosition.x, top: inspectorPosition.y } : undefined}
+          >
+            <InspectorPanel
+              onClose={() => setInspectorOpen(false)}
+              onHeaderPointerDown={handleInspectorHeaderPointerDown}
+              selection={selection}
+              entityDefs={allEntities}
+              edgeDefs={allEdges}
+              focusedEntityId={focusedEntityId}
+              onToggleFocusEntity={(id) => {
+                setFocusedEntityId((prev) => (prev === id ? null : id));
+              }}
+              onOpenScopeKind={(kind) => {
+                setLeftPaneTab("scopes");
+                setSelection(null);
+                setSelectedScope(null);
+                setSelectedScopeKind(canonicalScopeKind(kind));
+              }}
+              scrubbingUnionLayout={recording.phase === "scrubbing" ? recording.unionLayout : undefined}
+              currentFrameIndex={recording.phase === "scrubbing" ? recording.currentFrameIndex : undefined}
+              selectedScopeKind={selectedScopeKind}
+              selectedScope={selectedScope}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

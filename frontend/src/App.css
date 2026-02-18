@@ -7,6 +7,12 @@
     overflow: hidden;
 }
 
+.app-main {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+}
+
 .app-left-pane {
     display: flex;
     flex-direction: column;
@@ -17,4 +23,20 @@
 .app-left-pane-body {
     flex: 1;
     min-height: 0;
+}
+
+.app-inspector-overlay {
+    position: absolute;
+    top: 132px;
+    right: 12px;
+    width: clamp(300px, 26vw, 420px);
+    height: min(72vh, 760px);
+    max-width: calc(100% - 24px);
+    max-height: calc(100% - 24px);
+    pointer-events: none;
+    z-index: 20;
+}
+
+.app-inspector-overlay > * {
+    pointer-events: auto;
 }
