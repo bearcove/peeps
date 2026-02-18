@@ -8,6 +8,7 @@ use peeps_types::{
 use std::ffi::OsStr;
 use std::future::{Future, IntoFuture};
 use std::io;
+use std::ops::{Deref, DerefMut};
 #[cfg(not(target_arch = "wasm32"))]
 use std::process::{ExitStatus, Output, Stdio};
 use std::sync::Once;
@@ -24,6 +25,98 @@ pub struct ScopeRef;
 
 #[derive(Clone, Debug, Default)]
 pub struct ScopeHandle;
+
+pub struct Mutex<T> {
+    inner: parking_lot::Mutex<T>,
+}
+
+pub struct MutexGuard<'a, T> {
+    inner: parking_lot::MutexGuard<'a, T>,
+}
+
+impl<'a, T> Deref for MutexGuard<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<'a, T> DerefMut for MutexGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl<T> Mutex<T> {
+    #[deprecated(note = "use the mutex! macro instead")]
+    pub fn new(_name: &'static str, value: T) -> Self {
+        Self {
+            inner: parking_lot::Mutex::new(value),
+        }
+    }
+
+    pub fn new_with_krate(
+        _name: &'static str,
+        value: T,
+        _source: impl Into<CompactString>,
+        _krate: impl Into<CompactString>,
+    ) -> Self {
+        Self {
+            inner: parking_lot::Mutex::new(value),
+        }
+    }
+
+    pub fn lock(&self) -> MutexGuard<'_, T> {
+        MutexGuard {
+            inner: self.inner.lock(),
+        }
+    }
+
+    pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
+        self.inner.try_lock().map(|inner| MutexGuard { inner })
+    }
+}
+
+pub struct RwLock<T> {
+    inner: parking_lot::RwLock<T>,
+}
+
+impl<T> RwLock<T> {
+    #[deprecated(note = "use the rwlock! macro instead")]
+    pub fn new(_name: &'static str, value: T) -> Self {
+        Self {
+            inner: parking_lot::RwLock::new(value),
+        }
+    }
+
+    pub fn new_with_krate(
+        _name: &'static str,
+        value: T,
+        _source: impl Into<CompactString>,
+        _krate: impl Into<CompactString>,
+    ) -> Self {
+        Self {
+            inner: parking_lot::RwLock::new(value),
+        }
+    }
+
+    pub fn read(&self) -> parking_lot::RwLockReadGuard<'_, T> {
+        self.inner.read()
+    }
+
+    pub fn write(&self) -> parking_lot::RwLockWriteGuard<'_, T> {
+        self.inner.write()
+    }
+
+    pub fn try_read(&self) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
+        self.inner.try_read()
+    }
+
+    pub fn try_write(&self) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
+        self.inner.try_write()
+    }
+}
 
 impl EntityHandle {
     pub fn new(_name: impl Into<CompactString>, _body: EntityBody) -> Self {
@@ -1338,10 +1431,7 @@ pub fn ack_cut(cut_id: impl Into<CompactString>) -> CutAck {
     }
 }
 
-pub fn instrument_future_named<F>(
-    _name: impl Into<CompactString>,
-    fut: F,
-) -> F::IntoFuture
+pub fn instrument_future_named<F>(_name: impl Into<CompactString>, fut: F) -> F::IntoFuture
 where
     F: IntoFuture,
 {
@@ -1460,6 +1550,30 @@ macro_rules! peep {
     }};
     ($fut:expr, $name:expr, $($rest:tt)+) => {{
         compile_error!("invalid `peep!` arguments");
+    }};
+}
+
+#[macro_export]
+macro_rules! mutex {
+    ($name:expr, $value:expr $(,)?) => {{
+        $crate::Mutex::new_with_krate(
+            $name,
+            $value,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+            env!("CARGO_PKG_NAME"),
+        )
+    }};
+}
+
+#[macro_export]
+macro_rules! rwlock {
+    ($name:expr, $value:expr $(,)?) => {{
+        $crate::RwLock::new_with_krate(
+            $name,
+            $value,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+            env!("CARGO_PKG_NAME"),
+        )
     }};
 }
 

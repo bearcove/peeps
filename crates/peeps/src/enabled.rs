@@ -5,16 +5,17 @@ use peeps_types::{
     ChannelEndpointEntity, ChannelEndpointLifecycle, ChannelReceiveEvent, ChannelReceiveOutcome,
     ChannelSendEvent, ChannelSendOutcome, ChannelWaitEndedEvent, ChannelWaitKind,
     ChannelWaitStartedEvent, CommandEntity, CutAck, CutId, Edge, EdgeKind, Entity, EntityBody,
-    EntityId, Event, EventKind, EventTarget, MpscChannelDetails, NotifyEntity, OnceCellEntity,
-    OnceCellState, OneshotChannelDetails, OneshotState, PullChangesResponse, RequestEntity,
-    ResponseEntity, ResponseStatus, Scope, ScopeBody, ScopeId, SemaphoreEntity, SeqNo,
-    StampedChange, StreamCursor, StreamId, WatchChannelDetails,
+    EntityId, Event, EventKind, EventTarget, LockEntity, LockKind, MpscChannelDetails,
+    NotifyEntity, OnceCellEntity, OnceCellState, OneshotChannelDetails, OneshotState,
+    PullChangesResponse, RequestEntity, ResponseEntity, ResponseStatus, Scope, ScopeBody, ScopeId,
+    SemaphoreEntity, SeqNo, StampedChange, StreamCursor, StreamId, WatchChannelDetails,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
 use std::ffi::{OsStr, OsString};
 use std::future::{Future, IntoFuture};
 use std::io;
+use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::process::{ExitStatus, Output, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -40,6 +41,9 @@ const DASHBOARD_PUSH_INTERVAL_MS: u64 = 100;
 const DASHBOARD_RECONNECT_DELAY_MS: u64 = 500;
 tokio::task_local! {
     static FUTURE_CAUSAL_STACK: RefCell<Vec<EntityId>>;
+}
+thread_local! {
+    static HELD_MUTEX_STACK: RefCell<Vec<EntityId>> = const { RefCell::new(Vec::new()) };
 }
 
 #[track_caller]
@@ -372,24 +376,26 @@ macro_rules! sleep {
 }
 
 #[deprecated(note = "use the timeout! macro instead")]
-pub async fn timeout<F>(
+#[track_caller]
+pub fn timeout<F>(
     duration: std::time::Duration,
     future: F,
     label: impl Into<String>,
-) -> Result<F::Output, tokio::time::error::Elapsed>
+) -> impl Future<Output = Result<F::Output, tokio::time::error::Elapsed>>
 where
     F: Future,
 {
-    tokio::time::timeout(duration, instrument_future_named(label.into(), future)).await
+    tokio::time::timeout(duration, instrument_future_named(label.into(), future))
 }
 
-pub async fn timeout_with_krate<F>(
+#[track_caller]
+pub fn timeout_with_krate<F>(
     duration: std::time::Duration,
     future: F,
     label: impl Into<CompactString>,
     source: impl Into<CompactString>,
     krate: impl Into<CompactString>,
-) -> Result<F::Output, tokio::time::error::Elapsed>
+) -> impl Future<Output = Result<F::Output, tokio::time::error::Elapsed>>
 where
     F: Future,
 {
@@ -397,7 +403,6 @@ where
         duration,
         instrument_future_named_with_krate(label, future, source, krate),
     )
-    .await
 }
 
 #[macro_export]
@@ -1394,6 +1399,255 @@ impl<T: Clone> AsEntityRef for WatchReceiver<T> {
     }
 }
 
+pub struct Mutex<T> {
+    inner: parking_lot::Mutex<T>,
+    handle: EntityHandle,
+}
+
+pub struct MutexGuard<'a, T> {
+    inner: parking_lot::MutexGuard<'a, T>,
+    lock_id: EntityId,
+    owner_future_id: Option<EntityId>,
+}
+
+impl<'a, T> Deref for MutexGuard<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<'a, T> DerefMut for MutexGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl<T> Mutex<T> {
+    #[deprecated(note = "use the mutex! macro instead")]
+    #[track_caller]
+    pub fn new(name: &'static str, value: T) -> Self {
+        let handle = EntityHandle::new(
+            name,
+            EntityBody::Lock(LockEntity {
+                kind: LockKind::Mutex,
+            }),
+        );
+        Self {
+            inner: parking_lot::Mutex::new(value),
+            handle,
+        }
+    }
+
+    pub fn new_with_krate(
+        name: &'static str,
+        value: T,
+        source: impl Into<CompactString>,
+        krate: impl Into<CompactString>,
+    ) -> Self {
+        let handle = EntityHandle::new_with_krate(
+            name,
+            EntityBody::Lock(LockEntity {
+                kind: LockKind::Mutex,
+            }),
+            source,
+            krate,
+        );
+        Self {
+            inner: parking_lot::Mutex::new(value),
+            handle,
+        }
+    }
+
+    #[track_caller]
+    pub fn lock(&self) -> MutexGuard<'_, T> {
+        if let Some(inner) = self.inner.try_lock() {
+            return self.wrap_guard(inner);
+        }
+
+        let pending_edges = self.record_pending_wait_edges();
+        let inner = self.inner.lock();
+        self.clear_pending_wait_edges(pending_edges);
+        self.wrap_guard(inner)
+    }
+
+    #[track_caller]
+    pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
+        self.inner.try_lock().map(|inner| self.wrap_guard(inner))
+    }
+
+    fn wrap_guard<'a>(&self, inner: parking_lot::MutexGuard<'a, T>) -> MutexGuard<'a, T> {
+        let lock_id = EntityId::new(self.handle.id().as_str());
+        let owner_future_id =
+            current_causal_target().map(|target| EntityId::new(target.id().as_str()));
+        if let Some(owner_id) = owner_future_id.as_ref() {
+            if let Ok(mut db) = runtime_db().lock() {
+                db.upsert_edge(&lock_id, owner_id, EdgeKind::Needs);
+            }
+        }
+        HELD_MUTEX_STACK.with(|stack| {
+            stack.borrow_mut().push(EntityId::new(lock_id.as_str()));
+        });
+        MutexGuard {
+            inner,
+            lock_id,
+            owner_future_id,
+        }
+    }
+
+    fn record_pending_wait_edges(&self) -> Vec<(EntityId, EntityId)> {
+        let dst = EntityId::new(self.handle.id().as_str());
+        let mut edges = Vec::<(EntityId, EntityId)>::new();
+
+        if let Some(waiter) = current_causal_target() {
+            if waiter.id().as_str() != dst.as_str() {
+                edges.push((
+                    EntityId::new(waiter.id().as_str()),
+                    EntityId::new(dst.as_str()),
+                ));
+            }
+        }
+
+        edges.sort_unstable_by(|(lhs_src, lhs_dst), (rhs_src, rhs_dst)| {
+            lhs_src
+                .as_str()
+                .cmp(rhs_src.as_str())
+                .then_with(|| lhs_dst.as_str().cmp(rhs_dst.as_str()))
+        });
+        edges.dedup();
+
+        if let Ok(mut db) = runtime_db().lock() {
+            for (src, dst) in &edges {
+                db.upsert_edge(src, dst, EdgeKind::Needs);
+            }
+        }
+
+        edges
+    }
+
+    fn clear_pending_wait_edges(&self, edges: Vec<(EntityId, EntityId)>) {
+        if let Ok(mut db) = runtime_db().lock() {
+            for (src, dst) in edges {
+                db.remove_edge(&src, &dst, EdgeKind::Needs);
+            }
+        }
+    }
+}
+
+impl<T> AsEntityRef for Mutex<T> {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
+    }
+}
+
+impl<'a, T> Drop for MutexGuard<'a, T> {
+    fn drop(&mut self) {
+        if let Some(owner_id) = self.owner_future_id.as_ref() {
+            if let Ok(mut db) = runtime_db().lock() {
+                db.remove_edge(&self.lock_id, owner_id, EdgeKind::Needs);
+            }
+        }
+        HELD_MUTEX_STACK.with(|stack| {
+            let mut stack = stack.borrow_mut();
+            if let Some(pos) = stack
+                .iter()
+                .rposition(|id| id.as_str() == self.lock_id.as_str())
+            {
+                stack.remove(pos);
+            }
+        });
+    }
+}
+
+pub struct RwLock<T> {
+    inner: parking_lot::RwLock<T>,
+    handle: EntityHandle,
+}
+
+impl<T> RwLock<T> {
+    #[deprecated(note = "use the rwlock! macro instead")]
+    #[track_caller]
+    pub fn new(name: &'static str, value: T) -> Self {
+        let handle = EntityHandle::new(
+            name,
+            EntityBody::Lock(LockEntity {
+                kind: LockKind::RwLock,
+            }),
+        );
+        Self {
+            inner: parking_lot::RwLock::new(value),
+            handle,
+        }
+    }
+
+    pub fn new_with_krate(
+        name: &'static str,
+        value: T,
+        source: impl Into<CompactString>,
+        krate: impl Into<CompactString>,
+    ) -> Self {
+        let handle = EntityHandle::new_with_krate(
+            name,
+            EntityBody::Lock(LockEntity {
+                kind: LockKind::RwLock,
+            }),
+            source,
+            krate,
+        );
+        Self {
+            inner: parking_lot::RwLock::new(value),
+            handle,
+        }
+    }
+
+    pub fn read(&self) -> parking_lot::RwLockReadGuard<'_, T> {
+        self.inner.read()
+    }
+
+    pub fn write(&self) -> parking_lot::RwLockWriteGuard<'_, T> {
+        self.inner.write()
+    }
+
+    pub fn try_read(&self) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
+        self.inner.try_read()
+    }
+
+    pub fn try_write(&self) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
+        self.inner.try_write()
+    }
+}
+
+impl<T> AsEntityRef for RwLock<T> {
+    fn as_entity_ref(&self) -> EntityRef {
+        self.handle.entity_ref()
+    }
+}
+
+#[macro_export]
+macro_rules! mutex {
+    ($name:expr, $value:expr $(,)?) => {{
+        $crate::Mutex::new_with_krate(
+            $name,
+            $value,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+            env!("CARGO_PKG_NAME"),
+        )
+    }};
+}
+
+#[macro_export]
+macro_rules! rwlock {
+    ($name:expr, $value:expr $(,)?) => {{
+        $crate::RwLock::new_with_krate(
+            $name,
+            $value,
+            $crate::source_from_file_line(env!("CARGO_MANIFEST_DIR"), file!(), line!()),
+            env!("CARGO_PKG_NAME"),
+        )
+    }};
+}
+
 #[derive(Clone)]
 pub struct RpcRequestHandle {
     handle: EntityHandle,
@@ -2157,101 +2411,107 @@ impl<T> Sender<T> {
         self.inner.is_closed()
     }
 
-    pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
-        let wait_kind = self.channel.lock().ok().and_then(|state| {
-            if state.is_send_full() {
-                if let Ok(event) = Event::channel_sent(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelSendEvent {
-                        outcome: ChannelSendOutcome::Full,
-                        queue_len: Some(state.queue_len),
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
+    #[track_caller]
+    pub fn send(
+        &self,
+        value: T,
+    ) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + '_ {
+        async move {
+            let wait_kind = self.channel.lock().ok().and_then(|state| {
+                if state.is_send_full() {
+                    if let Ok(event) = Event::channel_sent(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelSendEvent {
+                            outcome: ChannelSendOutcome::Full,
+                            queue_len: Some(state.queue_len),
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
                     }
-                }
-                Some(ChannelWaitKind::SendFull)
-            } else {
-                None
-            }
-        });
-        let wait_started = wait_kind.map(|kind| {
-            emit_channel_wait_started(self.handle.id(), kind);
-            Instant::now()
-        });
-
-        let result = instrument_future_on(
-            format!("{}.send", self.name),
-            &self.handle,
-            self.inner.send(value),
-        )
-        .await;
-
-        if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
-            emit_channel_wait_ended(self.handle.id(), kind, started);
-        }
-
-        match result {
-            Ok(()) => {
-                let queue_len = if let Ok(mut state) = self.channel.lock() {
-                    state.queue_len = state.queue_len.saturating_add(1);
-                    state.queue_len
+                    Some(ChannelWaitKind::SendFull)
                 } else {
-                    0
-                };
-                apply_channel_state(&self.channel);
-                if let Ok(event) = Event::channel_sent(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelSendEvent {
-                        outcome: ChannelSendOutcome::Ok,
-                        queue_len: Some(queue_len),
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    None
                 }
-                Ok(())
+            });
+            let wait_started = wait_kind.map(|kind| {
+                emit_channel_wait_started(self.handle.id(), kind);
+                Instant::now()
+            });
+
+            let result = instrument_future_on(
+                format!("{}.send", self.name),
+                &self.handle,
+                self.inner.send(value),
+            )
+            .await;
+
+            if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
+                emit_channel_wait_ended(self.handle.id(), kind, started);
             }
-            Err(err) => {
-                let (queue_len, close_cause) = if let Ok(mut state) = self.channel.lock() {
-                    if state.tx_close_cause.is_none() {
-                        state.tx_close_cause = Some(ChannelCloseCause::ReceiverClosed);
+
+            match result {
+                Ok(()) => {
+                    let queue_len = if let Ok(mut state) = self.channel.lock() {
+                        state.queue_len = state.queue_len.saturating_add(1);
+                        state.queue_len
+                    } else {
+                        0
+                    };
+                    apply_channel_state(&self.channel);
+                    if let Ok(event) = Event::channel_sent(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelSendEvent {
+                            outcome: ChannelSendOutcome::Ok,
+                            queue_len: Some(queue_len),
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
                     }
-                    if state.rx_close_cause.is_none() {
-                        state.rx_close_cause = Some(ChannelCloseCause::ReceiverClosed);
-                    }
-                    (
-                        state.queue_len,
-                        state
-                            .tx_close_cause
-                            .unwrap_or(ChannelCloseCause::ReceiverClosed),
-                    )
-                } else {
-                    (0, ChannelCloseCause::ReceiverClosed)
-                };
-                apply_channel_state(&self.channel);
-                if let Ok(event) = Event::channel_sent(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelSendEvent {
-                        outcome: ChannelSendOutcome::Closed,
-                        queue_len: Some(queue_len),
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    Ok(())
                 }
-                if let Ok(event) = Event::channel_closed(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelClosedEvent { cause: close_cause },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
+                Err(err) => {
+                    let (queue_len, close_cause) = if let Ok(mut state) = self.channel.lock() {
+                        if state.tx_close_cause.is_none() {
+                            state.tx_close_cause = Some(ChannelCloseCause::ReceiverClosed);
+                        }
+                        if state.rx_close_cause.is_none() {
+                            state.rx_close_cause = Some(ChannelCloseCause::ReceiverClosed);
+                        }
+                        (
+                            state.queue_len,
+                            state
+                                .tx_close_cause
+                                .unwrap_or(ChannelCloseCause::ReceiverClosed),
+                        )
+                    } else {
+                        (0, ChannelCloseCause::ReceiverClosed)
+                    };
+                    apply_channel_state(&self.channel);
+                    if let Ok(event) = Event::channel_sent(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelSendEvent {
+                            outcome: ChannelSendOutcome::Closed,
+                            queue_len: Some(queue_len),
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
                     }
+                    if let Ok(event) = Event::channel_closed(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelClosedEvent { cause: close_cause },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
+                    }
+                    Err(err)
                 }
-                Err(err)
             }
         }
     }
@@ -2264,101 +2524,104 @@ impl<T> Receiver<T> {
         &self.handle
     }
 
-    pub async fn recv(&mut self) -> Option<T> {
-        let wait_kind = self.channel.lock().ok().and_then(|state| {
-            if state.is_receive_empty() {
-                if let Ok(event) = Event::channel_received(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelReceiveEvent {
-                        outcome: ChannelReceiveOutcome::Empty,
-                        queue_len: Some(state.queue_len),
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
+    #[track_caller]
+    pub fn recv(&mut self) -> impl Future<Output = Option<T>> + '_ {
+        async move {
+            let wait_kind = self.channel.lock().ok().and_then(|state| {
+                if state.is_receive_empty() {
+                    if let Ok(event) = Event::channel_received(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelReceiveEvent {
+                            outcome: ChannelReceiveOutcome::Empty,
+                            queue_len: Some(state.queue_len),
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
                     }
-                }
-                Some(ChannelWaitKind::ReceiveEmpty)
-            } else {
-                None
-            }
-        });
-        let wait_started = wait_kind.map(|kind| {
-            emit_channel_wait_started(self.handle.id(), kind);
-            Instant::now()
-        });
-
-        let result = instrument_future_on(
-            format!("{}.recv", self.name),
-            &self.handle,
-            self.inner.recv(),
-        )
-        .await;
-
-        if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
-            emit_channel_wait_ended(self.handle.id(), kind, started);
-        }
-
-        match result {
-            Some(value) => {
-                let queue_len = if let Ok(mut state) = self.channel.lock() {
-                    state.queue_len = state.queue_len.saturating_sub(1);
-                    state.queue_len
+                    Some(ChannelWaitKind::ReceiveEmpty)
                 } else {
-                    0
-                };
-                apply_channel_state(&self.channel);
-                if let Ok(event) = Event::channel_received(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelReceiveEvent {
-                        outcome: ChannelReceiveOutcome::Ok,
-                        queue_len: Some(queue_len),
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    None
                 }
-                Some(value)
+            });
+            let wait_started = wait_kind.map(|kind| {
+                emit_channel_wait_started(self.handle.id(), kind);
+                Instant::now()
+            });
+
+            let result = instrument_future_on(
+                format!("{}.recv", self.name),
+                &self.handle,
+                self.inner.recv(),
+            )
+            .await;
+
+            if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
+                emit_channel_wait_ended(self.handle.id(), kind, started);
             }
-            None => {
-                let (queue_len, close_cause) = if let Ok(mut state) = self.channel.lock() {
-                    if state.tx_close_cause.is_none() {
-                        state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+
+            match result {
+                Some(value) => {
+                    let queue_len = if let Ok(mut state) = self.channel.lock() {
+                        state.queue_len = state.queue_len.saturating_sub(1);
+                        state.queue_len
+                    } else {
+                        0
+                    };
+                    apply_channel_state(&self.channel);
+                    if let Ok(event) = Event::channel_received(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelReceiveEvent {
+                            outcome: ChannelReceiveOutcome::Ok,
+                            queue_len: Some(queue_len),
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
                     }
-                    if state.rx_close_cause.is_none() {
-                        state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
-                    }
-                    (
-                        state.queue_len,
-                        state
-                            .rx_close_cause
-                            .unwrap_or(ChannelCloseCause::SenderDropped),
-                    )
-                } else {
-                    (0, ChannelCloseCause::SenderDropped)
-                };
-                apply_channel_state(&self.channel);
-                if let Ok(event) = Event::channel_received(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelReceiveEvent {
-                        outcome: ChannelReceiveOutcome::Closed,
-                        queue_len: Some(queue_len),
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    Some(value)
                 }
-                if let Ok(event) = Event::channel_closed(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelClosedEvent { cause: close_cause },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
+                None => {
+                    let (queue_len, close_cause) = if let Ok(mut state) = self.channel.lock() {
+                        if state.tx_close_cause.is_none() {
+                            state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                        }
+                        if state.rx_close_cause.is_none() {
+                            state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                        }
+                        (
+                            state.queue_len,
+                            state
+                                .rx_close_cause
+                                .unwrap_or(ChannelCloseCause::SenderDropped),
+                        )
+                    } else {
+                        (0, ChannelCloseCause::SenderDropped)
+                    };
+                    apply_channel_state(&self.channel);
+                    if let Ok(event) = Event::channel_received(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelReceiveEvent {
+                            outcome: ChannelReceiveOutcome::Closed,
+                            queue_len: Some(queue_len),
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
                     }
+                    if let Ok(event) = Event::channel_closed(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelClosedEvent { cause: close_cause },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
+                    }
+                    None
                 }
-                None
             }
         }
     }
@@ -2450,101 +2713,104 @@ impl<T> UnboundedReceiver<T> {
         &self.handle
     }
 
-    pub async fn recv(&mut self) -> Option<T> {
-        let wait_kind = self.channel.lock().ok().and_then(|state| {
-            if state.is_receive_empty() {
-                if let Ok(event) = Event::channel_received(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelReceiveEvent {
-                        outcome: ChannelReceiveOutcome::Empty,
-                        queue_len: Some(state.queue_len),
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
+    #[track_caller]
+    pub fn recv(&mut self) -> impl Future<Output = Option<T>> + '_ {
+        async move {
+            let wait_kind = self.channel.lock().ok().and_then(|state| {
+                if state.is_receive_empty() {
+                    if let Ok(event) = Event::channel_received(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelReceiveEvent {
+                            outcome: ChannelReceiveOutcome::Empty,
+                            queue_len: Some(state.queue_len),
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
                     }
-                }
-                Some(ChannelWaitKind::ReceiveEmpty)
-            } else {
-                None
-            }
-        });
-        let wait_started = wait_kind.map(|kind| {
-            emit_channel_wait_started(self.handle.id(), kind);
-            Instant::now()
-        });
-
-        let result = instrument_future_on(
-            format!("{}.recv", self.name),
-            &self.handle,
-            self.inner.recv(),
-        )
-        .await;
-
-        if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
-            emit_channel_wait_ended(self.handle.id(), kind, started);
-        }
-
-        match result {
-            Some(value) => {
-                let queue_len = if let Ok(mut state) = self.channel.lock() {
-                    state.queue_len = state.queue_len.saturating_sub(1);
-                    state.queue_len
+                    Some(ChannelWaitKind::ReceiveEmpty)
                 } else {
-                    0
-                };
-                apply_channel_state(&self.channel);
-                if let Ok(event) = Event::channel_received(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelReceiveEvent {
-                        outcome: ChannelReceiveOutcome::Ok,
-                        queue_len: Some(queue_len),
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    None
                 }
-                Some(value)
+            });
+            let wait_started = wait_kind.map(|kind| {
+                emit_channel_wait_started(self.handle.id(), kind);
+                Instant::now()
+            });
+
+            let result = instrument_future_on(
+                format!("{}.recv", self.name),
+                &self.handle,
+                self.inner.recv(),
+            )
+            .await;
+
+            if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
+                emit_channel_wait_ended(self.handle.id(), kind, started);
             }
-            None => {
-                let (queue_len, close_cause) = if let Ok(mut state) = self.channel.lock() {
-                    if state.tx_close_cause.is_none() {
-                        state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+
+            match result {
+                Some(value) => {
+                    let queue_len = if let Ok(mut state) = self.channel.lock() {
+                        state.queue_len = state.queue_len.saturating_sub(1);
+                        state.queue_len
+                    } else {
+                        0
+                    };
+                    apply_channel_state(&self.channel);
+                    if let Ok(event) = Event::channel_received(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelReceiveEvent {
+                            outcome: ChannelReceiveOutcome::Ok,
+                            queue_len: Some(queue_len),
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
                     }
-                    if state.rx_close_cause.is_none() {
-                        state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
-                    }
-                    (
-                        state.queue_len,
-                        state
-                            .rx_close_cause
-                            .unwrap_or(ChannelCloseCause::SenderDropped),
-                    )
-                } else {
-                    (0, ChannelCloseCause::SenderDropped)
-                };
-                apply_channel_state(&self.channel);
-                if let Ok(event) = Event::channel_received(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelReceiveEvent {
-                        outcome: ChannelReceiveOutcome::Closed,
-                        queue_len: Some(queue_len),
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
+                    Some(value)
                 }
-                if let Ok(event) = Event::channel_closed(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelClosedEvent { cause: close_cause },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
+                None => {
+                    let (queue_len, close_cause) = if let Ok(mut state) = self.channel.lock() {
+                        if state.tx_close_cause.is_none() {
+                            state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                        }
+                        if state.rx_close_cause.is_none() {
+                            state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                        }
+                        (
+                            state.queue_len,
+                            state
+                                .rx_close_cause
+                                .unwrap_or(ChannelCloseCause::SenderDropped),
+                        )
+                    } else {
+                        (0, ChannelCloseCause::SenderDropped)
+                    };
+                    apply_channel_state(&self.channel);
+                    if let Ok(event) = Event::channel_received(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelReceiveEvent {
+                            outcome: ChannelReceiveOutcome::Closed,
+                            queue_len: Some(queue_len),
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
                     }
+                    if let Ok(event) = Event::channel_closed(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelClosedEvent { cause: close_cause },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
+                    }
+                    None
                 }
-                None
             }
         }
     }
@@ -3038,61 +3304,65 @@ impl<T> OneshotReceiver<T> {
         &self.handle
     }
 
-    pub async fn recv(mut self) -> Result<T, oneshot::error::RecvError> {
-        let inner = self.inner.take().expect("oneshot receiver consumed");
-        let result = instrument_future_on(format!("{}.recv", self.name), &self.handle, inner).await;
-        match result {
-            Ok(value) => {
-                if let Ok(mut state) = self.channel.lock() {
-                    state.state = OneshotState::Received;
-                    state.rx_lifecycle =
-                        ChannelEndpointLifecycle::Closed(ChannelCloseCause::ReceiverDropped);
-                }
-                apply_oneshot_state(&self.channel);
-                if let Ok(event) = Event::channel_received(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelReceiveEvent {
-                        outcome: ChannelReceiveOutcome::Ok,
-                        queue_len: None,
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
+    #[track_caller]
+    pub fn recv(mut self) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
+        async move {
+            let inner = self.inner.take().expect("oneshot receiver consumed");
+            let result =
+                instrument_future_on(format!("{}.recv", self.name), &self.handle, inner).await;
+            match result {
+                Ok(value) => {
+                    if let Ok(mut state) = self.channel.lock() {
+                        state.state = OneshotState::Received;
+                        state.rx_lifecycle =
+                            ChannelEndpointLifecycle::Closed(ChannelCloseCause::ReceiverDropped);
                     }
-                }
-                Ok(value)
-            }
-            Err(err) => {
-                if let Ok(mut state) = self.channel.lock() {
-                    state.state = OneshotState::SenderDropped;
-                    state.tx_lifecycle =
-                        ChannelEndpointLifecycle::Closed(ChannelCloseCause::SenderDropped);
-                    state.rx_lifecycle =
-                        ChannelEndpointLifecycle::Closed(ChannelCloseCause::SenderDropped);
-                }
-                apply_oneshot_state(&self.channel);
-                if let Ok(event) = Event::channel_received(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelReceiveEvent {
-                        outcome: ChannelReceiveOutcome::Closed,
-                        queue_len: None,
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
+                    apply_oneshot_state(&self.channel);
+                    if let Ok(event) = Event::channel_received(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelReceiveEvent {
+                            outcome: ChannelReceiveOutcome::Ok,
+                            queue_len: None,
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
                     }
+                    Ok(value)
                 }
-                if let Ok(event) = Event::channel_closed(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelClosedEvent {
-                        cause: ChannelCloseCause::SenderDropped,
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
+                Err(err) => {
+                    if let Ok(mut state) = self.channel.lock() {
+                        state.state = OneshotState::SenderDropped;
+                        state.tx_lifecycle =
+                            ChannelEndpointLifecycle::Closed(ChannelCloseCause::SenderDropped);
+                        state.rx_lifecycle =
+                            ChannelEndpointLifecycle::Closed(ChannelCloseCause::SenderDropped);
                     }
+                    apply_oneshot_state(&self.channel);
+                    if let Ok(event) = Event::channel_received(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelReceiveEvent {
+                            outcome: ChannelReceiveOutcome::Closed,
+                            queue_len: None,
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
+                    }
+                    if let Ok(event) = Event::channel_closed(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelClosedEvent {
+                            cause: ChannelCloseCause::SenderDropped,
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
+                    }
+                    Err(err)
                 }
-                Err(err)
             }
         }
     }
@@ -3301,62 +3571,65 @@ impl<T: Clone> BroadcastReceiver<T> {
         &self.handle
     }
 
-    pub async fn recv(&mut self) -> Result<T, broadcast::error::RecvError> {
-        let result = instrument_future_on(
-            format!("{}.recv", self.name),
-            &self.handle,
-            self.inner.recv(),
-        )
-        .await;
-        match result {
-            Ok(value) => {
-                if let Ok(event) = Event::channel_received(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelReceiveEvent {
-                        outcome: ChannelReceiveOutcome::Ok,
-                        queue_len: None,
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
-                }
-                Ok(value)
-            }
-            Err(err) => {
-                if let broadcast::error::RecvError::Closed = err {
-                    if let Ok(mut state) = self.channel.lock() {
-                        if state.tx_close_cause.is_none() {
-                            state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
-                        }
-                        if state.rx_close_cause.is_none() {
-                            state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
-                        }
-                    }
-                    apply_broadcast_state(&self.channel);
-                    if let Ok(event) = Event::channel_closed(
+    #[track_caller]
+    pub fn recv(&mut self) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
+        async move {
+            let result = instrument_future_on(
+                format!("{}.recv", self.name),
+                &self.handle,
+                self.inner.recv(),
+            )
+            .await;
+            match result {
+                Ok(value) => {
+                    if let Ok(event) = Event::channel_received(
                         EventTarget::Entity(self.handle.id().clone()),
-                        &ChannelClosedEvent {
-                            cause: ChannelCloseCause::SenderDropped,
+                        &ChannelReceiveEvent {
+                            outcome: ChannelReceiveOutcome::Ok,
+                            queue_len: None,
                         },
                     ) {
                         if let Ok(mut db) = runtime_db().lock() {
                             db.record_event(event);
                         }
                     }
+                    Ok(value)
                 }
-                if let Ok(event) = Event::channel_received(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelReceiveEvent {
-                        outcome: ChannelReceiveOutcome::Empty,
-                        queue_len: None,
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
+                Err(err) => {
+                    if let broadcast::error::RecvError::Closed = err {
+                        if let Ok(mut state) = self.channel.lock() {
+                            if state.tx_close_cause.is_none() {
+                                state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                            }
+                            if state.rx_close_cause.is_none() {
+                                state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                            }
+                        }
+                        apply_broadcast_state(&self.channel);
+                        if let Ok(event) = Event::channel_closed(
+                            EventTarget::Entity(self.handle.id().clone()),
+                            &ChannelClosedEvent {
+                                cause: ChannelCloseCause::SenderDropped,
+                            },
+                        ) {
+                            if let Ok(mut db) = runtime_db().lock() {
+                                db.record_event(event);
+                            }
+                        }
                     }
+                    if let Ok(event) = Event::channel_received(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelReceiveEvent {
+                            outcome: ChannelReceiveOutcome::Empty,
+                            queue_len: None,
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
+                    }
+                    Err(err)
                 }
-                Err(err)
             }
         }
     }
@@ -3449,50 +3722,53 @@ impl<T: Clone> WatchReceiver<T> {
         &self.handle
     }
 
-    pub async fn changed(&mut self) -> Result<(), watch::error::RecvError> {
-        let result = instrument_future_on(
-            format!("{}.changed", self.name),
-            &self.handle,
-            self.inner.changed(),
-        )
-        .await;
-        match result {
-            Ok(()) => {
-                if let Ok(event) = Event::channel_received(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelReceiveEvent {
-                        outcome: ChannelReceiveOutcome::Ok,
-                        queue_len: None,
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
+    #[track_caller]
+    pub fn changed(&mut self) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
+        async move {
+            let result = instrument_future_on(
+                format!("{}.changed", self.name),
+                &self.handle,
+                self.inner.changed(),
+            )
+            .await;
+            match result {
+                Ok(()) => {
+                    if let Ok(event) = Event::channel_received(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelReceiveEvent {
+                            outcome: ChannelReceiveOutcome::Ok,
+                            queue_len: None,
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
                     }
+                    Ok(())
                 }
-                Ok(())
-            }
-            Err(err) => {
-                if let Ok(mut state) = self.channel.lock() {
-                    if state.tx_close_cause.is_none() {
-                        state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                Err(err) => {
+                    if let Ok(mut state) = self.channel.lock() {
+                        if state.tx_close_cause.is_none() {
+                            state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                        }
+                        if state.rx_close_cause.is_none() {
+                            state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                        }
                     }
-                    if state.rx_close_cause.is_none() {
-                        state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
+                    apply_watch_state(&self.channel);
+                    if let Ok(event) = Event::channel_received(
+                        EventTarget::Entity(self.handle.id().clone()),
+                        &ChannelReceiveEvent {
+                            outcome: ChannelReceiveOutcome::Closed,
+                            queue_len: None,
+                        },
+                    ) {
+                        if let Ok(mut db) = runtime_db().lock() {
+                            db.record_event(event);
+                        }
                     }
+                    Err(err)
                 }
-                apply_watch_state(&self.channel);
-                if let Ok(event) = Event::channel_received(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelReceiveEvent {
-                        outcome: ChannelReceiveOutcome::Closed,
-                        queue_len: None,
-                    },
-                ) {
-                    if let Ok(mut db) = runtime_db().lock() {
-                        db.record_event(event);
-                    }
-                }
-                Err(err)
             }
         }
     }
@@ -3825,23 +4101,26 @@ impl Notify {
         }
     }
 
-    pub async fn notified(&self) {
-        let waiters = self
-            .waiter_count
-            .fetch_add(1, Ordering::Relaxed)
-            .saturating_add(1);
-        if let Ok(mut db) = runtime_db().lock() {
-            db.update_notify_waiter_count(self.handle.id(), waiters);
-        }
+    #[track_caller]
+    pub fn notified(&self) -> impl Future<Output = ()> + '_ {
+        async move {
+            let waiters = self
+                .waiter_count
+                .fetch_add(1, Ordering::Relaxed)
+                .saturating_add(1);
+            if let Ok(mut db) = runtime_db().lock() {
+                db.update_notify_waiter_count(self.handle.id(), waiters);
+            }
 
-        instrument_future_on("notify.notified", &self.handle, self.inner.notified()).await;
+            instrument_future_on("notify.notified", &self.handle, self.inner.notified()).await;
 
-        let waiters = self
-            .waiter_count
-            .fetch_sub(1, Ordering::Relaxed)
-            .saturating_sub(1);
-        if let Ok(mut db) = runtime_db().lock() {
-            db.update_notify_waiter_count(self.handle.id(), waiters);
+            let waiters = self
+                .waiter_count
+                .fetch_sub(1, Ordering::Relaxed)
+                .saturating_sub(1);
+            if let Ok(mut db) = runtime_db().lock() {
+                db.update_notify_waiter_count(self.handle.id(), waiters);
+            }
         }
     }
 
@@ -3916,80 +4195,89 @@ impl<T> OnceCell<T> {
         self.inner.initialized()
     }
 
-    pub async fn get_or_init<F, Fut>(&self, f: F) -> &T
+    #[track_caller]
+    pub fn get_or_init<'a, F, Fut>(&'a self, f: F) -> impl Future<Output = &'a T> + 'a
     where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = T>,
+        F: FnOnce() -> Fut + 'a,
+        Fut: Future<Output = T> + 'a,
     {
-        let waiters = self
-            .waiter_count
-            .fetch_add(1, Ordering::Relaxed)
-            .saturating_add(1);
-        if let Ok(mut db) = runtime_db().lock() {
-            db.update_once_cell_state(self.handle.id(), waiters, OnceCellState::Initializing);
+        async move {
+            let waiters = self
+                .waiter_count
+                .fetch_add(1, Ordering::Relaxed)
+                .saturating_add(1);
+            if let Ok(mut db) = runtime_db().lock() {
+                db.update_once_cell_state(self.handle.id(), waiters, OnceCellState::Initializing);
+            }
+
+            let result = instrument_future_on(
+                "once_cell.get_or_init",
+                &self.handle,
+                self.inner.get_or_init(f),
+            )
+            .await;
+
+            let waiters = self
+                .waiter_count
+                .fetch_sub(1, Ordering::Relaxed)
+                .saturating_sub(1);
+            let state = if self.inner.initialized() {
+                OnceCellState::Initialized
+            } else if waiters > 0 {
+                OnceCellState::Initializing
+            } else {
+                OnceCellState::Empty
+            };
+            if let Ok(mut db) = runtime_db().lock() {
+                db.update_once_cell_state(self.handle.id(), waiters, state);
+            }
+
+            result
         }
-
-        let result = instrument_future_on(
-            "once_cell.get_or_init",
-            &self.handle,
-            self.inner.get_or_init(f),
-        )
-        .await;
-
-        let waiters = self
-            .waiter_count
-            .fetch_sub(1, Ordering::Relaxed)
-            .saturating_sub(1);
-        let state = if self.inner.initialized() {
-            OnceCellState::Initialized
-        } else if waiters > 0 {
-            OnceCellState::Initializing
-        } else {
-            OnceCellState::Empty
-        };
-        if let Ok(mut db) = runtime_db().lock() {
-            db.update_once_cell_state(self.handle.id(), waiters, state);
-        }
-
-        result
     }
 
-    pub async fn get_or_try_init<F, Fut, E>(&self, f: F) -> Result<&T, E>
+    #[track_caller]
+    pub fn get_or_try_init<'a, F, Fut, E>(
+        &'a self,
+        f: F,
+    ) -> impl Future<Output = Result<&'a T, E>> + 'a
     where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = Result<T, E>>,
+        F: FnOnce() -> Fut + 'a,
+        Fut: Future<Output = Result<T, E>> + 'a,
     {
-        let waiters = self
-            .waiter_count
-            .fetch_add(1, Ordering::Relaxed)
-            .saturating_add(1);
-        if let Ok(mut db) = runtime_db().lock() {
-            db.update_once_cell_state(self.handle.id(), waiters, OnceCellState::Initializing);
+        async move {
+            let waiters = self
+                .waiter_count
+                .fetch_add(1, Ordering::Relaxed)
+                .saturating_add(1);
+            if let Ok(mut db) = runtime_db().lock() {
+                db.update_once_cell_state(self.handle.id(), waiters, OnceCellState::Initializing);
+            }
+
+            let result = instrument_future_on(
+                "once_cell.get_or_try_init",
+                &self.handle,
+                self.inner.get_or_try_init(f),
+            )
+            .await;
+
+            let waiters = self
+                .waiter_count
+                .fetch_sub(1, Ordering::Relaxed)
+                .saturating_sub(1);
+            let state = if self.inner.initialized() {
+                OnceCellState::Initialized
+            } else if waiters > 0 {
+                OnceCellState::Initializing
+            } else {
+                OnceCellState::Empty
+            };
+            if let Ok(mut db) = runtime_db().lock() {
+                db.update_once_cell_state(self.handle.id(), waiters, state);
+            }
+
+            result
         }
-
-        let result = instrument_future_on(
-            "once_cell.get_or_try_init",
-            &self.handle,
-            self.inner.get_or_try_init(f),
-        )
-        .await;
-
-        let waiters = self
-            .waiter_count
-            .fetch_sub(1, Ordering::Relaxed)
-            .saturating_sub(1);
-        let state = if self.inner.initialized() {
-            OnceCellState::Initialized
-        } else if waiters > 0 {
-            OnceCellState::Initializing
-        } else {
-            OnceCellState::Empty
-        };
-        if let Ok(mut db) = runtime_db().lock() {
-            db.update_once_cell_state(self.handle.id(), waiters, state);
-        }
-
-        result
     }
 
     #[track_caller]
@@ -4095,54 +4383,71 @@ impl Semaphore {
         self.sync_state(max);
     }
 
-    pub async fn acquire(
+    #[track_caller]
+    pub fn acquire(
         &self,
-    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
-        let permit =
-            instrument_future_on("semaphore.acquire", &self.handle, self.inner.acquire()).await?;
-        self.sync_state(self.max_permits.load(Ordering::Relaxed));
-        Ok(permit)
+    ) -> impl Future<Output = Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_
+    {
+        async move {
+            let permit =
+                instrument_future_on("semaphore.acquire", &self.handle, self.inner.acquire())
+                    .await?;
+            self.sync_state(self.max_permits.load(Ordering::Relaxed));
+            Ok(permit)
+        }
     }
 
-    pub async fn acquire_many(
+    #[track_caller]
+    pub fn acquire_many(
         &self,
         n: u32,
-    ) -> Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError> {
-        let permit = instrument_future_on(
-            "semaphore.acquire_many",
-            &self.handle,
-            self.inner.acquire_many(n),
-        )
-        .await?;
-        self.sync_state(self.max_permits.load(Ordering::Relaxed));
-        Ok(permit)
+    ) -> impl Future<Output = Result<tokio::sync::SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_
+    {
+        async move {
+            let permit = instrument_future_on(
+                "semaphore.acquire_many",
+                &self.handle,
+                self.inner.acquire_many(n),
+            )
+            .await?;
+            self.sync_state(self.max_permits.load(Ordering::Relaxed));
+            Ok(permit)
+        }
     }
 
-    pub async fn acquire_owned(
+    #[track_caller]
+    pub fn acquire_owned(
         &self,
-    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
-        let permit = instrument_future_on(
-            "semaphore.acquire_owned",
-            &self.handle,
-            Arc::clone(&self.inner).acquire_owned(),
-        )
-        .await?;
-        self.sync_state(self.max_permits.load(Ordering::Relaxed));
-        Ok(permit)
+    ) -> impl Future<Output = Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_
+    {
+        async move {
+            let permit = instrument_future_on(
+                "semaphore.acquire_owned",
+                &self.handle,
+                Arc::clone(&self.inner).acquire_owned(),
+            )
+            .await?;
+            self.sync_state(self.max_permits.load(Ordering::Relaxed));
+            Ok(permit)
+        }
     }
 
-    pub async fn acquire_many_owned(
+    #[track_caller]
+    pub fn acquire_many_owned(
         &self,
         n: u32,
-    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError> {
-        let permit = instrument_future_on(
-            "semaphore.acquire_many_owned",
-            &self.handle,
-            Arc::clone(&self.inner).acquire_many_owned(n),
-        )
-        .await?;
-        self.sync_state(self.max_permits.load(Ordering::Relaxed));
-        Ok(permit)
+    ) -> impl Future<Output = Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_
+    {
+        async move {
+            let permit = instrument_future_on(
+                "semaphore.acquire_many_owned",
+                &self.handle,
+                Arc::clone(&self.inner).acquire_many_owned(n),
+            )
+            .await?;
+            self.sync_state(self.max_permits.load(Ordering::Relaxed));
+            Ok(permit)
+        }
     }
 
     #[track_caller]
@@ -4326,14 +4631,16 @@ impl Command {
         })
     }
 
-    pub async fn status(&mut self) -> io::Result<ExitStatus> {
+    #[track_caller]
+    pub fn status(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
         let handle = EntityHandle::new(self.entity_name(), self.entity_body());
-        instrument_future_on("command.status", &handle, self.inner.status()).await
+        instrument_future_on("command.status", &handle, self.inner.status())
     }
 
-    pub async fn output(&mut self) -> io::Result<Output> {
+    #[track_caller]
+    pub fn output(&mut self) -> impl Future<Output = io::Result<Output>> + '_ {
         let handle = EntityHandle::new(self.entity_name(), self.entity_body());
-        instrument_future_on("command.output", &handle, self.inner.output()).await
+        instrument_future_on("command.output", &handle, self.inner.output())
     }
 
     #[track_caller]
@@ -4410,20 +4717,21 @@ impl Child {
         self.inner().id()
     }
 
-    pub async fn wait(&mut self) -> io::Result<ExitStatus> {
+    #[track_caller]
+    pub fn wait(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
         let handle = self.handle.clone();
         let wait_fut = self.inner_mut().wait();
-        instrument_future_on("command.wait", &handle, wait_fut).await
+        instrument_future_on("command.wait", &handle, wait_fut)
     }
 
-    pub async fn wait_with_output(mut self) -> io::Result<Output> {
+    #[track_caller]
+    pub fn wait_with_output(mut self) -> impl Future<Output = io::Result<Output>> {
         let child = self.inner.take().expect("child already consumed");
         instrument_future_on(
             "command.wait_with_output",
             &self.handle,
             child.wait_with_output(),
         )
-        .await
     }
 
     #[track_caller]
@@ -4535,10 +4843,13 @@ where
         self.inner.abort_all();
     }
 
-    pub async fn join_next(&mut self) -> Option<Result<T, tokio::task::JoinError>> {
+    #[track_caller]
+    pub fn join_next(
+        &mut self,
+    ) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
         let handle = self.handle.clone();
         let fut = self.inner.join_next();
-        instrument_future_on("joinset.join_next", &handle, fut).await
+        instrument_future_on("joinset.join_next", &handle, fut)
     }
 }
 
@@ -4554,8 +4865,9 @@ macro_rules! join_set {
 }
 
 impl DiagnosticInterval {
-    pub async fn tick(&mut self) -> tokio::time::Instant {
-        instrument_future_on("interval.tick", &self.handle, self.inner.tick()).await
+    #[track_caller]
+    pub fn tick(&mut self) -> impl Future<Output = tokio::time::Instant> + '_ {
+        instrument_future_on("interval.tick", &self.handle, self.inner.tick())
     }
 
     #[track_caller]
@@ -5012,6 +5324,7 @@ mod tests {
     use std::pin::Pin;
     use std::sync::{Arc, Mutex as StdMutex, OnceLock};
     use std::task::{Context, Poll, Wake, Waker};
+    use std::time::Duration;
 
     struct NoopWake;
 
@@ -5059,6 +5372,7 @@ mod tests {
             .lock()
             .expect("runtime db lock should be available");
         *db = RuntimeDb::new(runtime_stream_id(), MAX_EVENTS);
+        HELD_MUTEX_STACK.with(|stack| stack.borrow_mut().clear());
     }
 
     fn edge_exists(src: &EntityId, dst: &EntityId, kind: EdgeKind) -> bool {
@@ -5319,6 +5633,87 @@ mod tests {
         assert!(
             chain_found,
             "expected parent->child and child->target await chain edges"
+        );
+    }
+
+    #[test]
+    fn mutex_creates_lock_entity() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let _lock = crate::mutex!("test.lock.entity", ());
+        let lock_id = entity_id_by_name("test.lock.entity").expect("lock entity should exist");
+        let db = runtime_db()
+            .lock()
+            .expect("runtime db lock should be available");
+        let body = &db
+            .entities
+            .get(&lock_id)
+            .expect("lock entity should be persisted")
+            .body;
+        match body {
+            EntityBody::Lock(lock) => match &lock.kind {
+                LockKind::Mutex => {}
+                _ => panic!("expected mutex lock entity kind"),
+            },
+            _ => panic!("expected lock entity body"),
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn contended_mutex_lock_connects_waiter_and_holder_through_lock() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let lock = Arc::new(crate::mutex!("test.lock.shared.async", ()));
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+
+        let lock_for_holder = Arc::clone(&lock);
+        let barrier_for_holder = Arc::clone(&barrier);
+        let holder = crate::spawn_tracked!("test.lock.holder.async", async move {
+            let _guard = lock_for_holder.lock();
+            barrier_for_holder.wait();
+            std::thread::sleep(Duration::from_millis(150));
+        });
+
+        let lock_for_waiter = Arc::clone(&lock);
+        let barrier_for_waiter = Arc::clone(&barrier);
+        let waiter = crate::spawn_tracked!("test.lock.waiter.async", async move {
+            barrier_for_waiter.wait();
+            let _guard = lock_for_waiter.lock();
+        });
+
+        let mut saw_expected_edges = false;
+        for _ in 0..60 {
+            let Some(holder_id) = entity_id_by_name("test.lock.holder.async") else {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                continue;
+            };
+            let Some(waiter_id) = entity_id_by_name("test.lock.waiter.async") else {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                continue;
+            };
+            let Some(lock_id) = entity_id_by_name("test.lock.shared.async") else {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                continue;
+            };
+
+            if edge_exists(&waiter_id, &lock_id, EdgeKind::Needs)
+                && edge_exists(&lock_id, &holder_id, EdgeKind::Needs)
+            {
+                saw_expected_edges = true;
+                break;
+            }
+
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        let _ = holder.await;
+        let _ = waiter.await;
+
+        assert!(
+            saw_expected_edges,
+            "expected waiter->lock and lock->holder needs edges while contention is active"
         );
     }
 }

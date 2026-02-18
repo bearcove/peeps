@@ -18,7 +18,7 @@ fn lookup_key_for_response(response_id: RequestId) -> RequestId {
 async fn main() {
     peeps::init("example-oneshot-sender-lost-in-map");
 
-    let pending_by_request_id: PendingMap = Arc::new(peeps::Mutex::new(
+    let pending_by_request_id: PendingMap = Arc::new(peeps::mutex!(
         "demo.pending_oneshot_senders",
         HashMap::new(),
     ));
@@ -44,12 +44,10 @@ async fn main() {
     peeps::spawn_tracked!("network.inject_single_response", async move {
         tokio::time::sleep(Duration::from_millis(200)).await;
         println!("network delivered one response for request 42");
-        peeps::peep!(
-            bus_tx_for_network.send((42_u64, String::from("ok"))),
-            "response_bus.send"
-        )
-        .await
-        .expect("response bus unexpectedly closed");
+        bus_tx_for_network
+            .send((42_u64, String::from("ok")))
+            .await
+            .expect("response bus unexpectedly closed");
     });
 
     let pending_for_router = Arc::clone(&pending_by_request_id);

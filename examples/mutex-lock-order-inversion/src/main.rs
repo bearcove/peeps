@@ -1,10 +1,11 @@
-use std::sync::{Arc, Barrier};
+use std::sync::Arc;
+use std::sync::Barrier;
 use std::time::Duration;
 
 use tokio::sync::oneshot;
 
 fn spawn_lock_order_worker(
-    thread_name: &'static str,
+    task_name: &'static str,
     first_name: &'static str,
     first: Arc<peeps::Mutex<()>>,
     second_name: &'static str,
@@ -12,33 +13,28 @@ fn spawn_lock_order_worker(
     ready_barrier: Arc<Barrier>,
     completed_tx: oneshot::Sender<()>,
 ) {
-    std::thread::Builder::new()
-        .name(thread_name.to_string())
-        .spawn(move || {
-            let _first_guard = first.lock();
-            println!("{thread_name} locked {first_name}; waiting for peer");
+    peeps::spawn_tracked!(task_name, async move {
+        let _first_guard = first.lock();
+        println!("{task_name} locked {first_name}; waiting for peer");
 
-            ready_barrier.wait();
+        ready_barrier.wait();
 
-            println!(
-                "{thread_name} attempting {second_name}; this should deadlock due to lock-order inversion"
-            );
-            let _second_guard = second.lock();
+        println!(
+            "{task_name} attempting {second_name}; this should deadlock due to lock-order inversion"
+        );
+        let _second_guard = second.lock();
 
-            println!(
-                "{thread_name} unexpectedly acquired {second_name}; deadlock did not occur"
-            );
-            let _ = completed_tx.send(());
-        })
-        .expect("failed to spawn deadlock worker thread");
+        println!("{task_name} unexpectedly acquired {second_name}; deadlock did not occur");
+        let _ = completed_tx.send(());
+    });
 }
 
 #[tokio::main]
 async fn main() {
     peeps::init("example-mutex-lock-order-inversion");
 
-    let left = Arc::new(peeps::Mutex::new("demo.shared.left", ()));
-    let right = Arc::new(peeps::Mutex::new("demo.shared.right", ()));
+    let left = Arc::new(peeps::mutex!("demo.shared.left", ()));
+    let right = Arc::new(peeps::mutex!("demo.shared.right", ()));
     let ready_barrier = Arc::new(Barrier::new(2));
 
     let (alpha_done_tx, alpha_done_rx) = oneshot::channel::<()>();
@@ -82,7 +78,7 @@ async fn main() {
     });
 
     println!(
-        "example running. two worker threads should deadlock on demo.shared.left/demo.shared.right"
+        "example running. two tracked tokio tasks should deadlock on demo.shared.left/demo.shared.right"
     );
     println!(
         "inspect deadlock.alpha.completion.await and deadlock.beta.completion.await in peeps-web"
