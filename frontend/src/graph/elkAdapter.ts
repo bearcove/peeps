@@ -160,6 +160,7 @@ export async function layoutGraph(
     outgoingSections?: string[];
   };
   type CollectedElkEdge = {
+    graphOffset: { x: number; y: number };
     depth: number;
     sources: string[];
     targets: string[];
@@ -167,9 +168,14 @@ export async function layoutGraph(
   };
   const edgeLayoutsById = new Map<string, CollectedElkEdge[]>();
 
-  const collectEdgeLayouts = (graph: any, depth: number) => {
+  const collectEdgeLayouts = (
+    graph: any,
+    depth: number,
+    graphOffset: { x: number; y: number },
+  ) => {
     for (const edge of graph.edges ?? []) {
       const collected: CollectedElkEdge = {
+        graphOffset: { x: graphOffset.x, y: graphOffset.y },
         depth,
         sources: (edge.sources ?? []).map(String),
         targets: (edge.targets ?? []).map(String),
@@ -180,11 +186,14 @@ export async function layoutGraph(
     }
 
     for (const child of graph.children ?? []) {
-      collectEdgeLayouts(child, depth + 1);
+      collectEdgeLayouts(child, depth + 1, {
+        x: graphOffset.x + (child.x ?? 0),
+        y: graphOffset.y + (child.y ?? 0),
+      });
     }
   };
 
-  collectEdgeLayouts(result, 0);
+  collectEdgeLayouts(result, 0, { x: 0, y: 0 });
 
   const orderSections = (sections: ElkSectionLike[]): ElkSectionLike[] => {
     if (sections.length <= 1) return sections;
@@ -347,13 +356,24 @@ export async function layoutGraph(
       for (const section of orderedSections) {
         const sectionPoints: Point[] = [];
         if (section.startPoint) {
-          sectionPoints.push({ x: section.startPoint.x, y: section.startPoint.y });
+          sectionPoints.push({
+            x: section.startPoint.x + selected.graphOffset.x,
+            y: section.startPoint.y + selected.graphOffset.y,
+          });
         }
         if (section.bendPoints) {
-          sectionPoints.push(...section.bendPoints.map((p) => ({ x: p.x, y: p.y })));
+          sectionPoints.push(
+            ...section.bendPoints.map((p) => ({
+              x: p.x + selected.graphOffset.x,
+              y: p.y + selected.graphOffset.y,
+            })),
+          );
         }
         if (section.endPoint) {
-          sectionPoints.push({ x: section.endPoint.x, y: section.endPoint.y });
+          sectionPoints.push({
+            x: section.endPoint.x + selected.graphOffset.x,
+            y: section.endPoint.y + selected.graphOffset.y,
+          });
         }
         if (sectionPoints.length === 0) continue;
         if (points.length === 0) points.push(...sectionPoints);

@@ -155,6 +155,7 @@ export function EdgeLayer({
               fill="none"
               stroke="transparent"
               strokeWidth={14}
+              data-pan-block="true"
               style={{ cursor: "pointer", pointerEvents: isGhost ? "none" : "all" }}
               onClick={() => onEdgeClick?.(edge.id)}
               onMouseEnter={() => onEdgeHover?.(edge.id)}

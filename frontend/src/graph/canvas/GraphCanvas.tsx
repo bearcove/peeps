@@ -83,6 +83,17 @@ export function GraphCanvas({
     [handlers],
   );
 
+  const handlePointerCancel = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      handlers.onPointerCancel(e.nativeEvent);
+    },
+    [handlers],
+  );
+
+  const handleLostPointerCapture = useCallback(() => {
+    handlers.onLostPointerCapture();
+  }, [handlers]);
+
   const handleClick = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
       const target = e.target as Element;
@@ -96,6 +107,7 @@ export function GraphCanvas({
   );
 
   const transform = cameraTransform(camera, viewportSize.width, viewportSize.height);
+  const dotPatternTransform = `translate(${viewportSize.width / 2 - camera.x * camera.zoom}, ${viewportSize.height / 2 - camera.y * camera.zoom}) scale(${camera.zoom})`;
 
   return (
     <CameraContext.Provider
@@ -114,12 +126,31 @@ export function GraphCanvas({
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onLostPointerCapture={handleLostPointerCapture}
           onClick={handleClick}
         >
+          <defs>
+            <pattern
+              id="graph-canvas-dots"
+              width="16"
+              height="16"
+              patternUnits="userSpaceOnUse"
+              patternTransform={dotPatternTransform}
+            >
+              <circle cx="1" cy="1" r="1" className="graph-canvas__dot" />
+            </pattern>
+          </defs>
           <rect
             width="100%"
             height="100%"
-            fill="transparent"
+            fill="var(--graph-canvas-bg)"
+            data-background="true"
+          />
+          <rect
+            width="100%"
+            height="100%"
+            fill="url(#graph-canvas-dots)"
             data-background="true"
           />
           <g transform={transform}>{children}</g>

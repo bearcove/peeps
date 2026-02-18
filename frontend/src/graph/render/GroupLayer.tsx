@@ -17,7 +17,14 @@ export function GroupLayer({ groups }: GroupLayerProps) {
         const scopeHue = group.data?.scopeHue as number | undefined;
 
         return (
-          <foreignObject key={group.id} x={x} y={y} width={width} height={height}>
+          <foreignObject
+            key={group.id}
+            x={x}
+            y={y}
+            width={width}
+            height={height}
+            style={{ pointerEvents: "none" }}
+          >
             {/* xmlns required for HTML content inside SVG foreignObject */}
             <div
               // @ts-expect-error xmlns is valid in SVG foreignObject context

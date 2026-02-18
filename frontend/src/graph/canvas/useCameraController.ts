@@ -15,6 +15,8 @@ export function useCameraController(
     onPointerDown: (e: PointerEvent) => void;
     onPointerMove: (e: PointerEvent) => void;
     onPointerUp: (e: PointerEvent) => void;
+    onPointerCancel: (e: PointerEvent) => void;
+    onLostPointerCapture: () => void;
   };
 } {
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
@@ -75,11 +77,12 @@ export function useCameraController(
       if (e.button !== 0) return;
       const target = e.target as Element;
       const svg = svgRef.current;
-      // Only pan when clicking the background (the SVG itself or the background rect)
       if (!svg) return;
-      if (target !== svg && target.getAttribute("data-background") !== "true") return;
+      if (target.closest("[data-pan-block=\"true\"]")) return;
       e.preventDefault();
-      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+      if (svg.setPointerCapture) {
+        svg.setPointerCapture(e.pointerId);
+      }
       panState.current = {
         active: true,
         startClientX: e.clientX,
@@ -108,13 +111,36 @@ export function useCameraController(
   const onPointerUp = useCallback((e: PointerEvent) => {
     if (!panState.current.active) return;
     panState.current.active = false;
-    (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+    const svg = svgRef.current;
+    if (svg && svg.hasPointerCapture?.(e.pointerId)) {
+      svg.releasePointerCapture(e.pointerId);
+    }
+  }, [svgRef]);
+
+  const onPointerCancel = useCallback((e: PointerEvent) => {
+    if (!panState.current.active) return;
+    panState.current.active = false;
+    const svg = svgRef.current;
+    if (svg && svg.hasPointerCapture?.(e.pointerId)) {
+      svg.releasePointerCapture(e.pointerId);
+    }
+  }, [svgRef]);
+
+  const onLostPointerCapture = useCallback(() => {
+    panState.current.active = false;
   }, []);
 
   return {
     camera,
     setCamera,
     fitView,
-    handlers: { onWheel, onPointerDown, onPointerMove, onPointerUp },
+    handlers: {
+      onWheel,
+      onPointerDown,
+      onPointerMove,
+      onPointerUp,
+      onPointerCancel,
+      onLostPointerCapture,
+    },
   };
 }

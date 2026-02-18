@@ -135,6 +135,7 @@ export function NodeLayer({
             y={y}
             width={width}
             height={height}
+            data-pan-block="true"
             style={{ overflow: "visible" }}
             onClick={() => onNodeClick?.(node.id)}
             onMouseEnter={() => onNodeHover?.(node.id)}
