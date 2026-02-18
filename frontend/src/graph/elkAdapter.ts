@@ -151,6 +151,8 @@ export async function layoutGraph(
     layoutOptions: {
       ...elkOptions,
       ...(hasSubgraphs ? { "elk.hierarchyHandling": "INCLUDE_CHILDREN" } : {}),
+      "org.eclipse.elk.json.shapeCoords": "ROOT",
+      "org.eclipse.elk.json.edgeCoords": "ROOT",
     },
     children: groupedChildren,
     edges: validEdges.map((e) => ({
@@ -169,23 +171,15 @@ export async function layoutGraph(
     outgoingSections?: string[];
   };
   type CollectedElkEdge = {
-    graphOffset: { x: number; y: number };
-    depth: number;
     sources: string[];
     targets: string[];
     sections: ElkSectionLike[];
   };
   const edgeLayoutsById = new Map<string, CollectedElkEdge[]>();
 
-  const collectEdgeLayouts = (
-    graph: any,
-    depth: number,
-    graphOffset: { x: number; y: number },
-  ) => {
+  const collectEdgeLayouts = (graph: any) => {
     for (const edge of graph.edges ?? []) {
       const collected: CollectedElkEdge = {
-        graphOffset: { x: graphOffset.x, y: graphOffset.y },
-        depth,
         sources: (edge.sources ?? []).map(String),
         targets: (edge.targets ?? []).map(String),
         sections: (edge.sections ?? []) as ElkSectionLike[],
@@ -195,50 +189,11 @@ export async function layoutGraph(
     }
 
     for (const child of graph.children ?? []) {
-      collectEdgeLayouts(child, depth + 1, {
-        x: graphOffset.x + (child.x ?? 0),
-        y: graphOffset.y + (child.y ?? 0),
-      });
+      collectEdgeLayouts(child);
     }
   };
 
-  collectEdgeLayouts(result, 0, { x: 0, y: 0 });
-
-  const orderSections = (sections: ElkSectionLike[]): ElkSectionLike[] => {
-    if (sections.length <= 1) return sections;
-    const byId = new Map<string, ElkSectionLike>();
-    for (const section of sections) {
-      if (section.id) byId.set(section.id, section);
-    }
-    if (byId.size === 0) return sections;
-
-    const roots = sections.filter((section) => {
-      const incoming = section.incomingSections ?? [];
-      if (incoming.length === 0) return true;
-      return !incoming.some((id) => byId.has(id));
-    });
-
-    const ordered: ElkSectionLike[] = [];
-    const visited = new Set<string>();
-    const visit = (section: ElkSectionLike) => {
-      if (!section.id || visited.has(section.id)) return;
-      visited.add(section.id);
-      ordered.push(section);
-      for (const outId of section.outgoingSections ?? []) {
-        const next = byId.get(outId);
-        if (next) visit(next);
-      }
-    };
-
-    for (const root of roots) {
-      if (!root.id) continue;
-      visit(root);
-    }
-    for (const section of sections) {
-      if (!section.id || !visited.has(section.id)) ordered.push(section);
-    }
-    return ordered.length === 0 ? sections : ordered;
-  };
+  collectEdgeLayouts(result);
 
   const geoNodes: GeometryNode[] = [];
   const geoGroups: GeometryGroup[] = [];
@@ -285,16 +240,11 @@ export async function layoutGraph(
     };
   };
 
-  const walkChildren = (
-    children: any[] | undefined,
-    parentOffset: { x: number; y: number } = { x: 0, y: 0 },
-  ) => {
+  const walkChildren = (children: any[] | undefined) => {
     for (const child of children ?? []) {
       const isGroupNode = typeof child.id === "string" && child.id.startsWith("scope-group:");
-      const localX = child.x ?? 0;
-      const localY = child.y ?? 0;
-      const absX = parentOffset.x + localX;
-      const absY = parentOffset.y + localY;
+      const absX = child.x ?? 0;
+      const absY = child.y ?? 0;
 
       if (isGroupNode) {
         const groupId = String(child.id);
@@ -324,7 +274,7 @@ export async function layoutGraph(
           },
         });
 
-        walkChildren(child.children, { x: absX, y: absY });
+        walkChildren(child.children);
         continue;
       }
 
@@ -344,59 +294,42 @@ export async function layoutGraph(
     }
   };
 
-  walkChildren(result.children, { x: 0, y: 0 });
+  walkChildren(result.children);
 
   type SectionFragment = {
     sectionId: string | null;
     incoming: string[];
     outgoing: string[];
     points: Point[];
-    depth: number;
   };
 
   const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
+  const isNear = (a: Point, b: Point): boolean => distance(a, b) < 1;
 
-  const pathLength = (points: Point[]): number => {
-    let total = 0;
-    for (let i = 1; i < points.length; i++) {
-      total += distance(points[i - 1], points[i]);
-    }
-    return total;
-  };
-
-  const orientationScore = (points: Point[], source: Point | null, target: Point | null): number => {
-    if (points.length < 2) return Number.POSITIVE_INFINITY;
-    if (!source || !target) return 0;
-    return distance(points[0], source) + distance(points[points.length - 1], target);
-  };
-
-  const orientForAnchors = (
-    points: Point[],
-    source: Point | null,
-    target: Point | null,
-  ): { points: Point[]; score: number } => {
-    if (points.length < 2) return { points, score: Number.POSITIVE_INFINITY };
-    const forwardScore = orientationScore(points, source, target);
-    const reversed = [...points].reverse();
-    const reverseScore = orientationScore(reversed, source, target);
-    if (reverseScore < forwardScore) return { points: reversed, score: reverseScore };
-    return { points, score: forwardScore };
-  };
-
-  const appendSection = (polyline: Point[], sectionPoints: Point[]): Point[] => {
+  const appendSectionStrict = (
+    edgeId: string,
+    polyline: Point[],
+    sectionPoints: Point[],
+  ): Point[] => {
     if (sectionPoints.length === 0) return polyline;
     if (polyline.length === 0) return [...sectionPoints];
     const last = polyline[polyline.length - 1];
-    const startDist = distance(last, sectionPoints[0]);
-    const endDist = distance(last, sectionPoints[sectionPoints.length - 1]);
-    const oriented = endDist < startDist ? [...sectionPoints].reverse() : sectionPoints;
+    const start = sectionPoints[0];
+    const end = sectionPoints[sectionPoints.length - 1];
+    let oriented = sectionPoints;
+    if (isNear(last, start)) {
+      oriented = sectionPoints;
+    } else if (isNear(last, end)) {
+      oriented = [...sectionPoints].reverse();
+    } else {
+      throw new Error(
+        `[elk] edge ${edgeId}: non-contiguous section chain (${last.x},${last.y}) -> (${start.x},${start.y})`,
+      );
+    }
     if (oriented.length === 0) return polyline;
-    const shouldSkipFirst = distance(last, oriented[0]) < 0.0001;
+    const shouldSkipFirst = isNear(last, oriented[0]);
     return shouldSkipFirst ? [...polyline, ...oriented.slice(1)] : [...polyline, ...oriented];
   };
-
-  const pointsKey = (points: Point[]): string =>
-    points.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join("|");
 
   const entityNameMap = new Map(entityDefs.map((e) => [e.id, e.name]));
   const geoEdges: GeometryEdge[] = validEdges.map((def) => {
@@ -411,36 +344,40 @@ export async function layoutGraph(
       ? { x: targetPos.x + targetSize.width / 2, y: targetPos.y + targetSize.height / 2 }
       : null;
 
-    const records = edgeLayoutsById.get(def.id) ?? [];
-    const exactRecords = records.filter(
+    const records = edgeLayoutsById.get(def.id);
+    if (!records || records.length === 0) {
+      throw new Error(`[elk] edge ${def.id}: no routed sections returned by ELK`);
+    }
+    const edgeRecords = records.filter(
       (record) =>
         record.sources.includes(def.source) && record.targets.includes(def.target),
     );
-    const edgeRecords = exactRecords.length > 0 ? exactRecords : records;
+    if (edgeRecords.length === 0) {
+      throw new Error(`[elk] edge ${def.id}: no matching ELK records for ${def.source} -> ${def.target}`);
+    }
 
     const fragmentsRaw: SectionFragment[] = [];
     for (const record of edgeRecords) {
-      const orderedSections = orderSections(record.sections);
-      for (const section of orderedSections) {
+      for (const section of record.sections) {
         const sectionPoints: Point[] = [];
         if (section.startPoint) {
           sectionPoints.push({
-            x: section.startPoint.x + record.graphOffset.x,
-            y: section.startPoint.y + record.graphOffset.y,
+            x: section.startPoint.x,
+            y: section.startPoint.y,
           });
         }
         if (section.bendPoints) {
           sectionPoints.push(
-            ...section.bendPoints.map((p) => ({
-              x: p.x + record.graphOffset.x,
-              y: p.y + record.graphOffset.y,
+            ...section.bendPoints.map((p: Point) => ({
+              x: p.x,
+              y: p.y,
             })),
           );
         }
         if (section.endPoint) {
           sectionPoints.push({
-            x: section.endPoint.x + record.graphOffset.x,
-            y: section.endPoint.y + record.graphOffset.y,
+            x: section.endPoint.x,
+            y: section.endPoint.y,
           });
         }
         if (sectionPoints.length < 2) continue;
@@ -449,113 +386,93 @@ export async function layoutGraph(
           incoming: [...(section.incomingSections ?? [])],
           outgoing: [...(section.outgoingSections ?? [])],
           points: sectionPoints,
-          depth: record.depth,
         });
       }
     }
 
-    const fragmentsById = new Map<string, SectionFragment>();
-    const fragmentsByShape = new Map<string, SectionFragment>();
-
+    const byId = new Map<string, SectionFragment>();
+    const unnamed: SectionFragment[] = [];
     for (const fragment of fragmentsRaw) {
-      if (fragment.sectionId) {
-        const existing = fragmentsById.get(fragment.sectionId);
-        if (!existing) {
-          fragmentsById.set(fragment.sectionId, fragment);
-        } else {
-          const existingScore = orientForAnchors(existing.points, sourceAnchor, targetAnchor).score;
-          const nextScore = orientForAnchors(fragment.points, sourceAnchor, targetAnchor).score;
-          if (nextScore < existingScore || (nextScore === existingScore && fragment.depth < existing.depth)) {
-            fragmentsById.set(fragment.sectionId, fragment);
-          }
-        }
+      if (!fragment.sectionId) {
+        unnamed.push(fragment);
         continue;
       }
-      const key = pointsKey(fragment.points);
-      if (!fragmentsByShape.has(key)) fragmentsByShape.set(key, fragment);
-    }
-
-    const fragments = [...fragmentsById.values(), ...fragmentsByShape.values()];
-
-    const linked = new Map<string, SectionFragment>();
-    for (const fragment of fragments) {
-      if (fragment.sectionId) linked.set(fragment.sectionId, fragment);
-    }
-
-    const polylineCandidates: Point[][] = [];
-
-    if (linked.size > 0) {
-      const roots = Array.from(linked.values()).filter((fragment) => {
-        const linkedIncoming = fragment.incoming.filter((id) => linked.has(id));
-        return linkedIncoming.length === 0;
-      });
-      const startIds = (roots.length > 0 ? roots : Array.from(linked.values()))
-        .map((fragment) => fragment.sectionId!)
-        .sort();
-
-      const pushChain = (ids: string[]) => {
-        let polyline: Point[] = [];
-        for (const id of ids) {
-          const fragment = linked.get(id);
-          if (!fragment) continue;
-          polyline = appendSection(polyline, fragment.points);
-        }
-        if (polyline.length >= 2) polylineCandidates.push(polyline);
-      };
-
-      const walk = (currentId: string, path: string[], visiting: Set<string>) => {
-        if (visiting.has(currentId)) {
-          pushChain(path);
-          return;
-        }
-        const current = linked.get(currentId);
-        if (!current) {
-          pushChain(path);
-          return;
-        }
-
-        const nextIds = current.outgoing.filter((id) => linked.has(id));
-        if (nextIds.length === 0) {
-          pushChain(path);
-          return;
-        }
-
-        const nextVisiting = new Set(visiting);
-        nextVisiting.add(currentId);
-        for (const nextId of nextIds.sort()) {
-          walk(nextId, [...path, nextId], nextVisiting);
-        }
-      };
-
-      for (const startId of startIds) {
-        walk(startId, [startId], new Set());
+      const existing = byId.get(fragment.sectionId);
+      if (!existing) {
+        byId.set(fragment.sectionId, fragment);
+        continue;
       }
-    }
-
-    // Fragments without section linkage still provide fallback candidates.
-    for (const fragment of fragments) {
-      if (fragment.sectionId && linked.has(fragment.sectionId)) continue;
-      if (fragment.points.length >= 2) polylineCandidates.push(fragment.points);
+      const samePoints =
+        existing.points.length === fragment.points.length &&
+        existing.points.every((p, i) => isNear(p, fragment.points[i]));
+      const sameIncoming =
+        [...existing.incoming].sort().join("|") === [...fragment.incoming].sort().join("|");
+      const sameOutgoing =
+        [...existing.outgoing].sort().join("|") === [...fragment.outgoing].sort().join("|");
+      if (!samePoints || !sameIncoming || !sameOutgoing) {
+        throw new Error(`[elk] edge ${def.id}: conflicting records for section ${fragment.sectionId}`);
+      }
     }
 
     let points: Point[] = [];
-    if (polylineCandidates.length > 0) {
-      const ranked = polylineCandidates
-        .map((candidate) => {
-          const oriented = orientForAnchors(candidate, sourceAnchor, targetAnchor);
-          return {
-            points: oriented.points,
-            score: oriented.score,
-            length: pathLength(oriented.points),
-          };
-        })
-        .sort((a, b) => {
-          if (a.score !== b.score) return a.score - b.score;
-          return b.length - a.length;
-        });
-      points = ranked[0].points;
-    } else if (sourceAnchor && targetAnchor) {
-      points = [sourceAnchor, targetAnchor];
+    if (byId.size === 0) {
+      if (unnamed.length !== 1) {
+        throw new Error(`[elk] edge ${def.id}: expected exactly one unnamed section, got ${unnamed.length}`);
+      }
+      points = [...unnamed[0].points];
+    } else {
+      if (unnamed.length > 0) {
+        throw new Error(`[elk] edge ${def.id}: mixed named and unnamed sections`);
+      }
+      const incomingCount = new Map<string, number>();
+      for (const id of byId.keys()) incomingCount.set(id, 0);
+      for (const fragment of byId.values()) {
+        for (const outId of fragment.outgoing) {
+          if (!byId.has(outId)) continue;
+          incomingCount.set(outId, (incomingCount.get(outId) ?? 0) + 1);
+        }
+      }
+
+      const roots = Array.from(byId.keys()).filter((id) => (incomingCount.get(id) ?? 0) === 0);
+      if (roots.length !== 1) {
+        throw new Error(`[elk] edge ${def.id}: expected one root section, got ${roots.length}`);
+      }
+
+      const orderedIds: string[] = [];
+      const visited = new Set<string>();
+      let currentId: string | null = roots[0];
+      while (currentId) {
+        if (visited.has(currentId)) {
+          throw new Error(`[elk] edge ${def.id}: cycle in section chain at ${currentId}`);
+        }
+        visited.add(currentId);
+        orderedIds.push(currentId);
+        const current = byId.get(currentId);
+        if (!current) break;
+        const next = current.outgoing.filter((id) => byId.has(id)).sort();
+        if (next.length > 1) {
+          throw new Error(`[elk] edge ${def.id}: branching section chain at ${currentId}`);
+        }
+        currentId = next.length === 1 ? next[0] : null;
+      }
+
+      if (visited.size !== byId.size) {
+        throw new Error(`[elk] edge ${def.id}: disconnected section graph (${visited.size}/${byId.size})`);
+      }
+
+      for (const id of orderedIds) {
+        const section = byId.get(id);
+        if (!section) continue;
+        points = appendSectionStrict(def.id, points, section.points);
+      }
+    }
+
+    if (sourceAnchor && targetAnchor && points.length >= 2) {
+      const forward = distance(points[0], sourceAnchor) + distance(points[points.length - 1], targetAnchor);
+      const backward = distance(points[points.length - 1], sourceAnchor) + distance(points[0], targetAnchor);
+      if (backward < forward) {
+        points = [...points].reverse();
+      }
     }
 
     const srcName = entityNameMap.get(def.source) ?? def.source;
