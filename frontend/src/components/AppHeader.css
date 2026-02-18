@@ -17,6 +17,13 @@
     margin-right: 4px;
 }
 
+.app-header-logo {
+    display: block;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
 .app-header-tab-label {
     display: inline-flex;
     align-items: center;
@@ -52,8 +59,9 @@
 }
 
 .app-header-badge--warn {
-    background: color-mix(in srgb, var(--status-warning) 20%, transparent);
+    background: color-mix(in srgb, var(--status-warning) 12%, transparent);
     color: var(--status-warning);
+    font-weight: 500;
 }
 
 .app-header-error {

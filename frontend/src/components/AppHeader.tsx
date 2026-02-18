@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  Aperture,
   Camera,
   CircleNotch,
   DownloadSimple,
@@ -63,7 +62,7 @@ export function AppHeader({
 
   return (
     <div className="app-header">
-      <Aperture size={16} weight="bold" />
+      <img className="app-header-logo" src="/favicon-light.svg" alt="" width={16} height={16} aria-hidden="true" />
       <span className="app-header-title">peeps</span>
       <SegmentedGroup
         size="sm"
