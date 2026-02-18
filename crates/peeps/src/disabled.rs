@@ -839,11 +839,6 @@ impl Notify {
         }
     }
 
-    pub async fn notified(&self) {
-        self.notified_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-            .await;
-    }
-
     pub async fn notified_with_cx(&self, cx: PeepsContext) {
         self.notified_with_source(Source::caller(), cx).await;
     }
@@ -874,15 +869,6 @@ impl<T> OnceCell<T> {
         self.0.initialized()
     }
 
-    pub async fn get_or_init<F, Fut>(&self, f: F) -> &T
-    where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = T>,
-    {
-        self.get_or_init_with_cx(f, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-            .await
-    }
-
     pub async fn get_or_init_with_cx<F, Fut>(&self, f: F, cx: PeepsContext) -> &T
     where
         F: FnOnce() -> Fut,
@@ -902,15 +888,6 @@ impl<T> OnceCell<T> {
         Fut: Future<Output = T>,
     {
         self.0.get_or_init(f).await
-    }
-
-    pub async fn get_or_try_init<F, Fut, E>(&self, f: F) -> Result<&T, E>
-    where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = Result<T, E>>,
-    {
-        self.get_or_try_init_with_cx(f, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-            .await
     }
 
     pub async fn get_or_try_init_with_cx<F, Fut, E>(
@@ -1150,10 +1127,6 @@ impl Command {
         self
     }
 
-    pub fn spawn(&mut self) -> io::Result<Child> {
-        self.spawn_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
     #[track_caller]
     pub fn spawn_with_cx(&mut self, cx: PeepsContext) -> io::Result<Child> {
         self.spawn_with_source(Source::caller(), cx)
@@ -1163,10 +1136,6 @@ impl Command {
         self.0.spawn().map(Child)
     }
 
-    pub async fn status(&mut self) -> io::Result<ExitStatus> {
-        self.status_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-            .await
-    }
     pub async fn status_with_cx(&mut self, cx: PeepsContext) -> io::Result<ExitStatus> {
         self.status_with_source(Source::caller(), cx).await
     }
@@ -1179,10 +1148,6 @@ impl Command {
         self.0.status().await
     }
 
-    pub async fn output(&mut self) -> io::Result<Output> {
-        self.output_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-            .await
-    }
     pub async fn output_with_cx(&mut self, cx: PeepsContext) -> io::Result<Output> {
         self.output_with_source(Source::caller(), cx).await
     }
@@ -1237,10 +1202,6 @@ impl Child {
         self.0.id()
     }
 
-    pub async fn wait(&mut self) -> io::Result<ExitStatus> {
-        self.wait_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-            .await
-    }
     pub async fn wait_with_cx(&mut self, cx: PeepsContext) -> io::Result<ExitStatus> {
         self.wait_with_source(Source::caller(), cx).await
     }
@@ -1253,10 +1214,6 @@ impl Child {
         self.0.wait().await
     }
 
-    pub async fn wait_with_output(self) -> io::Result<Output> {
-        self.wait_with_output_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-            .await
-    }
     pub async fn wait_with_output_with_cx(self, cx: PeepsContext) -> io::Result<Output> {
         self.wait_with_output_with_source(Source::caller(), cx).await
     }

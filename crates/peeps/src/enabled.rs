@@ -3800,12 +3800,6 @@ impl Notify {
 
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
-    pub fn notified(&self) -> impl Future<Output = ()> + '_ {
-        self.notified_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
     pub fn notified_with_cx(&self, cx: PeepsContext) -> impl Future<Output = ()> + '_ {
         self.notified_with_source(Source::caller(), cx)
     }
@@ -3890,16 +3884,6 @@ impl<T> OnceCell<T> {
 
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
-    pub fn get_or_init<'a, F, Fut>(&'a self, f: F) -> impl Future<Output = &'a T> + 'a
-    where
-        F: FnOnce() -> Fut + 'a,
-        Fut: Future<Output = T> + 'a,
-    {
-        self.get_or_init_with_cx(f, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
     pub fn get_or_init_with_cx<'a, F, Fut>(
         &'a self,
         f: F,
@@ -3957,19 +3941,6 @@ impl<T> OnceCell<T> {
 
             result
         }
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn get_or_try_init<'a, F, Fut, E>(
-        &'a self,
-        f: F,
-    ) -> impl Future<Output = Result<&'a T, E>> + 'a
-    where
-        F: FnOnce() -> Fut + 'a,
-        Fut: Future<Output = Result<T, E>> + 'a,
-    {
-        self.get_or_try_init_with_cx(f, PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
@@ -4599,11 +4570,6 @@ impl Command {
     }
 
     #[track_caller]
-    pub fn spawn(&mut self) -> io::Result<Child> {
-        self.spawn_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
     pub fn spawn_with_cx(&mut self, cx: PeepsContext) -> io::Result<Child> {
         self.spawn_with_source(Source::caller(), cx)
     }
@@ -4615,11 +4581,6 @@ impl Command {
             inner: Some(child),
             handle,
         })
-    }
-
-    #[track_caller]
-    pub fn status(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        self.status_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
@@ -4637,11 +4598,6 @@ impl Command {
     ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
         let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
         instrument_future_on_with_source("command.status", &handle, self.inner.status(), source)
-    }
-
-    #[track_caller]
-    pub fn output(&mut self) -> impl Future<Output = io::Result<Output>> + '_ {
-        self.output_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]
@@ -4733,11 +4689,6 @@ impl Child {
     }
 
     #[track_caller]
-    pub fn wait(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        self.wait_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
-    }
-
-    #[track_caller]
     pub fn wait_with_cx(
         &mut self,
         cx: PeepsContext,
@@ -4753,11 +4704,6 @@ impl Child {
         let handle = self.handle.clone();
         let wait_fut = self.inner_mut().wait();
         instrument_future_on_with_source("command.wait", &handle, wait_fut, source)
-    }
-
-    #[track_caller]
-    pub fn wait_with_output(self) -> impl Future<Output = io::Result<Output>> {
-        self.wait_with_output_with_cx(PeepsContext::caller(env!("CARGO_MANIFEST_DIR")))
     }
 
     #[track_caller]

@@ -295,6 +295,48 @@ macro_rules! facade {
                 }
             }
 
+            pub trait OnceCellExt<T> {
+                fn get_or_init<'a, F, Fut>(&'a self, f: F) -> impl core::future::Future<Output = &'a T> + 'a
+                where
+                    T: 'a,
+                    F: FnOnce() -> Fut + 'a,
+                    Fut: core::future::Future<Output = T> + 'a;
+
+                fn get_or_try_init<'a, F, Fut, E>(
+                    &'a self,
+                    f: F,
+                ) -> impl core::future::Future<Output = Result<&'a T, E>> + 'a
+                where
+                    T: 'a,
+                    F: FnOnce() -> Fut + 'a,
+                    Fut: core::future::Future<Output = Result<T, E>> + 'a;
+            }
+
+            impl<T> OnceCellExt<T> for $crate::OnceCell<T> {
+                #[track_caller]
+                fn get_or_init<'a, F, Fut>(&'a self, f: F) -> impl core::future::Future<Output = &'a T> + 'a
+                where
+                    T: 'a,
+                    F: FnOnce() -> Fut + 'a,
+                    Fut: core::future::Future<Output = T> + 'a,
+                {
+                    self.get_or_init_with_source(f, $crate::Source::caller(), PEEPS_CX)
+                }
+
+                #[track_caller]
+                fn get_or_try_init<'a, F, Fut, E>(
+                    &'a self,
+                    f: F,
+                ) -> impl core::future::Future<Output = Result<&'a T, E>> + 'a
+                where
+                    T: 'a,
+                    F: FnOnce() -> Fut + 'a,
+                    Fut: core::future::Future<Output = Result<T, E>> + 'a,
+                {
+                    self.get_or_try_init_with_source(f, $crate::Source::caller(), PEEPS_CX)
+                }
+            }
+
             pub trait SemaphoreExt {
                 fn acquire(
                     &self,
@@ -397,14 +439,79 @@ macro_rules! facade {
                 }
             }
 
+            #[cfg(not(target_arch = "wasm32"))]
+            pub trait CommandExt {
+                fn spawn(&mut self) -> std::io::Result<$crate::Child>;
+                fn status(
+                    &mut self,
+                ) -> impl core::future::Future<Output = std::io::Result<std::process::ExitStatus>> + '_;
+                fn output(
+                    &mut self,
+                ) -> impl core::future::Future<Output = std::io::Result<std::process::Output>> + '_;
+            }
+
+            #[cfg(not(target_arch = "wasm32"))]
+            impl CommandExt for $crate::Command {
+                #[track_caller]
+                fn spawn(&mut self) -> std::io::Result<$crate::Child> {
+                    self.spawn_with_source($crate::Source::caller(), PEEPS_CX)
+                }
+
+                #[track_caller]
+                fn status(
+                    &mut self,
+                ) -> impl core::future::Future<Output = std::io::Result<std::process::ExitStatus>> + '_ {
+                    self.status_with_source($crate::Source::caller(), PEEPS_CX)
+                }
+
+                #[track_caller]
+                fn output(
+                    &mut self,
+                ) -> impl core::future::Future<Output = std::io::Result<std::process::Output>> + '_ {
+                    self.output_with_source($crate::Source::caller(), PEEPS_CX)
+                }
+            }
+
+            #[cfg(not(target_arch = "wasm32"))]
+            pub trait ChildExt {
+                fn wait(
+                    &mut self,
+                ) -> impl core::future::Future<Output = std::io::Result<std::process::ExitStatus>> + '_;
+                fn wait_with_output(
+                    self,
+                ) -> impl core::future::Future<Output = std::io::Result<std::process::Output>>;
+            }
+
+            #[cfg(not(target_arch = "wasm32"))]
+            impl ChildExt for $crate::Child {
+                #[track_caller]
+                fn wait(
+                    &mut self,
+                ) -> impl core::future::Future<Output = std::io::Result<std::process::ExitStatus>> + '_ {
+                    self.wait_with_source($crate::Source::caller(), PEEPS_CX)
+                }
+
+                #[track_caller]
+                fn wait_with_output(
+                    self,
+                ) -> impl core::future::Future<Output = std::io::Result<std::process::Output>> {
+                    self.wait_with_output_with_source($crate::Source::caller(), PEEPS_CX)
+                }
+            }
+
             pub mod prelude {
                 pub use super::BroadcastReceiverExt;
                 pub use super::BroadcastSenderExt;
+                #[cfg(not(target_arch = "wasm32"))]
+                pub use super::ChildExt;
+                #[cfg(not(target_arch = "wasm32"))]
+                pub use super::CommandExt;
                 pub use super::JoinSetExt;
                 pub use super::MutexExt;
                 pub use super::NotifyExt;
                 pub use super::OneshotReceiverExt;
                 pub use super::OneshotSenderExt;
+                pub use super::OnceCellExt;
                 pub use super::ReceiverExt;
                 pub use super::RwLockExt;
                 pub use super::SemaphoreExt;
