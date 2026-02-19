@@ -499,7 +499,7 @@
     max-width: 100%;
     border: 1px solid var(--border-subtle);
     background: var(--bg-elevated);
-    height: 28px;
+    height: var(--control-height);
 }
 
 .inspector-entity-actions {
@@ -524,7 +524,7 @@
 }
 
 .inspector-lane-card .ui-key-value-row {
-    min-height: 24px;
+    min-height: var(--control-height-sm);
 }
 
 .inspector-lane-card .ui-key-value-row__label {

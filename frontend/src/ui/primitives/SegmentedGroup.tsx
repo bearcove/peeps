@@ -11,7 +11,6 @@ export type SegmentedGroupProps = {
   value: string;
   onChange: (value: string) => void;
   options: readonly SegmentedOption[];
-  size?: "sm" | "md";
   "aria-label"?: string;
 };
 
@@ -19,12 +18,11 @@ export function SegmentedGroup({
   value,
   onChange,
   options,
-  size = "md",
   "aria-label": ariaLabel,
 }: SegmentedGroupProps) {
   return (
     <RadioGroup
-      className={["ui-segmented-group", size === "sm" && "ui-segmented-group--sm"].filter(Boolean).join(" ")}
+      className="ui-segmented-group"
       aria-label={ariaLabel}
       value={value}
       onChange={onChange}
@@ -33,7 +31,9 @@ export function SegmentedGroup({
         <Radio
           key={option.value}
           value={option.value}
-          className={["ui-segmented-option", option.value === value && "ui-segmented-option--selected"].filter(Boolean).join(" ")}
+          className={({ isSelected }) =>
+            ["ui-segmented-option", isSelected && "ui-segmented-option--selected"].filter(Boolean).join(" ")
+          }
         >
           {option.label}
         </Radio>

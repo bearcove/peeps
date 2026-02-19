@@ -62,10 +62,16 @@ export function AppHeader({
 
   return (
     <div className="app-header">
-      <img className="app-header-logo" src="/favicon-light.svg" alt="" width={16} height={16} aria-hidden="true" />
+      <img
+        className="app-header-logo"
+        src="/favicon-light.svg"
+        alt=""
+        width={16}
+        height={16}
+        aria-hidden="true"
+      />
       <span className="app-header-title">peeps</span>
       <SegmentedGroup
-        size="sm"
         aria-label="Primary page"
         value={leftPaneTab}
         onChange={(value) => onLeftPaneTabChange(value as "graph" | "scopes" | "entities")}
@@ -88,9 +94,7 @@ export function AppHeader({
           {connCount} {connCount === 1 ? "process" : "processes"}
         </button>
       )}
-      {apiMode === "lab" ? (
-        <span className="app-header-badge">mock data</span>
-      ) : null}
+      {apiMode === "lab" ? <span className="app-header-badge">mock data</span> : null}
       {snap.phase === "ready" && (
         <span className="app-header-badge">Snapshot: {snapshotProcessCount} processes</span>
       )}
@@ -114,10 +118,7 @@ export function AppHeader({
         </span>
       )}
       {recording.phase === "recording" && (
-        <ActionButton
-          variant="default"
-          onPress={() => onSetIsLive((v) => !v)}
-        >
+        <ActionButton variant="default" onPress={() => onSetIsLive((v) => !v)}>
           Live
         </ActionButton>
       )}
@@ -150,7 +151,11 @@ export function AppHeader({
           Stop
         </ActionButton>
       )}
-      <ActionButton variant="default" onPress={onTakeSnapshot} isDisabled={isBusy || connCount === 0}>
+      <ActionButton
+        variant="default"
+        onPress={onTakeSnapshot}
+        isDisabled={isBusy || connCount === 0}
+      >
         {isBusy ? <CircleNotch size={14} weight="bold" /> : <Camera size={14} weight="bold" />}
         {buttonLabel}
       </ActionButton>

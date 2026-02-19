@@ -61,7 +61,7 @@ export function EdgeLayer({
           }
         }
 
-        const d = polylineToPath(visPolyline);
+        const d = polylineToPath(visPolyline, true);
         const hitD = hitTestPath(polyline);
 
         const visibleStyle: React.CSSProperties = isSelected

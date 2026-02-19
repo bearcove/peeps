@@ -113,7 +113,7 @@
     outline: 0;
     background: transparent;
     color: var(--text-primary);
-    font-family: var(--font-ui);
+    font-family: var(--font-mono);
     font-size: var(--font-size-sm);
     line-height: 1.3;
     min-width: 120px;
@@ -141,7 +141,7 @@
     border-radius: var(--radius-control);
     padding: 4px 10px;
     font-size: var(--font-size-sm);
-    font-family: var(--font-ui);
+    font-family: var(--font-mono);
     cursor: pointer;
     background: var(--accent);
     color: var(--accent-fg);
@@ -188,6 +188,7 @@
     text-align: left;
     padding: 7px 9px;
     font-size: var(--font-size-sm);
+    font-family: var(--font-mono);
     cursor: pointer;
 }
 
@@ -198,7 +199,7 @@
 
 .graph-filter-suggestion-token {
     color: var(--text-primary);
-    font-family: var(--font-ui);
+    font-family: var(--font-mono);
     font-size: var(--font-size-sm);
     font-weight: 700;
 }
@@ -209,6 +210,7 @@
 
 .graph-filter-suggestion-label {
     color: var(--text-muted);
+    font-family: var(--font-mono);
     font-weight: 400;
 }
 
@@ -266,14 +268,14 @@
 }
 
 .graph-toolbar .ui-filter-trigger {
-    height: 28px;
+    height: var(--control-height);
     padding: 0 8px;
 }
 
 .graph-toolbar .ui-action-button {
-    height: 28px;
+    height: var(--control-height);
 }
 
 .graph-toolbar .ui-switch {
-    min-height: 28px;
+    min-height: var(--control-height);
 }

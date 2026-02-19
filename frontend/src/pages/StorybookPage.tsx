@@ -1395,7 +1395,6 @@ export function StorybookPage({
             <SegmentedGroup
               value={segmentedSeverity}
               onChange={setSegmentedSeverity}
-              size="sm"
               options={[
                 { value: "all", label: "All" },
                 { value: "warn", label: "Warning+" },

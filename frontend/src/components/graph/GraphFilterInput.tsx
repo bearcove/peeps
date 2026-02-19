@@ -112,7 +112,7 @@ export function GraphFilterInput({
 
   const applyGraphFilterSuggestion = useCallback(
     (token: string) => {
-      if (token.endsWith(":")) {
+      if (token === "+" || token === "-" || token.endsWith(":")) {
         applyEditorAction({ type: "set_draft", draft: token });
         graphFilterInputRef.current?.focus();
         return;

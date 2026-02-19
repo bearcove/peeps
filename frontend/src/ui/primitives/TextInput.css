@@ -1,5 +1,5 @@
 .ui-input {
-    height: 28px;
+    height: var(--control-height);
     padding: 0 8px;
     border-radius: var(--radius-control);
     border: 1px solid var(--border-default);

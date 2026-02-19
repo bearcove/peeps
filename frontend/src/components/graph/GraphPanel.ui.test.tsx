@@ -63,6 +63,8 @@ describe("GraphPanel filter input interactions", () => {
     expect(input.value).toBe("");
     await user.click(input);
     expect(input.value).toBe("");
+    expect(screen.getByRole("button", { name: /Include only filter/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Exclude everything matching this filter/i })).toBeTruthy();
 
     await user.type(input, "-n");
     expect(input.value).toBe("-n");
@@ -159,5 +161,37 @@ describe("GraphPanel filter input interactions", () => {
 
     const chip = screen.getByRole("button", { name: /-kind:request/i });
     expect(getComputedStyle(chip).fontSize).toBe(getComputedStyle(input).fontSize);
+  });
+
+  it("reopens suggestions after applying with Tab", async () => {
+    const user = userEvent.setup();
+    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+
+    const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
+    await user.click(input);
+    await user.type(input, "-k");
+    await user.tab(); // -> -kind:
+    await user.tab(); // -> apply first concrete kind
+
+    expect(screen.getByRole("button", { name: /-kind:request/i })).toBeTruthy();
+    expect(input.value).toBe("");
+    expect(screen.getByRole("button", { name: /Include only filter/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Exclude everything matching this filter/i })).toBeTruthy();
+  });
+
+  it("reopens suggestions after applying with Enter", async () => {
+    const user = userEvent.setup();
+    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+
+    const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
+    await user.click(input);
+    await user.type(input, "-k");
+    await user.keyboard("{Enter}"); // -> -kind:
+    await user.keyboard("{Enter}"); // -> apply first concrete kind
+
+    expect(screen.getByRole("button", { name: /-kind:request/i })).toBeTruthy();
+    expect(input.value).toBe("");
+    expect(screen.getByRole("button", { name: /Include only filter/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Exclude everything matching this filter/i })).toBeTruthy();
   });
 });

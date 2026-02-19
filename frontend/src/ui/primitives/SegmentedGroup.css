@@ -11,14 +11,13 @@
     background: var(--bg-surface);
     color: var(--text-primary);
     padding: 0 8px;
-    height: 28px;
+    height: var(--control-height);
     border-radius: 0;
     font-size: var(--font-size-sm);
     font-weight: 500;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    transition: background-color 120ms ease, border-color 120ms ease;
 }
 
 .ui-segmented-option:first-child {
@@ -43,15 +42,6 @@
     border-color: var(--accent);
 }
 
-.ui-segmented-option:hover:not(.ui-segmented-option--selected) {
-    background: color-mix(in srgb, white 4%, var(--bg-surface));
-    border-color: var(--border-default);
-}
-
-.ui-segmented-option:active:not(.ui-segmented-option--selected) {
-    background: color-mix(in srgb, white 8%, var(--bg-surface));
-}
-
 .ui-segmented-option[data-focus-visible] {
     outline: none;
     z-index: 2;
@@ -60,11 +50,7 @@
 }
 
 .ui-segmented-option--selected[data-focus-visible] {
-    box-shadow: 0 0 0 2px var(--focus-ring), inset 0 -2px 0 var(--accent);
-}
-
-.ui-segmented-group--sm .ui-segmented-option {
-    padding: 0 6px;
-    height: 24px;
-    font-size: var(--font-size-sm);
+    box-shadow:
+        0 0 0 2px var(--focus-ring),
+        inset 0 -2px 0 var(--accent);
 }

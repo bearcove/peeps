@@ -35,10 +35,17 @@ function reduce(state: GraphFilterEditorState, ...actions: GraphFilterEditorActi
 }
 
 describe("graphFilterSuggestions", () => {
+  it("shows root plus/minus suggestions first", () => {
+    const out = graphFilterSuggestions({ ...baseInput, fragment: "" });
+    expect(out.map((s) => s.token)).toEqual(["+", "-"]);
+    expect(out[0]?.description).toBe("Include only filter");
+    expect(out[1]?.description).toBe("Exclude everything matching this filter");
+  });
+
   it("filters key suggestions when no colon is present", () => {
-    const out = graphFilterSuggestions({ ...baseInput, fragment: "col" });
-    expect(out.map((s) => s.token)).toContain("colorBy:process");
-    expect(out.map((s) => s.token)).toContain("colorBy:crate");
+    const out = graphFilterSuggestions({ ...baseInput, fragment: "+" });
+    expect(out.map((s) => s.token)).toContain("+node:<id>");
+    expect(out.map((s) => s.token)).toContain("+kind:<kind>");
     expect(out.map((s) => s.token)).not.toContain("groupBy:process");
   });
 
@@ -64,9 +71,6 @@ describe("graphFilterSuggestions", () => {
     ["+crate", "+crate:<name>"],
     ["-proc", "-process:<id>"],
     ["+kin", "+kind:<kind>"],
-    ["lon", "loners:on"],
-    ["col", "colorBy:process"],
-    ["group", "groupBy:process"],
   ])("suggests key family for fragment %s", (fragment, expectedToken) => {
     const out = graphFilterSuggestions({ ...baseInput, fragment });
     expect(out.map((s) => s.token)).toContain(expectedToken);
@@ -175,7 +179,7 @@ describe("graphFilterEditorReducer", () => {
     );
     expect(state.ast).toEqual(["colorBy:crate", "-node:<id>"]);
     expect(state.draft).toBe("");
-    expect(state.suggestionsOpen).toBe(false);
+    expect(state.suggestionsOpen).toBe(true);
     expect(serializeGraphFilterEditorState(state)).toBe("colorBy:crate -node:<id>");
   });
 

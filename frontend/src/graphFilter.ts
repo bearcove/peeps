@@ -385,7 +385,7 @@ export function graphFilterEditorReducer(
         editingIndex: null,
         draft: "",
         selection: null,
-        suggestionsOpen: false,
+        suggestionsOpen: true,
         suggestionIndex: 0,
       };
     }
@@ -459,6 +459,17 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
   const unsignedFragment = signed ? fragment.slice(1) : fragment;
   const unsignedLower = unsignedFragment.toLowerCase();
   const signedDesc = signed === "+" ? "Include only matching" : "Exclude matching";
+
+  if (!signed && !fragment.includes(":")) {
+    const rootSuggestions = [
+      { token: "+", description: "Include only filter", applyToken: "+" },
+      { token: "-", description: "Exclude everything matching this filter", applyToken: "-" },
+    ];
+    for (const item of sortedMatches(rootSuggestions, lowerFragment, (v) => `${v.token} ${v.description}`)) {
+      uniquePush(out, item.token, item.description, item.applyToken);
+    }
+    return out;
+  }
 
   if (!unsignedFragment || !unsignedFragment.includes(":")) {
     const keySuggestions: readonly { key: string; label: string; applyToken?: string }[] = [

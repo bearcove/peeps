@@ -6,7 +6,7 @@
     align-items: center;
     gap: 6px;
     padding: 0 8px;
-    height: 24px;
+    height: var(--control-height-sm);
     border-radius: var(--radius-control);
     border: 1px solid var(--border-default);
     background: var(--bg-elevated);

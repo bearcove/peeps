@@ -47,7 +47,7 @@
 }
 
 .scope-table-toolbar .ui-action-button {
-    height: 28px;
+    height: var(--control-height);
 }
 
 .scope-table-body {

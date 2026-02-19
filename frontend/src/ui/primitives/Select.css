@@ -3,7 +3,7 @@
 }
 
 .ui-select-trigger {
-    height: 28px;
+    height: var(--control-height);
     padding: 0 8px;
     min-width: 140px;
     border-radius: var(--radius-control);

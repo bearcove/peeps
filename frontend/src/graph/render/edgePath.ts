@@ -23,7 +23,10 @@ function dedupePoints(points: Point[]): Point[] {
 }
 
 // Generate SVG path string from polyline points using straight segments.
-export function polylineToPath(points: Point[]): string {
+// skipLastCorner: when true, the bend immediately before the final point is
+// not rounded — ensures the path arrives at the endpoint on a clean straight
+// segment (important when the endpoint has an arrowhead marker).
+export function polylineToPath(points: Point[], skipLastCorner = false): string {
   const clean = dedupePoints(points);
   if (clean.length < 2) return "";
   let d = `M ${clean[0].x} ${clean[0].y}`;
@@ -34,6 +37,12 @@ export function polylineToPath(points: Point[]): string {
     const next = clean[i + 1];
 
     if (!next) {
+      d += ` L ${curr.x} ${curr.y}`;
+      continue;
+    }
+
+    const isLastBend = i === clean.length - 2;
+    if (isLastBend && skipLastCorner) {
       d += ` L ${curr.x} ${curr.y}`;
       continue;
     }
