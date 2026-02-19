@@ -481,14 +481,6 @@
     color: var(--text-tertiary);
 }
 
-.inspector-scope-chip.ui-node-chip {
-    width: 100%;
-    max-width: 100%;
-    border: 1px solid var(--border-subtle);
-    background: var(--bg-elevated);
-    height: var(--control-height);
-}
-
 .inspector-entity-actions {
     display: flex;
     align-items: center;
@@ -538,50 +530,6 @@
     font-weight: 600;
 }
 
-.inspector-scope-chip.ui-node-chip:hover {
-    background: color-mix(in srgb, white 4%, var(--bg-elevated));
-    border-color: var(--border-default);
-}
-
-.inspector-scope-chip.ui-node-chip .ui-node-chip__icon {
-    padding: 0 8px;
-    background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
-}
-
-.inspector-scope-chip.ui-node-chip:hover .ui-node-chip__icon {
-    background: color-mix(in srgb, color-mix(in srgb, white 4%, var(--bg-elevated)) 80%, var(--bg-elevated));
-}
-
-.inspector-scope-chip.ui-node-chip .ui-node-chip__label {
-    padding: 0 8px 0 10px;
-}
-
-.inspector-scope-chip-label {
-    display: inline-flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    width: 100%;
-    min-width: 0;
-}
-
-.inspector-scope-chip-name {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-family: var(--font-ui);
-    font-size: var(--font-size-sm);
-    color: var(--text-primary);
-}
-
-.inspector-scope-chip-meta {
-    font-size: var(--font-size-sm);
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    flex-shrink: 0;
-}
 
 /* Legacy scope link styles (retained for fallback markup) */
 .inspector-scope-link {

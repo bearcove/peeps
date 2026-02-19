@@ -281,6 +281,10 @@ export function App() {
     setGraphFilterText((prev) => appendFilterToken(prev, `-location:${quoteFilterValue(location)}`));
   }, []);
 
+  const appendFilterTokenCallback = useCallback((token: string) => {
+    setGraphFilterText((prev) => appendFilterToken(prev, token));
+  }, []);
+
   const crateItems = useMemo<FilterMenuItem[]>(() => {
     const counts = new Map<string, number>();
     for (const entity of applyBaseFilters("crate").entities) {
@@ -1006,6 +1010,8 @@ where l.conn_id = ${connId}
                 onGraphFilterTextChange={setGraphFilterText}
                 onHideNodeFilter={hideNodeViaTextFilter}
                 onHideLocationFilter={hideLocationViaTextFilter}
+                onFocusConnected={setFocusedEntityFilter}
+                onAppendFilterToken={appendFilterTokenCallback}
                 floatingFilterBar
               />
             ) : leftPaneTab === "scopes" ? (

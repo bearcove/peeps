@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Camera, CircleNotch } from "@phosphor-icons/react";
+import { Camera, CircleNotch, FileRs, Package, Terminal } from "@phosphor-icons/react";
 import type { EntityDef } from "../../snapshot";
 import { quoteFilterValue } from "../../graphFilter";
-import { canonicalNodeKind, kindDisplayName } from "../../nodeKindSpec";
+import { canonicalNodeKind, kindDisplayName, kindIcon } from "../../nodeKindSpec";
 import { formatProcessLabel } from "../../processLabel";
+import { NodeChip } from "../../ui/primitives/NodeChip";
 import { GraphCanvas, useCameraContext } from "../../graph/canvas/GraphCanvas";
 import { GroupLayer } from "../../graph/render/GroupLayer";
 import { EdgeLayer } from "../../graph/render/EdgeLayer";
 import { NodeLayer } from "../../graph/render/NodeLayer";
 import type { GraphGeometry, GeometryGroup, GeometryNode, Point } from "../../graph/geometry";
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "../../ui/primitives/ContextMenu";
 
 export function GraphViewport({
   entityDefs,
@@ -79,27 +81,6 @@ export function GraphViewport({
   const closeNodeContextMenu = useCallback(() => setNodeContextMenu(null), []);
 
   useEffect(() => {
-    if (!nodeContextMenu) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest(".graph-node-context-menu")) return;
-      setNodeContextMenu(null);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setNodeContextMenu(null);
-    };
-    const onResize = () => setNodeContextMenu(null);
-    window.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("resize", onResize);
-    };
-  }, [nodeContextMenu]);
-
-  useEffect(() => {
     setHasFitted(false);
   }, [geometryKey]);
 
@@ -143,128 +124,60 @@ export function GraphViewport({
           : processId;
         const kind = entity ? canonicalNodeKind(entity.kind) : "";
         const kindLabel = kind ? kindDisplayName(kind) : "";
-        const close = () => setNodeContextMenu(null);
         return (
-          <div
-            className="graph-node-context-menu"
-            style={{ left: nodeContextMenu.x, top: nodeContextMenu.y }}
-          >
-            <button
-              type="button"
-              className="graph-node-context-menu-item"
-              onClick={() => {
-                onFocusConnected(nodeContextMenu.nodeId);
-                close();
-              }}
-            >
+          <ContextMenu x={nodeContextMenu.x} y={nodeContextMenu.y} onClose={closeNodeContextMenu}>
+            <ContextMenuItem onClick={() => { onFocusConnected(nodeContextMenu.nodeId); closeNodeContextMenu(); }}>
               Show only connected
-            </button>
-            <div className="graph-node-context-menu-separator" />
-            <button
-              type="button"
-              className="graph-node-context-menu-item"
-              onClick={() => {
-                onHideNodeFilter(nodeContextMenu.nodeId);
-                close();
-              }}
-            >
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem onClick={() => { onHideNodeFilter(nodeContextMenu.nodeId); closeNodeContextMenu(); }}>
               Hide this node
-            </button>
+            </ContextMenuItem>
             {location && (
-              <button
-                type="button"
-                className="graph-node-context-menu-item"
-                onClick={() => {
-                  onHideLocationFilter(location);
-                  close();
-                }}
-              >
+              <ContextMenuItem onClick={() => { onHideLocationFilter(location); closeNodeContextMenu(); }}>
                 Hide this location
-              </button>
+              </ContextMenuItem>
             )}
             {krate && (
               <>
-                <div className="graph-node-context-menu-separator" />
-                <button
-                  type="button"
-                  className="graph-node-context-menu-item"
-                  onClick={() => {
-                    onAppendFilterToken(`-crate:${quoteFilterValue(krate)}`);
-                    close();
-                  }}
-                >
+                <ContextMenuSeparator />
+                <ContextMenuItem onClick={() => { onAppendFilterToken(`-crate:${quoteFilterValue(krate)}`); closeNodeContextMenu(); }}>
                   Hide this crate
-                </button>
-                <button
-                  type="button"
-                  className="graph-node-context-menu-item"
-                  onClick={() => {
-                    onAppendFilterToken(`+crate:${quoteFilterValue(krate)}`);
-                    close();
-                  }}
-                >
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => { onAppendFilterToken(`+crate:${quoteFilterValue(krate)}`); closeNodeContextMenu(); }}>
                   Show only this crate
-                </button>
+                </ContextMenuItem>
               </>
             )}
             {processId && (
               <>
-                <div className="graph-node-context-menu-separator" />
-                <button
-                  type="button"
-                  className="graph-node-context-menu-item"
-                  onClick={() => {
-                    onAppendFilterToken(`-process:${quoteFilterValue(processId)}`);
-                    close();
-                  }}
-                >
+                <ContextMenuSeparator />
+                <ContextMenuItem onClick={() => { onAppendFilterToken(`-process:${quoteFilterValue(processId)}`); closeNodeContextMenu(); }}>
                   Hide process: {processLabel}
-                </button>
-                <button
-                  type="button"
-                  className="graph-node-context-menu-item"
-                  onClick={() => {
-                    onAppendFilterToken(`+process:${quoteFilterValue(processId)}`);
-                    close();
-                  }}
-                >
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => { onAppendFilterToken(`+process:${quoteFilterValue(processId)}`); closeNodeContextMenu(); }}>
                   Show only process: {processLabel}
-                </button>
+                </ContextMenuItem>
               </>
             )}
             {kind && (
               <>
-                <div className="graph-node-context-menu-separator" />
-                <button
-                  type="button"
-                  className="graph-node-context-menu-item"
-                  onClick={() => {
-                    onAppendFilterToken(`-kind:${quoteFilterValue(kind)}`);
-                    close();
-                  }}
-                >
+                <ContextMenuSeparator />
+                <ContextMenuItem onClick={() => { onAppendFilterToken(`-kind:${quoteFilterValue(kind)}`); closeNodeContextMenu(); }}>
                   Hide kind: {kindLabel}
-                </button>
-                <button
-                  type="button"
-                  className="graph-node-context-menu-item"
-                  onClick={() => {
-                    onAppendFilterToken(`+kind:${quoteFilterValue(kind)}`);
-                    close();
-                  }}
-                >
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => { onAppendFilterToken(`+kind:${quoteFilterValue(kind)}`); closeNodeContextMenu(); }}>
                   Show only kind: {kindLabel}
-                </button>
+                </ContextMenuItem>
               </>
             )}
-          </div>
+          </ContextMenu>
         );
       })()}
       <GraphCanvas
         geometry={geometry}
         onBackgroundClick={() => {
           closeNodeContextMenu();
-          onSelect(null);
         }}
       >
         <GraphAutoFit

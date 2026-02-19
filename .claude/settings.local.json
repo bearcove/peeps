@@ -17,7 +17,8 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "mcp__playwright__browser_navigate",
-      "mcp__playwright__browser_take_screenshot"
+      "mcp__playwright__browser_take_screenshot",
+      "Bash(cargo build:*)"
     ]
   }
 }

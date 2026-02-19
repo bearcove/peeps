@@ -1173,10 +1173,7 @@ async fn start_vite_dev_server(vite_addr: &str) -> Result<Child, String> {
         .kill_on_drop(true);
 
     #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
+    command.process_group(0);
 
     let child = command.spawn().map_err(|e| {
         format!(

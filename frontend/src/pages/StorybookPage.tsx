@@ -22,6 +22,7 @@ import { Checkbox } from "../ui/primitives/Checkbox";
 import { Select } from "../ui/primitives/Select";
 import { LabeledSlider } from "../ui/primitives/Slider";
 import { Menu } from "../ui/primitives/Menu";
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "../ui/primitives/ContextMenu";
 import { FilterMenu, type FilterMenuItem } from "../ui/primitives/FilterMenu";
 import { SegmentedGroup } from "../ui/primitives/SegmentedGroup";
 import { KeyValueRow } from "../ui/primitives/KeyValueRow";
@@ -43,6 +44,39 @@ import "../components/graph/GraphPanel.css";
 import { InspectorPanel } from "../components/inspector/InspectorPanel";
 
 type DemoTone = "neutral" | "ok" | "warn" | "crit";
+
+const CONTEXT_MENU_DEMO_NODES = [
+  {
+    id: "n1",
+    label: "store.incoming.recv",
+    kind: "future",
+    krate: "tokio",
+    processId: "vx-store",
+    processLabel: "vx-store(1234)",
+    kindLabel: "Future",
+    location: "runtime.rs:42",
+  },
+  {
+    id: "n2",
+    label: "DemoRpc.sleepy_forever",
+    kind: "request",
+    krate: "roam-session",
+    processId: "vx-runner",
+    processLabel: "vx-runner(5678)",
+    kindLabel: "Request",
+    location: "lib.rs:17",
+  },
+  {
+    id: "n3",
+    label: "store.state_lock",
+    kind: "lock",
+    krate: "tokio",
+    processId: "vx-store",
+    processLabel: "vx-store(1234)",
+    kindLabel: "Lock",
+    location: null,
+  },
+] as const;
 type DemoConnectionRow = {
   id: string;
   healthLabel: string;
@@ -864,6 +898,14 @@ export function StorybookPage({
     sampleGraphEdges,
   } = sharedState;
 
+  const contextMenuContainerRef = useRef<HTMLDivElement>(null);
+  const [contextMenuState, setContextMenuState] = useState<{
+    x: number;
+    y: number;
+    nodeId: string;
+  } | null>(null);
+  const closeContextMenu = useCallback(() => setContextMenuState(null), []);
+
   const colorVariables = useMemo(() => {
     if (typeof window === "undefined") return [] as Array<{ name: string; value: string }>;
     const rootStyles = window.getComputedStyle(document.documentElement);
@@ -1333,6 +1375,83 @@ export function StorybookPage({
               onAction={(id) => pickMenuAction("process", id)}
             />
           </Row>
+          {lastMenuPick && (
+            <div className="ui-lab-event">
+              You picked: <strong>{lastMenuPick}</strong>
+            </div>
+          )}
+        </Section>
+
+        <Section title="Context Menu" subtitle="Right-click triggered overlay for node actions">
+          <p className="ui-section-description">
+            Right-click any node chip below to open the context menu at the cursor position. Dismiss
+            with Escape, click outside, or pick an action.
+          </p>
+          <div
+            ref={contextMenuContainerRef}
+            className="ui-context-menu-demo"
+          >
+            <Row>
+              {CONTEXT_MENU_DEMO_NODES.map((node) => (
+                <NodeChip
+                  key={node.id}
+                  kind={node.kind}
+                  label={node.label}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    const rect = contextMenuContainerRef.current?.getBoundingClientRect();
+                    if (!rect) return;
+                    setContextMenuState({
+                      x: event.clientX - rect.left,
+                      y: event.clientY - rect.top,
+                      nodeId: node.id,
+                    });
+                  }}
+                />
+              ))}
+            </Row>
+            {contextMenuState && (() => {
+              const node = CONTEXT_MENU_DEMO_NODES.find((n) => n.id === contextMenuState.nodeId);
+              if (!node) return null;
+              return (
+                <ContextMenu x={contextMenuState.x} y={contextMenuState.y} onClose={closeContextMenu}>
+                  <ContextMenuItem onClick={() => { pickMenuAction("context", "focus-connected"); closeContextMenu(); }}>
+                    Show only connected
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onClick={() => { pickMenuAction("context", "hide-node"); closeContextMenu(); }}>
+                    Hide this node
+                  </ContextMenuItem>
+                  {node.location && (
+                    <ContextMenuItem onClick={() => { pickMenuAction("context", `hide-location:${node.location}`); closeContextMenu(); }}>
+                      Hide this location
+                    </ContextMenuItem>
+                  )}
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onClick={() => { pickMenuAction("context", `hide-crate:${node.krate}`); closeContextMenu(); }}>
+                    Hide this crate
+                  </ContextMenuItem>
+                  <ContextMenuItem onClick={() => { pickMenuAction("context", `solo-crate:${node.krate}`); closeContextMenu(); }}>
+                    Show only this crate
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onClick={() => { pickMenuAction("context", `hide-process:${node.processId}`); closeContextMenu(); }}>
+                    Hide process: {node.processLabel}
+                  </ContextMenuItem>
+                  <ContextMenuItem onClick={() => { pickMenuAction("context", `solo-process:${node.processId}`); closeContextMenu(); }}>
+                    Show only process: {node.processLabel}
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onClick={() => { pickMenuAction("context", `hide-kind:${node.kind}`); closeContextMenu(); }}>
+                    Hide kind: {node.kindLabel}
+                  </ContextMenuItem>
+                  <ContextMenuItem onClick={() => { pickMenuAction("context", `solo-kind:${node.kind}`); closeContextMenu(); }}>
+                    Show only kind: {node.kindLabel}
+                  </ContextMenuItem>
+                </ContextMenu>
+              );
+            })()}
+          </div>
           {lastMenuPick && (
             <div className="ui-lab-event">
               You picked: <strong>{lastMenuPick}</strong>

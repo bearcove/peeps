@@ -241,43 +241,6 @@
     position: relative;
 }
 
-.graph-node-context-menu {
-    position: absolute;
-    z-index: 30;
-    min-width: 180px;
-    display: flex;
-    flex-direction: column;
-    padding: 4px;
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-control);
-    background: var(--bg-elevated);
-}
-
-.graph-node-context-menu-item {
-    border: 0;
-    background: transparent;
-    color: var(--text-default);
-    text-align: left;
-    padding: 6px 8px;
-    border-radius: var(--radius-control);
-    font-size: var(--font-size-sm);
-    cursor: pointer;
-}
-
-.graph-node-context-menu-item:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 18%, transparent);
-}
-
-.graph-node-context-menu-item:disabled {
-    cursor: not-allowed;
-    color: var(--text-muted);
-}
-
-.graph-node-context-menu-separator {
-    height: 1px;
-    background: var(--border-default);
-    margin: 3px 4px;
-}
 
 .graph-toolbar .ui-filter-trigger {
     height: var(--control-height);

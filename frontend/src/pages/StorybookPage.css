@@ -104,6 +104,11 @@
     margin-top: 6px;
 }
 
+.ui-context-menu-demo {
+    position: relative;
+    min-height: 120px;
+}
+
 .ui-color-groups {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

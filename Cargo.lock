@@ -1226,6 +1226,7 @@ dependencies = [
  "facet-json",
  "facet-value",
  "figue",
+ "libc",
  "peeps-sqlite-facet",
  "peeps-types",
  "peeps-wire",

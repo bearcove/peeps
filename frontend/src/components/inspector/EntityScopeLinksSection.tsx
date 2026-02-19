@@ -2,7 +2,7 @@ import React from "react";
 import { apiClient } from "../../api";
 import { formatProcessLabel } from "../../processLabel";
 import type { EntityDef } from "../../snapshot";
-import { scopeKindDisplayName, scopeKindIcon, canonicalScopeKind } from "../../scopeKindSpec";
+import { scopeKindIcon, canonicalScopeKind } from "../../scopeKindSpec";
 import { NodeChip } from "../../ui/primitives/NodeChip";
 import "./InspectorPanel.css";
 
@@ -139,7 +139,6 @@ order by l.stream_id asc, l.scope_id asc
       <div className="inspector-scope-links">
         {links.map((link) => {
           const kind = canonicalScopeKind(link.scopeKind);
-          const kindLabel = scopeKindDisplayName(kind);
           const displayName =
             kind === "process"
               ? formatProcessLabel(link.processName, link.pid)
@@ -147,14 +146,8 @@ order by l.stream_id asc, l.scope_id asc
           return (
             <NodeChip
               key={`${link.processId}:${link.streamId}:${link.scopeId}`}
-              className="inspector-scope-chip"
               icon={scopeKindIcon(kind, 12)}
-              label={(
-                <span className="inspector-scope-chip-label">
-                  <span className="inspector-scope-chip-name">{displayName}</span>
-                  <span className="inspector-scope-chip-meta">{kindLabel}</span>
-                </span>
-              )}
+              label={displayName}
               onClick={() => onOpenScopeKind?.(kind)}
               title={`${formatProcessLabel(link.processName, link.pid)} · ${link.streamId}/${link.scopeId}`}
             />

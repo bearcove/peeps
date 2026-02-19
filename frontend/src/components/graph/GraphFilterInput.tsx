@@ -21,13 +21,23 @@ function renderLocationChipValue(rawLocation: string): string {
   return base && base.length > 0 ? base : location;
 }
 
-function renderFilterChipLabel(raw: string, parsed: ParsedGraphFilterToken): string {
+function renderFilterChipLabel(
+  raw: string,
+  parsed: ParsedGraphFilterToken,
+  processLabelById: ReadonlyMap<string, string>,
+): string {
   const key = parsed.key?.toLowerCase();
   const value = parsed.value?.trim();
   if ((key === "location" || key === "source") && value) {
     const sign = raw.startsWith("-") ? "-" : raw.startsWith("+") ? "+" : "";
     const chipKey = parsed.key ?? "location";
     return `${sign}${chipKey}:${renderLocationChipValue(value)}`;
+  }
+  if (key === "process" && value) {
+    const sign = raw.startsWith("-") ? "-" : raw.startsWith("+") ? "+" : "";
+    const chipKey = parsed.key ?? "process";
+    const processLabel = processLabelById.get(value) ?? value;
+    return `${sign}${chipKey}:${processLabel}`;
   }
   return raw;
 }
@@ -109,6 +119,10 @@ export function GraphFilterInput({
         return parsed ?? { raw, key: null, value: null, valid: false };
       }),
     [editorState.ast],
+  );
+  const processLabelById = useMemo(
+    () => new Map(processItems.map((item) => [item.id, String(item.label ?? item.id)])),
+    [processItems],
   );
   const currentFragment = useMemo(() => editorState.draft.trim(), [editorState.draft]);
   const graphFilterSuggestionsList = useMemo(
@@ -197,7 +211,7 @@ export function GraphFilterInput({
           {editorState.ast.map((raw, index) => {
             const parsed = graphFilterTokens[index];
             const valid = parsed?.valid ?? false;
-            const chipLabel = parsed ? renderFilterChipLabel(raw, parsed) : raw;
+            const chipLabel = parsed ? renderFilterChipLabel(raw, parsed, processLabelById) : raw;
             const chipTitle = parsed ? renderFilterChipTitle(parsed) : "remove filter token";
             return (
               <button

@@ -94,6 +94,8 @@ export function SampleGraph({
         entityById={entityById}
         onHideNodeFilter={() => {}}
         onHideLocationFilter={() => {}}
+        onFocusConnected={() => {}}
+        onAppendFilterToken={() => {}}
       />
     </div>
   );

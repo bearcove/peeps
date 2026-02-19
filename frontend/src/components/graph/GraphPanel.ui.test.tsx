@@ -50,6 +50,8 @@ function Harness({ initialFilter }: { initialFilter: string }) {
       onGraphFilterTextChange={setGraphFilterText}
       onHideNodeFilter={() => {}}
       onHideLocationFilter={() => {}}
+      onFocusConnected={() => {}}
+      onAppendFilterToken={() => {}}
     />
   );
 }
@@ -235,5 +237,11 @@ describe("GraphPanel filter input interactions", () => {
     expect(screen.queryByRole("button", { name: /colorBy:crate/i })).toBeNull();
     expect(input.value).toBe("");
     expect(screen.getByRole("button", { name: /Include only filter/i })).toBeTruthy();
+  });
+
+  it("renders process chips with process label instead of raw process id", async () => {
+    render(<Harness initialFilter="+process:1" />);
+    expect(screen.getByRole("button", { name: /\+process:web\(1234\)/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /\+process:1/i })).toBeNull();
   });
 });
