@@ -116,6 +116,39 @@ fn current_process_scope_id() -> Option<ScopeId> {
         .map(|scope| ScopeId::new(scope.id().as_str()))
 }
 
+fn current_tokio_task_key() -> Option<CompactString> {
+    tokio::task::try_id().map(|id| CompactString::from(id.to_string()))
+}
+
+struct TaskScopeRegistration {
+    task_key: CompactString,
+    scope: ScopeHandle,
+}
+
+impl Drop for TaskScopeRegistration {
+    fn drop(&mut self) {
+        if let Ok(mut db) = runtime_db().lock() {
+            db.unregister_task_scope_id(&self.task_key, self.scope.id());
+        }
+    }
+}
+
+fn register_current_task_scope(
+    task_name: &str,
+    source: Source,
+) -> Option<TaskScopeRegistration> {
+    let task_key = current_tokio_task_key()?;
+    let scope = ScopeHandle::new(
+        format!("task.{task_name}#{task_key}"),
+        ScopeBody::Task,
+        source,
+    );
+    if let Ok(mut db) = runtime_db().lock() {
+        db.register_task_scope_id(&task_key, scope.id());
+    }
+    Some(TaskScopeRegistration { task_key, scope })
+}
+
 fn init_dashboard_push_loop(process_name: &str) {
     static STARTED: OnceLock<()> = OnceLock::new();
     if STARTED.set(()).is_err() {
@@ -322,10 +355,14 @@ where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
+    let name: CompactString = name.into();
     tokio::spawn(
         FUTURE_CAUSAL_STACK.scope(
             RefCell::new(Vec::new()),
-            instrument_future_named(name, fut, source),
+            async move {
+                let _task_scope = register_current_task_scope(name.as_str(), source);
+                instrument_future_named(name, fut, source).await
+            },
         ),
     )
 }
@@ -422,6 +459,7 @@ struct RuntimeDb {
     compacted_before_seq_no: Option<SeqNo>,
     entities: BTreeMap<EntityId, Entity>,
     scopes: BTreeMap<ScopeId, Scope>,
+    task_scope_ids: BTreeMap<CompactString, ScopeId>,
     entity_scope_links: BTreeMap<(EntityId, ScopeId), ()>,
     edges: BTreeMap<EdgeKey, Edge>,
     events: VecDeque<Event>,
@@ -437,6 +475,7 @@ impl RuntimeDb {
             compacted_before_seq_no: None,
             entities: BTreeMap::new(),
             scopes: BTreeMap::new(),
+            task_scope_ids: BTreeMap::new(),
             entity_scope_links: BTreeMap::new(),
             edges: BTreeMap::new(),
             events: VecDeque::with_capacity(max_events.min(256)),
@@ -546,6 +585,9 @@ impl RuntimeDb {
         if let Some(scope_id) = current_process_scope_id() {
             self.link_entity_to_scope(&entity_id, &scope_id);
         }
+        if let Some(scope_id) = self.ensure_current_task_scope_id() {
+            self.link_entity_to_scope(&entity_id, &scope_id);
+        }
         if let Some(entity_json) = entity_json {
             self.push_change(InternalChange::UpsertEntity {
                 id: entity_id,
@@ -564,6 +606,43 @@ impl RuntimeDb {
                 scope_json,
             });
         }
+    }
+
+    fn register_task_scope_id(&mut self, task_key: &CompactString, scope_id: &ScopeId) {
+        self.task_scope_ids.insert(
+            CompactString::from(task_key.as_str()),
+            ScopeId::new(scope_id.as_str()),
+        );
+    }
+
+    fn unregister_task_scope_id(&mut self, task_key: &CompactString, scope_id: &ScopeId) {
+        if self
+            .task_scope_ids
+            .get(task_key)
+            .is_some_and(|registered| registered == scope_id)
+        {
+            self.task_scope_ids.remove(task_key);
+        }
+    }
+
+    fn ensure_current_task_scope_id(&mut self) -> Option<ScopeId> {
+        let task_key = current_tokio_task_key()?;
+        if let Some(existing_scope_id) = self.task_scope_ids.get(&task_key).cloned() {
+            if self.scopes.contains_key(&existing_scope_id) {
+                return Some(existing_scope_id);
+            }
+            self.task_scope_ids.remove(&task_key);
+        }
+
+        let scope = Scope::builder(format!("task.{task_key}"), ScopeBody::Task)
+            .source("tokio::task::try_id")
+            .build(&())
+            .expect("task scope construction with unit meta should be infallible");
+        let scope_id = ScopeId::new(scope.id.as_str());
+        self.upsert_scope(scope);
+        self.task_scope_ids
+            .insert(task_key, ScopeId::new(scope_id.as_str()));
+        Some(scope_id)
     }
 
     fn update_channel_endpoint_state(
@@ -833,6 +912,7 @@ impl RuntimeDb {
         if self.scopes.remove(id).is_none() {
             return;
         }
+        self.task_scope_ids.retain(|_, scope_id| scope_id != id);
         let mut links_to_remove = Vec::new();
         for (entity_scope, _) in &self.entity_scope_links {
             if &entity_scope.1 == id {
@@ -4820,6 +4900,7 @@ where
         let joinset_handle = self.handle.clone();
         self.inner.spawn(
             FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
+                let _task_scope = register_current_task_scope(label, source);
                 instrument_future_on_with_source(label, &joinset_handle, future, source).await
             }),
         );
@@ -5496,6 +5577,19 @@ mod tests {
             .map(|entity| entity.source.clone())
     }
 
+    fn entity_has_task_scope_link(id: &EntityId) -> bool {
+        let db = runtime_db()
+            .lock()
+            .expect("runtime db lock should be available");
+        db.entity_scope_links.keys().any(|(entity_id, scope_id)| {
+            entity_id == id
+                && db
+                    .scopes
+                    .get(scope_id)
+                    .is_some_and(|scope| matches!(&scope.body, ScopeBody::Task))
+        })
+    }
+
     #[test]
     fn instrument_future_named_uses_caller_source() {
         let _guard = test_guard();
@@ -5713,6 +5807,33 @@ mod tests {
             found,
             "expected child future to link to parent future via needs edge"
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn spawn_tracked_emits_task_scope_and_links_parent_entity() {
+        let _guard = test_guard();
+        reset_runtime_db_for_test();
+
+        let parent = crate::spawn_tracked!("test.task.scope.parent", async {
+            crate::peep!(std::future::pending::<()>(), "test.task.scope.child").await;
+        });
+
+        let mut found = false;
+        for _ in 0..64 {
+            tokio::task::yield_now().await;
+            let Some(parent_id) = entity_id_by_name("test.task.scope.parent") else {
+                continue;
+            };
+            if entity_has_task_scope_link(&parent_id) {
+                found = true;
+                break;
+            }
+        }
+
+        parent.abort();
+        let _ = parent.await;
+
+        assert!(found, "expected spawned future entity to link to a task scope");
     }
 
     #[tokio::test(flavor = "current_thread")]

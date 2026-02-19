@@ -17,5 +17,5 @@
 }
 
 .graph-canvas__dot {
-  fill: color-mix(in srgb, var(--border-subtle) 35%, transparent);
+  fill: color-mix(in srgb, var(--text-primary) 18%, transparent);
 }

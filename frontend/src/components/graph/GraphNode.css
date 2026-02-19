@@ -17,7 +17,7 @@
 }
 
 .graph-card--scope {
-    --graph-card-border-color: light-dark(
+    box-shadow: inset 3px 0 0 0 light-dark(
         rgb(var(--scope-rgb-light) / 0.95),
         rgb(var(--scope-rgb-dark) / 0.9)
     );

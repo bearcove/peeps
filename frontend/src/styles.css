@@ -78,6 +78,11 @@
     --scope-rgb-fallback-dark: 79 163 255;
 }
 
+button,
+input {
+    font-family: var(--font-ui);
+}
+
 * {
     box-sizing: border-box;
     margin: 0;

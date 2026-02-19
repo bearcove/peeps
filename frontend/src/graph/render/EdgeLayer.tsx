@@ -1,6 +1,7 @@
 import React from "react";
 import type { GeometryEdge, Point } from "../geometry";
 import { polylineToPath, hitTestPath } from "./edgePath";
+import { useCameraContext } from "../canvas/GraphCanvas";
 import "./EdgeLayer.css";
 
 export interface EdgeLayerProps {
@@ -22,6 +23,7 @@ export function EdgeLayer({
   ghostEdgeIds,
   portAnchors,
 }: EdgeLayerProps) {
+  const { markerUrl } = useCameraContext();
   return (
     <g>
       {edges.map((edge) => {
@@ -41,7 +43,7 @@ export function EdgeLayer({
           ? "var(--accent)"
           : (edgeStyle.stroke ?? "var(--edge-stroke-muted)");
         const markerSize = (edge.data?.markerSize as number | undefined) ?? 8;
-        const markerEnd = `url(#arrowhead-${markerSize})`;
+        const markerEnd = markerUrl(markerSize);
 
         // Shorten the path end so the stroke terminates at the arrowhead base,
         // not the tip. Combined with refX=0 on the marker, the tip lands exactly

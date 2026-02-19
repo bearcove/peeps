@@ -10,7 +10,34 @@ import {
   parseGraphFilterQuery,
   serializeGraphFilterEditorState,
   type GraphFilterEditorAction,
+  type ParsedGraphFilterToken,
 } from "../../graphFilter";
+
+function renderLocationChipValue(rawLocation: string): string {
+  const location = rawLocation.trim();
+  const withLine = location.match(/(?:^|[\\/])([^\\/]+):(\d+)(?::\d+)?$/);
+  if (withLine) return `${withLine[1]}:${withLine[2]}`;
+  const base = location.split(/[\\/]/).pop();
+  return base && base.length > 0 ? base : location;
+}
+
+function renderFilterChipLabel(raw: string, parsed: ParsedGraphFilterToken): string {
+  const key = parsed.key?.toLowerCase();
+  const value = parsed.value?.trim();
+  if ((key === "location" || key === "source") && value) {
+    const sign = raw.startsWith("-") ? "-" : raw.startsWith("+") ? "+" : "";
+    const chipKey = parsed.key ?? "location";
+    return `${sign}${chipKey}:${renderLocationChipValue(value)}`;
+  }
+  return raw;
+}
+
+function renderFilterChipTitle(parsed: ParsedGraphFilterToken): string {
+  const key = parsed.key?.toLowerCase();
+  const value = parsed.value?.trim();
+  if ((key === "location" || key === "source") && value) return value;
+  return parsed.valid ? "remove filter token" : "invalid filter token";
+}
 
 export function GraphFilterInput({
   focusedEntityId,
@@ -170,6 +197,8 @@ export function GraphFilterInput({
           {editorState.ast.map((raw, index) => {
             const parsed = graphFilterTokens[index];
             const valid = parsed?.valid ?? false;
+            const chipLabel = parsed ? renderFilterChipLabel(raw, parsed) : raw;
+            const chipTitle = parsed ? renderFilterChipTitle(parsed) : "remove filter token";
             return (
               <button
                 key={`${raw}:${index}`}
@@ -183,9 +212,9 @@ export function GraphFilterInput({
                   applyEditorAction({ type: "remove_chip", index });
                   graphFilterInputRef.current?.focus();
                 }}
-                title={valid ? "remove filter token" : "invalid filter token"}
+                title={chipTitle}
               >
-                {raw}
+                {chipLabel}
                 <span className="graph-filter-chip-x" aria-hidden="true">
                   ×
                 </span>

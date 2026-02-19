@@ -1,6 +1,6 @@
 // Curated categorical palette for graph scopes.
 // Keep this intentionally small and hue-separated to preserve legibility.
-export const SCOPE_LIGHT_RGB = [
+export const SCOPE_DARK_RGB = [
   [191, 224, 255],
   [207, 201, 255],
   [255, 214, 205],
@@ -14,7 +14,7 @@ export const SCOPE_LIGHT_RGB = [
 ] as const;
 
 // Dark mode: crisp, high-separation categorical colors tuned for dark surfaces.
-export const SCOPE_DARK_RGB = [
+export const SCOPE_LIGHT_RGB = [
   [79, 163, 255],
   [124, 108, 255],
   [255, 122, 92],

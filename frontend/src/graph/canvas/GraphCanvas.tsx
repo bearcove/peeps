@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import type { GraphGeometry } from "../geometry";
 import { type Camera, cameraTransform } from "./camera";
 import { useCameraController } from "./useCameraController";
@@ -11,6 +11,7 @@ interface CameraContextValue {
   clientToGraph: (clientX: number, clientY: number) => { x: number; y: number } | null;
   viewportWidth: number;
   viewportHeight: number;
+  markerUrl: (size: number) => string;
 }
 
 export const CameraContext = createContext<CameraContextValue | null>(null);
@@ -34,6 +35,11 @@ export function GraphCanvas({
   className,
   onBackgroundClick,
 }: GraphCanvasProps) {
+  const instanceId = useId();
+  const dotPatternId = `graph-canvas-dots-${instanceId}`;
+  const arrowhead8Id = `arrowhead-8-${instanceId}`;
+  const arrowhead10Id = `arrowhead-10-${instanceId}`;
+  const arrowhead14Id = `arrowhead-14-${instanceId}`;
   const svgRef = useRef<SVGSVGElement>(null);
   const worldRef = useRef<SVGGElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 800, height: 600 });
@@ -120,6 +126,8 @@ export function GraphCanvas({
     return { x: point.x, y: point.y };
   }, []);
 
+  const markerUrl = useCallback((size: number) => `url(#arrowhead-${size}-${instanceId})`, [instanceId]);
+
   return (
     <CameraContext.Provider
       value={{
@@ -129,6 +137,7 @@ export function GraphCanvas({
         clientToGraph,
         viewportWidth: viewportSize.width,
         viewportHeight: viewportSize.height,
+        markerUrl,
       }}
     >
       <div className={`graph-canvas${className ? ` ${className}` : ""}`}>
@@ -144,7 +153,7 @@ export function GraphCanvas({
         >
           <defs>
             <pattern
-              id="graph-canvas-dots"
+              id={dotPatternId}
               width="16"
               height="16"
               patternUnits="userSpaceOnUse"
@@ -152,13 +161,13 @@ export function GraphCanvas({
             >
               <circle cx="1" cy="1" r="0.8" className="graph-canvas__dot" />
             </pattern>
-            <marker id="arrowhead-8" markerWidth="8" markerHeight="8" refX="0" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+            <marker id={arrowhead8Id} markerWidth="8" markerHeight="8" refX="0" refY="4" orient="auto" markerUnits="userSpaceOnUse">
               <path d="M 0 0 L 8 4 L 0 8 Z" fill="context-stroke" />
             </marker>
-            <marker id="arrowhead-10" markerWidth="10" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+            <marker id={arrowhead10Id} markerWidth="10" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse">
               <path d="M 0 0 L 10 5 L 0 10 Z" fill="context-stroke" />
             </marker>
-            <marker id="arrowhead-14" markerWidth="14" markerHeight="14" refX="0" refY="7" orient="auto" markerUnits="userSpaceOnUse">
+            <marker id={arrowhead14Id} markerWidth="14" markerHeight="14" refX="0" refY="7" orient="auto" markerUnits="userSpaceOnUse">
               <path d="M 0 0 L 14 7 L 0 14 Z" fill="context-stroke" />
             </marker>
           </defs>
@@ -171,7 +180,7 @@ export function GraphCanvas({
           <rect
             width="100%"
             height="100%"
-            fill="url(#graph-canvas-dots)"
+            fill={`url(#${dotPatternId})`}
             data-background="true"
           />
           <g ref={worldRef} transform={transform}>{children}</g>
