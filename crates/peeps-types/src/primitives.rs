@@ -6,8 +6,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-pub type MetaSerializeError = facet_format::SerializeError<facet_value::ToValueError>;
-
 #[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
@@ -186,13 +184,7 @@ fn next_opaque_id() -> String {
     PeepsHex(raw).to_string()
 }
 
-#[track_caller]
-pub(crate) fn caller_source() -> String {
-    let location = std::panic::Location::caller();
-    String::from(format!("{}:{}", location.file(), location.line()))
-}
-
-/// `peeps-hex-2` formatter:
+/// `peeps-hex` formatter:
 /// lowercase hex with `a..f` remapped to `p,e,s,P,E,S`.
 struct PeepsHex(u64);
 
