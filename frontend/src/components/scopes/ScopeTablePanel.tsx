@@ -2,8 +2,6 @@ import { useMemo, useState } from "react";
 import { Table, type Column } from "../../ui/primitives/Table";
 import { ActionButton } from "../../ui/primitives/ActionButton";
 import { TextInput } from "../../ui/primitives/TextInput";
-import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
-import { formatProcessLabel } from "../../processLabel";
 import { scopeKindDisplayName, scopeKindIcon } from "../../scopeKindSpec";
 import type { ScopeDef } from "../../snapshot";
 import "./ScopeTablePanel.css";
@@ -31,7 +29,7 @@ export function ScopeTablePanel({
   onViewScopeEntities: (scope: ScopeDef) => void;
 }) {
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState("process");
+  const [sortKey, setSortKey] = useState("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   // All kinds present, in preferred order.
@@ -73,18 +71,8 @@ export function ScopeTablePanel({
     const key = sortKey;
     return [...filteredScopes].sort((a, b) => {
       if (key === "entities") return (a.memberEntityIds.length - b.memberEntityIds.length) * dir;
-      if (key === "age") return (a.ageMs - b.ageMs) * dir;
-      if (key === "name")
-        return a.scopeName.localeCompare(b.scopeName) * dir;
-      if (key === "source")
-        return a.source.localeCompare(b.source) * dir;
-      if (key === "crate")
-        return (a.krate ?? "").localeCompare(b.krate ?? "") * dir;
-      // default: process
-      return (
-        (a.processName.localeCompare(b.processName) ||
-          a.processPid - b.processPid) * dir
-      );
+      if (key === "name") return a.scopeName.localeCompare(b.scopeName) * dir;
+      return a.scopeName.localeCompare(b.scopeName) * dir;
     });
   }, [filteredScopes, sortKey, sortDir]);
 
@@ -97,14 +85,14 @@ export function ScopeTablePanel({
     }
   }
 
-  const processCol: Column<ScopeDef> = {
-    key: "process",
-    label: "Process",
+  const nameCol: Column<ScopeDef> = {
+    key: "name",
+    label: "Name",
     sortable: true,
-    width: "1.4fr",
+    width: "2fr",
     render: (s) => (
-      <span className="scope-mono" title={formatProcessLabel(s.processName, s.processPid)}>
-        {formatProcessLabel(s.processName, s.processPid)}
+      <span className="scope-name" title={s.scopeName}>
+        {s.scopeName || s.scopeId}
       </span>
     ),
   };
@@ -141,128 +129,9 @@ export function ScopeTablePanel({
     ),
   };
 
-  const columnsByKind = useMemo<Record<string, readonly Column<ScopeDef>[]>>(
-    () => ({
-      connection: [
-        processCol,
-        {
-          key: "name",
-          label: "Connection",
-          sortable: true,
-          width: "2fr",
-          render: (s) => (
-            <span className="scope-name" title={s.scopeName}>
-              {s.scopeName || s.scopeId}
-            </span>
-          ),
-        },
-        entitiesCol,
-        actionsCol,
-      ],
-      process: [
-        processCol,
-        entitiesCol,
-        actionsCol,
-      ],
-      task: [
-        processCol,
-        {
-          key: "name",
-          label: "Task",
-          sortable: true,
-          width: "1.8fr",
-          render: (s) => (
-            <span className="scope-name" title={s.scopeName}>
-              {s.scopeName || s.scopeId}
-            </span>
-          ),
-        },
-        {
-          key: "crate",
-          label: "Crate",
-          sortable: true,
-          width: "0.8fr",
-          render: (s) => (
-            <span className="scope-mono scope-muted">{s.krate ?? "—"}</span>
-          ),
-        },
-        {
-          key: "source",
-          label: "Source",
-          sortable: true,
-          width: "0.8fr",
-          render: (s) => (
-            <span className="scope-mono scope-muted" title={s.source}>
-              {s.source.split("/").pop() ?? s.source}
-            </span>
-          ),
-        },
-        {
-          key: "age",
-          label: "Age",
-          sortable: true,
-          width: "0.6fr",
-          render: (s) => <DurationDisplay ms={s.ageMs} />,
-        },
-        entitiesCol,
-        actionsCol,
-      ],
-      thread: [
-        processCol,
-        {
-          key: "name",
-          label: "Thread",
-          sortable: true,
-          width: "1.8fr",
-          render: (s) => (
-            <span className="scope-name" title={s.scopeName}>
-              {s.scopeName || s.scopeId}
-            </span>
-          ),
-        },
-        {
-          key: "source",
-          label: "Source",
-          sortable: true,
-          width: "0.8fr",
-          render: (s) => (
-            <span className="scope-mono scope-muted" title={s.source}>
-              {s.source.split("/").pop() ?? s.source}
-            </span>
-          ),
-        },
-        entitiesCol,
-        actionsCol,
-      ],
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onShowGraphScope, onViewScopeEntities],
-  );
+  const baseColumns: readonly Column<ScopeDef>[] = [nameCol, entitiesCol, actionsCol];
 
-  const fallbackColumns: readonly Column<ScopeDef>[] = useMemo(
-    () => [
-      processCol,
-      {
-        key: "name",
-        label: "Scope",
-        sortable: true,
-        width: "2fr",
-        render: (s) => (
-          <span className="scope-name" title={s.scopeName}>
-            {s.scopeName || s.scopeId}
-          </span>
-        ),
-      },
-      entitiesCol,
-      actionsCol,
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onShowGraphScope, onViewScopeEntities],
-  );
-
-  const columns = effectiveKind
-    ? (columnsByKind[effectiveKind] ?? fallbackColumns)
-    : fallbackColumns;
+  const columns = baseColumns;
 
   return (
     <div className="scope-panel">

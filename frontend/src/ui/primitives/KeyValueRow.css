@@ -2,6 +2,14 @@
     display: contents;
 }
 
+.ui-key-value-row__label-icon {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    opacity: 0.6;
+    margin-right: 4px;
+}
+
 .ui-key-value-row__label {
     font-size: var(--font-size-sm);
     font-weight: 600;
