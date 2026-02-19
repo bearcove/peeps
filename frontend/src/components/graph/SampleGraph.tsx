@@ -80,19 +80,21 @@ export function SampleGraph({
   }, [layout, scopeColorByKey]);
 
   return (
-    <GraphViewport
-      entityDefs={entityDefs}
-      snapPhase="ready"
-      waitingForProcesses={false}
-      geometry={layout}
-      groups={groups}
-      nodes={nodes}
-      selection={selection}
-      onSelect={setSelection}
-      unionModeSuppressAutoFit={false}
-      entityById={entityById}
-      onHideNodeFilter={() => {}}
-      onHideLocationFilter={() => {}}
-    />
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <GraphViewport
+        entityDefs={entityDefs}
+        snapPhase="ready"
+        waitingForProcesses={false}
+        geometry={layout}
+        groups={groups}
+        nodes={nodes}
+        selection={selection}
+        onSelect={setSelection}
+        unionModeSuppressAutoFit={false}
+        entityById={entityById}
+        onHideNodeFilter={() => {}}
+        onHideLocationFilter={() => {}}
+      />
+    </div>
   );
 }

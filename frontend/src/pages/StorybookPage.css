@@ -319,6 +319,8 @@
 
 .ui-sample-graph {
     height: 480px;
+    display: flex;
+    flex-direction: column;
     border-radius: var(--radius-control);
     overflow: hidden;
 }
