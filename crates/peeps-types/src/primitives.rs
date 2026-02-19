@@ -22,6 +22,42 @@ pub enum ChannelDir {
     Rx,
 }
 
+/// Raw JSON text payload used by request/response entities.
+///
+/// This wrapper preserves the exact JSON source string that was captured
+/// at instrumentation boundaries.
+#[derive(Facet, Clone, Debug, PartialEq, Eq)]
+#[facet(transparent)]
+pub struct Json(pub(crate) String);
+
+impl Json {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self(text.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl ToSql for Json {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(self.as_str().into())
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl FromSql for Json {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        Ok(Json::new(String::column_result(value)?))
+    }
+}
+
 /// First-use monotonic anchor for process-relative timestamps.
 /// "Process birth" is defined as the first call to `PTime::now()`.
 fn ptime_anchor() -> &'static Instant {

@@ -1,6 +1,6 @@
 use facet::Facet;
 
-use crate::{next_entity_id, EntityId, PTime, SourceId};
+use crate::{next_entity_id, EntityId, Json, PTime, SourceId};
 
 /// A: future, a lock, a channel end (tx, rx), a connection leg, a socket, etc.
 #[derive(Facet)]
@@ -195,26 +195,50 @@ pub struct NetEntity {
 /// The receiver generates a fresh response entity id and emits `request -> response`.
 #[derive(Facet)]
 pub struct RequestEntity {
-    /// RPC method name.
-    pub method: String,
-    /// Stable, human-oriented preview of request arguments.
-    pub args_preview: String,
+    /// Service name portion of the RPC endpoint.
+    ///
+    /// Example: for `vfs.lookupItem`, this is `vfs`.
+    pub service_name: String,
+    /// Method name portion of the RPC endpoint.
+    ///
+    /// Example: for `vfs.lookupItem`, this is `lookupItem`.
+    pub method_name: String,
+    /// JSON-encoded request arguments.
+    ///
+    /// This is always valid JSON and should be `[]` when the method has no args.
+    pub args_json: Json,
 }
 
 #[derive(Facet)]
 pub struct ResponseEntity {
-    /// RPC method name this response belongs to.
-    pub method: String,
-    /// Canonical response outcome.
+    /// Service name portion of the RPC endpoint.
+    pub service_name: String,
+    /// Method name portion of the RPC endpoint.
+    pub method_name: String,
+    /// Response status and payload/error details.
     pub status: ResponseStatus,
 }
 
-#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Facet, Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
 pub enum ResponseStatus {
+    /// Response has not completed yet.
     Pending,
-    Ok,
-    Error,
+    /// Handler completed successfully with a JSON result payload.
+    Ok(Json),
+    /// Handler failed with either internal or user-level JSON error data.
+    Error(ResponseError),
+    /// Request was cancelled before completion.
     Cancelled,
+}
+
+#[derive(Facet, Clone, Debug, PartialEq, Eq)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+pub enum ResponseError {
+    /// Runtime/transport/internal error rendered as text.
+    Internal(String),
+    /// Application/user error represented as JSON.
+    UserJson(Json),
 }

@@ -1,6 +1,6 @@
 use peeps_types::{
     EdgeKind, EntityBody, EntityId, Event, EventKind, EventTarget, RequestEntity, ResponseEntity,
-    ResponseStatus,
+    ResponseError, ResponseStatus,
 };
 
 use super::{local_source, Source, SourceRight};
@@ -59,16 +59,31 @@ impl RpcResponseHandle {
 
     #[track_caller]
     pub fn mark_ok(&self) {
+        self.mark_ok_json(peeps_types::Json::new("null"));
+    }
+
+    #[track_caller]
+    pub fn mark_ok_json(&self, body_json: peeps_types::Json) {
+        self.set_status_with_source(ResponseStatus::Ok(body_json), local_source(SourceRight::caller()));
+    }
+
+    #[track_caller]
+    pub fn mark_error(&self) {
+        self.mark_internal_error("error");
+    }
+
+    #[track_caller]
+    pub fn mark_internal_error(&self, message: impl Into<String>) {
         self.set_status_with_source(
-            ResponseStatus::Ok,
+            ResponseStatus::Error(ResponseError::Internal(message.into())),
             local_source(SourceRight::caller()),
         );
     }
 
     #[track_caller]
-    pub fn mark_error(&self) {
+    pub fn mark_user_error_json(&self, error_json: peeps_types::Json) {
         self.set_status_with_source(
-            ResponseStatus::Error,
+            ResponseStatus::Error(ResponseError::UserJson(error_json)),
             local_source(SourceRight::caller()),
         );
     }
@@ -84,13 +99,15 @@ impl RpcResponseHandle {
 
 pub fn rpc_request(
     method: impl Into<String>,
-    args_preview: impl Into<String>,
+    args_json: impl Into<String>,
     source: SourceRight,
 ) -> RpcRequestHandle {
     let method = method.into();
+    let (service_name, method_name) = split_method_parts(method.as_str());
     let body = EntityBody::Request(RequestEntity {
-        method: method.clone(),
-        args_preview: args_preview.into(),
+        service_name: String::from(service_name),
+        method_name: String::from(method_name),
+        args_json: peeps_types::Json::new(args_json),
     });
     RpcRequestHandle {
         handle: EntityHandle::new(method, body, local_source(source))
@@ -100,8 +117,10 @@ pub fn rpc_request(
 
 pub fn rpc_response(method: impl Into<String>, source: SourceRight) -> RpcResponseHandle {
     let method = method.into();
+    let (service_name, method_name) = split_method_parts(method.as_str());
     let body = EntityBody::Response(ResponseEntity {
-        method: method.clone(),
+        service_name: String::from(service_name),
+        method_name: String::from(method_name),
         status: ResponseStatus::Pending,
     });
     RpcResponseHandle {
@@ -116,8 +135,10 @@ pub fn rpc_response_for(
     source: SourceRight,
 ) -> RpcResponseHandle {
     let method = method.into();
+    let (service_name, method_name) = split_method_parts(method.as_str());
     let body = EntityBody::Response(ResponseEntity {
-        method: method.clone(),
+        service_name: String::from(service_name),
+        method_name: String::from(method_name),
         status: ResponseStatus::Pending,
     });
     let source = local_source(source);
@@ -129,4 +150,12 @@ pub fn rpc_response_for(
         .handle
         .link_to_with_source(request, EdgeKind::PairedWith, source);
     response
+}
+
+fn split_method_parts(full_method: &str) -> (&str, &str) {
+    if let Some((service, method)) = full_method.rsplit_once('.') {
+        (service, method)
+    } else {
+        ("", full_method)
+    }
 }

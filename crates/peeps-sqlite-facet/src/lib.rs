@@ -8,9 +8,9 @@
 //! of being modeled as arrays in JSON fields.
 
 use peeps_types::{
-    Edge, Entity, EntityId, Event, EventId, PTime, Scope, ScopeId, Snapshot, SourceId,
+    Edge, Entity, EntityId, Event, EventId, Json, PTime, Scope, ScopeId, Snapshot, SourceId,
 };
-use rusqlite::types::{FromSql, FromSqlResult, ToSql, ToSqlOutput, Value as SqlValue, ValueRef};
+use rusqlite::types::{Value as SqlValue, ValueRef};
 use std::fmt;
 
 #[derive(Debug)]
@@ -27,35 +27,6 @@ impl fmt::Display for EncodeError {
 }
 
 impl std::error::Error for EncodeError {}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Json(String);
-
-impl Json {
-    pub fn new(text: impl Into<String>) -> Self {
-        Self(text.into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
-
-    pub fn into_string(self) -> String {
-        self.0
-    }
-}
-
-impl ToSql for Json {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        Ok(self.0.as_str().into())
-    }
-}
-
-impl FromSql for Json {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        Ok(Self(String::column_result(value)?))
-    }
-}
 
 pub fn sqlite_value_ref_to_facet(value: ValueRef<'_>) -> facet_value::Value {
     match value {
