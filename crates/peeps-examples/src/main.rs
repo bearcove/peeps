@@ -34,11 +34,14 @@ enum CommandKind {
     ChannelFullStall,
     MutexLockOrderInversion,
     OneshotSenderLostInMap,
+    #[cfg(feature = "roam")]
     RoamRpcStuckRequest,
+    #[cfg(feature = "roam")]
     RoamRpcStuckRequestClient {
         #[facet(args::named)]
         peer_addr: String,
     },
+    #[cfg(feature = "roam")]
     RoamRustSwiftStuckRequest,
     SemaphoreStarvation,
 }
@@ -161,10 +164,13 @@ async fn dispatch_command(root_dir: &std::path::Path, command: CommandKind) -> A
         CommandKind::ChannelFullStall => scenarios::channel_full_stall::run().await,
         CommandKind::MutexLockOrderInversion => scenarios::mutex_lock_order_inversion::run().await,
         CommandKind::OneshotSenderLostInMap => scenarios::oneshot_sender_lost_in_map::run().await,
+        #[cfg(feature = "roam")]
         CommandKind::RoamRpcStuckRequest => scenarios::roam_rpc_stuck_request::run().await,
+        #[cfg(feature = "roam")]
         CommandKind::RoamRpcStuckRequestClient { peer_addr } => {
             scenarios::roam_rpc_stuck_request::run_client_process(peer_addr.to_string()).await
         }
+        #[cfg(feature = "roam")]
         CommandKind::RoamRustSwiftStuckRequest => {
             scenarios::roam_rust_swift_stuck_request::run(root_dir).await
         }
@@ -249,12 +255,15 @@ fn command_cli_args(command: &CommandKind) -> Vec<String> {
         CommandKind::ChannelFullStall => vec!["channel-full-stall".to_string()],
         CommandKind::MutexLockOrderInversion => vec!["mutex-lock-order-inversion".to_string()],
         CommandKind::OneshotSenderLostInMap => vec!["oneshot-sender-lost-in-map".to_string()],
+        #[cfg(feature = "roam")]
         CommandKind::RoamRpcStuckRequest => vec!["roam-rpc-stuck-request".to_string()],
+        #[cfg(feature = "roam")]
         CommandKind::RoamRpcStuckRequestClient { peer_addr } => vec![
             "roam-rpc-stuck-request-client".to_string(),
             "--peer-addr".to_string(),
             peer_addr.to_string(),
         ],
+        #[cfg(feature = "roam")]
         CommandKind::RoamRustSwiftStuckRequest => vec!["roam-rust-swift-stuck-request".to_string()],
         CommandKind::SemaphoreStarvation => vec!["semaphore-starvation".to_string()],
     }
