@@ -1201,6 +1201,7 @@ name = "peeps-source"
 version = "0.1.0"
 dependencies = [
  "compact_str",
+ "facet",
 ]
 
 [[package]]
@@ -1222,6 +1223,7 @@ dependencies = [
  "facet",
  "facet-format",
  "facet-value",
+ "peeps-source",
 ]
 
 [[package]]

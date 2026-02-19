@@ -1,8 +1,11 @@
 #![doc = include_str!("README.md")]
 
 use compact_str::CompactString;
+use facet::Facet;
+use std::collections::BTreeMap;
 use std::panic::Location;
 use std::path::Path;
+use std::sync::{Mutex as StdMutex, OnceLock};
 
 #[derive(Clone, Copy, Debug)]
 pub struct SourceRight {
@@ -47,6 +50,8 @@ impl SourceLeft {
     }
 }
 
+/// A fully resolved source code location, including create information that identifies where things
+/// are being done, where futures are being polled, where locks are being awaited on, etc.
 #[derive(Clone, Debug)]
 pub struct Source {
     source: CompactString,
@@ -54,6 +59,13 @@ pub struct Source {
 }
 
 impl Source {
+    pub fn new(source: impl Into<CompactString>, krate: Option<CompactString>) -> Self {
+        Self {
+            source: source.into(),
+            krate,
+        }
+    }
+
     pub fn resolve(left: SourceLeft, right: SourceRight) -> Self {
         Self::resolve_parts(
             left.manifest_dir(),
@@ -84,6 +96,51 @@ impl Source {
 
     pub fn into_compact_string(self) -> CompactString {
         self.source
+    }
+}
+
+/// A JSON-safe (U53) interned source identifier.
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[facet(transparent)]
+pub struct SourceId(u64);
+
+impl SourceId {
+    pub const MAX_U53: u64 = (1u64 << 53) - 1;
+
+    pub fn new(raw: u64) -> Self {
+        assert!(
+            raw <= Self::MAX_U53,
+            "SourceId out of JSON-safe U53 range: {raw}"
+        );
+        Self(raw)
+    }
+
+    pub fn as_u64(self) -> u64 {
+        self.0
+    }
+}
+
+pub fn intern_source(source: Source) -> SourceId {
+    static SOURCE_INTERN: OnceLock<StdMutex<SourceIntern>> = OnceLock::new();
+    let lock = SOURCE_INTERN.get_or_init(|| StdMutex::new(SourceIntern::new()));
+    let mut intern = lock
+        .lock()
+        .expect("source intern mutex poisoned; cannot continue");
+    intern.intern(source)
+}
+
+pub fn source_for_id(source_id: SourceId) -> Option<Source> {
+    static SOURCE_INTERN: OnceLock<StdMutex<SourceIntern>> = OnceLock::new();
+    let lock = SOURCE_INTERN.get_or_init(|| StdMutex::new(SourceIntern::new()));
+    let intern = lock
+        .lock()
+        .expect("source intern mutex poisoned; cannot continue");
+    intern.lookup(source_id)
+}
+
+impl From<Source> for SourceId {
+    fn from(source: Source) -> Self {
+        intern_source(source)
     }
 }
 
@@ -118,6 +175,53 @@ fn infer_crate_name_from_manifest_dir(manifest_dir: &str) -> Option<CompactStrin
         return Some(CompactString::from(&value[1..value.len() - 1]));
     }
     None
+}
+
+struct SourceIntern {
+    next_id: u64,
+    by_key: BTreeMap<(CompactString, Option<CompactString>), SourceId>,
+    by_id: BTreeMap<SourceId, Source>,
+}
+
+impl SourceIntern {
+    fn new() -> Self {
+        Self {
+            next_id: 1,
+            by_key: BTreeMap::new(),
+            by_id: BTreeMap::new(),
+        }
+    }
+
+    fn intern(&mut self, source: Source) -> SourceId {
+        let key = (
+            CompactString::from(source.source.as_str()),
+            source
+                .krate
+                .as_ref()
+                .map(|k| CompactString::from(k.as_str())),
+        );
+        if let Some(existing) = self.by_key.get(&key).copied() {
+            return existing;
+        }
+
+        let id = SourceId::new(self.next_id);
+        self.next_id = self
+            .next_id
+            .checked_add(1)
+            .expect("source id counter overflow");
+        assert!(
+            self.next_id <= SourceId::MAX_U53 + 1,
+            "source id counter exceeded JSON-safe U53 range"
+        );
+
+        self.by_key.insert(key, id);
+        self.by_id.insert(id, source);
+        id
+    }
+
+    fn lookup(&self, id: SourceId) -> Option<Source> {
+        self.by_id.get(&id).cloned()
+    }
 }
 
 #[cfg(test)]
@@ -186,5 +290,23 @@ mod tests {
 
         assert_eq!(source.krate(), None);
         std::fs::remove_dir_all(base).expect("failed to cleanup temp dir");
+    }
+
+    #[test]
+    fn intern_round_trips_source() {
+        let source = Source::new("/repo/src/lib.rs:12", Some(CompactString::from("peeps")));
+        let source_id = intern_source(source.clone());
+        assert_eq!(
+            source_for_id(source_id)
+                .expect("source should be present")
+                .as_str(),
+            source.as_str()
+        );
+        assert_eq!(
+            source_for_id(source_id)
+                .expect("source should be present")
+                .krate(),
+            source.krate()
+        );
     }
 }

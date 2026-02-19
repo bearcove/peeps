@@ -17,6 +17,7 @@ pub(crate) mod primitives;
 pub(crate) mod recording;
 pub(crate) mod scopes;
 pub(crate) mod snapshots;
+pub(crate) mod sources;
 
 pub use diff::*;
 pub use edges::*;
@@ -25,3 +26,4 @@ pub use primitives::*;
 pub use recording::*;
 pub use scopes::*;
 pub use snapshots::*;
+pub use sources::*;

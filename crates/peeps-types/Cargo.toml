@@ -9,3 +9,4 @@ compact_str.workspace = true
 facet.workspace = true
 facet-format.workspace = true
 facet-value.workspace = true
+peeps-source.workspace = true

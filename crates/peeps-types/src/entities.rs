@@ -1,7 +1,11 @@
 use compact_str::CompactString;
 use facet::Facet;
+use facet_value::Value;
+use peeps_source::Source;
 
-use crate::{caller_source, next_entity_id, EntityId, MetaSerializeError, PTime};
+use crate::{
+    caller_source_id, intern_source, next_entity_id, EntityId, MetaSerializeError, PTime, SourceId,
+};
 
 /// A: future, a lock, a channel end (tx, rx), a connection leg, a socket, etc.
 #[derive(Facet)]
@@ -12,90 +16,30 @@ pub struct Entity {
     /// When we first started tracking this entity
     pub birth: PTime,
 
-    /// Creation site in source code as `{path}:{line}`.
-    /// Example: `/Users/amos/bearcove/peeps/examples/channel-full-stall/src/main.rs:9`
-    // [FIXME] Note that this is a good candidate to optimize for later by just keeping a registry of all
-    // the files we've ever seen. And then this becomes a tuple of numbers instead of being this
-    // very long string.
-    pub source: CompactString,
-
-    /// Rust crate that created this entity, if known.
-    /// Populated explicitly by macros when available, otherwise inferred from `source`
-    /// by walking to the nearest `Cargo.toml` at runtime.
-    pub krate: Option<CompactString>,
+    /// Interned source identifier.
+    /// Resolves to a `{source, krate}` tuple in the source registry.
+    pub source: SourceId,
 
     /// Human-facing name for this entity.
     pub name: CompactString,
 
     /// More specific info about the entity (depending on its kind)
     pub body: EntityBody,
-
-    /// Extensible metadata for optional, non-canonical context.
-    /// Convention: `meta.level` may be `info`, `debug`, or `trace` for UI filtering.
-    pub meta: facet_value::Value,
 }
 
 impl Entity {
-    /// Starts building an entity from required semantic fields.
-    pub fn builder(name: impl Into<CompactString>, body: EntityBody) -> EntityBuilder {
-        EntityBuilder {
-            name: name.into(),
-            body,
-            source: None,
-            krate: None,
-        }
-    }
-
-    /// Convenience constructor that accepts typed meta and builds immediately.
-    #[track_caller]
-    pub fn new<M>(
+    /// Create a new entity: ID and birth time are generated automatically.
+    pub fn new(
+        source: impl Into<SourceId>,
         name: impl Into<CompactString>,
         body: EntityBody,
-        meta: &M,
-    ) -> Result<Self, MetaSerializeError>
-    where
-        M: for<'facet> Facet<'facet>,
-    {
-        Entity::builder(name, body).build(meta)
-    }
-}
-
-/// Builder for `Entity` that auto-fills runtime identity and creation metadata.
-pub struct EntityBuilder {
-    name: CompactString,
-    body: EntityBody,
-    source: Option<CompactString>,
-    krate: Option<CompactString>,
-}
-
-impl EntityBuilder {
-    pub fn source(mut self, source: impl Into<CompactString>) -> Self {
-        self.source = Some(source.into());
-        self
-    }
-
-    pub fn krate(mut self, krate: impl Into<CompactString>) -> Self {
-        self.krate = Some(krate.into());
-        self
-    }
-
-    /// Finalizes the entity with typed meta converted into `facet_value::Value`.
-    #[track_caller]
-    pub fn build<M>(self, meta: &M) -> Result<Entity, MetaSerializeError>
-    where
-        M: for<'facet> Facet<'facet>,
-    {
-        let source = self.source.unwrap_or_else(caller_source);
-        let krate = self.krate;
-
+    ) -> Result<Entity, MetaSerializeError> {
         Ok(Entity {
             id: next_entity_id(),
             birth: PTime::now(),
-            source,
-            krate,
-            name: self.name,
-            body: self.body,
-            meta: facet_value::to_value(meta)?,
+            source: source.into(),
+            name: name.into(),
+            body,
         })
     }
 }
