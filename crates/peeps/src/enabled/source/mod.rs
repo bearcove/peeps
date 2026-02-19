@@ -15,31 +15,21 @@ use std::path::Path;
 /// This value alone does not identify a crate. Relative paths are unresolved until joined.
 #[derive(Clone, Copy, Debug)]
 pub struct SourceRight {
-    file: &'static str,
-    line: u32,
+    /// Raw callsite location captured via `Location::caller()`.
+    location: &'static Location<'static>,
 }
 
 impl SourceRight {
     #[track_caller]
     pub fn caller() -> Self {
-        let location = Location::caller();
-        Self::new(location.file(), location.line())
+        Self {
+            location: Location::caller(),
+        }
     }
 
-    pub const fn new(file: &'static str, line: u32) -> Self {
-        Self { file, line }
-    }
-
-    pub const fn file(self) -> &'static str {
-        self.file
-    }
-
-    pub const fn line(self) -> u32 {
-        self.line
-    }
-
-    pub fn join(self, left: SourceLeft) -> Source {
-        Source::resolve(left, self)
+    #[cfg(test)]
+    pub const fn from_location(location: &'static Location<'static>) -> Self {
+        Self { location }
     }
 }
 
@@ -70,6 +60,11 @@ impl SourceLeft {
         self.manifest_dir
     }
 
+    #[track_caller]
+    pub fn resolve(self) -> Source {
+        self.join(SourceRight::caller())
+    }
+
     pub fn join(self, right: SourceRight) -> Source {
         Source::resolve(self, right)
     }
@@ -90,14 +85,22 @@ pub struct Source {
 
 impl Source {
     pub fn resolve(left: SourceLeft, right: SourceRight) -> Self {
-        let file = Path::new(right.file());
+        Self::resolve_parts(
+            left.manifest_dir(),
+            right.location.file(),
+            right.location.line(),
+        )
+    }
+
+    fn resolve_parts(manifest_dir: &str, file: &str, line: u32) -> Self {
+        let file = Path::new(file);
         let resolved = if file.is_absolute() {
             file.to_path_buf()
         } else {
-            Path::new(left.manifest_dir()).join(file)
+            Path::new(manifest_dir).join(file)
         };
-        let source = CompactString::from(format!("{}:{}", resolved.display(), right.line()));
-        let krate = infer_crate_name_from_manifest_dir(left.manifest_dir());
+        let source = CompactString::from(format!("{}:{}", resolved.display(), line));
+        let krate = infer_crate_name_from_manifest_dir(manifest_dir);
         Self { source, krate }
     }
 
@@ -118,8 +121,8 @@ impl From<SourceRight> for Source {
     fn from(right: SourceRight) -> Self {
         panic!(
             "invalid Source conversion: SourceRight ({}:{}) cannot be used without SourceLeft; join explicitly via SourceLeft::join(SourceRight)",
-            right.file(),
-            right.line()
+            right.location.file(),
+            right.location.line()
         );
     }
 }
@@ -155,18 +158,14 @@ mod tests {
 
     #[test]
     fn resolves_relative_path_from_manifest_dir() {
-        let left = SourceLeft::new("/repo/crate");
-        let right = SourceRight::new("src/lib.rs", 42);
-        let source = left.join(right);
+        let source = Source::resolve_parts("/repo/crate", "src/lib.rs", 42);
         let expected = PathBuf::from("/repo/crate").join("src/lib.rs");
         assert_eq!(source.as_str(), format!("{}:42", expected.display()));
     }
 
     #[test]
     fn preserves_absolute_path() {
-        let left = SourceLeft::new("/repo/crate");
-        let right = SourceRight::new("/other/place/main.rs", 7);
-        let source = left.join(right);
+        let source = Source::resolve_parts("/repo/crate", "/other/place/main.rs", 7);
         assert_eq!(source.as_str(), "/other/place/main.rs:7");
     }
 
@@ -187,9 +186,11 @@ mod tests {
         )
         .expect("failed to write Cargo.toml");
 
-        let left = SourceLeft::new(base.to_str().expect("temp path must be valid utf-8"));
-        let right = SourceRight::new("src/lib.rs", 1);
-        let source = left.join(right);
+        let source = Source::resolve_parts(
+            base.to_str().expect("temp path must be valid utf-8"),
+            "src/lib.rs",
+            1,
+        );
 
         assert_eq!(source.krate(), Some("source-left-right-test"));
         std::fs::remove_dir_all(base).expect("failed to cleanup temp manifest dir");
@@ -207,9 +208,11 @@ mod tests {
         ));
         std::fs::create_dir_all(&base).expect("failed to create temp dir");
 
-        let left = SourceLeft::new(base.to_str().expect("temp path must be valid utf-8"));
-        let right = SourceRight::new("src/lib.rs", 1);
-        let source = left.join(right);
+        let source = Source::resolve_parts(
+            base.to_str().expect("temp path must be valid utf-8"),
+            "src/lib.rs",
+            1,
+        );
 
         assert_eq!(source.krate(), None);
         std::fs::remove_dir_all(base).expect("failed to cleanup temp dir");
