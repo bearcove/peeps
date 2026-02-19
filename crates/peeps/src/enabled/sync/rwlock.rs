@@ -1,11 +1,11 @@
-use peeps_types::{EntityBody, LockEntity, LockKind};
+use peeps_types::{EdgeKind, EntityBody, LockEntity, LockKind};
 
-use super::super::{Source, SourceLeft, SourceRight};
-use peeps_runtime::{AsEntityRef, EntityHandle, EntityRef};
+use super::super::{Source, SourceRight};
+use peeps_runtime::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
 
 pub struct RwLock<T> {
     inner: parking_lot::RwLock<T>,
-    handle: EntityHandle,
+    handle: EntityHandle<peeps_types::Lock>,
 }
 
 impl<T> RwLock<T> {
@@ -16,55 +16,43 @@ impl<T> RwLock<T> {
                 kind: LockKind::RwLock,
             }),
             source,
-        );
+        )
+        .into_typed::<peeps_types::Lock>();
         Self {
             inner: parking_lot::RwLock::new(value),
             handle,
         }
     }
 
-    #[track_caller]
-    pub fn read_with_cx(&self, cx: SourceLeft) -> parking_lot::RwLockReadGuard<'_, T> {
-        self.read_with_source(cx.join(SourceRight::caller()))
-    }
-
+    #[doc(hidden)]
     pub fn read_with_source(&self, _source: Source) -> parking_lot::RwLockReadGuard<'_, T> {
+        if let Some(caller) = current_causal_target() {
+            self.handle.link_to(&caller, EdgeKind::Polls);
+        }
         self.inner.read()
     }
 
-    #[track_caller]
-    pub fn write_with_cx(&self, cx: SourceLeft) -> parking_lot::RwLockWriteGuard<'_, T> {
-        self.write_with_source(cx.join(SourceRight::caller()))
-    }
-
+    #[doc(hidden)]
     pub fn write_with_source(&self, _source: Source) -> parking_lot::RwLockWriteGuard<'_, T> {
+        if let Some(caller) = current_causal_target() {
+            self.handle.link_to(&caller, EdgeKind::Polls);
+        }
         self.inner.write()
     }
 
-    #[track_caller]
-    pub fn try_read_with_cx(&self, cx: SourceLeft) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
-        self.try_read_with_source(cx.join(SourceRight::caller()))
-    }
-
-    pub fn try_read_with_source(
-        &self,
-        _source: Source,
-    ) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
+    #[doc(hidden)]
+    pub fn try_read_with_source(&self, _source: Source) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
+        if let Some(caller) = current_causal_target() {
+            self.handle.link_to(&caller, EdgeKind::Polls);
+        }
         self.inner.try_read()
     }
 
-    #[track_caller]
-    pub fn try_write_with_cx(
-        &self,
-        cx: SourceLeft,
-    ) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
-        self.try_write_with_source(cx.join(SourceRight::caller()))
-    }
-
-    pub fn try_write_with_source(
-        &self,
-        _source: Source,
-    ) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
+    #[doc(hidden)]
+    pub fn try_write_with_source(&self, _source: Source) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
+        if let Some(caller) = current_causal_target() {
+            self.handle.link_to(&caller, EdgeKind::Polls);
+        }
         self.inner.try_write()
     }
 }

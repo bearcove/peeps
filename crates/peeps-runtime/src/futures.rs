@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use super::db::runtime_db;
-use super::handles::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
+use super::handles::{current_causal_target, EntityHandle, EntityRef};
 use super::{Source, FUTURE_CAUSAL_STACK};
 
 pub struct OperationFuture<F> {
@@ -75,8 +75,8 @@ impl<F> Drop for OperationFuture<F> {
     }
 }
 
-pub fn instrument_operation_on_with_source<F>(
-    on: &EntityHandle,
+pub fn instrument_operation_on_with_source<F, S>(
+    on: &EntityHandle<S>,
     fut: F,
     _source: &Source,
 ) -> OperationFuture<F::IntoFuture>

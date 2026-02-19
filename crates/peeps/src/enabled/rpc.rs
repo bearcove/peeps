@@ -1,94 +1,84 @@
 use peeps_types::{
-    EdgeKind, Entity, EntityBody, EntityId, Event, EventKind, EventTarget, RequestEntity,
-    ResponseEntity, ResponseStatus,
+    EdgeKind, EntityBody, EntityId, Event, EventKind, EventTarget, RequestEntity, ResponseEntity,
+    ResponseStatus,
 };
 
-use super::SourceRight;
-use peeps_runtime::{current_process_scope_id, runtime_db, EntityHandle, EntityRef};
+use super::{Source, SourceRight};
+use peeps_runtime::{record_event_with_source, EntityHandle, EntityRef};
 
 #[derive(Clone)]
 pub struct RpcRequestHandle {
-    handle: EntityHandle,
+    handle: EntityHandle<peeps_types::Request>,
 }
 
 impl RpcRequestHandle {
-    #[track_caller]
     pub fn id(&self) -> &EntityId {
         self.handle.id()
     }
 
-    #[track_caller]
     pub fn id_for_wire(&self) -> String {
         String::from(self.handle.id().as_str())
     }
 
-    #[track_caller]
     pub fn entity_ref(&self) -> EntityRef {
         self.handle.entity_ref()
     }
 
-    #[track_caller]
-    pub fn handle(&self) -> &EntityHandle {
+    pub fn handle(&self) -> &EntityHandle<peeps_types::Request> {
         &self.handle
     }
 }
 
 #[derive(Clone)]
 pub struct RpcResponseHandle {
-    handle: EntityHandle,
+    handle: EntityHandle<peeps_types::Response>,
 }
 
 impl RpcResponseHandle {
-    #[track_caller]
     pub fn id(&self) -> &EntityId {
         self.handle.id()
     }
 
-    #[track_caller]
-    pub fn handle(&self) -> &EntityHandle {
+    pub fn handle(&self) -> &EntityHandle<peeps_types::Response> {
         &self.handle
     }
 
-    #[track_caller]
-    pub fn set_status(&self, status: ResponseStatus) {
-        let mut changed = false;
-        if let Ok(mut db) = runtime_db().lock() {
-            changed = db.update_response_status(self.handle.id(), status);
-        }
+    #[doc(hidden)]
+    pub fn set_status_with_source(&self, status: ResponseStatus, source: Source) {
+        let changed = self.handle.mutate(|body| body.status = status);
         if !changed {
             return;
         }
-        let source = SourceRight::caller();
-        if let Ok(event) = Event::new_with_source(
+        let event = Event::new_with_source(
             EventTarget::Entity(self.handle.id().clone()),
             EventKind::StateChanged,
-            &status,
-            source.into_string(),
-            None,
-        ) {
-            if let Ok(mut db) = runtime_db().lock() {
-                db.record_event(event);
-            }
-        }
+            source.clone(),
+        );
+        record_event_with_source(event, &source);
     }
 
-    #[track_caller]
     pub fn mark_ok(&self) {
-        self.set_status(ResponseStatus::Ok);
+        self.set_status_with_source(
+            ResponseStatus::Ok,
+            Source::new(SourceRight::caller().into_string(), None),
+        );
     }
 
-    #[track_caller]
     pub fn mark_error(&self) {
-        self.set_status(ResponseStatus::Error);
+        self.set_status_with_source(
+            ResponseStatus::Error,
+            Source::new(SourceRight::caller().into_string(), None),
+        );
     }
 
-    #[track_caller]
     pub fn mark_cancelled(&self) {
-        self.set_status(ResponseStatus::Cancelled);
+        self.set_status_with_source(
+            ResponseStatus::Cancelled,
+            Source::new(SourceRight::caller().into_string(), None),
+        );
     }
 }
 
-#[track_caller]
 pub fn rpc_request(
     method: impl Into<String>,
     args_preview: impl Into<String>,
@@ -100,7 +90,7 @@ pub fn rpc_request(
         args_preview: args_preview.into(),
     });
     RpcRequestHandle {
-        handle: EntityHandle::new(method, body, source),
+        handle: EntityHandle::new(method, body, source).into_typed::<peeps_types::Request>(),
     }
 }
 
@@ -111,7 +101,7 @@ pub fn rpc_response(method: impl Into<String>, source: SourceRight) -> RpcRespon
         status: ResponseStatus::Pending,
     });
     RpcResponseHandle {
-        handle: EntityHandle::new(format!("{method}"), body, source),
+        handle: EntityHandle::new(method, body, source).into_typed::<peeps_types::Response>(),
     }
 }
 
@@ -121,41 +111,13 @@ pub fn rpc_response_for(
     source: SourceRight,
 ) -> RpcResponseHandle {
     let method = method.into();
-    let request_source_and_krate = if let Ok(db) = runtime_db().lock() {
-        db.entities
-            .get(request.id())
-            .map(|entity| (entity.source.clone(), entity.krate.clone()))
-            .or_else(|| {
-                let process_scope_id = current_process_scope_id()?;
-                db.scopes
-                    .get(&process_scope_id)
-                    .map(|scope| (scope.source.clone(), scope.krate.clone()))
-            })
-    } else {
-        None
-    };
-
     let body = EntityBody::Response(ResponseEntity {
         method: method.clone(),
         status: ResponseStatus::Pending,
     });
-    let mut builder = Entity::builder(format!("{method}"), body);
-    if let Some((request_source, request_krate)) = request_source_and_krate {
-        builder = builder.source(request_source);
-        if let Some(request_krate) = request_krate {
-            builder = builder.krate(request_krate);
-        }
-    } else {
-        builder = builder.source(source.into_string());
-    }
-    let entity = builder
-        .build(&())
-        .expect("response construction with unit meta should be infallible");
     let response = RpcResponseHandle {
-        handle: EntityHandle::from_entity(entity),
+        handle: EntityHandle::new(method, body, source).into_typed::<peeps_types::Response>(),
     };
-    if let Ok(mut db) = runtime_db().lock() {
-        db.upsert_edge(request.id(), response.id(), EdgeKind::RpcLink);
-    }
+    response.handle.link_to(request, EdgeKind::PairedWith);
     response
 }

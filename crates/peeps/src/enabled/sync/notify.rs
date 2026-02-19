@@ -1,74 +1,46 @@
-use peeps_types::{EntityBody, NotifyEntity, OperationKind};
-use std::future::Future;
-use std::sync::atomic::{AtomicU32, Ordering};
+use peeps_types::{EntityBody, NotifyEntity};
 use std::sync::Arc;
 
-use super::super::{Source, SourceLeft, SourceRight};
-use peeps_runtime::{instrument_operation_on_with_source, runtime_db, EntityHandle};
+use super::super::{Source, SourceRight};
+use peeps_runtime::{instrument_operation_on_with_source, EntityHandle};
 
 #[derive(Clone)]
 pub struct Notify {
     inner: Arc<tokio::sync::Notify>,
-    handle: EntityHandle,
-    waiter_count: Arc<AtomicU32>,
+    handle: EntityHandle<peeps_types::Notify>,
 }
 
 impl Notify {
     pub fn new(name: impl Into<String>, source: SourceRight) -> Self {
-        let name = name.into();
         let handle = EntityHandle::new(
-            name,
+            name.into(),
             EntityBody::Notify(NotifyEntity { waiter_count: 0 }),
             source,
-        );
+        )
+        .into_typed::<peeps_types::Notify>();
         Self {
             inner: Arc::new(tokio::sync::Notify::new()),
             handle,
-            waiter_count: Arc::new(AtomicU32::new(0)),
         }
     }
 
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn notified_with_cx(&self, cx: SourceLeft) -> impl Future<Output = ()> + '_ {
-        self.notified_with_source(cx.join(SourceRight::caller()))
+    #[doc(hidden)]
+    pub async fn notified_with_source(&self, source: Source) {
+        let _ = self
+            .handle
+            .mutate(|body| body.waiter_count = body.waiter_count.saturating_add(1));
+
+        instrument_operation_on_with_source(&self.handle, self.inner.notified(), &source).await;
+
+        let _ = self
+            .handle
+            .mutate(|body| body.waiter_count = body.waiter_count.saturating_sub(1));
     }
 
-    #[allow(clippy::manual_async_fn)]
-    pub fn notified_with_source(&self, source: Source) -> impl Future<Output = ()> + '_ {
-        async move {
-            let waiters = self
-                .waiter_count
-                .fetch_add(1, Ordering::Relaxed)
-                .saturating_add(1);
-            if let Ok(mut db) = runtime_db().lock() {
-                db.update_notify_waiter_count(self.handle.id(), waiters);
-            }
-
-            instrument_operation_on_with_source(
-                &self.handle,
-                OperationKind::NotifyWait,
-                self.inner.notified(),
-                &source,
-            )
-            .await;
-
-            let waiters = self
-                .waiter_count
-                .fetch_sub(1, Ordering::Relaxed)
-                .saturating_sub(1);
-            if let Ok(mut db) = runtime_db().lock() {
-                db.update_notify_waiter_count(self.handle.id(), waiters);
-            }
-        }
-    }
-
-    #[track_caller]
     pub fn notify_one(&self) {
         self.inner.notify_one();
     }
 
-    #[track_caller]
     pub fn notify_waiters(&self) {
         self.inner.notify_waiters();
     }

@@ -1,14 +1,12 @@
-use peeps_types::{EntityBody, OnceCellEntity, OnceCellState, OperationKind};
+use peeps_types::{EntityBody, OnceCellEntity, OnceCellState};
 use std::future::Future;
-use std::sync::atomic::{AtomicU32, Ordering};
 
-use super::super::{Source, SourceLeft, SourceRight};
-use peeps_runtime::{instrument_operation_on_with_source, runtime_db, EntityHandle};
+use super::super::{Source, SourceRight};
+use peeps_runtime::{instrument_operation_on_with_source, EntityHandle};
 
 pub struct OnceCell<T> {
     inner: tokio::sync::OnceCell<T>,
-    handle: EntityHandle,
-    waiter_count: AtomicU32,
+    handle: EntityHandle<peeps_types::OnceCell>,
 }
 
 impl<T> OnceCell<T> {
@@ -20,164 +18,104 @@ impl<T> OnceCell<T> {
                 state: OnceCellState::Empty,
             }),
             source,
-        );
+        )
+        .into_typed::<peeps_types::OnceCell>();
         Self {
             inner: tokio::sync::OnceCell::new(),
             handle,
-            waiter_count: AtomicU32::new(0),
         }
     }
 
-    #[track_caller]
     pub fn get(&self) -> Option<&T> {
         self.inner.get()
     }
 
-    #[track_caller]
     pub fn initialized(&self) -> bool {
         self.inner.initialized()
     }
 
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn get_or_init_with_cx<'a, F, Fut>(
-        &'a self,
-        f: F,
-        cx: SourceLeft,
-    ) -> impl Future<Output = &'a T> + 'a
+    #[doc(hidden)]
+    pub async fn get_or_init_with_source<'a, F, Fut>(&'a self, f: F, source: Source) -> &'a T
     where
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = T> + 'a,
     {
-        self.get_or_init_with_source(f, cx.join(SourceRight::caller()))
-    }
+        let _ = self.handle.mutate(|body| {
+            body.waiter_count = body.waiter_count.saturating_add(1);
+            body.state = OnceCellState::Initializing;
+        });
 
-    #[allow(clippy::manual_async_fn)]
-    pub fn get_or_init_with_source<'a, F, Fut>(
-        &'a self,
-        f: F,
-        source: Source,
-    ) -> impl Future<Output = &'a T> + 'a
-    where
-        F: FnOnce() -> Fut + 'a,
-        Fut: Future<Output = T> + 'a,
-    {
-        async move {
-            let waiters = self
-                .waiter_count
-                .fetch_add(1, Ordering::Relaxed)
-                .saturating_add(1);
-            if let Ok(mut db) = runtime_db().lock() {
-                db.update_once_cell_state(self.handle.id(), waiters, OnceCellState::Initializing);
-            }
+        let result =
+            instrument_operation_on_with_source(&self.handle, self.inner.get_or_init(f), &source)
+                .await;
 
-            let result = instrument_operation_on_with_source(
-                &self.handle,
-                OperationKind::OncecellWait,
-                self.inner.get_or_init(f),
-                &source,
-            )
-            .await;
-
-            let waiters = self
-                .waiter_count
-                .fetch_sub(1, Ordering::Relaxed)
-                .saturating_sub(1);
-            let state = if self.inner.initialized() {
+        let initialized = self.inner.initialized();
+        let _ = self.handle.mutate(|body| {
+            body.waiter_count = body.waiter_count.saturating_sub(1);
+            body.state = if initialized {
                 OnceCellState::Initialized
-            } else if waiters > 0 {
+            } else if body.waiter_count > 0 {
                 OnceCellState::Initializing
             } else {
                 OnceCellState::Empty
             };
-            if let Ok(mut db) = runtime_db().lock() {
-                db.update_once_cell_state(self.handle.id(), waiters, state);
-            }
+        });
 
-            result
-        }
+        result
     }
 
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn get_or_try_init_with_cx<'a, F, Fut, E>(
-        &'a self,
-        f: F,
-        cx: SourceLeft,
-    ) -> impl Future<Output = Result<&'a T, E>> + 'a
-    where
-        F: FnOnce() -> Fut + 'a,
-        Fut: Future<Output = Result<T, E>> + 'a,
-    {
-        self.get_or_try_init_with_source(f, cx.join(SourceRight::caller()))
-    }
-
-    #[allow(clippy::manual_async_fn)]
-    pub fn get_or_try_init_with_source<'a, F, Fut, E>(
+    #[doc(hidden)]
+    pub async fn get_or_try_init_with_source<'a, F, Fut, E>(
         &'a self,
         f: F,
         source: Source,
-    ) -> impl Future<Output = Result<&'a T, E>> + 'a
+    ) -> Result<&'a T, E>
     where
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = Result<T, E>> + 'a,
     {
-        async move {
-            let waiters = self
-                .waiter_count
-                .fetch_add(1, Ordering::Relaxed)
-                .saturating_add(1);
-            if let Ok(mut db) = runtime_db().lock() {
-                db.update_once_cell_state(self.handle.id(), waiters, OnceCellState::Initializing);
-            }
+        let _ = self.handle.mutate(|body| {
+            body.waiter_count = body.waiter_count.saturating_add(1);
+            body.state = OnceCellState::Initializing;
+        });
 
-            let result = instrument_operation_on_with_source(
-                &self.handle,
-                OperationKind::OncecellWait,
-                self.inner.get_or_try_init(f),
-                &source,
-            )
-            .await;
+        let result = instrument_operation_on_with_source(
+            &self.handle,
+            self.inner.get_or_try_init(f),
+            &source,
+        )
+        .await;
 
-            let waiters = self
-                .waiter_count
-                .fetch_sub(1, Ordering::Relaxed)
-                .saturating_sub(1);
-            let state = if self.inner.initialized() {
+        let initialized = self.inner.initialized();
+        let _ = self.handle.mutate(|body| {
+            body.waiter_count = body.waiter_count.saturating_sub(1);
+            body.state = if initialized {
                 OnceCellState::Initialized
-            } else if waiters > 0 {
+            } else if body.waiter_count > 0 {
                 OnceCellState::Initializing
             } else {
                 OnceCellState::Empty
             };
-            if let Ok(mut db) = runtime_db().lock() {
-                db.update_once_cell_state(self.handle.id(), waiters, state);
-            }
+        });
 
-            result
-        }
+        result
     }
 
-    #[track_caller]
     pub fn set(&self, value: T) -> Result<(), T> {
         let result = self.inner.set(value).map_err(|e| match e {
             tokio::sync::SetError::AlreadyInitializedError(v) => v,
             tokio::sync::SetError::InitializingError(v) => v,
         });
-        let state = if self.inner.initialized() {
-            OnceCellState::Initialized
-        } else if self.waiter_count.load(Ordering::Relaxed) > 0 {
-            OnceCellState::Initializing
-        } else {
-            OnceCellState::Empty
-        };
-        if let Ok(mut db) = runtime_db().lock() {
-            db.update_once_cell_state(
-                self.handle.id(),
-                self.waiter_count.load(Ordering::Relaxed),
-                state,
-            );
-        }
+        let initialized = self.inner.initialized();
+        let _ = self.handle.mutate(|body| {
+            body.state = if initialized {
+                OnceCellState::Initialized
+            } else if body.waiter_count > 0 {
+                OnceCellState::Initializing
+            } else {
+                OnceCellState::Empty
+            };
+        });
         result
     }
 }

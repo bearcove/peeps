@@ -116,8 +116,8 @@ pub struct EncodedScopeRow {
 pub struct EncodedEdgeRow {
     pub src_id: EntityId,
     pub dst_id: EntityId,
+    pub source_id: SourceId,
     pub kind_json: Json,
-    pub meta_json: Json,
 }
 
 #[derive(Debug, Clone)]
@@ -165,11 +165,9 @@ pub fn encode_edge_row(edge: &Edge) -> Result<EncodedEdgeRow, EncodeError> {
     Ok(EncodedEdgeRow {
         src_id: EntityId::new(edge.src.as_str()),
         dst_id: EntityId::new(edge.dst.as_str()),
+        source_id: edge.source,
         kind_json: Json::new(
             facet_json::to_string(&edge.kind).map_err(|e| EncodeError::Json(e.to_string()))?,
-        ),
-        meta_json: Json::new(
-            facet_json::to_string(&edge.meta).map_err(|e| EncodeError::Json(e.to_string()))?,
         ),
     })
 }
@@ -273,7 +271,7 @@ pub fn insert_encoded_snapshot_batch(
         tables.scopes.as_str()
     );
     let edges_sql = format!(
-        "{} [{}] (snapshot_id, src_id, dst_id, kind_json, meta_json) VALUES (?1, ?2, ?3, ?4, ?5)",
+        "{} [{}] (snapshot_id, src_id, dst_id, source_id, kind_json) VALUES (?1, ?2, ?3, ?4, ?5)",
         mode.verb(),
         tables.edges.as_str()
     );
@@ -320,8 +318,8 @@ pub fn insert_encoded_snapshot_batch(
                 snapshot_id,
                 row.src_id,
                 row.dst_id,
+                row.source_id,
                 row.kind_json,
-                row.meta_json,
             ])?;
             counts.edges += 1;
         }

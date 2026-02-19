@@ -1,13 +1,15 @@
 use peeps_types::{
-    BufferState, Change, ChannelDetails, ChannelEndpointLifecycle, Edge, EdgeKind, Entity,
-    EntityBody, EntityId, Event, OnceCellState, OneshotState, PTime, PullChangesResponse,
-    ResponseStatus, Scope, ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId,
+    Change, Edge, EdgeKind, Entity, EntityBody, EntityId, Event, PTime, PullChangesResponse, Scope,
+    ScopeBody, ScopeId, SeqNo, StampedChange, StreamCursor, StreamId, TaskScopeBody,
 };
 use std::collections::{hash_map::DefaultHasher, BTreeMap, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::sync::{Mutex as StdMutex, OnceLock};
 
-use super::{current_tokio_task_key, COMPACT_TARGET_CHANGES, MAX_CHANGES_BEFORE_COMPACT};
+use super::{
+    current_process_scope_id, current_tokio_task_key, Source, SourceRight, COMPACT_TARGET_CHANGES,
+    MAX_CHANGES_BEFORE_COMPACT,
+};
 
 pub fn runtime_db() -> &'static StdMutex<RuntimeDb> {
     static DB: OnceLock<StdMutex<RuntimeDb>> = OnceLock::new();
@@ -165,7 +167,7 @@ impl RuntimeDb {
         let entity_json = facet_json::to_vec(&entity).ok();
         self.entities
             .insert(EntityId::new(entity.id.as_str()), entity);
-        if let Some(scope_id) = ensure_process_scope_id() {
+        if let Some(scope_id) = current_process_scope_id() {
             self.link_entity_to_scope(&entity_id, &scope_id);
         }
         if should_link_task_scope {
@@ -219,114 +221,18 @@ impl RuntimeDb {
             self.task_scope_ids.remove(&task_key);
         }
 
-        let scope = Scope::builder(format!("task.{task_key}"), ScopeBody::Task)
-            .source("tokio::task::try_id")
-            .build(&())
-            .expect("task scope construction with unit meta should be infallible");
+        let scope = Scope::new(
+            Source::new("tokio::task::try_id", None),
+            format!("task.{task_key}"),
+            ScopeBody::Task(TaskScopeBody {
+                task_key: task_key.clone(),
+            }),
+        );
         let scope_id = ScopeId::new(scope.id.as_str());
         self.upsert_scope(scope);
         self.task_scope_ids
             .insert(task_key, ScopeId::new(scope_id.as_str()));
         Some(scope_id)
-    }
-
-    pub fn update_channel_endpoint_state(
-        &mut self,
-        id: &EntityId,
-        lifecycle: ChannelEndpointLifecycle,
-        buffer: Option<BufferState>,
-    ) {
-        let _ = self.mutate_entity_body_and_maybe_upsert(id, |body| match body {
-            EntityBody::ChannelTx(endpoint) | EntityBody::ChannelRx(endpoint) => {
-                endpoint.lifecycle = lifecycle;
-                match &mut endpoint.details {
-                    ChannelDetails::Mpsc(details) => {
-                        details.buffer = buffer;
-                    }
-                    ChannelDetails::Broadcast(details) => {
-                        details.buffer = buffer;
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
-        });
-    }
-
-    pub fn update_oneshot_endpoint_state(
-        &mut self,
-        id: &EntityId,
-        lifecycle: ChannelEndpointLifecycle,
-        state: OneshotState,
-    ) {
-        let _ = self.mutate_entity_body_and_maybe_upsert(id, |body| match body {
-            EntityBody::ChannelTx(endpoint) | EntityBody::ChannelRx(endpoint) => {
-                endpoint.lifecycle = lifecycle;
-                if let ChannelDetails::Oneshot(details) = &mut endpoint.details {
-                    details.state = state;
-                }
-            }
-            _ => {}
-        });
-    }
-
-    pub fn update_watch_last_update(
-        &mut self,
-        id: &EntityId,
-        last_update_at: Option<peeps_types::PTime>,
-    ) {
-        let _ = self.mutate_entity_body_and_maybe_upsert(id, |body| match body {
-            EntityBody::ChannelTx(endpoint) | EntityBody::ChannelRx(endpoint) => {
-                if let ChannelDetails::Watch(details) = &mut endpoint.details {
-                    details.last_update_at = last_update_at;
-                }
-            }
-            _ => {}
-        });
-    }
-
-    pub fn update_notify_waiter_count(&mut self, id: &EntityId, waiter_count: u32) {
-        let _ = self.mutate_entity_body_and_maybe_upsert(id, |body| {
-            if let EntityBody::Notify(notify) = body {
-                notify.waiter_count = waiter_count;
-            }
-        });
-    }
-
-    pub fn update_once_cell_state(
-        &mut self,
-        id: &EntityId,
-        waiter_count: u32,
-        state: OnceCellState,
-    ) {
-        let _ = self.mutate_entity_body_and_maybe_upsert(id, |body| {
-            if let EntityBody::OnceCell(once_cell) = body {
-                once_cell.waiter_count = waiter_count;
-                once_cell.state = state;
-            }
-        });
-    }
-
-    pub fn update_semaphore_state(
-        &mut self,
-        id: &EntityId,
-        max_permits: u32,
-        handed_out_permits: u32,
-    ) {
-        let _ = self.mutate_entity_body_and_maybe_upsert(id, |body| {
-            if let EntityBody::Semaphore(semaphore) = body {
-                semaphore.max_permits = max_permits;
-                semaphore.handed_out_permits = handed_out_permits;
-            }
-        });
-    }
-
-    pub fn update_response_status(&mut self, id: &EntityId, status: ResponseStatus) -> bool {
-        self.mutate_entity_body_and_maybe_upsert(id, |body| {
-            if let EntityBody::Response(response) = body {
-                response.status = status;
-            }
-        })
     }
 
     fn body_fingerprint(body: &EntityBody) -> u64 {
@@ -454,17 +360,7 @@ impl RuntimeDb {
     }
 
     pub fn upsert_edge(&mut self, src: &EntityId, dst: &EntityId, kind: EdgeKind) {
-        self.upsert_edge_with_meta(src, dst, kind, facet_value::Value::NULL);
-    }
-
-    pub fn upsert_edge_with_meta(
-        &mut self,
-        src: &EntityId,
-        dst: &EntityId,
-        kind: EdgeKind,
-        meta: facet_value::Value,
-    ) {
-        if let Some(process_scope_id) = ensure_process_scope_id() {
+        if let Some(process_scope_id) = current_process_scope_id() {
             if self.entities.contains_key(src) {
                 self.link_entity_to_scope(src, &process_scope_id);
             }
@@ -477,17 +373,15 @@ impl RuntimeDb {
             dst: EntityId::new(dst.as_str()),
             kind,
         };
-        if let Some(existing) = self.edges.get(&key) {
-            if existing.meta == meta {
-                return;
-            }
+        if self.edges.contains_key(&key) {
+            return;
         }
-        let edge = Edge {
-            src: EntityId::new(src.as_str()),
-            dst: EntityId::new(dst.as_str()),
+        let edge = Edge::new(
+            EntityId::new(src.as_str()),
+            EntityId::new(dst.as_str()),
             kind,
-            meta,
-        };
+            Source::new(SourceRight::caller().into_string(), None),
+        );
         let edge_json = facet_json::to_vec(&edge).ok();
         self.edges.insert(key, edge);
         if let Some(edge_json) = edge_json {

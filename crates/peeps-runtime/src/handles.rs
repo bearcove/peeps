@@ -69,13 +69,7 @@ pub struct ScopeHandle {
 impl ScopeHandle {
     pub fn new(name: impl Into<String>, body: ScopeBody, source: impl Into<Source>) -> Self {
         let source: Source = source.into();
-        let mut builder = Scope::builder(name, body).source(source.as_str());
-        if let Some(krate) = source.krate() {
-            builder = builder.krate(krate);
-        }
-        let scope = builder
-            .build(&())
-            .expect("scope construction with unit meta should be infallible");
+        let scope = Scope::new(source.clone(), name, body);
         let id = ScopeId::new(scope.id.as_str());
 
         if let Ok(mut db) = runtime_db().lock() {
@@ -113,10 +107,18 @@ impl Drop for HandleInner {
     }
 }
 
-#[derive(Clone)]
 pub struct EntityHandle<S = ()> {
     inner: Arc<HandleInner>,
     _slot: PhantomData<S>,
+}
+
+impl<S> Clone for EntityHandle<S> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+            _slot: PhantomData,
+        }
+    }
 }
 
 impl EntityHandle<()> {
@@ -130,13 +132,7 @@ impl EntityHandle<()> {
         source: impl Into<Source>,
     ) -> Self {
         let source: Source = source.into();
-        let mut builder = Entity::builder(name, body).source(source.as_str());
-        if let Some(krate) = source.krate() {
-            builder = builder.krate(krate);
-        }
-        let entity = builder
-            .build(&())
-            .expect("entity construction with unit meta should be infallible");
+        let entity = Entity::new(source, name, body);
         Self::from_entity(entity)
     }
 

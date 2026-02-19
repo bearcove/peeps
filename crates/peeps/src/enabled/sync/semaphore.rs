@@ -1,84 +1,44 @@
-use peeps_types::{EdgeKind, EntityBody, EntityId, OperationKind, SemaphoreEntity};
+use peeps_types::{EdgeKind, EntityBody, SemaphoreEntity};
 use std::collections::BTreeMap;
-use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
-use super::super::{Source, SourceLeft, SourceRight};
+use super::super::{Source, SourceRight};
 use peeps_runtime::{
-    current_causal_target, instrument_operation_on_with_source, runtime_db, AsEntityRef,
-    EntityHandle, EntityRef,
+    current_causal_target, instrument_operation_on_with_source, AsEntityRef, EdgeHandle,
+    EntityHandle, EntityRef, WeakEntityHandle,
 };
 
 #[derive(Clone)]
 pub struct Semaphore {
     inner: Arc<tokio::sync::Semaphore>,
-    handle: EntityHandle,
+    handle: EntityHandle<peeps_types::Semaphore>,
     max_permits: Arc<AtomicU32>,
-    holder_counts: Arc<StdMutex<BTreeMap<EntityId, u32>>>,
+    holder_counts: Arc<StdMutex<BTreeMap<EntityRef, HolderEdge>>>,
+}
+
+struct HolderEdge {
+    count: u32,
+    edge: EdgeHandle,
 }
 
 pub struct SemaphorePermit<'a> {
     inner: Option<tokio::sync::SemaphorePermit<'a>>,
-    semaphore_id: EntityId,
-    holder_future_id: Option<EntityId>,
-    holder_counts: Arc<StdMutex<BTreeMap<EntityId, u32>>>,
     semaphore: Arc<tokio::sync::Semaphore>,
+    semaphore_handle: WeakEntityHandle<peeps_types::Semaphore>,
+    holder_ref: Option<EntityRef>,
+    holder_counts: Arc<StdMutex<BTreeMap<EntityRef, HolderEdge>>>,
     max_permits: Arc<AtomicU32>,
 }
 
 pub struct OwnedSemaphorePermit {
     inner: Option<tokio::sync::OwnedSemaphorePermit>,
-    semaphore_id: EntityId,
-    holder_future_id: Option<EntityId>,
-    holder_counts: Arc<StdMutex<BTreeMap<EntityId, u32>>>,
     semaphore: Arc<tokio::sync::Semaphore>,
+    semaphore_handle: WeakEntityHandle<peeps_types::Semaphore>,
+    holder_ref: Option<EntityRef>,
+    holder_counts: Arc<StdMutex<BTreeMap<EntityRef, HolderEdge>>>,
     max_permits: Arc<AtomicU32>,
-}
-
-pub(super) fn sync_semaphore_state(
-    semaphore_id: &EntityId,
-    semaphore: &Arc<tokio::sync::Semaphore>,
-    max_permits: u32,
-) {
-    let available = semaphore.available_permits().min(u32::MAX as usize) as u32;
-    let handed_out_permits = max_permits.saturating_sub(available);
-    if let Ok(mut db) = runtime_db().lock() {
-        db.update_semaphore_state(semaphore_id, max_permits, handed_out_permits);
-    }
-}
-
-pub(super) fn release_semaphore_holder_edge(
-    semaphore_id: &EntityId,
-    holder_future_id: &mut Option<EntityId>,
-    holder_counts: &Arc<StdMutex<BTreeMap<EntityId, u32>>>,
-) {
-    let Some(holder_id) = holder_future_id.take() else {
-        return;
-    };
-
-    let should_remove = if let Ok(mut counts) = holder_counts.lock() {
-        match counts.get_mut(&holder_id) {
-            None => false,
-            Some(count) if *count > 1 => {
-                *count -= 1;
-                false
-            }
-            Some(_) => {
-                counts.remove(&holder_id);
-                true
-            }
-        }
-    } else {
-        false
-    };
-
-    if should_remove {
-        if let Ok(mut db) = runtime_db().lock() {
-            db.remove_edge(semaphore_id, &holder_id, EdgeKind::Holds);
-        }
-    }
 }
 
 impl Semaphore {
@@ -91,7 +51,8 @@ impl Semaphore {
                 handed_out_permits: 0,
             }),
             source,
-        );
+        )
+        .into_typed::<peeps_types::Semaphore>();
         Self {
             inner: Arc::new(tokio::sync::Semaphore::new(permits)),
             handle,
@@ -100,22 +61,18 @@ impl Semaphore {
         }
     }
 
-    #[track_caller]
     pub fn available_permits(&self) -> usize {
         self.inner.available_permits()
     }
 
-    #[track_caller]
     pub fn close(&self) {
         self.inner.close();
     }
 
-    #[track_caller]
     pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
     }
 
-    #[track_caller]
     pub fn add_permits(&self, n: usize) {
         self.inner.add_permits(n);
         let delta = n.min(u32::MAX as usize) as u32;
@@ -126,256 +83,205 @@ impl Semaphore {
         self.sync_state(max);
     }
 
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn acquire_with_cx(
-        &self,
-        cx: SourceLeft,
-    ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
-        self.acquire_with_source(cx.join(SourceRight::caller()))
-    }
-
-    #[allow(clippy::manual_async_fn)]
-    pub fn acquire_with_source(
+    #[doc(hidden)]
+    pub async fn acquire_with_source(
         &self,
         source: Source,
-    ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
-        let holder_future_id = current_causal_target().map(|target| target.id().clone());
-        async move {
-            let permit = instrument_operation_on_with_source(
-                &self.handle,
-                OperationKind::Acquire,
-                self.inner.acquire(),
-                &source,
-            )
+    ) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
+        let holder_ref = current_causal_target();
+        let permit = instrument_operation_on_with_source(&self.handle, self.inner.acquire(), &source)
             .await?;
-            if let Some(holder_id) = holder_future_id.as_ref() {
-                self.note_holder_acquired(holder_id);
-            }
-            self.sync_state(self.max_permits.load(Ordering::Relaxed));
-            Ok(SemaphorePermit {
-                inner: Some(permit),
-                semaphore_id: self.handle.id().clone(),
-                holder_future_id,
-                holder_counts: Arc::clone(&self.holder_counts),
-                semaphore: Arc::clone(&self.inner),
-                max_permits: Arc::clone(&self.max_permits),
-            })
-        }
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn acquire_many_with_cx(
-        &self,
-        n: u32,
-        cx: SourceLeft,
-    ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
-        self.acquire_many_with_source(n, cx.join(SourceRight::caller()))
-    }
-
-    #[allow(clippy::manual_async_fn)]
-    pub fn acquire_many_with_source(
-        &self,
-        n: u32,
-        source: Source,
-    ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
-        let holder_future_id = current_causal_target().map(|target| target.id().clone());
-        async move {
-            let permit = instrument_operation_on_with_source(
-                &self.handle,
-                OperationKind::Acquire,
-                self.inner.acquire_many(n),
-                &source,
-            )
-            .await?;
-            if let Some(holder_id) = holder_future_id.as_ref() {
-                self.note_holder_acquired(holder_id);
-            }
-            self.sync_state(self.max_permits.load(Ordering::Relaxed));
-            Ok(SemaphorePermit {
-                inner: Some(permit),
-                semaphore_id: self.handle.id().clone(),
-                holder_future_id,
-                holder_counts: Arc::clone(&self.holder_counts),
-                semaphore: Arc::clone(&self.inner),
-                max_permits: Arc::clone(&self.max_permits),
-            })
-        }
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn acquire_owned_with_cx(
-        &self,
-        cx: SourceLeft,
-    ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
-        self.acquire_owned_with_source(cx.join(SourceRight::caller()))
-    }
-
-    #[allow(clippy::manual_async_fn)]
-    pub fn acquire_owned_with_source(
-        &self,
-        source: Source,
-    ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
-        let holder_future_id = current_causal_target().map(|target| target.id().clone());
-        async move {
-            let permit = instrument_operation_on_with_source(
-                &self.handle,
-                OperationKind::Acquire,
-                Arc::clone(&self.inner).acquire_owned(),
-                &source,
-            )
-            .await?;
-            if let Some(holder_id) = holder_future_id.as_ref() {
-                self.note_holder_acquired(holder_id);
-            }
-            self.sync_state(self.max_permits.load(Ordering::Relaxed));
-            Ok(OwnedSemaphorePermit {
-                inner: Some(permit),
-                semaphore_id: self.handle.id().clone(),
-                holder_future_id,
-                holder_counts: Arc::clone(&self.holder_counts),
-                semaphore: Arc::clone(&self.inner),
-                max_permits: Arc::clone(&self.max_permits),
-            })
-        }
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn acquire_many_owned_with_cx(
-        &self,
-        n: u32,
-        cx: SourceLeft,
-    ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
-        self.acquire_many_owned_with_source(n, cx.join(SourceRight::caller()))
-    }
-
-    #[allow(clippy::manual_async_fn)]
-    pub fn acquire_many_owned_with_source(
-        &self,
-        n: u32,
-        source: Source,
-    ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
-        let holder_future_id = current_causal_target().map(|target| target.id().clone());
-        async move {
-            let permit = instrument_operation_on_with_source(
-                &self.handle,
-                OperationKind::Acquire,
-                Arc::clone(&self.inner).acquire_many_owned(n),
-                &source,
-            )
-            .await?;
-            if let Some(holder_id) = holder_future_id.as_ref() {
-                self.note_holder_acquired(holder_id);
-            }
-            self.sync_state(self.max_permits.load(Ordering::Relaxed));
-            Ok(OwnedSemaphorePermit {
-                inner: Some(permit),
-                semaphore_id: self.handle.id().clone(),
-                holder_future_id,
-                holder_counts: Arc::clone(&self.holder_counts),
-                semaphore: Arc::clone(&self.inner),
-                max_permits: Arc::clone(&self.max_permits),
-            })
-        }
-    }
-
-    #[track_caller]
-    pub fn try_acquire(&self) -> Result<SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
-        let permit = self.inner.try_acquire()?;
-        let holder_future_id = current_causal_target().map(|target| target.id().clone());
-        if let Some(holder_id) = holder_future_id.as_ref() {
-            self.note_holder_acquired(holder_id);
+        if let Some(holder_ref) = holder_ref.as_ref() {
+            self.note_holder_acquired(holder_ref);
         }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(SemaphorePermit {
             inner: Some(permit),
-            semaphore_id: self.handle.id().clone(),
-            holder_future_id,
-            holder_counts: Arc::clone(&self.holder_counts),
             semaphore: Arc::clone(&self.inner),
+            semaphore_handle: self.handle.downgrade(),
+            holder_ref,
+            holder_counts: Arc::clone(&self.holder_counts),
             max_permits: Arc::clone(&self.max_permits),
         })
     }
 
-    #[track_caller]
+    #[doc(hidden)]
+    pub async fn acquire_many_with_source(
+        &self,
+        n: u32,
+        source: Source,
+    ) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
+        let holder_ref = current_causal_target();
+        let permit = instrument_operation_on_with_source(
+            &self.handle,
+            self.inner.acquire_many(n),
+            &source,
+        )
+        .await?;
+        if let Some(holder_ref) = holder_ref.as_ref() {
+            self.note_holder_acquired(holder_ref);
+        }
+        self.sync_state(self.max_permits.load(Ordering::Relaxed));
+        Ok(SemaphorePermit {
+            inner: Some(permit),
+            semaphore: Arc::clone(&self.inner),
+            semaphore_handle: self.handle.downgrade(),
+            holder_ref,
+            holder_counts: Arc::clone(&self.holder_counts),
+            max_permits: Arc::clone(&self.max_permits),
+        })
+    }
+
+    #[doc(hidden)]
+    pub async fn acquire_owned_with_source(
+        &self,
+        source: Source,
+    ) -> Result<OwnedSemaphorePermit, tokio::sync::AcquireError> {
+        let holder_ref = current_causal_target();
+        let permit = instrument_operation_on_with_source(
+            &self.handle,
+            Arc::clone(&self.inner).acquire_owned(),
+            &source,
+        )
+        .await?;
+        if let Some(holder_ref) = holder_ref.as_ref() {
+            self.note_holder_acquired(holder_ref);
+        }
+        self.sync_state(self.max_permits.load(Ordering::Relaxed));
+        Ok(OwnedSemaphorePermit {
+            inner: Some(permit),
+            semaphore: Arc::clone(&self.inner),
+            semaphore_handle: self.handle.downgrade(),
+            holder_ref,
+            holder_counts: Arc::clone(&self.holder_counts),
+            max_permits: Arc::clone(&self.max_permits),
+        })
+    }
+
+    #[doc(hidden)]
+    pub async fn acquire_many_owned_with_source(
+        &self,
+        n: u32,
+        source: Source,
+    ) -> Result<OwnedSemaphorePermit, tokio::sync::AcquireError> {
+        let holder_ref = current_causal_target();
+        let permit = instrument_operation_on_with_source(
+            &self.handle,
+            Arc::clone(&self.inner).acquire_many_owned(n),
+            &source,
+        )
+        .await?;
+        if let Some(holder_ref) = holder_ref.as_ref() {
+            self.note_holder_acquired(holder_ref);
+        }
+        self.sync_state(self.max_permits.load(Ordering::Relaxed));
+        Ok(OwnedSemaphorePermit {
+            inner: Some(permit),
+            semaphore: Arc::clone(&self.inner),
+            semaphore_handle: self.handle.downgrade(),
+            holder_ref,
+            holder_counts: Arc::clone(&self.holder_counts),
+            max_permits: Arc::clone(&self.max_permits),
+        })
+    }
+
+    pub fn try_acquire(&self) -> Result<SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
+        let permit = self.inner.try_acquire()?;
+        let holder_ref = current_causal_target();
+        if let Some(holder_ref) = holder_ref.as_ref() {
+            self.note_holder_acquired(holder_ref);
+        }
+        self.sync_state(self.max_permits.load(Ordering::Relaxed));
+        Ok(SemaphorePermit {
+            inner: Some(permit),
+            semaphore: Arc::clone(&self.inner),
+            semaphore_handle: self.handle.downgrade(),
+            holder_ref,
+            holder_counts: Arc::clone(&self.holder_counts),
+            max_permits: Arc::clone(&self.max_permits),
+        })
+    }
+
     pub fn try_acquire_many(
         &self,
         n: u32,
     ) -> Result<SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
         let permit = self.inner.try_acquire_many(n)?;
-        let holder_future_id = current_causal_target().map(|target| target.id().clone());
-        if let Some(holder_id) = holder_future_id.as_ref() {
-            self.note_holder_acquired(holder_id);
+        let holder_ref = current_causal_target();
+        if let Some(holder_ref) = holder_ref.as_ref() {
+            self.note_holder_acquired(holder_ref);
         }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(SemaphorePermit {
             inner: Some(permit),
-            semaphore_id: self.handle.id().clone(),
-            holder_future_id,
-            holder_counts: Arc::clone(&self.holder_counts),
             semaphore: Arc::clone(&self.inner),
+            semaphore_handle: self.handle.downgrade(),
+            holder_ref,
+            holder_counts: Arc::clone(&self.holder_counts),
             max_permits: Arc::clone(&self.max_permits),
         })
     }
 
-    #[track_caller]
     pub fn try_acquire_owned(&self) -> Result<OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
         let permit = Arc::clone(&self.inner).try_acquire_owned()?;
-        let holder_future_id = current_causal_target().map(|target| target.id().clone());
-        if let Some(holder_id) = holder_future_id.as_ref() {
-            self.note_holder_acquired(holder_id);
+        let holder_ref = current_causal_target();
+        if let Some(holder_ref) = holder_ref.as_ref() {
+            self.note_holder_acquired(holder_ref);
         }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(OwnedSemaphorePermit {
             inner: Some(permit),
-            semaphore_id: self.handle.id().clone(),
-            holder_future_id,
-            holder_counts: Arc::clone(&self.holder_counts),
             semaphore: Arc::clone(&self.inner),
+            semaphore_handle: self.handle.downgrade(),
+            holder_ref,
+            holder_counts: Arc::clone(&self.holder_counts),
             max_permits: Arc::clone(&self.max_permits),
         })
     }
 
-    #[track_caller]
     pub fn try_acquire_many_owned(
         &self,
         n: u32,
     ) -> Result<OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
         let permit = Arc::clone(&self.inner).try_acquire_many_owned(n)?;
-        let holder_future_id = current_causal_target().map(|target| target.id().clone());
-        if let Some(holder_id) = holder_future_id.as_ref() {
-            self.note_holder_acquired(holder_id);
+        let holder_ref = current_causal_target();
+        if let Some(holder_ref) = holder_ref.as_ref() {
+            self.note_holder_acquired(holder_ref);
         }
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(OwnedSemaphorePermit {
             inner: Some(permit),
-            semaphore_id: self.handle.id().clone(),
-            holder_future_id,
-            holder_counts: Arc::clone(&self.holder_counts),
             semaphore: Arc::clone(&self.inner),
+            semaphore_handle: self.handle.downgrade(),
+            holder_ref,
+            holder_counts: Arc::clone(&self.holder_counts),
             max_permits: Arc::clone(&self.max_permits),
         })
     }
 
     fn sync_state(&self, max_permits: u32) {
-        sync_semaphore_state(self.handle.id(), &self.inner, max_permits);
+        let available = self.inner.available_permits().min(u32::MAX as usize) as u32;
+        let handed_out = max_permits.saturating_sub(available);
+        let _ = self.handle.mutate(|body| {
+            body.max_permits = max_permits;
+            body.handed_out_permits = handed_out;
+        });
     }
 
-    fn note_holder_acquired(&self, holder_id: &EntityId) {
-        let should_insert = if let Ok(mut holder_counts) = self.holder_counts.lock() {
-            let count = holder_counts.entry(holder_id.clone()).or_insert(0);
-            *count = count.saturating_add(1);
-            *count == 1
-        } else {
-            false
-        };
-        if should_insert {
-            if let Ok(mut db) = runtime_db().lock() {
-                db.upsert_edge(self.handle.id(), holder_id, EdgeKind::Holds);
+    fn note_holder_acquired(&self, holder_ref: &EntityRef) {
+        if let Ok(mut holder_counts) = self.holder_counts.lock() {
+            if let Some(entry) = holder_counts.get_mut(holder_ref) {
+                entry.count = entry.count.saturating_add(1);
+                return;
             }
+            let edge = self.handle.link_to_owned(holder_ref, EdgeKind::Holds);
+            holder_counts.insert(
+                holder_ref.clone(),
+                HolderEdge {
+                    count: 1,
+                    edge,
+                },
+            );
         }
     }
 }
@@ -384,6 +290,38 @@ impl AsEntityRef for Semaphore {
     fn as_entity_ref(&self) -> EntityRef {
         self.handle.entity_ref()
     }
+}
+
+fn holder_released(
+    holder_ref: &mut Option<EntityRef>,
+    holder_counts: &Arc<StdMutex<BTreeMap<EntityRef, HolderEdge>>>,
+) {
+    let Some(holder_ref) = holder_ref.take() else {
+        return;
+    };
+    if let Ok(mut counts) = holder_counts.lock() {
+        if let Some(entry) = counts.get_mut(&holder_ref) {
+            if entry.count > 1 {
+                entry.count -= 1;
+            } else {
+                counts.remove(&holder_ref);
+            }
+        }
+    }
+}
+
+fn sync_state_from_permit(
+    semaphore_handle: &WeakEntityHandle<peeps_types::Semaphore>,
+    semaphore: &Arc<tokio::sync::Semaphore>,
+    max_permits: &Arc<AtomicU32>,
+) {
+    let max = max_permits.load(Ordering::Relaxed);
+    let available = semaphore.available_permits().min(u32::MAX as usize) as u32;
+    let handed_out = max.saturating_sub(available);
+    let _ = semaphore_handle.mutate(|body| {
+        body.max_permits = max;
+        body.handed_out_permits = handed_out;
+    });
 }
 
 impl<'a> Deref for SemaphorePermit<'a> {
@@ -407,16 +345,8 @@ impl<'a> DerefMut for SemaphorePermit<'a> {
 impl<'a> Drop for SemaphorePermit<'a> {
     fn drop(&mut self) {
         let _ = self.inner.take();
-        release_semaphore_holder_edge(
-            &self.semaphore_id,
-            &mut self.holder_future_id,
-            &self.holder_counts,
-        );
-        sync_semaphore_state(
-            &self.semaphore_id,
-            &self.semaphore,
-            self.max_permits.load(Ordering::Relaxed),
-        );
+        holder_released(&mut self.holder_ref, &self.holder_counts);
+        sync_state_from_permit(&self.semaphore_handle, &self.semaphore, &self.max_permits);
     }
 }
 
@@ -441,15 +371,7 @@ impl DerefMut for OwnedSemaphorePermit {
 impl Drop for OwnedSemaphorePermit {
     fn drop(&mut self) {
         let _ = self.inner.take();
-        release_semaphore_holder_edge(
-            &self.semaphore_id,
-            &mut self.holder_future_id,
-            &self.holder_counts,
-        );
-        sync_semaphore_state(
-            &self.semaphore_id,
-            &self.semaphore,
-            self.max_permits.load(Ordering::Relaxed),
-        );
+        holder_released(&mut self.holder_ref, &self.holder_counts);
+        sync_state_from_permit(&self.semaphore_handle, &self.semaphore, &self.max_permits);
     }
 }

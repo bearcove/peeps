@@ -1,20 +1,20 @@
-use peeps_types::{EdgeKind, EntityBody, EntityId, LockEntity, LockKind};
+use peeps_types::{EdgeKind, EntityBody, LockEntity, LockKind};
 use std::ops::{Deref, DerefMut};
 
-use super::super::{Source, SourceLeft, SourceRight};
+use super::super::{Source, SourceRight};
 use peeps_runtime::{
-    current_causal_target, runtime_db, AsEntityRef, EntityHandle, EntityRef, HELD_MUTEX_STACK,
+    current_causal_target, AsEntityRef, EdgeHandle, EntityHandle, EntityRef, HELD_MUTEX_STACK,
 };
 
 pub struct Mutex<T> {
     inner: parking_lot::Mutex<T>,
-    handle: EntityHandle,
+    handle: EntityHandle<peeps_types::Lock>,
 }
 
 pub struct MutexGuard<'a, T> {
     inner: parking_lot::MutexGuard<'a, T>,
-    lock_id: EntityId,
-    owner_future_id: Option<EntityId>,
+    lock_id: peeps_types::EntityId,
+    holds_edge: Option<EdgeHandle>,
 }
 
 impl<'a, T> Deref for MutexGuard<'a, T> {
@@ -39,104 +39,70 @@ impl<T> Mutex<T> {
                 kind: LockKind::Mutex,
             }),
             source,
-        );
+        )
+        .into_typed::<peeps_types::Lock>();
         Self {
             inner: parking_lot::Mutex::new(value),
             handle,
         }
     }
 
-    #[track_caller]
-    pub fn lock_with_cx(&self, cx: SourceLeft) -> MutexGuard<'_, T> {
-        self._lock(cx.join(SourceRight::caller()))
-    }
-
+    #[doc(hidden)]
     pub fn lock_with_source(&self, source: Source) -> MutexGuard<'_, T> {
         self._lock(source)
     }
 
     #[doc(hidden)]
     pub fn _lock(&self, _source: Source) -> MutexGuard<'_, T> {
+        let owner_ref = current_causal_target();
+
         if let Some(inner) = self.inner.try_lock() {
-            return self.wrap_guard(inner);
+            return self.wrap_guard(inner, owner_ref.as_ref(), None);
         }
 
-        let pending_edges = self.record_pending_wait_edges();
+        let waiting_edge = owner_ref
+            .as_ref()
+            .map(|owner| self.handle.link_to_owned(owner, EdgeKind::WaitingOn));
         let inner = self.inner.lock();
-        self.clear_pending_wait_edges(pending_edges);
-        self.wrap_guard(inner)
+        drop(waiting_edge);
+
+        self.wrap_guard(inner, owner_ref.as_ref(), None)
     }
 
-    #[track_caller]
-    pub fn try_lock_with_cx(&self, cx: SourceLeft) -> Option<MutexGuard<'_, T>> {
-        self._try_lock(cx.join(SourceRight::caller()))
-    }
-
+    #[doc(hidden)]
     pub fn try_lock_with_source(&self, source: Source) -> Option<MutexGuard<'_, T>> {
         self._try_lock(source)
     }
 
     #[doc(hidden)]
     pub fn _try_lock(&self, _source: Source) -> Option<MutexGuard<'_, T>> {
-        self.inner.try_lock().map(|inner| self.wrap_guard(inner))
+        let owner_ref = current_causal_target();
+        self.inner
+            .try_lock()
+            .map(|inner| self.wrap_guard(inner, owner_ref.as_ref(), Some(EdgeKind::Polls)))
     }
 
-    fn wrap_guard<'a>(&self, inner: parking_lot::MutexGuard<'a, T>) -> MutexGuard<'a, T> {
-        let lock_id = EntityId::new(self.handle.id().as_str());
-        let owner_future_id =
-            current_causal_target().map(|target| EntityId::new(target.id().as_str()));
-        if let Some(owner_id) = owner_future_id.as_ref() {
-            if let Ok(mut db) = runtime_db().lock() {
-                db.upsert_edge(owner_id, &lock_id, EdgeKind::Touches);
-                db.upsert_edge(&lock_id, owner_id, EdgeKind::Needs);
-            }
+    fn wrap_guard<'a>(
+        &self,
+        inner: parking_lot::MutexGuard<'a, T>,
+        owner_ref: Option<&EntityRef>,
+        pre_edge_kind: Option<EdgeKind>,
+    ) -> MutexGuard<'a, T> {
+        if let (Some(owner), Some(kind)) = (owner_ref, pre_edge_kind) {
+            self.handle.link_to(owner, kind);
         }
+
+        let holds_edge = owner_ref.map(|owner| self.handle.link_to_owned(owner, EdgeKind::Holds));
+        let lock_id = self.handle.id().clone();
+
         HELD_MUTEX_STACK.with(|stack| {
-            stack.borrow_mut().push(EntityId::new(lock_id.as_str()));
+            stack.borrow_mut().push(lock_id.clone());
         });
+
         MutexGuard {
             inner,
             lock_id,
-            owner_future_id,
-        }
-    }
-
-    fn record_pending_wait_edges(&self) -> Vec<(EntityId, EntityId)> {
-        let dst = EntityId::new(self.handle.id().as_str());
-        let mut edges = Vec::<(EntityId, EntityId)>::new();
-
-        if let Some(waiter) = current_causal_target() {
-            if waiter.id().as_str() != dst.as_str() {
-                edges.push((
-                    EntityId::new(waiter.id().as_str()),
-                    EntityId::new(dst.as_str()),
-                ));
-            }
-        }
-
-        edges.sort_unstable_by(|(lhs_src, lhs_dst), (rhs_src, rhs_dst)| {
-            lhs_src
-                .as_str()
-                .cmp(rhs_src.as_str())
-                .then_with(|| lhs_dst.as_str().cmp(rhs_dst.as_str()))
-        });
-        edges.dedup();
-
-        if let Ok(mut db) = runtime_db().lock() {
-            for (src, dst) in &edges {
-                db.upsert_edge(src, dst, EdgeKind::Touches);
-                db.upsert_edge(src, dst, EdgeKind::Needs);
-            }
-        }
-
-        edges
-    }
-
-    fn clear_pending_wait_edges(&self, edges: Vec<(EntityId, EntityId)>) {
-        if let Ok(mut db) = runtime_db().lock() {
-            for (src, dst) in edges {
-                db.remove_edge(&src, &dst, EdgeKind::Needs);
-            }
+            holds_edge,
         }
     }
 }
@@ -149,11 +115,7 @@ impl<T> AsEntityRef for Mutex<T> {
 
 impl<'a, T> Drop for MutexGuard<'a, T> {
     fn drop(&mut self) {
-        if let Some(owner_id) = self.owner_future_id.as_ref() {
-            if let Ok(mut db) = runtime_db().lock() {
-                db.remove_edge(&self.lock_id, owner_id, EdgeKind::Needs);
-            }
-        }
+        let _ = self.holds_edge.take();
         HELD_MUTEX_STACK.with(|stack| {
             let mut stack = stack.borrow_mut();
             if let Some(pos) = stack

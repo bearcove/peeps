@@ -1,4 +1,6 @@
-use peeps_types::{EntityBody, EntityId, Event, FutureEntity, ScopeBody, ScopeId};
+use peeps_types::{
+    EntityBody, EntityId, Event, FutureEntity, ProcessScopeBody, ScopeBody, ScopeId, TaskScopeBody,
+};
 use std::cell::RefCell;
 use std::future::Future;
 use std::sync::OnceLock;
@@ -36,7 +38,9 @@ pub fn init_runtime_from_macro() {
     PROCESS_SCOPE.get_or_init(|| {
         ScopeHandle::new(
             process_name.clone(),
-            ScopeBody::Process,
+            ScopeBody::Process(ProcessScopeBody {
+                pid: std::process::id(),
+            }),
             SourceRight::caller(),
         )
     });
@@ -73,7 +77,9 @@ pub fn register_current_task_scope(
     let task_key = current_tokio_task_key()?;
     let scope = ScopeHandle::new(
         format!("task.{task_name}#{task_key}"),
-        ScopeBody::Task,
+        ScopeBody::Task(TaskScopeBody {
+            task_key: task_key.clone(),
+        }),
         source,
     );
     if let Ok(mut db) = db::runtime_db().lock() {
@@ -119,8 +125,7 @@ where
 }
 
 pub fn record_event_with_source(mut event: Event, source: &Source) {
-    event.krate = source.krate().map(String::from);
-    event.source = String::from(source.as_str());
+    event.source = source.clone().into();
     if let Ok(mut db) = db::runtime_db().lock() {
         db.record_event(event);
     }
@@ -129,8 +134,7 @@ pub fn record_event_with_source(mut event: Event, source: &Source) {
 pub fn record_event_with_entity_source(mut event: Event, entity_id: &EntityId) {
     if let Ok(mut db) = db::runtime_db().lock() {
         if let Some(entity) = db.entities.get(entity_id) {
-            event.source = String::from(entity.source.as_str());
-            event.krate = entity.krate.as_ref().map(|k| String::from(k.as_str()));
+            event.source = entity.source;
         }
         db.record_event(event);
     }

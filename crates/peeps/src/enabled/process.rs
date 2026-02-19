@@ -1,15 +1,11 @@
 use peeps_types::{CommandEntity, EntityBody};
-use std::cell::RefCell;
 use std::ffi::{OsStr, OsString};
 use std::future::Future;
 use std::io;
 use std::process::{ExitStatus, Output, Stdio};
-use std::time::Duration;
 
-use super::{Source, SourceLeft, SourceRight};
-use peeps_runtime::{
-    instrument_future, register_current_task_scope, EntityHandle, FUTURE_CAUSAL_STACK,
-};
+use super::{Source, SourceRight};
+use peeps_runtime::{instrument_future, EntityHandle};
 
 pub struct Command {
     inner: tokio::process::Command,
@@ -31,8 +27,8 @@ pub struct Child {
 }
 
 pub struct JoinSet<T> {
-    inner: tokio::task::JoinSet<T>,
-    handle: EntityHandle,
+    pub(super) inner: tokio::task::JoinSet<T>,
+    pub(super) handle: EntityHandle,
 }
 
 pub struct DiagnosticInterval {
@@ -152,11 +148,7 @@ impl Command {
         self
     }
 
-    #[track_caller]
-    pub fn spawn_with_cx(&mut self, cx: SourceLeft) -> io::Result<Child> {
-        self.spawn_with_source(cx.join(SourceRight::caller()))
-    }
-
+    #[doc(hidden)]
     pub fn spawn_with_source(&mut self, source: Source) -> io::Result<Child> {
         let child = self.inner.spawn()?;
         let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
@@ -166,14 +158,7 @@ impl Command {
         })
     }
 
-    #[track_caller]
-    pub fn status_with_cx(
-        &mut self,
-        cx: SourceLeft,
-    ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        self.status_with_source(cx.join(SourceRight::caller()))
-    }
-
+    #[doc(hidden)]
     pub fn status_with_source(
         &mut self,
         source: Source,
@@ -188,14 +173,7 @@ impl Command {
         )
     }
 
-    #[track_caller]
-    pub fn output_with_cx(
-        &mut self,
-        cx: SourceLeft,
-    ) -> impl Future<Output = io::Result<Output>> + '_ {
-        self.output_with_source(cx.join(SourceRight::caller()))
-    }
-
+    #[doc(hidden)]
     pub fn output_with_source(
         &mut self,
         source: Source,
@@ -284,14 +262,7 @@ impl Child {
         self.inner().id()
     }
 
-    #[track_caller]
-    pub fn wait_with_cx(
-        &mut self,
-        cx: SourceLeft,
-    ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        self.wait_with_source(cx.join(SourceRight::caller()))
-    }
-
+    #[doc(hidden)]
     pub fn wait_with_source(
         &mut self,
         source: Source,
@@ -307,14 +278,7 @@ impl Child {
         )
     }
 
-    #[track_caller]
-    pub fn wait_with_output_with_cx(
-        self,
-        cx: SourceLeft,
-    ) -> impl Future<Output = io::Result<Output>> {
-        self.wait_with_output_with_source(cx.join(SourceRight::caller()))
-    }
-
+    #[doc(hidden)]
     pub fn wait_with_output_with_source(
         mut self,
         source: Source,

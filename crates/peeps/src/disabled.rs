@@ -1,3 +1,7 @@
+use std::sync::Once;
+
+static DASHBOARD_DISABLED_WARNING_ONCE: Once = Once::new();
+
 #[doc(hidden)]
 pub fn __init_from_macro() {
     let Some(value) = std::env::var_os("PEEPS_DASHBOARD") else {
