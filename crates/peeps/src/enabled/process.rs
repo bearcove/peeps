@@ -32,8 +32,8 @@ pub struct JoinSet<T> {
 }
 
 pub struct DiagnosticInterval {
-    inner: tokio::time::Interval,
-    handle: EntityHandle,
+    _inner: tokio::time::Interval,
+    _handle: EntityHandle,
 }
 
 pub type Interval = DiagnosticInterval;

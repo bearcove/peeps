@@ -1,13 +1,16 @@
 pub(super) use super::{Source, SourceRight};
 
 pub(crate) mod broadcast;
-pub use broadcast::{BroadcastReceiver, BroadcastSender};
+pub use broadcast::{broadcast, broadcast_channel, BroadcastReceiver, BroadcastSender};
 
 pub(crate) mod mpsc;
-pub use mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
+pub use mpsc::{
+    channel, mpsc_channel, mpsc_unbounded_channel, unbounded_channel, Receiver, Sender,
+    UnboundedReceiver, UnboundedSender,
+};
 
 pub(crate) mod oneshot;
-pub use oneshot::{OneshotReceiver, OneshotSender};
+pub use oneshot::{oneshot, oneshot_channel, OneshotReceiver, OneshotSender};
 
 pub(crate) mod watch;
-pub use watch::{WatchReceiver, WatchSender};
+pub use watch::{watch, watch_channel, WatchReceiver, WatchSender};

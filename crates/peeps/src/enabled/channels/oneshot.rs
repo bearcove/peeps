@@ -16,7 +16,7 @@ pub struct OneshotSender<T> {
 pub struct OneshotReceiver<T> {
     inner: Option<tokio::sync::oneshot::Receiver<T>>,
     handle: EntityHandle<peeps_types::OneshotRx>,
-    tx_handle: WeakEntityHandle<peeps_types::OneshotTx>,
+    _tx_handle: WeakEntityHandle<peeps_types::OneshotTx>,
 }
 
 impl<T> OneshotSender<T> {
@@ -112,7 +112,7 @@ pub fn oneshot<T>(
         OneshotReceiver {
             inner: Some(rx),
             handle: rx_handle,
-            tx_handle: tx_handle.downgrade(),
+            _tx_handle: tx_handle.downgrade(),
         },
     )
 }

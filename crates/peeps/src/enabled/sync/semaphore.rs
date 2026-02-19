@@ -20,7 +20,7 @@ pub struct Semaphore {
 
 struct HolderEdge {
     count: u32,
-    edge: EdgeHandle,
+    _edge: EdgeHandle,
 }
 
 pub struct SemaphorePermit<'a> {
@@ -273,7 +273,13 @@ impl Semaphore {
                 return;
             }
             let edge = self.handle.link_to_owned(holder_ref, EdgeKind::Holds);
-            holder_counts.insert(holder_ref.clone(), HolderEdge { count: 1, edge });
+            holder_counts.insert(
+                holder_ref.clone(),
+                HolderEdge {
+                    count: 1,
+                    _edge: edge,
+                },
+            );
         }
     }
 
@@ -286,7 +292,13 @@ impl Semaphore {
             let edge =
                 self.handle
                     .link_to_owned_with_source(holder_ref, EdgeKind::Holds, source.clone());
-            holder_counts.insert(holder_ref.clone(), HolderEdge { count: 1, edge });
+            holder_counts.insert(
+                holder_ref.clone(),
+                HolderEdge {
+                    count: 1,
+                    _edge: edge,
+                },
+            );
         }
     }
 }

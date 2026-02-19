@@ -9,7 +9,6 @@ pub use self::process::*;
 pub use self::rpc::*;
 pub use self::sync::*;
 pub use peeps_runtime::*;
-pub use peeps_source::*;
 
 // facade! expands to a call to this
 #[doc(hidden)]
