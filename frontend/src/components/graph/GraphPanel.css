@@ -55,6 +55,7 @@
     position: relative;
     flex: 1 1 auto;
     min-width: 340px;
+    max-width: min(1120px, calc(100vw - 220px));
 }
 
 .graph-filter-input {
@@ -81,7 +82,7 @@
     outline: 0;
     background: transparent;
     color: var(--text-default);
-    font-family: var(--font-mono);
+    font-family: var(--font-ui);
     font-size: calc(var(--font-size-sm) * 0.92);
     line-height: 20px;
     min-width: 120px;

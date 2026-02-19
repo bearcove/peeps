@@ -9,19 +9,24 @@ export type ParsedGraphFilterToken = {
 
 export type GraphFilterParseResult = {
   tokens: ParsedGraphFilterToken[];
-  hiddenNodeIds: Set<string>;
-  hiddenLocations: Set<string>;
-  hiddenCrates: Set<string>;
-  hiddenProcesses: Set<string>;
-  hiddenKinds: Set<string>;
+  includeNodeIds: Set<string>;
+  excludeNodeIds: Set<string>;
+  includeLocations: Set<string>;
+  excludeLocations: Set<string>;
+  includeCrates: Set<string>;
+  excludeCrates: Set<string>;
+  includeProcesses: Set<string>;
+  excludeProcesses: Set<string>;
+  includeKinds: Set<string>;
+  excludeKinds: Set<string>;
   showLoners?: boolean;
   colorBy?: GraphFilterMode;
   groupBy?: GraphFilterMode | "none";
 };
 
 export type GraphFilterSuggestion = {
-  label: string;
   token: string;
+  description: string;
 };
 
 export type GraphFilterSuggestionItem = {

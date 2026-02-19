@@ -8,7 +8,7 @@
     padding: 0 8px;
     height: 24px;
     border-radius: var(--radius-control);
-    border: none;
+    border: 1px solid var(--border-subtle);
     background: var(--bg-elevated);
     font-size: var(--font-size-sm);
     cursor: pointer;

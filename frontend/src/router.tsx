@@ -1,15 +1,16 @@
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { App } from "./App";
-import { StorybookPage } from "./pages/StorybookPage";
+import { StorybookPage, useStorybookState } from "./pages/StorybookPage";
 
 function StorybookSplitScreen() {
+  const state = useStorybookState();
   return (
     <div style={{ display: "flex" }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <StorybookPage colorScheme="dark" />
+        <StorybookPage colorScheme="dark" sharedState={state} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <StorybookPage colorScheme="light" />
+        <StorybookPage colorScheme="light" sharedState={state} />
       </div>
     </div>
   );
