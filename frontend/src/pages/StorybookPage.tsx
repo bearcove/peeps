@@ -37,6 +37,8 @@ import type { RecordingState, SnapshotState } from "../App";
 import { Switch } from "../ui/primitives/Switch";
 import type { EntityDef } from "../snapshot";
 import { GraphNode } from "../components/graph/GraphNode";
+import { GraphFilterInput } from "../components/graph/GraphFilterInput";
+import "../components/graph/GraphPanel.css";
 import { InspectorPanel } from "../components/inspector/InspectorPanel";
 
 type DemoTone = "neutral" | "ok" | "warn" | "crit";
@@ -80,6 +82,7 @@ export function useStorybookState() {
   const [showLoners, setShowLoners] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
+  const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:process loners:off");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tones = useMemo<BadgeTone[]>(() => ["neutral", "ok", "warn", "crit"], []);
   const searchDataset = useMemo(
@@ -160,6 +163,22 @@ export function useStorybookState() {
       { id: "peeps-examples", label: "peeps-examples" },
       { id: "tokio", label: "tokio" },
     ],
+    [],
+  );
+
+  const graphFilterNodeIds = useMemo(
+    () => [
+      "vx-store/store.incoming.recv",
+      "example-roam-rpc/DemoRpc.sleepy_forever",
+      "example-roam-rpc/DemoRpc.ping",
+      "vx-store/channel.v1.mpsc.send",
+      "vxd/connection.initiator",
+    ],
+    [],
+  );
+
+  const graphFilterLocations = useMemo(
+    () => ["main.rs:20", "server.rs:45", "handler.rs:12", "session.rs:88"],
     [],
   );
 
@@ -628,6 +647,10 @@ export function useStorybookState() {
     inspectorEntity,
     showSearchResults,
     searchResults,
+    graphFilterText,
+    setGraphFilterText,
+    graphFilterNodeIds,
+    graphFilterLocations,
   };
 }
 
@@ -698,6 +721,10 @@ export function StorybookPage({
     inspectorEntity,
     showSearchResults,
     searchResults,
+    graphFilterText,
+    setGraphFilterText,
+    graphFilterNodeIds,
+    graphFilterLocations,
   } = sharedState;
 
   const colorVariables = useMemo(() => {
@@ -1112,6 +1139,22 @@ export function StorybookPage({
               if (!item) return;
               setSearchOnlyKind((prev) => (prev === item.kind ? null : item.kind));
             }}
+          />
+        </Section>
+
+        <Section title="Graph Filter" subtitle="Token-based filter bar with autocomplete" wide>
+          <GraphFilterInput
+            entityCount={42}
+            edgeCount={18}
+            focusedEntityId={null}
+            onExitFocus={() => {}}
+            graphFilterText={graphFilterText}
+            onGraphFilterTextChange={setGraphFilterText}
+            crateItems={filterCrateItems}
+            processItems={filterProcessItems}
+            kindItems={filterKindItems}
+            nodeIds={graphFilterNodeIds}
+            locations={graphFilterLocations}
           />
         </Section>
 

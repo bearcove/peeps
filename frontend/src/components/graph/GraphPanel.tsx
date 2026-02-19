@@ -144,8 +144,6 @@ export function GraphPanel({
     <div className="graph-panel">
       {showToolbar && (
         <GraphFilterInput
-          entityCount={entityDefs.length}
-          edgeCount={edgeDefs.length}
           focusedEntityId={focusedEntityId}
           onExitFocus={onExitFocus}
           scopeFilterLabel={scopeFilterLabel}

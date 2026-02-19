@@ -12,8 +12,6 @@ import {
 } from "../../graphFilter";
 
 export function GraphFilterInput({
-  entityCount,
-  edgeCount,
   focusedEntityId,
   onExitFocus,
   scopeFilterLabel,
@@ -26,8 +24,6 @@ export function GraphFilterInput({
   nodeIds,
   locations,
 }: {
-  entityCount: number;
-  edgeCount: number;
   focusedEntityId: string | null;
   onExitFocus: () => void;
   scopeFilterLabel?: string | null;
@@ -98,15 +94,6 @@ export function GraphFilterInput({
 
   return (
     <div className="graph-toolbar">
-      <div className="graph-toolbar-left">
-        {entityCount > 0 && (
-          <>
-            <span className="graph-stat">{entityCount} entities</span>
-            <span className="graph-stat-sep" aria-hidden="true">|</span>
-            <span className="graph-stat">{edgeCount} edges</span>
-          </>
-        )}
-      </div>
       <div className="graph-toolbar-middle">
         <div
           className="graph-filter-input"
