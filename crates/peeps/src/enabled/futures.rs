@@ -18,7 +18,6 @@ pub(super) struct OperationFuture<F> {
     op_kind: OperationKind,
     source: String,
     krate: Option<String>,
-    poll_count: u64,
     pending_since_ptime_ms: Option<u64>,
     has_edge: bool,
 }
@@ -44,7 +43,6 @@ impl<F> OperationFuture<F> {
             op_kind,
             source,
             krate,
-            poll_count: 0,
             pending_since_ptime_ms: None,
             has_edge: false,
         }
@@ -58,8 +56,6 @@ impl<F> OperationFuture<F> {
             last_change_ptime_ms: PTime::now().as_millis(),
             source: String::from(self.source.as_str()),
             krate: self.krate.as_ref().map(|k| String::from(k.as_str())),
-            poll_count: Some(self.poll_count),
-            details: None,
         };
         facet_value::to_value(&meta).unwrap_or(facet_value::Value::NULL)
     }
@@ -101,7 +97,6 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
-        this.poll_count = this.poll_count.saturating_add(1);
         if !this.has_edge {
             this.upsert_edge(OperationState::Active);
         }
