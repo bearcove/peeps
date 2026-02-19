@@ -131,6 +131,14 @@ export function GraphPanel({
   }, [effectiveGeometry, scopeColorByKey]);
 
   const nodeSuggestions = useMemo(() => entityDefs.map((entity) => entity.id), [entityDefs]);
+  const focusItems = useMemo(
+    () =>
+      entityDefs.map((entity) => ({
+        id: entity.id,
+        label: `${entity.name} (${entity.processName}:${entity.processPid})`,
+      })),
+    [entityDefs],
+  );
   const locationSuggestions = useMemo(
     () =>
       Array.from(
@@ -161,6 +169,7 @@ export function GraphPanel({
           kindItems={kindItems}
           nodeIds={nodeSuggestions}
           locations={locationSuggestions}
+          focusItems={focusItems}
         />
       )}
       <GraphViewport

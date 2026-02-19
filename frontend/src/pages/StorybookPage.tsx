@@ -8,7 +8,9 @@ import {
   FileRs,
   CircleNotch,
   LinkSimple,
+  Package,
   PaperPlaneTilt,
+  Terminal,
   Timer,
 } from "@phosphor-icons/react";
 import { Panel } from "../ui/layout/Panel";
@@ -1419,34 +1421,34 @@ export function StorybookPage({
                     Show only connected
                   </ContextMenuItem>
                   <ContextMenuSeparator />
-                  <ContextMenuItem onClick={() => { pickMenuAction("context", "hide-node"); closeContextMenu(); }}>
+                  <ContextMenuItem prefix="−" onClick={() => { pickMenuAction("context", "hide-node"); closeContextMenu(); }}>
                     Hide this node
                   </ContextMenuItem>
                   {node.location && (
-                    <ContextMenuItem onClick={() => { pickMenuAction("context", `hide-location:${node.location}`); closeContextMenu(); }}>
-                      Hide this location
+                    <ContextMenuItem prefix="−" onClick={() => { pickMenuAction("context", `hide-location:${node.location}`); closeContextMenu(); }}>
+                      <NodeChip icon={<FileRs size={12} weight="bold" />} label={node.location.split("/").pop() ?? node.location} />
                     </ContextMenuItem>
                   )}
                   <ContextMenuSeparator />
-                  <ContextMenuItem onClick={() => { pickMenuAction("context", `hide-crate:${node.krate}`); closeContextMenu(); }}>
-                    Hide this crate
+                  <ContextMenuItem prefix="−" onClick={() => { pickMenuAction("context", `hide-crate:${node.krate}`); closeContextMenu(); }}>
+                    <NodeChip icon={<Package size={12} weight="bold" />} label={node.krate} />
                   </ContextMenuItem>
-                  <ContextMenuItem onClick={() => { pickMenuAction("context", `solo-crate:${node.krate}`); closeContextMenu(); }}>
-                    Show only this crate
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem onClick={() => { pickMenuAction("context", `hide-process:${node.processId}`); closeContextMenu(); }}>
-                    Hide process: {node.processLabel}
-                  </ContextMenuItem>
-                  <ContextMenuItem onClick={() => { pickMenuAction("context", `solo-process:${node.processId}`); closeContextMenu(); }}>
-                    Show only process: {node.processLabel}
+                  <ContextMenuItem prefix="+" onClick={() => { pickMenuAction("context", `solo-crate:${node.krate}`); closeContextMenu(); }}>
+                    <NodeChip icon={<Package size={12} weight="bold" />} label={node.krate} />
                   </ContextMenuItem>
                   <ContextMenuSeparator />
-                  <ContextMenuItem onClick={() => { pickMenuAction("context", `hide-kind:${node.kind}`); closeContextMenu(); }}>
-                    Hide kind: {node.kindLabel}
+                  <ContextMenuItem prefix="−" onClick={() => { pickMenuAction("context", `hide-process:${node.processId}`); closeContextMenu(); }}>
+                    <NodeChip icon={<Terminal size={12} weight="bold" />} label={node.processLabel} />
                   </ContextMenuItem>
-                  <ContextMenuItem onClick={() => { pickMenuAction("context", `solo-kind:${node.kind}`); closeContextMenu(); }}>
-                    Show only kind: {node.kindLabel}
+                  <ContextMenuItem prefix="+" onClick={() => { pickMenuAction("context", `solo-process:${node.processId}`); closeContextMenu(); }}>
+                    <NodeChip icon={<Terminal size={12} weight="bold" />} label={node.processLabel} />
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem prefix="−" onClick={() => { pickMenuAction("context", `hide-kind:${node.kind}`); closeContextMenu(); }}>
+                    <NodeChip icon={kindIcon(node.kind, 12)} label={node.kindLabel} />
+                  </ContextMenuItem>
+                  <ContextMenuItem prefix="+" onClick={() => { pickMenuAction("context", `solo-kind:${node.kind}`); closeContextMenu(); }}>
+                    <NodeChip icon={kindIcon(node.kind, 12)} label={node.kindLabel} />
                   </ContextMenuItem>
                 </ContextMenu>
               );

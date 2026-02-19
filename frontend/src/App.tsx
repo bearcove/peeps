@@ -119,6 +119,7 @@ export function App() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorPosition, setInspectorPosition] = useState<{ x: number; y: number } | null>(null);
   const [selection, setSelection] = useState<GraphSelection>(null);
+  const [inspectedSelection, setInspectedSelection] = useState<GraphSelection>(null);
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:process loners:off");
@@ -405,6 +406,8 @@ where l.conn_id = ${connId}
   const takeSnapshot = useCallback(async () => {
     setSnap({ phase: "cutting" });
     setSelection(null);
+    setInspectedSelection(null);
+    setInspectorOpen(false);
     setFocusedEntityFilter(null);
     try {
       const triggered = await apiClient.triggerCut();
@@ -862,7 +865,11 @@ where l.conn_id = ${connId}
         const tag = target.tagName;
         if (target.isContentEditable || tag === "INPUT" || tag === "TEXTAREA") return;
       }
-      if (e.key === "Escape" && focusedEntityId) {
+      if (e.key === "Escape" && inspectorOpen) {
+        setInspectorOpen(false);
+        setSelection(null);
+        setInspectedSelection(null);
+      } else if (e.key === "Escape" && focusedEntityId) {
         setFocusedEntityFilter(null);
       } else if (e.key === "f" || e.key === "F") {
         if (selection?.kind === "entity") {
@@ -872,7 +879,7 @@ where l.conn_id = ${connId}
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [focusedEntityId, selection, setFocusedEntityFilter]);
+  }, [focusedEntityId, inspectorOpen, selection, setFocusedEntityFilter]);
 
   const isBusy = snap.phase === "cutting" || snap.phase === "loading";
   const connCount = connections?.connected_processes ?? 0;
@@ -980,21 +987,20 @@ where l.conn_id = ${connId}
                 onSelect={(next) => {
                   setSelection(next);
                   if (next) {
+                    setInspectedSelection(next);
                     if (!inspectorOpen) {
                       setInspectorPosition(null);
                       setInspectorOpen(true);
                     }
                     setSelectedScopeKind(null);
                     setSelectedScope(null);
-                  } else {
-                    setFocusedEntityFilter(null);
-                    setInspectorOpen(false);
                   }
                 }}
                 focusedEntityId={focusedEntityId}
                 onExitFocus={() => {
                   setFocusedEntityFilter(null);
                   setSelection(null);
+                  setInspectedSelection(null);
                   setInspectorOpen(false);
                 }}
                 waitingForProcesses={waitingForProcesses}
@@ -1077,9 +1083,13 @@ where l.conn_id = ${connId}
             }
           >
             <InspectorPanel
-              onClose={() => setInspectorOpen(false)}
+              onClose={() => {
+                setInspectorOpen(false);
+                setSelection(null);
+                setInspectedSelection(null);
+              }}
               onHeaderPointerDown={handleInspectorHeaderPointerDown}
-              selection={selection}
+              selection={inspectedSelection}
               entityDefs={allEntities}
               edgeDefs={allEdges}
               focusedEntityId={focusedEntityId}

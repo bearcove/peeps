@@ -21,10 +21,17 @@ function renderLocationChipValue(rawLocation: string): string {
   return base && base.length > 0 ? base : location;
 }
 
+function renderFallbackFocusValue(value: string): string {
+  const tail = value.split("/").pop();
+  if (tail && tail.length > 0) return tail;
+  return value;
+}
+
 function renderFilterChipLabel(
   raw: string,
   parsed: ParsedGraphFilterToken,
   processLabelById: ReadonlyMap<string, string>,
+  focusLabelById: ReadonlyMap<string, string>,
 ): string {
   const key = parsed.key?.toLowerCase();
   const value = parsed.value?.trim();
@@ -39,6 +46,11 @@ function renderFilterChipLabel(
     const processLabel = processLabelById.get(value) ?? value;
     return `${sign}${chipKey}:${processLabel}`;
   }
+  if ((key === "focus" || key === "subgraph") && value) {
+    const chipKey = parsed.key ?? "focus";
+    const focusLabel = focusLabelById.get(value) ?? renderFallbackFocusValue(value);
+    return `${chipKey}:${focusLabel}`;
+  }
   return raw;
 }
 
@@ -46,6 +58,7 @@ function renderFilterChipTitle(parsed: ParsedGraphFilterToken): string {
   const key = parsed.key?.toLowerCase();
   const value = parsed.value?.trim();
   if ((key === "location" || key === "source") && value) return value;
+  if ((key === "focus" || key === "subgraph") && value) return value;
   return parsed.valid ? "remove filter token" : "invalid filter token";
 }
 
@@ -61,6 +74,7 @@ export function GraphFilterInput({
   kindItems,
   nodeIds,
   locations,
+  focusItems,
 }: {
   focusedEntityId: string | null;
   onExitFocus: () => void;
@@ -73,6 +87,7 @@ export function GraphFilterInput({
   kindItems: FilterMenuItem[];
   nodeIds: string[];
   locations: string[];
+  focusItems: Array<{ id: string; label: string }>;
 }) {
   const graphFilterInputRef = useRef<HTMLInputElement | null>(null);
   const graphFilterRootRef = useRef<HTMLDivElement | null>(null);
@@ -124,6 +139,7 @@ export function GraphFilterInput({
     () => new Map(processItems.map((item) => [item.id, String(item.label ?? item.id)])),
     [processItems],
   );
+  const focusLabelById = useMemo(() => new Map(focusItems.map((item) => [item.id, item.label])), [focusItems]);
   const currentFragment = useMemo(() => editorState.draft.trim(), [editorState.draft]);
   const graphFilterSuggestionsList = useMemo(
     () =>
@@ -211,7 +227,9 @@ export function GraphFilterInput({
           {editorState.ast.map((raw, index) => {
             const parsed = graphFilterTokens[index];
             const valid = parsed?.valid ?? false;
-            const chipLabel = parsed ? renderFilterChipLabel(raw, parsed, processLabelById) : raw;
+            const chipLabel = parsed
+              ? renderFilterChipLabel(raw, parsed, processLabelById, focusLabelById)
+              : raw;
             const chipTitle = parsed ? renderFilterChipTitle(parsed) : "remove filter token";
             return (
               <button

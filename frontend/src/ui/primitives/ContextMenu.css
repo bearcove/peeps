@@ -13,6 +13,7 @@
 
 .ui-context-menu-item {
     border: 0;
+    margin: 0;
     background: transparent;
     color: var(--text-primary);
     text-align: left;
@@ -25,6 +26,7 @@
     gap: 6px;
     width: 100%;
     box-sizing: border-box;
+    appearance: none;
 }
 
 .ui-context-menu-item:hover:not(:disabled) {
@@ -50,8 +52,15 @@
 }
 
 .ui-context-menu-separator {
+    height: 5px;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.ui-context-menu-separator::after {
+    content: '';
+    position: absolute;
+    inset: 2px 0;
     height: 1px;
     background: var(--border-default);
-    margin: 2px 0;
-    flex-shrink: 0;
 }

@@ -130,44 +130,44 @@ export function GraphViewport({
               Show only connected
             </ContextMenuItem>
             <ContextMenuSeparator />
-            <ContextMenuItem onClick={() => { onHideNodeFilter(nodeContextMenu.nodeId); closeNodeContextMenu(); }}>
+            <ContextMenuItem prefix="−" onClick={() => { onHideNodeFilter(nodeContextMenu.nodeId); closeNodeContextMenu(); }}>
               Hide this node
             </ContextMenuItem>
             {location && (
-              <ContextMenuItem onClick={() => { onHideLocationFilter(location); closeNodeContextMenu(); }}>
-                Hide this location
+              <ContextMenuItem prefix="−" onClick={() => { onHideLocationFilter(location); closeNodeContextMenu(); }}>
+                <NodeChip icon={<FileRs size={12} weight="bold" />} label={location.split("/").pop() ?? location} />
               </ContextMenuItem>
             )}
             {krate && (
               <>
                 <ContextMenuSeparator />
-                <ContextMenuItem onClick={() => { onAppendFilterToken(`-crate:${quoteFilterValue(krate)}`); closeNodeContextMenu(); }}>
-                  Hide this crate
+                <ContextMenuItem prefix="−" onClick={() => { onAppendFilterToken(`-crate:${quoteFilterValue(krate)}`); closeNodeContextMenu(); }}>
+                  <NodeChip icon={<Package size={12} weight="bold" />} label={krate} />
                 </ContextMenuItem>
-                <ContextMenuItem onClick={() => { onAppendFilterToken(`+crate:${quoteFilterValue(krate)}`); closeNodeContextMenu(); }}>
-                  Show only this crate
+                <ContextMenuItem prefix="+" onClick={() => { onAppendFilterToken(`+crate:${quoteFilterValue(krate)}`); closeNodeContextMenu(); }}>
+                  <NodeChip icon={<Package size={12} weight="bold" />} label={krate} />
                 </ContextMenuItem>
               </>
             )}
             {processId && (
               <>
                 <ContextMenuSeparator />
-                <ContextMenuItem onClick={() => { onAppendFilterToken(`-process:${quoteFilterValue(processId)}`); closeNodeContextMenu(); }}>
-                  Hide process: {processLabel}
+                <ContextMenuItem prefix="−" onClick={() => { onAppendFilterToken(`-process:${quoteFilterValue(processId)}`); closeNodeContextMenu(); }}>
+                  <NodeChip icon={<Terminal size={12} weight="bold" />} label={processLabel} />
                 </ContextMenuItem>
-                <ContextMenuItem onClick={() => { onAppendFilterToken(`+process:${quoteFilterValue(processId)}`); closeNodeContextMenu(); }}>
-                  Show only process: {processLabel}
+                <ContextMenuItem prefix="+" onClick={() => { onAppendFilterToken(`+process:${quoteFilterValue(processId)}`); closeNodeContextMenu(); }}>
+                  <NodeChip icon={<Terminal size={12} weight="bold" />} label={processLabel} />
                 </ContextMenuItem>
               </>
             )}
             {kind && (
               <>
                 <ContextMenuSeparator />
-                <ContextMenuItem onClick={() => { onAppendFilterToken(`-kind:${quoteFilterValue(kind)}`); closeNodeContextMenu(); }}>
-                  Hide kind: {kindLabel}
+                <ContextMenuItem prefix="−" onClick={() => { onAppendFilterToken(`-kind:${quoteFilterValue(kind)}`); closeNodeContextMenu(); }}>
+                  <NodeChip icon={kindIcon(kind, 12)} label={kindLabel} />
                 </ContextMenuItem>
-                <ContextMenuItem onClick={() => { onAppendFilterToken(`+kind:${quoteFilterValue(kind)}`); closeNodeContextMenu(); }}>
-                  Show only kind: {kindLabel}
+                <ContextMenuItem prefix="+" onClick={() => { onAppendFilterToken(`+kind:${quoteFilterValue(kind)}`); closeNodeContextMenu(); }}>
+                  <NodeChip icon={kindIcon(kind, 12)} label={kindLabel} />
                 </ContextMenuItem>
               </>
             )}
@@ -178,6 +178,7 @@ export function GraphViewport({
         geometry={geometry}
         onBackgroundClick={() => {
           closeNodeContextMenu();
+          onSelect(null);
         }}
       >
         <GraphAutoFit
@@ -212,7 +213,6 @@ export function GraphViewport({
                 onSelect({ kind: "entity", id });
               }}
               onNodeContextMenu={(id, clientX, clientY) => {
-                onSelect({ kind: "entity", id });
                 const graphFlow = graphFlowRef.current;
                 if (!graphFlow) return;
                 const rect = graphFlow.getBoundingClientRect();
