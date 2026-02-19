@@ -49,3 +49,21 @@ jobs:
 
       - name: Cargo clippy
         run: cargo clippy --workspace --all-features --all-targets
+
+  peeps-targets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add wasm target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Check peeps on Linux host
+        run: cargo check -p peeps --features diagnostics
+
+      - name: Check peeps on wasm32-unknown-unknown
+        run: cargo check -p peeps --target wasm32-unknown-unknown --features diagnostics

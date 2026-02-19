@@ -2,6 +2,8 @@
 resolver = "2"
 members = [
   "crates/peeps",
+  "crates/peeps-tokio",
+  "crates/peeps-wasm",
   "crates/peeps-runtime",
   "crates/peeps-source",
   "crates/peeps-cli",
@@ -21,6 +23,8 @@ repository = "https://github.com/bearcove/peeps"
 [workspace.dependencies]
 # Internal
 peeps = { path = "crates/peeps" }
+peeps-tokio = { path = "crates/peeps-tokio" }
+peeps-wasm = { path = "crates/peeps-wasm" }
 peeps-runtime = { path = "crates/peeps-runtime" }
 peeps-source = { path = "crates/peeps-source" }
 peeps-web = { path = "crates/peeps-web" }

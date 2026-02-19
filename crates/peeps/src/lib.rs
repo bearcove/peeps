@@ -1,27 +1,23 @@
-//! New peeps instrumentation surface.
+//! Shim crate that re-exports the target backend.
 //!
-//! Top-level split:
-//! - `enabled`: real diagnostics runtime
-//! - `disabled`: zero-cost pass-through API
+//! - Native targets: `peeps-tokio`
+//! - wasm32 targets: `peeps-wasm`
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use peeps_tokio::*;
+#[cfg(target_arch = "wasm32")]
+pub use peeps_wasm::*;
 
 #[doc(hidden)]
-pub use facet_value;
+#[cfg(not(target_arch = "wasm32"))]
+pub use peeps_tokio as __backend;
 #[doc(hidden)]
-pub use parking_lot;
-#[doc(hidden)]
-pub use tokio;
+#[cfg(target_arch = "wasm32")]
+pub use peeps_wasm as __backend;
 
-#[cfg(all(feature = "diagnostics", target_arch = "wasm32"))]
-compile_error!(
-    "`peeps` diagnostics is not supported on wasm32; build wasm targets without `feature=\"diagnostics\"`"
-);
-
-#[cfg(not(feature = "diagnostics"))]
-mod disabled;
-#[cfg(all(feature = "diagnostics", not(target_arch = "wasm32")))]
-mod enabled;
-
-#[cfg(not(feature = "diagnostics"))]
-pub use disabled::*;
-#[cfg(all(feature = "diagnostics", not(target_arch = "wasm32")))]
-pub use enabled::*;
+#[macro_export]
+macro_rules! facade {
+    () => {
+        $crate::__backend::facade!();
+    };
+}

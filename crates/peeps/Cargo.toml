@@ -6,19 +6,10 @@ license.workspace = true
 
 [features]
 default = []
-diagnostics = []
-
-[dependencies]
-facet-json.workspace = true
-facet-value.workspace = true
-peeps-types.workspace = true
-peeps-source.workspace = true
-peeps-runtime.workspace = true
-peeps-wire.workspace = true
-parking_lot.workspace = true
+diagnostics = ["peeps-tokio/diagnostics", "peeps-wasm/diagnostics"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio.workspace = true
+peeps-tokio.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-tokio = { version = "1.49", default-features = false, features = ["rt", "sync", "time"] }
+peeps-wasm.workspace = true
