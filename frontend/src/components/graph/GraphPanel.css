@@ -97,9 +97,9 @@
     overflow-y: hidden;
     gap: 6px;
     border: 2px solid var(--border-default);
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--bg-elevated);
-    padding: 1px 12px;
+    padding: 1px 6px;
     box-sizing: border-box;
 }
 
@@ -121,7 +121,8 @@
 }
 
 .graph-filter-shortcut {
-    margin-left: auto;
+    margin-left: 0;
+    margin-right: 6px;
     font-family: var(--font-mono);
     font-size: var(--font-size-sm);
     color: var(--text-secondary);
@@ -132,10 +133,6 @@
     pointer-events: none;
     flex-shrink: 0;
     line-height: 1.2;
-}
-
-.graph-filter-shortcut--leading {
-    margin-left: 6px;
 }
 
 .graph-filter-chip {

@@ -24,8 +24,9 @@
 
 :root {
     color-scheme: light dark;
-    --font-ui: "Satoshi", -apple-system, BlinkMacSystemFont, sans-serif;
+    /*--font-ui: "Satoshi", -apple-system, BlinkMacSystemFont, sans-serif;*/
     --font-mono: "Maple Mono", monospace;
+    --font-ui: var(--font-mono); /* just trying things out */
     --font-scale-ui: 1.08;
     --font-size-sm: calc(12px * var(--font-scale-ui));
     --font-size-md: calc(14px * var(--font-scale-ui));
@@ -43,9 +44,9 @@
     --bg-surface: light-dark(#ffffff, #0a0a0a);
     --bg-elevated: light-dark(#ffffff, #0a0a0a);
 
-    --border-subtle: light-dark(#d0d0d0, #3a3a3a);
+    --border-subtle: light-dark(#1a1a1a, #3a3a3a);
     --border-default: light-dark(#1a1a1a, #e8e8e8);
-    --border-edge: light-dark(#e8e8e8, #282828);
+    --border-edge: light-dark(#1a1a1a, #282828);
 
     --text-primary: light-dark(#111111, #f4f4f4);
     --text-secondary: light-dark(#3a3a3a, #b8b8b8);
