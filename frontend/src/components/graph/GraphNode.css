@@ -37,8 +37,8 @@
 .graph-node {
     display: flex;
     flex-direction: row;
-    gap: 8px;
-    padding: 4px 4px 4px 6px;
+    gap: 4px;
+    padding: 4px 4px 4px 8px;
     align-items: center;
     font-family: var(--font-mono);
 }

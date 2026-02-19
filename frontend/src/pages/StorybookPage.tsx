@@ -830,6 +830,7 @@ export function useStorybookState() {
     setGraphFilterText,
     graphFilterNodeIds,
     graphFilterLocations,
+    graphFilterFocusItems,
     sampleGraphEntities,
     sampleGraphEdges,
   };
@@ -908,6 +909,7 @@ export function StorybookPage({
     setGraphFilterText,
     graphFilterNodeIds,
     graphFilterLocations,
+    graphFilterFocusItems,
     sampleGraphEntities,
     sampleGraphEdges,
   } = sharedState;
@@ -1402,10 +1404,7 @@ export function StorybookPage({
             Right-click any node chip below to open the context menu at the cursor position. Dismiss
             with Escape, click outside, or pick an action.
           </p>
-          <div
-            ref={contextMenuContainerRef}
-            className="ui-context-menu-demo"
-          >
+          <div ref={contextMenuContainerRef} className="ui-context-menu-demo">
             <Row>
               {CONTEXT_MENU_DEMO_NODES.map((node) => (
                 <NodeChip
@@ -1425,47 +1424,114 @@ export function StorybookPage({
                 />
               ))}
             </Row>
-            {contextMenuState && (() => {
-              const node = CONTEXT_MENU_DEMO_NODES.find((n) => n.id === contextMenuState.nodeId);
-              if (!node) return null;
-              return (
-                <ContextMenu x={contextMenuState.x} y={contextMenuState.y} onClose={closeContextMenu}>
-                  <ContextMenuItem onClick={() => { pickMenuAction("context", "focus-connected"); closeContextMenu(); }}>
-                    Show only connected
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem prefix="−" onClick={() => { pickMenuAction("context", "hide-node"); closeContextMenu(); }}>
-                    Hide this node
-                  </ContextMenuItem>
-                  {node.location && (
-                    <ContextMenuItem prefix="−" onClick={() => { pickMenuAction("context", `hide-location:${node.location}`); closeContextMenu(); }}>
-                      <NodeChip icon={<FileRs size={12} weight="bold" />} label={node.location.split("/").pop() ?? node.location} />
+            {contextMenuState &&
+              (() => {
+                const node = CONTEXT_MENU_DEMO_NODES.find((n) => n.id === contextMenuState.nodeId);
+                if (!node) return null;
+                return (
+                  <ContextMenu
+                    x={contextMenuState.x}
+                    y={contextMenuState.y}
+                    onClose={closeContextMenu}
+                  >
+                    <ContextMenuItem
+                      onClick={() => {
+                        pickMenuAction("context", "focus-connected");
+                        closeContextMenu();
+                      }}
+                    >
+                      Show only connected
                     </ContextMenuItem>
-                  )}
-                  <ContextMenuSeparator />
-                  <ContextMenuItem prefix="−" onClick={() => { pickMenuAction("context", `hide-crate:${node.krate}`); closeContextMenu(); }}>
-                    <NodeChip icon={<Package size={12} weight="bold" />} label={node.krate} />
-                  </ContextMenuItem>
-                  <ContextMenuItem prefix="+" onClick={() => { pickMenuAction("context", `solo-crate:${node.krate}`); closeContextMenu(); }}>
-                    <NodeChip icon={<Package size={12} weight="bold" />} label={node.krate} />
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem prefix="−" onClick={() => { pickMenuAction("context", `hide-process:${node.processId}`); closeContextMenu(); }}>
-                    <NodeChip icon={<Terminal size={12} weight="bold" />} label={node.processLabel} />
-                  </ContextMenuItem>
-                  <ContextMenuItem prefix="+" onClick={() => { pickMenuAction("context", `solo-process:${node.processId}`); closeContextMenu(); }}>
-                    <NodeChip icon={<Terminal size={12} weight="bold" />} label={node.processLabel} />
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem prefix="−" onClick={() => { pickMenuAction("context", `hide-kind:${node.kind}`); closeContextMenu(); }}>
-                    <NodeChip icon={kindIcon(node.kind, 12)} label={node.kindLabel} />
-                  </ContextMenuItem>
-                  <ContextMenuItem prefix="+" onClick={() => { pickMenuAction("context", `solo-kind:${node.kind}`); closeContextMenu(); }}>
-                    <NodeChip icon={kindIcon(node.kind, 12)} label={node.kindLabel} />
-                  </ContextMenuItem>
-                </ContextMenu>
-              );
-            })()}
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      prefix="−"
+                      onClick={() => {
+                        pickMenuAction("context", "hide-node");
+                        closeContextMenu();
+                      }}
+                    >
+                      Hide this node
+                    </ContextMenuItem>
+                    {node.location && (
+                      <ContextMenuItem
+                        prefix="−"
+                        onClick={() => {
+                          pickMenuAction("context", `hide-location:${node.location}`);
+                          closeContextMenu();
+                        }}
+                      >
+                        <NodeChip
+                          icon={<FileRs size={12} weight="bold" />}
+                          label={node.location.split("/").pop() ?? node.location}
+                        />
+                      </ContextMenuItem>
+                    )}
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      prefix="−"
+                      onClick={() => {
+                        pickMenuAction("context", `hide-crate:${node.krate}`);
+                        closeContextMenu();
+                      }}
+                    >
+                      <NodeChip icon={<Package size={12} weight="bold" />} label={node.krate} />
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      prefix="+"
+                      onClick={() => {
+                        pickMenuAction("context", `solo-crate:${node.krate}`);
+                        closeContextMenu();
+                      }}
+                    >
+                      <NodeChip icon={<Package size={12} weight="bold" />} label={node.krate} />
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      prefix="−"
+                      onClick={() => {
+                        pickMenuAction("context", `hide-process:${node.processId}`);
+                        closeContextMenu();
+                      }}
+                    >
+                      <NodeChip
+                        icon={<Terminal size={12} weight="bold" />}
+                        label={node.processLabel}
+                      />
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      prefix="+"
+                      onClick={() => {
+                        pickMenuAction("context", `solo-process:${node.processId}`);
+                        closeContextMenu();
+                      }}
+                    >
+                      <NodeChip
+                        icon={<Terminal size={12} weight="bold" />}
+                        label={node.processLabel}
+                      />
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      prefix="−"
+                      onClick={() => {
+                        pickMenuAction("context", `hide-kind:${node.kind}`);
+                        closeContextMenu();
+                      }}
+                    >
+                      <NodeChip icon={kindIcon(node.kind, 12)} label={node.kindLabel} />
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      prefix="+"
+                      onClick={() => {
+                        pickMenuAction("context", `solo-kind:${node.kind}`);
+                        closeContextMenu();
+                      }}
+                    >
+                      <NodeChip icon={kindIcon(node.kind, 12)} label={node.kindLabel} />
+                    </ContextMenuItem>
+                  </ContextMenu>
+                );
+              })()}
           </div>
           {lastMenuPick && (
             <div className="ui-lab-event">
