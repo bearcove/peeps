@@ -11,7 +11,7 @@
 }
 
 .recording-timeline-label {
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     font-weight: 600;
     color: var(--text-secondary);
     white-space: nowrap;
@@ -50,7 +50,7 @@
 }
 
 .recording-timeline-time {
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     font-family: var(--font-mono);
     color: var(--text-secondary);
     white-space: nowrap;
@@ -59,7 +59,7 @@
 }
 
 .recording-timeline-stats {
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     font-family: var(--font-mono);
     color: var(--text-muted);
     white-space: nowrap;
@@ -105,7 +105,7 @@
 }
 
 .recording-timeline-select {
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     font-family: var(--font-mono);
     padding: 2px 4px;
     border: 1px solid var(--border-default);

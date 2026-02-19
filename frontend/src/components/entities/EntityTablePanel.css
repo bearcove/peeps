@@ -16,14 +16,14 @@
     box-sizing: border-box;
     border-bottom: 1px solid var(--border-subtle);
     background: var(--bg-surface);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     flex-shrink: 0;
 }
 
 .entity-table-stats {
     color: var(--text-muted);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
 }
 
 .entity-table-toolbar-controls {
@@ -68,14 +68,14 @@
 
 .entity-table-subtle {
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .entity-table-scope-filter {
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     font-weight: 700;
     color: var(--text-secondary);
     font-family: var(--font-mono);

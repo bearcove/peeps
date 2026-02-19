@@ -18,7 +18,7 @@
 }
 
 .ui-filter-badge {
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     font-weight: 600;
     padding: 0 4px;
     border-radius: var(--radius-control);
@@ -120,7 +120,7 @@
 
 .ui-filter-item-meta {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     color: color-mix(in srgb, var(--text-muted) 78%, var(--text-tertiary));
     margin-left: auto;
 }

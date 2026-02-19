@@ -34,7 +34,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     font-weight: 600;
     padding: 2px 8px;
     border-radius: var(--radius-control);
@@ -65,7 +65,7 @@
 }
 
 .app-header-error {
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     color: var(--status-danger);
     font-weight: 600;
     max-width: 300px;
@@ -82,7 +82,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     font-weight: 700;
     padding: 2px 8px;
     border-radius: var(--radius-control);

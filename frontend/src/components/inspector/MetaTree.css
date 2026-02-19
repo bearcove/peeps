@@ -3,7 +3,7 @@
 .meta-tree {
     padding: 4px 0;
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     line-height: 1.6;
 }
 
@@ -37,7 +37,7 @@
 
 .meta-hint {
     color: var(--text-tertiary);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
 }
 
 .meta-toggle {

@@ -35,5 +35,5 @@
 
 .ui-relative-timestamp-caption {
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--font-size-md);
 }

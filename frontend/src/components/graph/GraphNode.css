@@ -68,7 +68,7 @@
     flex-direction: row;
     align-items: center;
     gap: 6px;
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     font-weight: 400;
 }
 
@@ -96,14 +96,14 @@
 
 .graph-node-dot {
     color: var(--text-tertiary);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     line-height: 1;
     padding: 0;
 }
 
 .graph-node-stat {
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     font-weight: 500;
 }
 

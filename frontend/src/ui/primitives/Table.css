@@ -43,7 +43,7 @@
 
 .ui-table-sort-indicator {
     color: var(--text-primary);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     line-height: 1;
 }
 

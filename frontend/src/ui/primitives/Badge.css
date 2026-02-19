@@ -35,7 +35,7 @@
     border-radius: var(--radius-control);
     padding: 1px 8px;
     border: 1px solid var(--border-subtle);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     letter-spacing: 0.02em;
 }
 

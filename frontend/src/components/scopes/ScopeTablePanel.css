@@ -16,14 +16,14 @@
     box-sizing: border-box;
     border-bottom: 1px solid var(--border-subtle);
     background: var(--bg-surface);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     flex-shrink: 0;
 }
 
 .scope-table-stats {
     color: var(--text-muted);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
 }
 
 .scope-table-toolbar-controls {
@@ -76,7 +76,7 @@
 
 .scope-table-subtle {
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
