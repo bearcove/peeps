@@ -1162,6 +1162,7 @@ dependencies = [
  "facet-json",
  "facet-value",
  "parking_lot",
+ "peeps-source",
  "peeps-types",
  "peeps-wire",
  "tokio",
@@ -1193,6 +1194,13 @@ dependencies = [
  "tokio",
  "ur-taking-me-with-you",
  "ureq",
+]
+
+[[package]]
+name = "peeps-source"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
 ]
 
 [[package]]

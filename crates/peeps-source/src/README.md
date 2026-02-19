@@ -23,30 +23,21 @@ So the model is split in two at the facade boundary, then joined immediately:
 
 `Source`:
 
-- Where it comes from: `SourceLeft::join(SourceRight)` (or inverse join)
+- Where it comes from: `SourceLeft::join(SourceRight)`
 - When it is produced: inside generated extension-trait method bodies
 - Where it is used: passed to hidden impl methods, then written into events/entities
 
 Example target shape:
 
 ```rust
-peeps::facade!();
-
-// expands to roughly:
-
 pub mod peeps {
     pub const PEEPS_SOURCE_LEFT: ::peeps::SourceLeft =
         ::peeps::SourceLeft::new(env!("CARGO_MANIFEST_DIR"));
 
-    pub trait MutexExt<T> {
-        fn lock(&self) -> ::peeps::MutexGuard<'_, T>;
-    }
-
     impl<T> MutexExt<T> for ::peeps::Mutex<T> {
         #[track_caller]
         fn lock(&self) -> ::peeps::MutexGuard<'_, T> {
-            let source = ::peeps::source(PEEPS_SOURCE_LEFT);
-            self._lock(source)
+            self._lock(PEEPS_SOURCE_LEFT.resolve())
         }
     }
 }

@@ -4,18 +4,8 @@ use compact_str::CompactString;
 use std::panic::Location;
 use std::path::Path;
 
-/// Unqualified callsite half of source identity.
-///
-/// Where it comes from: `Location::caller()` at wrapper callsites.
-///
-/// When it is captured: immediately before calling instrumented implementations.
-///
-/// Where it is used: joined with [`SourceLeft`] to resolve a concrete source string.
-///
-/// This value alone does not identify a crate. Relative paths are unresolved until joined.
 #[derive(Clone, Copy, Debug)]
 pub struct SourceRight {
-    /// Raw callsite location captured via `Location::caller()`.
     location: &'static Location<'static>,
 }
 
@@ -33,14 +23,6 @@ impl SourceRight {
     }
 }
 
-/// Ambient crate-context half of source identity.
-///
-/// Where it comes from: facade-expanded constants based on `env!("CARGO_MANIFEST_DIR")`.
-///
-/// When it is captured: compile time in the calling crate.
-///
-/// Where it is used: joined with [`SourceRight`] to resolve relative callsite paths and infer
-/// crate name by reading `Cargo.toml`.
 #[derive(Clone, Copy, Debug)]
 pub struct SourceLeft {
     manifest_dir: &'static str,
@@ -49,11 +31,6 @@ pub struct SourceLeft {
 impl SourceLeft {
     pub const fn new(manifest_dir: &'static str) -> Self {
         Self { manifest_dir }
-    }
-
-    #[track_caller]
-    pub const fn caller(manifest_dir: &'static str) -> Self {
-        Self::new(manifest_dir)
     }
 
     pub const fn manifest_dir(self) -> &'static str {
@@ -70,13 +47,6 @@ impl SourceLeft {
     }
 }
 
-/// Fully resolved source identity used by instrumentation.
-///
-/// Where it comes from: `SourceLeft + SourceRight` via [`Source::resolve`] or `join`.
-///
-/// When it is produced: at the instrumentation boundary where both halves are present.
-///
-/// Where it is used: event/entity source fields and crate identity.
 #[derive(Clone, Debug)]
 pub struct Source {
     source: CompactString,

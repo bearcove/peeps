@@ -32,16 +32,14 @@ pub(crate) mod process;
 pub(crate) mod rpc;
 pub(crate) mod sync;
 
-pub(crate) mod source;
-
 pub use self::api::*;
 pub use self::channels::*;
 pub use self::futures::*;
 pub use self::handles::*;
 pub use self::process::*;
 pub use self::rpc::*;
-pub use self::source::*;
 pub use self::sync::*;
+pub use peeps_source::*;
 
 static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
 
