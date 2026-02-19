@@ -163,8 +163,7 @@ impl FromSql for SourceId {
 }
 
 pub fn intern_source(source: Source) -> SourceId {
-    static SOURCE_INTERN: OnceLock<StdMutex<SourceIntern>> = OnceLock::new();
-    let lock = SOURCE_INTERN.get_or_init(|| StdMutex::new(SourceIntern::new()));
+    let lock = source_intern();
     let mut intern = lock
         .lock()
         .expect("source intern mutex poisoned; cannot continue");
@@ -172,12 +171,16 @@ pub fn intern_source(source: Source) -> SourceId {
 }
 
 pub fn source_for_id(source_id: SourceId) -> Option<Source> {
-    static SOURCE_INTERN: OnceLock<StdMutex<SourceIntern>> = OnceLock::new();
-    let lock = SOURCE_INTERN.get_or_init(|| StdMutex::new(SourceIntern::new()));
+    let lock = source_intern();
     let intern = lock
         .lock()
         .expect("source intern mutex poisoned; cannot continue");
     intern.lookup(source_id)
+}
+
+fn source_intern() -> &'static StdMutex<SourceIntern> {
+    static SOURCE_INTERN: OnceLock<StdMutex<SourceIntern>> = OnceLock::new();
+    SOURCE_INTERN.get_or_init(|| StdMutex::new(SourceIntern::new()))
 }
 
 impl From<Source> for SourceId {

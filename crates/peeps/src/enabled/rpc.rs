@@ -57,6 +57,7 @@ impl RpcResponseHandle {
         record_event_with_source(event, &source);
     }
 
+    #[track_caller]
     pub fn mark_ok(&self) {
         self.set_status_with_source(
             ResponseStatus::Ok,
@@ -64,6 +65,7 @@ impl RpcResponseHandle {
         );
     }
 
+    #[track_caller]
     pub fn mark_error(&self) {
         self.set_status_with_source(
             ResponseStatus::Error,
@@ -71,6 +73,7 @@ impl RpcResponseHandle {
         );
     }
 
+    #[track_caller]
     pub fn mark_cancelled(&self) {
         self.set_status_with_source(
             ResponseStatus::Cancelled,
