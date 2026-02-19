@@ -82,6 +82,16 @@ describe("graphFilterSuggestions", () => {
     expect(kindKey?.applyToken).toBe("+kind:");
   });
 
+  it("excludes suggestions for already applied concrete tokens", () => {
+    const out = graphFilterSuggestions({
+      ...baseInput,
+      fragment: "+kind:",
+      existingTokens: ["+kind:request"],
+    });
+    expect(out.map((s) => s.token)).not.toContain("+kind:request");
+    expect(out.map((s) => s.token)).toContain("+kind:response");
+  });
+
   it.each([
     ["+crate:web", "+crate:peeps-web"],
     ["-crate:core", "-crate:peeps-core"],

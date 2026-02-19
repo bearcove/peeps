@@ -44,11 +44,11 @@ export function edgeStyle(edge: EdgeDef): EdgeStyle {
     case "needs":
       return { stroke, strokeWidth };
     case "holds":
-      return { stroke, strokeWidth };
+      return { stroke, strokeWidth, strokeDasharray: "4 4" };
     case "polls":
       return { stroke, strokeWidth, strokeDasharray: "2 3" };
     case "closed_by":
-      return { stroke, strokeWidth };
+      return { stroke, strokeWidth, strokeDasharray: "4 4" };
     case "channel_link":
       return { stroke, strokeWidth, strokeDasharray: "6 3" };
     case "rpc_link":
@@ -83,8 +83,8 @@ export function edgeTooltip(edge: EdgeDef, sourceName: string, targetName: strin
   }
 }
 
-export function edgeMarkerSize(edge: EdgeDef): number {
-  return edge.kind === "needs" ? (edge.state === "pending" ? 14 : 10) : 8;
+export function edgeMarkerSize(_edge: EdgeDef): number {
+  return 10;
 }
 
 // ── Types ─────────────────────────────────────────────────────

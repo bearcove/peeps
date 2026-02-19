@@ -37,6 +37,7 @@ export type GraphFilterSuggestionItem = {
 
 export type GraphFilterSuggestionInput = {
   fragment: string;
+  existingTokens?: readonly string[];
   nodeIds: readonly string[];
   locations: readonly string[];
   crates: readonly GraphFilterSuggestionItem[];
@@ -64,6 +65,7 @@ export type GraphFilterEditorAction =
   | { type: "focus_input" }
   | { type: "blur_input" }
   | { type: "set_draft"; draft: string }
+  | { type: "clear_all" }
   | { type: "remove_chip"; index: number }
   | { type: "backspace_from_draft_start" }
   | { type: "apply_suggestion"; token: string }
@@ -313,6 +315,17 @@ export function graphFilterEditorReducer(
         suggestionsOpen: true,
         suggestionIndex: 0,
       };
+    case "clear_all":
+      return {
+        ...state,
+        ast: [],
+        insertionPoint: 0,
+        editingIndex: null,
+        draft: "",
+        selection: null,
+        suggestionsOpen: true,
+        suggestionIndex: 0,
+      };
     case "remove_chip": {
       const ast = removeTokenAt(state.ast, action.index);
       const insertionPoint = normalizeInsertionPoint(
@@ -427,7 +440,14 @@ function rankMatch(queryLower: string, targetLower: string): number {
   return Number.POSITIVE_INFINITY;
 }
 
-function uniquePush(out: GraphFilterSuggestion[], token: string, description: string, applyToken?: string): void {
+function uniquePush(
+  out: GraphFilterSuggestion[],
+  token: string,
+  description: string,
+  applyToken: string | undefined,
+  existingTokens: ReadonlySet<string>,
+): void {
+  if (existingTokens.has(token)) return;
   if (out.some((item) => item.token === token)) return;
   out.push({ token, description, applyToken });
 }
@@ -454,6 +474,7 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
   const fragment = input.fragment.trim();
   const lowerFragment = fragment.toLowerCase();
   const out: GraphFilterSuggestion[] = [];
+  const existingTokens = new Set(input.existingTokens ?? []);
 
   const signed = fragment.startsWith("+") ? "+" : fragment.startsWith("-") ? "-" : "";
   const unsignedFragment = signed ? fragment.slice(1) : fragment;
@@ -466,7 +487,7 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       { token: "-", description: "Exclude everything matching this filter", applyToken: "-" },
     ];
     for (const item of sortedMatches(rootSuggestions, lowerFragment, (v) => `${v.token} ${v.description}`)) {
-      uniquePush(out, item.token, item.description, item.applyToken);
+      uniquePush(out, item.token, item.description, item.applyToken, existingTokens);
     }
     return out;
   }
@@ -492,7 +513,7 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       { key: "groupBy:none", label: "Disable grouping" },
     ];
     const matched = sortedMatches(keySuggestions, lowerFragment, (entry) => `${entry.key} ${entry.label}`);
-    for (const entry of matched) uniquePush(out, entry.key, entry.label, entry.applyToken);
+    for (const entry of matched) uniquePush(out, entry.key, entry.label, entry.applyToken, existingTokens);
     return out;
   }
 
@@ -503,49 +524,49 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
 
   if ((keyLower === "node" || keyLower === "id") && signed) {
     for (const id of sortedMatches(input.nodeIds, valueLower, (v) => v)) {
-      uniquePush(out, `${signed}node:${quoteFilterValue(id)}`, `${signedDesc} node ${id}`);
+      uniquePush(out, `${signed}node:${quoteFilterValue(id)}`, `${signedDesc} node ${id}`, undefined, existingTokens);
     }
     return out;
   }
   if ((keyLower === "location" || keyLower === "source") && signed) {
     for (const location of sortedMatches(input.locations, valueLower, (v) => v)) {
-      uniquePush(out, `${signed}location:${quoteFilterValue(location)}`, `${signedDesc} location ${location}`);
+      uniquePush(out, `${signed}location:${quoteFilterValue(location)}`, `${signedDesc} location ${location}`, undefined, existingTokens);
     }
     return out;
   }
   if (keyLower === "crate" && signed) {
     for (const item of sortedMatches(input.crates, valueLower, (v) => `${v.id} ${v.label}`)) {
-      uniquePush(out, `${signed}crate:${quoteFilterValue(item.id)}`, `${signedDesc} crate ${item.label}`);
+      uniquePush(out, `${signed}crate:${quoteFilterValue(item.id)}`, `${signedDesc} crate ${item.label}`, undefined, existingTokens);
     }
     return out;
   }
   if (keyLower === "process" && signed) {
     for (const item of sortedMatches(input.processes, valueLower, (v) => `${v.id} ${v.label}`)) {
-      uniquePush(out, `${signed}process:${quoteFilterValue(item.id)}`, `${signedDesc} process ${item.label}`);
+      uniquePush(out, `${signed}process:${quoteFilterValue(item.id)}`, `${signedDesc} process ${item.label}`, undefined, existingTokens);
     }
     return out;
   }
   if (keyLower === "kind" && signed) {
     for (const item of sortedMatches(input.kinds, valueLower, (v) => `${v.id} ${v.label}`)) {
-      uniquePush(out, `${signed}kind:${quoteFilterValue(item.id)}`, `${signedDesc} kind ${item.label}`);
+      uniquePush(out, `${signed}kind:${quoteFilterValue(item.id)}`, `${signedDesc} kind ${item.label}`, undefined, existingTokens);
     }
     return out;
   }
   if (keyLower === "loners") {
     for (const mode of sortedMatches(["on", "off"], valueLower, (v) => v)) {
-      uniquePush(out, `loners:${mode}`, mode === "on" ? "Show unconnected nodes" : "Hide unconnected nodes");
+      uniquePush(out, `loners:${mode}`, mode === "on" ? "Show unconnected nodes" : "Hide unconnected nodes", undefined, existingTokens);
     }
     return out;
   }
   if (keyLower === "colorby") {
     for (const mode of sortedMatches(["process", "crate"], valueLower, (v) => v)) {
-      uniquePush(out, `colorBy:${mode}`, `Color nodes by ${mode}`);
+      uniquePush(out, `colorBy:${mode}`, `Color nodes by ${mode}`, undefined, existingTokens);
     }
     return out;
   }
   if (keyLower === "groupby") {
     for (const mode of sortedMatches(["process", "crate", "none"], valueLower, (v) => v)) {
-      uniquePush(out, `groupBy:${mode}`, mode === "none" ? "Disable grouping" : `Group by ${mode}`);
+      uniquePush(out, `groupBy:${mode}`, mode === "none" ? "Disable grouping" : `Group by ${mode}`, undefined, existingTokens);
     }
     return out;
   }
@@ -568,14 +589,14 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
         { key: "groupBy:none", label: "Disable grouping" },
       ];
   for (const entry of sortedMatches(fallbackKeys, signed ? unsignedLower : lowerFragment, (v) => `${v.key} ${v.label}`)) {
-    uniquePush(out, entry.key, entry.label, entry.applyToken);
+    uniquePush(out, entry.key, entry.label, entry.applyToken, existingTokens);
   }
   if (!signed && (lowerFragment === "+" || lowerFragment === "-")) {
-    uniquePush(out, `${lowerFragment}node:<id>`, "Filter by node id", `${lowerFragment}node:`);
-    uniquePush(out, `${lowerFragment}location:<src>`, "Filter by source location", `${lowerFragment}location:`);
-    uniquePush(out, `${lowerFragment}crate:<name>`, "Filter by crate", `${lowerFragment}crate:`);
-    uniquePush(out, `${lowerFragment}process:<id>`, "Filter by process", `${lowerFragment}process:`);
-    uniquePush(out, `${lowerFragment}kind:<kind>`, "Filter by kind", `${lowerFragment}kind:`);
+    uniquePush(out, `${lowerFragment}node:<id>`, "Filter by node id", `${lowerFragment}node:`, existingTokens);
+    uniquePush(out, `${lowerFragment}location:<src>`, "Filter by source location", `${lowerFragment}location:`, existingTokens);
+    uniquePush(out, `${lowerFragment}crate:<name>`, "Filter by crate", `${lowerFragment}crate:`, existingTokens);
+    uniquePush(out, `${lowerFragment}process:<id>`, "Filter by process", `${lowerFragment}process:`, existingTokens);
+    uniquePush(out, `${lowerFragment}kind:<kind>`, "Filter by kind", `${lowerFragment}kind:`, existingTokens);
   }
   return out;
 }

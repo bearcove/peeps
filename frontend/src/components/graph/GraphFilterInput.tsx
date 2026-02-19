@@ -86,6 +86,7 @@ export function GraphFilterInput({
     () =>
       graphFilterSuggestions({
         fragment: currentFragment,
+        existingTokens: editorState.ast,
         nodeIds,
         locations,
         crates: crateItems.map((item) => ({ id: item.id, label: String(item.label ?? item.id) })),
@@ -197,6 +198,11 @@ export function GraphFilterInput({
               applyEditorAction({ type: "blur_input" }, false);
             }}
             onKeyDown={(event) => {
+              if (event.key === "Backspace" && event.metaKey) {
+                event.preventDefault();
+                applyEditorAction({ type: "clear_all" });
+                return;
+              }
               if (event.key === "Backspace" && editorState.draft.length === 0 && editorState.insertionPoint > 0) {
                 event.preventDefault();
                 applyEditorAction({ type: "backspace_from_draft_start" });
@@ -241,15 +247,13 @@ export function GraphFilterInput({
               }
             }}
             placeholder={
-              editorState.ast.length === 0
-                ? "filters: node:.. location:.. crate:.. process:.. kind:.. loners:on|off colorBy:.. groupBy:.."
-                : "add filter…"
+              "to add filter"
             }
             className="graph-filter-fragment-input"
             aria-label="Graph filter query"
           />
-          {!editorState.focused && editorState.draft.length === 0 && (
-            <kbd className="graph-filter-shortcut">⌘K</kbd>
+          {editorState.ast.length === 0 && editorState.draft.length === 0 && !editorState.focused && (
+            <kbd className="graph-filter-shortcut graph-filter-shortcut--leading">⌘K</kbd>
           )}
         </div>
         {editorState.suggestionsOpen && graphFilterSuggestionsList.length > 0 && (

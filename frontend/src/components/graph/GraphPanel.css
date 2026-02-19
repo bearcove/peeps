@@ -99,7 +99,7 @@
     border: 2px solid var(--border-default);
     border-radius: 6px;
     background: var(--bg-elevated);
-    padding: 1px 8px;
+    padding: 1px 12px;
     box-sizing: border-box;
 }
 
@@ -122,15 +122,20 @@
 
 .graph-filter-shortcut {
     margin-left: auto;
-    font-family: var(--font-ui);
+    font-family: var(--font-mono);
     font-size: var(--font-size-sm);
-    color: var(--text-muted);
-    background: transparent;
-    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--bg-elevated) 65%, var(--bg-surface));
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
-    padding: 1px 5px;
+    padding: 1px 7px;
     pointer-events: none;
     flex-shrink: 0;
+    line-height: 1.2;
+}
+
+.graph-filter-shortcut--leading {
+    margin-left: 6px;
 }
 
 .graph-filter-chip {

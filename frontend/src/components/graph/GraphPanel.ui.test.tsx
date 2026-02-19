@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React, { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphPanel } from "./GraphPanel";
 
@@ -60,6 +60,7 @@ describe("GraphPanel filter input interactions", () => {
     render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
 
     const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
+    expect(input.placeholder).toBe("to add filter");
     expect(input.value).toBe("");
     await user.click(input);
     expect(input.value).toBe("");
@@ -68,6 +69,16 @@ describe("GraphPanel filter input interactions", () => {
 
     await user.type(input, "-n");
     expect(input.value).toBe("-n");
+  });
+
+  it("focuses the filter with Cmd+K", async () => {
+    const user = userEvent.setup();
+    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+
+    const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
+    expect(document.activeElement).not.toBe(input);
+    await user.keyboard("{Meta>}{k}{/Meta}");
+    expect(document.activeElement).toBe(input);
   });
 
   it("supports signed include/exclude autocomplete", async () => {
@@ -193,5 +204,36 @@ describe("GraphPanel filter input interactions", () => {
     expect(input.value).toBe("");
     expect(screen.getByRole("button", { name: /Include only filter/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Exclude everything matching this filter/i })).toBeTruthy();
+  });
+
+  it("does not suggest already-applied kind include values", async () => {
+    const user = userEvent.setup();
+    render(<Harness initialFilter="+kind:request" />);
+
+    const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
+    await user.click(input);
+    await user.type(input, "+k");
+    await user.keyboard("{Enter}"); // +kind:
+
+    const suggestionPanel = document.querySelector(".graph-filter-suggestions");
+    expect(suggestionPanel).toBeTruthy();
+    const panel = within(suggestionPanel as HTMLElement);
+    expect(panel.queryByText("+kind:request")).toBeNull();
+    expect(panel.getByText("+kind:response")).toBeTruthy();
+  });
+
+  it("clears all filters with Cmd+Backspace when input is focused", async () => {
+    const user = userEvent.setup();
+    render(<Harness initialFilter="+kind:request -kind:response colorBy:crate" />);
+
+    const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
+    await user.click(input);
+    await user.keyboard("{Meta>}{Backspace}{/Meta}");
+
+    expect(screen.queryByRole("button", { name: /\+kind:request/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /-kind:response/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /colorBy:crate/i })).toBeNull();
+    expect(input.value).toBe("");
+    expect(screen.getByRole("button", { name: /Include only filter/i })).toBeTruthy();
   });
 });
