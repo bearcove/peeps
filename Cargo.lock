@@ -1202,6 +1202,7 @@ version = "0.1.0"
 dependencies = [
  "compact_str",
  "facet",
+ "rusqlite",
 ]
 
 [[package]]
@@ -1211,6 +1212,7 @@ dependencies = [
  "compact_str",
  "facet-json",
  "facet-value",
+ "peeps-source",
  "peeps-types",
  "rusqlite",
 ]

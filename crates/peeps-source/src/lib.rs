@@ -2,6 +2,8 @@
 
 use compact_str::CompactString;
 use facet::Facet;
+#[cfg(feature = "rusqlite")]
+use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use std::collections::BTreeMap;
 use std::panic::Location;
 use std::path::Path;
@@ -117,6 +119,25 @@ impl SourceId {
 
     pub fn as_u64(self) -> u64 {
         self.0
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl ToSql for SourceId {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok((self.0 as i64).into())
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl FromSql for SourceId {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        let raw_i64 = i64::column_result(value)?;
+        let raw_u64 = u64::try_from(raw_i64).map_err(|_| FromSqlError::OutOfRange(raw_i64))?;
+        if raw_u64 > SourceId::MAX_U53 {
+            return Err(FromSqlError::OutOfRange(raw_i64));
+        }
+        Ok(SourceId(raw_u64))
     }
 }
 
