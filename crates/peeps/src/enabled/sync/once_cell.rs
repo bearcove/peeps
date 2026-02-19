@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use super::super::db::runtime_db;
 use super::super::futures::instrument_operation_on_with_source;
 use super::super::handles::EntityHandle;
-use super::super::{PeepsContext, Source};
+use super::super::{CrateContext, UnqualSource};
 
 pub struct OnceCell<T> {
     inner: tokio::sync::OnceCell<T>,
@@ -14,7 +14,7 @@ pub struct OnceCell<T> {
 }
 
 impl<T> OnceCell<T> {
-    pub fn new(name: impl Into<String>, source: Source) -> Self {
+    pub fn new(name: impl Into<String>, source: UnqualSource) -> Self {
         let handle = EntityHandle::new(
             name.into(),
             EntityBody::OnceCell(OnceCellEntity {
@@ -45,21 +45,21 @@ impl<T> OnceCell<T> {
     pub fn get_or_init_with_cx<'a, F, Fut>(
         &'a self,
         f: F,
-        cx: PeepsContext,
+        cx: CrateContext,
     ) -> impl Future<Output = &'a T> + 'a
     where
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = T> + 'a,
     {
-        self.get_or_init_with_source(f, Source::caller(), cx)
+        self.get_or_init_with_source(f, UnqualSource::caller(), cx)
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn get_or_init_with_source<'a, F, Fut>(
         &'a self,
         f: F,
-        source: Source,
-        cx: PeepsContext,
+        source: UnqualSource,
+        cx: CrateContext,
     ) -> impl Future<Output = &'a T> + 'a
     where
         F: FnOnce() -> Fut + 'a,
@@ -107,21 +107,21 @@ impl<T> OnceCell<T> {
     pub fn get_or_try_init_with_cx<'a, F, Fut, E>(
         &'a self,
         f: F,
-        cx: PeepsContext,
+        cx: CrateContext,
     ) -> impl Future<Output = Result<&'a T, E>> + 'a
     where
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = Result<T, E>> + 'a,
     {
-        self.get_or_try_init_with_source(f, Source::caller(), cx)
+        self.get_or_try_init_with_source(f, UnqualSource::caller(), cx)
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn get_or_try_init_with_source<'a, F, Fut, E>(
         &'a self,
         f: F,
-        source: Source,
-        cx: PeepsContext,
+        source: UnqualSource,
+        cx: CrateContext,
     ) -> impl Future<Output = Result<&'a T, E>> + 'a
     where
         F: FnOnce() -> Fut + 'a,

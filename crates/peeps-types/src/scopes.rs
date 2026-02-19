@@ -1,9 +1,8 @@
 use compact_str::CompactString;
 use facet::Facet;
+use facet_value::Value;
 
-use crate::{
-    caller_source, infer_krate_from_source, next_scope_id, MetaSerializeError, PTime, ScopeId,
-};
+use crate::{caller_source, next_scope_id, MetaSerializeError, PTime, ScopeId};
 
 /// A scope groups execution context over time (for example process/thread/task/connection).
 #[derive(Facet)]
@@ -29,7 +28,7 @@ pub struct Scope {
     pub body: ScopeBody,
 
     /// Extensible metadata for optional, non-canonical context.
-    pub meta: facet_value::Value,
+    pub meta: Value,
 }
 
 impl Scope {

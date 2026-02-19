@@ -1,10 +1,9 @@
 use super::*;
 
 use peeps_types::{
-    BufferState, ChannelCloseCause, ChannelDetails, ChannelEndpointEntity,
+    BufferState, ChannelCloseCause, ChannelClosedEvent, ChannelDetails, ChannelEndpointEntity,
     ChannelEndpointLifecycle, ChannelReceiveEvent, ChannelReceiveOutcome, ChannelSendEvent,
-    ChannelSendOutcome, ChannelClosedEvent, EdgeKind, EntityBody, EntityId, Event, EventTarget,
-    OperationKind,
+    ChannelSendOutcome, EdgeKind, EntityBody, EntityId, Event, EventTarget, OperationKind,
 };
 use std::future::Future;
 use std::sync::{Arc, Mutex as StdMutex};
@@ -78,16 +77,16 @@ impl<T: Clone> BroadcastSender<T> {
     pub fn send_with_cx(
         &self,
         value: T,
-        cx: PeepsContext,
+        cx: CrateContext,
     ) -> Result<usize, broadcast::error::SendError<T>> {
-        self.send_with_source(value, Source::caller(), cx)
+        self.send_with_source(value, UnqualSource::caller(), cx)
     }
 
     pub fn send_with_source(
         &self,
         value: T,
-        source: Source,
-        cx: PeepsContext,
+        source: UnqualSource,
+        cx: CrateContext,
     ) -> Result<usize, broadcast::error::SendError<T>> {
         match self.inner.send(value) {
             Ok(receivers) => {
@@ -146,16 +145,16 @@ impl<T: Clone> BroadcastReceiver<T> {
     #[allow(clippy::manual_async_fn)]
     pub fn recv_with_cx(
         &mut self,
-        cx: PeepsContext,
+        cx: CrateContext,
     ) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
-        self.recv_with_source(Source::caller(), cx)
+        self.recv_with_source(UnqualSource::caller(), cx)
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn recv_with_source(
         &mut self,
-        source: Source,
-        cx: PeepsContext,
+        source: UnqualSource,
+        cx: CrateContext,
     ) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
         async move {
             let result = instrument_operation_on_with_source(
@@ -219,7 +218,7 @@ impl<T: Clone> BroadcastReceiver<T> {
 pub fn broadcast<T: Clone>(
     name: impl Into<CompactString>,
     capacity: usize,
-    source: Source,
+    source: UnqualSource,
 ) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
     let name = name.into();
     let (tx, rx) = broadcast::channel(capacity);
@@ -277,13 +276,6 @@ pub fn broadcast<T: Clone>(
             name,
         },
     )
-}
-
-#[macro_export]
-macro_rules! broadcast {
-    ($name:expr, $capacity:expr $(,)?) => {
-        $crate::broadcast($name, $capacity, $crate::Source::caller())
-    };
 }
 
 impl<T: Clone> AsEntityRef for BroadcastSender<T> {

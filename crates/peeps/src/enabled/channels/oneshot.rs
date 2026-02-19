@@ -1,9 +1,9 @@
 use super::*;
 
 use peeps_types::{
-    ChannelCloseCause, ChannelDetails, ChannelEndpointEntity, ChannelEndpointLifecycle,
-    ChannelReceiveEvent, ChannelReceiveOutcome, ChannelSendEvent, ChannelSendOutcome,
-    ChannelClosedEvent, EdgeKind, EntityBody, EntityId, Event, EventTarget, OneshotChannelDetails,
+    ChannelCloseCause, ChannelClosedEvent, ChannelDetails, ChannelEndpointEntity,
+    ChannelEndpointLifecycle, ChannelReceiveEvent, ChannelReceiveOutcome, ChannelSendEvent,
+    ChannelSendOutcome, EdgeKind, EntityBody, EntityId, Event, EventTarget, OneshotChannelDetails,
     OneshotState, OperationKind,
 };
 use std::future::Future;
@@ -64,11 +64,16 @@ impl<T> OneshotSender<T> {
     }
 
     #[track_caller]
-    pub fn send_with_cx(self, value: T, cx: PeepsContext) -> Result<(), T> {
-        self.send_with_source(value, Source::caller(), cx)
+    pub fn send_with_cx(self, value: T, cx: CrateContext) -> Result<(), T> {
+        self.send_with_source(value, UnqualSource::caller(), cx)
     }
 
-    pub fn send_with_source(mut self, value: T, source: Source, cx: PeepsContext) -> Result<(), T> {
+    pub fn send_with_source(
+        mut self,
+        value: T,
+        source: UnqualSource,
+        cx: CrateContext,
+    ) -> Result<(), T> {
         let Some(inner) = self.inner.take() else {
             return Err(value);
         };
@@ -134,16 +139,16 @@ impl<T> OneshotReceiver<T> {
     #[allow(clippy::manual_async_fn)]
     pub fn recv_with_cx(
         self,
-        cx: PeepsContext,
+        cx: CrateContext,
     ) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
-        self.recv_with_source(Source::caller(), cx)
+        self.recv_with_source(UnqualSource::caller(), cx)
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn recv_with_source(
         mut self,
-        source: Source,
-        cx: PeepsContext,
+        source: UnqualSource,
+        cx: CrateContext,
     ) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
         async move {
             let inner = self.inner.take().expect("oneshot receiver consumed");
@@ -209,7 +214,7 @@ impl<T> OneshotReceiver<T> {
 
 pub fn oneshot<T>(
     name: impl Into<String>,
-    source: Source,
+    source: UnqualSource,
 ) -> (OneshotSender<T>, OneshotReceiver<T>) {
     let name: CompactString = name.into().into();
     let (tx, rx) = oneshot::channel();
@@ -260,17 +265,10 @@ pub fn oneshot<T>(
 
 pub fn oneshot_channel<T>(
     name: impl Into<String>,
-    source: Source,
+    source: UnqualSource,
 ) -> (OneshotSender<T>, OneshotReceiver<T>) {
     #[allow(deprecated)]
     oneshot(name, source)
-}
-
-#[macro_export]
-macro_rules! oneshot {
-    ($name:expr $(,)?) => {
-        $crate::oneshot($name, $crate::Source::caller())
-    };
 }
 
 impl<T> AsEntityRef for OneshotSender<T> {

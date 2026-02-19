@@ -6,7 +6,7 @@ use std::sync::Arc;
 use super::super::db::runtime_db;
 use super::super::futures::instrument_operation_on_with_source;
 use super::super::handles::EntityHandle;
-use super::super::{PeepsContext, Source};
+use super::super::{CrateContext, UnqualSource};
 
 #[derive(Clone)]
 pub struct Notify {
@@ -16,7 +16,7 @@ pub struct Notify {
 }
 
 impl Notify {
-    pub fn new(name: impl Into<String>, source: Source) -> Self {
+    pub fn new(name: impl Into<String>, source: UnqualSource) -> Self {
         let name = name.into();
         let handle = EntityHandle::new(
             name,
@@ -32,15 +32,15 @@ impl Notify {
 
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
-    pub fn notified_with_cx(&self, cx: PeepsContext) -> impl Future<Output = ()> + '_ {
-        self.notified_with_source(Source::caller(), cx)
+    pub fn notified_with_cx(&self, cx: CrateContext) -> impl Future<Output = ()> + '_ {
+        self.notified_with_source(UnqualSource::caller(), cx)
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn notified_with_source(
         &self,
-        source: Source,
-        cx: PeepsContext,
+        source: UnqualSource,
+        cx: CrateContext,
     ) -> impl Future<Output = ()> + '_ {
         async move {
             let waiters = self

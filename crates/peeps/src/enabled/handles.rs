@@ -3,7 +3,7 @@ use peeps_types::{EdgeKind, Entity, EntityBody, EntityId, Scope, ScopeBody, Scop
 use std::sync::Arc;
 
 use super::db::runtime_db;
-use super::Source;
+use super::UnqualSource;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityRef {
@@ -65,7 +65,7 @@ pub struct ScopeHandle {
 }
 
 impl ScopeHandle {
-    pub fn new(name: impl Into<CompactString>, body: ScopeBody, source: Source) -> Self {
+    pub fn new(name: impl Into<CompactString>, body: ScopeBody, source: UnqualSource) -> Self {
         let scope = Scope::builder(name, body)
             .source(source.into_compact_string())
             .build(&())
@@ -112,14 +112,14 @@ pub struct EntityHandle {
 }
 
 impl EntityHandle {
-    pub fn new(name: impl Into<CompactString>, body: EntityBody, source: Source) -> Self {
+    pub fn new(name: impl Into<CompactString>, body: EntityBody, source: UnqualSource) -> Self {
         Self::new_with_source(name, body, source)
     }
 
     pub fn new_with_source(
         name: impl Into<CompactString>,
         body: EntityBody,
-        source: Source,
+        source: UnqualSource,
     ) -> Self {
         let entity = Entity::builder(name, body)
             .source(source.into_compact_string())

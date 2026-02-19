@@ -1,10 +1,10 @@
 use super::*;
 
 use peeps_types::{
-    BufferState, ChannelCloseCause, ChannelDetails, ChannelEndpointEntity,
+    BufferState, ChannelCloseCause, ChannelClosedEvent, ChannelDetails, ChannelEndpointEntity,
     ChannelEndpointLifecycle, ChannelReceiveEvent, ChannelReceiveOutcome, ChannelSendEvent,
-    ChannelSendOutcome, ChannelClosedEvent, ChannelWaitKind, EdgeKind, EntityBody, EntityId,
-    Event, EventTarget, MpscChannelDetails, OperationKind,
+    ChannelSendOutcome, ChannelWaitKind, EdgeKind, EntityBody, EntityId, Event, EventTarget,
+    MpscChannelDetails, OperationKind,
 };
 use std::future::Future;
 use std::sync::{Arc, Mutex as StdMutex};
@@ -121,17 +121,17 @@ impl<T> Sender<T> {
     pub fn send_with_cx(
         &self,
         value: T,
-        cx: PeepsContext,
+        cx: CrateContext,
     ) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + '_ {
-        self.send_with_source(value, Source::caller(), cx)
+        self.send_with_source(value, UnqualSource::caller(), cx)
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn send_with_source(
         &self,
         value: T,
-        source: Source,
-        cx: PeepsContext,
+        source: UnqualSource,
+        cx: CrateContext,
     ) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + '_ {
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
@@ -237,15 +237,15 @@ impl<T> Receiver<T> {
 
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
-    pub fn recv_with_cx(&mut self, cx: PeepsContext) -> impl Future<Output = Option<T>> + '_ {
-        self.recv_with_source(Source::caller(), cx)
+    pub fn recv_with_cx(&mut self, cx: CrateContext) -> impl Future<Output = Option<T>> + '_ {
+        self.recv_with_source(UnqualSource::caller(), cx)
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn recv_with_source(
         &mut self,
-        source: Source,
-        cx: PeepsContext,
+        source: UnqualSource,
+        cx: CrateContext,
     ) -> impl Future<Output = Option<T>> + '_ {
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
@@ -353,16 +353,16 @@ impl<T> UnboundedSender<T> {
     pub fn send_with_cx(
         &self,
         value: T,
-        cx: PeepsContext,
+        cx: CrateContext,
     ) -> Result<(), mpsc::error::SendError<T>> {
-        self.send_with_source(value, Source::caller(), cx)
+        self.send_with_source(value, UnqualSource::caller(), cx)
     }
 
     pub fn send_with_source(
         &self,
         value: T,
-        source: Source,
-        cx: PeepsContext,
+        source: UnqualSource,
+        cx: CrateContext,
     ) -> Result<(), mpsc::error::SendError<T>> {
         match self.inner.send(value) {
             Ok(()) => {
@@ -437,15 +437,15 @@ impl<T> UnboundedReceiver<T> {
 
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
-    pub fn recv_with_cx(&mut self, cx: PeepsContext) -> impl Future<Output = Option<T>> + '_ {
-        self.recv_with_source(Source::caller(), cx)
+    pub fn recv_with_cx(&mut self, cx: CrateContext) -> impl Future<Output = Option<T>> + '_ {
+        self.recv_with_source(UnqualSource::caller(), cx)
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn recv_with_source(
         &mut self,
-        source: Source,
-        cx: PeepsContext,
+        source: UnqualSource,
+        cx: CrateContext,
     ) -> impl Future<Output = Option<T>> + '_ {
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
@@ -545,7 +545,7 @@ impl<T> UnboundedReceiver<T> {
 pub fn channel<T>(
     name: impl Into<String>,
     capacity: usize,
-    source: Source,
+    source: UnqualSource,
 ) -> (Sender<T>, Receiver<T>) {
     let name: CompactString = name.into().into();
     let (tx, rx) = mpsc::channel(capacity);
@@ -607,16 +607,9 @@ pub fn channel<T>(
     )
 }
 
-#[macro_export]
-macro_rules! channel {
-    ($name:expr, $capacity:expr $(,)?) => {
-        $crate::channel($name, $capacity, $crate::Source::caller())
-    };
-}
-
 pub fn unbounded_channel<T>(
     name: impl Into<String>,
-    source: Source,
+    source: UnqualSource,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     let name: CompactString = name.into().into();
     let (tx, rx) = mpsc::unbounded_channel();
@@ -673,13 +666,6 @@ pub fn unbounded_channel<T>(
             name,
         },
     )
-}
-
-#[macro_export]
-macro_rules! unbounded_channel {
-    ($name:expr $(,)?) => {
-        $crate::unbounded_channel($name, $crate::Source::caller())
-    };
 }
 
 impl<T> AsEntityRef for Sender<T> {

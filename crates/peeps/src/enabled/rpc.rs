@@ -5,7 +5,7 @@ use peeps_types::{
 };
 
 use super::handles::{EntityHandle, EntityRef};
-use super::Source;
+use super::UnqualSource;
 
 #[derive(Clone)]
 pub struct RpcRequestHandle {
@@ -59,7 +59,7 @@ impl RpcResponseHandle {
         if !changed {
             return;
         }
-        let source = Source::caller();
+        let source = UnqualSource::caller();
         if let Ok(event) = Event::new_with_source(
             EventTarget::Entity(self.handle.id().clone()),
             EventKind::StateChanged,
@@ -93,7 +93,7 @@ impl RpcResponseHandle {
 pub fn rpc_request(
     method: impl Into<CompactString>,
     args_preview: impl Into<CompactString>,
-    source: Source,
+    source: UnqualSource,
 ) -> RpcRequestHandle {
     let method = method.into();
     let body = EntityBody::Request(RequestEntity {
@@ -112,7 +112,7 @@ macro_rules! rpc_request {
     };
 }
 
-pub fn rpc_response(method: impl Into<CompactString>, source: Source) -> RpcResponseHandle {
+pub fn rpc_response(method: impl Into<CompactString>, source: UnqualSource) -> RpcResponseHandle {
     let method = method.into();
     let body = EntityBody::Response(ResponseEntity {
         method: method.clone(),
@@ -133,7 +133,7 @@ macro_rules! rpc_response {
 pub fn rpc_response_for(
     method: impl Into<CompactString>,
     request: &EntityRef,
-    source: Source,
+    source: UnqualSource,
 ) -> RpcResponseHandle {
     let method = method.into();
     let request_source_and_krate = if let Ok(db) = super::db::runtime_db().lock() {

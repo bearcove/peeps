@@ -11,8 +11,7 @@ pub(super) use super::db::runtime_db;
 pub(super) use super::futures::instrument_operation_on_with_source;
 pub(super) use super::handles::{AsEntityRef, EntityHandle, EntityRef};
 pub(super) use super::{
-    PeepsContext, Source, record_event_with_entity_source,
-    record_event_with_source,
+    record_event_with_entity_source, record_event_with_source, CrateContext, UnqualSource,
 };
 
 pub mod broadcast;
@@ -395,8 +394,8 @@ pub(super) fn apply_watch_state(channel: &Arc<StdMutex<WatchRuntimeState>>) {
 pub(super) fn emit_channel_wait_started(
     target: &EntityId,
     kind: ChannelWaitKind,
-    source: Source,
-    cx: PeepsContext,
+    source: UnqualSource,
+    cx: CrateContext,
 ) {
     if let Ok(event) = Event::channel_wait_started_with_source(
         EventTarget::Entity(target.clone()),
@@ -414,8 +413,8 @@ pub(super) fn emit_channel_wait_ended(
     target: &EntityId,
     kind: ChannelWaitKind,
     started: Instant,
-    source: Source,
-    cx: PeepsContext,
+    source: UnqualSource,
+    cx: CrateContext,
 ) {
     let wait_ns = started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
     if let Ok(event) = Event::channel_wait_ended_with_source(

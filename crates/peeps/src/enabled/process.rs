@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use super::futures::{instrument_future_on, instrument_future_on_with_source};
 use super::handles::EntityHandle;
-use super::{register_current_task_scope, PeepsContext, Source, FUTURE_CAUSAL_STACK};
+use super::{register_current_task_scope, CrateContext, UnqualSource, FUTURE_CAUSAL_STACK};
 
 pub struct Command {
     inner: tokio::process::Command,
@@ -155,11 +155,15 @@ impl Command {
     }
 
     #[track_caller]
-    pub fn spawn_with_cx(&mut self, cx: PeepsContext) -> io::Result<Child> {
-        self.spawn_with_source(Source::caller(), cx)
+    pub fn spawn_with_cx(&mut self, cx: CrateContext) -> io::Result<Child> {
+        self.spawn_with_source(UnqualSource::caller(), cx)
     }
 
-    pub fn spawn_with_source(&mut self, source: Source, _cx: PeepsContext) -> io::Result<Child> {
+    pub fn spawn_with_source(
+        &mut self,
+        source: UnqualSource,
+        _cx: CrateContext,
+    ) -> io::Result<Child> {
         let child = self.inner.spawn()?;
         let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
         Ok(Child {
@@ -171,15 +175,15 @@ impl Command {
     #[track_caller]
     pub fn status_with_cx(
         &mut self,
-        cx: PeepsContext,
+        cx: CrateContext,
     ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        self.status_with_source(Source::caller(), cx)
+        self.status_with_source(UnqualSource::caller(), cx)
     }
 
     pub fn status_with_source(
         &mut self,
-        source: Source,
-        _cx: PeepsContext,
+        source: UnqualSource,
+        _cx: CrateContext,
     ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
         let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
         instrument_future_on_with_source("command.status", &handle, self.inner.status(), source)
@@ -188,15 +192,15 @@ impl Command {
     #[track_caller]
     pub fn output_with_cx(
         &mut self,
-        cx: PeepsContext,
+        cx: CrateContext,
     ) -> impl Future<Output = io::Result<Output>> + '_ {
-        self.output_with_source(Source::caller(), cx)
+        self.output_with_source(UnqualSource::caller(), cx)
     }
 
     pub fn output_with_source(
         &mut self,
-        source: Source,
-        _cx: PeepsContext,
+        source: UnqualSource,
+        _cx: CrateContext,
     ) -> impl Future<Output = io::Result<Output>> + '_ {
         let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
         instrument_future_on_with_source("command.output", &handle, self.inner.output(), source)
@@ -256,7 +260,7 @@ impl Child {
             env: diag.env.clone(),
         });
         let name = CompactString::from(format!("command.{}", diag.program));
-        let handle = EntityHandle::new(name, body, Source::caller());
+        let handle = EntityHandle::new(name, body, UnqualSource::caller());
         Self {
             inner: Some(child),
             handle,
@@ -279,15 +283,15 @@ impl Child {
     #[track_caller]
     pub fn wait_with_cx(
         &mut self,
-        cx: PeepsContext,
+        cx: CrateContext,
     ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        self.wait_with_source(Source::caller(), cx)
+        self.wait_with_source(UnqualSource::caller(), cx)
     }
 
     pub fn wait_with_source(
         &mut self,
-        source: Source,
-        _cx: PeepsContext,
+        source: UnqualSource,
+        _cx: CrateContext,
     ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
         let handle = self.handle.clone();
         let wait_fut = self.inner_mut().wait();
@@ -297,15 +301,15 @@ impl Child {
     #[track_caller]
     pub fn wait_with_output_with_cx(
         self,
-        cx: PeepsContext,
+        cx: CrateContext,
     ) -> impl Future<Output = io::Result<Output>> {
-        self.wait_with_output_with_source(Source::caller(), cx)
+        self.wait_with_output_with_source(UnqualSource::caller(), cx)
     }
 
     pub fn wait_with_output_with_source(
         mut self,
-        source: Source,
-        _cx: PeepsContext,
+        source: UnqualSource,
+        _cx: CrateContext,
     ) -> impl Future<Output = io::Result<Output>> {
         let child = self.inner.take().expect("child already consumed");
         instrument_future_on_with_source(
@@ -355,136 +359,4 @@ impl Child {
     pub fn take_stderr(&mut self) -> Option<tokio::process::ChildStderr> {
         self.inner_mut().stderr.take()
     }
-}
-
-impl<T> JoinSet<T>
-where
-    T: Send + 'static,
-{
-    pub fn named(name: impl Into<String>, source: Source) -> Self {
-        let name = name.into();
-        let handle = EntityHandle::new(format!("joinset.{name}"), EntityBody::Future, source);
-        Self {
-            inner: tokio::task::JoinSet::new(),
-            handle,
-        }
-    }
-
-    pub fn with_name(name: impl Into<String>, source: Source) -> Self {
-        #[allow(deprecated)]
-        Self::named(name, source)
-    }
-
-    #[track_caller]
-    pub fn spawn_with_cx<F>(&mut self, label: &'static str, future: F, cx: PeepsContext)
-    where
-        F: Future<Output = T> + Send + 'static,
-    {
-        self.spawn_with_source(label, future, Source::caller(), cx);
-    }
-
-    pub fn spawn_with_source<F>(
-        &mut self,
-        label: &'static str,
-        future: F,
-        source: Source,
-        _cx: PeepsContext,
-    ) where
-        F: Future<Output = T> + Send + 'static,
-    {
-        let joinset_handle = self.handle.clone();
-        self.inner.spawn(
-            FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
-                let _task_scope = register_current_task_scope(label, source);
-                instrument_future_on_with_source(label, &joinset_handle, future, source).await
-            }),
-        );
-    }
-
-    #[track_caller]
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
-    #[track_caller]
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    #[track_caller]
-    pub fn abort_all(&mut self) {
-        self.inner.abort_all();
-    }
-
-    #[track_caller]
-    pub fn join_next_with_cx(
-        &mut self,
-        cx: PeepsContext,
-    ) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
-        self.join_next_with_source(Source::caller(), cx)
-    }
-
-    pub fn join_next_with_source(
-        &mut self,
-        source: Source,
-        _cx: PeepsContext,
-    ) -> impl Future<Output = Option<Result<T, tokio::task::JoinError>>> + '_ {
-        let handle = self.handle.clone();
-        let fut = self.inner.join_next();
-        instrument_future_on_with_source("joinset.join_next", &handle, fut, source)
-    }
-}
-
-impl DiagnosticInterval {
-    #[track_caller]
-    pub fn tick(&mut self) -> impl Future<Output = tokio::time::Instant> + '_ {
-        instrument_future_on(
-            "interval.tick",
-            &self.handle,
-            self.inner.tick(),
-            Source::caller(),
-        )
-    }
-
-    #[track_caller]
-    pub fn reset(&mut self) {
-        self.inner.reset();
-    }
-
-    #[track_caller]
-    pub fn period(&self) -> Duration {
-        self.inner.period()
-    }
-
-    #[track_caller]
-    pub fn set_missed_tick_behavior(&mut self, behavior: tokio::time::MissedTickBehavior) {
-        self.inner.set_missed_tick_behavior(behavior);
-    }
-}
-
-pub fn interval(period: Duration, source: Source) -> DiagnosticInterval {
-    let label = format!("interval({}ms)", period.as_millis());
-    DiagnosticInterval {
-        inner: tokio::time::interval(period),
-        handle: EntityHandle::new(label, EntityBody::Future, source),
-    }
-}
-
-pub fn interval_at(
-    start: tokio::time::Instant,
-    period: Duration,
-    source: Source,
-) -> DiagnosticInterval {
-    let label = format!("interval({}ms)", period.as_millis());
-    DiagnosticInterval {
-        inner: tokio::time::interval_at(start, period),
-        handle: EntityHandle::new(label, EntityBody::Future, source),
-    }
-}
-
-#[macro_export]
-macro_rules! join_set {
-    ($name:expr $(,)?) => {
-        $crate::JoinSet::named($name, $crate::Source::caller())
-    };
 }

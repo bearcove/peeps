@@ -2,8 +2,8 @@ use super::*;
 
 use peeps_types::{
     ChannelCloseCause, ChannelDetails, ChannelEndpointEntity, ChannelEndpointLifecycle,
-    ChannelReceiveEvent, ChannelReceiveOutcome, ChannelSendEvent, ChannelSendOutcome, EdgeKind, EntityBody, EntityId, Event, EventTarget, OperationKind,
-    WatchChannelDetails,
+    ChannelReceiveEvent, ChannelReceiveOutcome, ChannelSendEvent, ChannelSendOutcome, EdgeKind,
+    EntityBody, EntityId, Event, EventTarget, OperationKind, WatchChannelDetails,
 };
 use std::future::Future;
 use std::sync::{Arc, Mutex as StdMutex};
@@ -64,16 +64,16 @@ impl<T: Clone> WatchSender<T> {
     pub fn send_with_cx(
         &self,
         value: T,
-        cx: PeepsContext,
+        cx: CrateContext,
     ) -> Result<(), watch::error::SendError<T>> {
-        self.send_with_source(value, Source::caller(), cx)
+        self.send_with_source(value, UnqualSource::caller(), cx)
     }
 
     pub fn send_with_source(
         &self,
         value: T,
-        source: Source,
-        cx: PeepsContext,
+        source: UnqualSource,
+        cx: CrateContext,
     ) -> Result<(), watch::error::SendError<T>> {
         match self.inner.send(value) {
             Ok(()) => {
@@ -118,11 +118,16 @@ impl<T: Clone> WatchSender<T> {
     }
 
     #[track_caller]
-    pub fn send_replace_with_cx(&self, value: T, cx: PeepsContext) -> T {
-        self.send_replace_with_source(value, Source::caller(), cx)
+    pub fn send_replace_with_cx(&self, value: T, cx: CrateContext) -> T {
+        self.send_replace_with_source(value, UnqualSource::caller(), cx)
     }
 
-    pub fn send_replace_with_source(&self, value: T, _source: Source, _cx: PeepsContext) -> T {
+    pub fn send_replace_with_source(
+        &self,
+        value: T,
+        _source: UnqualSource,
+        _cx: CrateContext,
+    ) -> T {
         let old = self.inner.send_replace(value);
         let now = peeps_types::PTime::now();
         if let Ok(mut state) = self.channel.lock() {
@@ -157,16 +162,16 @@ impl<T: Clone> WatchReceiver<T> {
     #[allow(clippy::manual_async_fn)]
     pub fn changed_with_cx(
         &mut self,
-        cx: PeepsContext,
+        cx: CrateContext,
     ) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
-        self.changed_with_source(Source::caller(), cx)
+        self.changed_with_source(UnqualSource::caller(), cx)
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn changed_with_source(
         &mut self,
-        source: Source,
-        cx: PeepsContext,
+        source: UnqualSource,
+        cx: CrateContext,
     ) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
         async move {
             let result = instrument_operation_on_with_source(
@@ -234,7 +239,7 @@ impl<T: Clone> WatchReceiver<T> {
 pub fn watch<T: Clone>(
     name: impl Into<CompactString>,
     initial: T,
-    source: Source,
+    source: UnqualSource,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
     let name = name.into();
     let (tx, rx) = watch::channel(initial);
@@ -290,17 +295,10 @@ pub fn watch<T: Clone>(
 pub fn watch_channel<T: Clone>(
     name: impl Into<CompactString>,
     initial: T,
-    source: Source,
+    source: UnqualSource,
 ) -> (WatchSender<T>, WatchReceiver<T>) {
     #[allow(deprecated)]
     watch(name, initial, source)
-}
-
-#[macro_export]
-macro_rules! watch {
-    ($name:expr, $initial:expr $(,)?) => {
-        $crate::watch($name, $initial, $crate::Source::caller())
-    };
 }
 
 impl<T: Clone> AsEntityRef for WatchSender<T> {

@@ -1,16 +1,16 @@
 use compact_str::CompactString;
+use peeps_types::{infer_krate_from_source_with_manifest_dir, PTime};
 use peeps_types::{
     EdgeKind, Entity, EntityBody, EntityId, Event, EventKind, EventTarget, OperationEdgeMeta,
     OperationKind, OperationState,
 };
-use peeps_types::{infer_krate_from_source_with_manifest_dir, PTime};
 use std::future::{Future, IntoFuture};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use super::db::runtime_db;
 use super::handles::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
-use super::{record_event_with_entity_source, PeepsContext, Source, FUTURE_CAUSAL_STACK};
+use super::{record_event_with_entity_source, CrateContext, UnqualSource, FUTURE_CAUSAL_STACK};
 
 pub(super) struct OperationFuture<F> {
     inner: F,
@@ -133,8 +133,8 @@ pub(super) fn instrument_operation_on_with_source<F>(
     on: &EntityHandle,
     op_kind: OperationKind,
     fut: F,
-    source: Source,
-    cx: PeepsContext,
+    source: UnqualSource,
+    cx: CrateContext,
 ) -> OperationFuture<F::IntoFuture>
 where
     F: IntoFuture,
@@ -202,11 +202,16 @@ impl<F> InstrumentedFuture<F> {
     }
 }
 
-fn future_relation_endpoints(
+fn transition_relation_edge(
     future_id: &EntityId,
-    relation: &FutureEdgeRelation,
-) -> (EntityId, EntityId) {
-    match relation.direction {
+    relation: &mut FutureEdgeRelation,
+    next_edge: Option<EdgeKind>,
+) {
+    if relation.current_edge == next_edge {
+        return;
+    }
+
+    let (src, dst) = match relation.direction {
         FutureEdgeDirection::ParentToChild => (
             EntityId::new(relation.target.id().as_str()),
             EntityId::new(future_id.as_str()),
@@ -215,43 +220,16 @@ fn future_relation_endpoints(
             EntityId::new(future_id.as_str()),
             EntityId::new(relation.target.id().as_str()),
         ),
-    }
-}
-
-fn ensure_relation_polls_edge(future_id: &EntityId, relation: &mut FutureEdgeRelation) {
-    if relation.current_edge.is_some() {
-        return;
-    }
-    let (src, dst) = future_relation_endpoints(future_id, relation);
-    if let Ok(mut db) = runtime_db().lock() {
-        db.upsert_edge(&src, &dst, EdgeKind::Polls);
-    }
-    relation.current_edge = Some(EdgeKind::Polls);
-}
-
-fn ensure_relation_needs_edge(future_id: &EntityId, relation: &mut FutureEdgeRelation) {
-    if relation.current_edge == Some(EdgeKind::Needs) {
-        return;
-    }
-    let (src, dst) = future_relation_endpoints(future_id, relation);
-    if let Ok(mut db) = runtime_db().lock() {
-        if relation.current_edge == Some(EdgeKind::Polls) {
-            db.remove_edge(&src, &dst, EdgeKind::Polls);
-        }
-        db.upsert_edge(&src, &dst, EdgeKind::Needs);
-    }
-    relation.current_edge = Some(EdgeKind::Needs);
-}
-
-fn clear_relation_edge(future_id: &EntityId, relation: &mut FutureEdgeRelation) {
-    let Some(kind) = relation.current_edge else {
-        return;
     };
-    let (src, dst) = future_relation_endpoints(future_id, relation);
     if let Ok(mut db) = runtime_db().lock() {
-        db.remove_edge(&src, &dst, kind);
+        if let Some(current_edge) = relation.current_edge {
+            db.remove_edge(&src, &dst, current_edge);
+        }
+        if let Some(edge) = next_edge {
+            db.upsert_edge(&src, &dst, edge);
+        }
     }
-    relation.current_edge = None;
+    relation.current_edge = next_edge;
 }
 
 impl<F> Future for InstrumentedFuture<F>
@@ -270,10 +248,10 @@ where
             .is_ok();
 
         if let Some(relation) = this.awaited_by.as_mut() {
-            ensure_relation_polls_edge(&future_id, relation);
+            transition_relation_edge(&future_id, relation, Some(EdgeKind::Polls));
         }
         if let Some(relation) = this.waits_on.as_mut() {
-            ensure_relation_polls_edge(&future_id, relation);
+            transition_relation_edge(&future_id, relation, Some(EdgeKind::Polls));
         }
 
         let poll = unsafe { Pin::new_unchecked(&mut this.inner) }.poll(cx);
@@ -285,19 +263,19 @@ where
         match poll {
             Poll::Pending => {
                 if let Some(relation) = this.awaited_by.as_mut() {
-                    ensure_relation_needs_edge(&future_id, relation);
+                    transition_relation_edge(&future_id, relation, Some(EdgeKind::Needs));
                 }
                 if let Some(relation) = this.waits_on.as_mut() {
-                    ensure_relation_needs_edge(&future_id, relation);
+                    transition_relation_edge(&future_id, relation, Some(EdgeKind::Needs));
                 }
                 Poll::Pending
             }
             Poll::Ready(output) => {
                 if let Some(relation) = this.awaited_by.as_mut() {
-                    clear_relation_edge(&future_id, relation);
+                    transition_relation_edge(&future_id, relation, None);
                 }
                 if let Some(relation) = this.waits_on.as_mut() {
-                    clear_relation_edge(&future_id, relation);
+                    transition_relation_edge(&future_id, relation, None);
                 }
 
                 if let Ok(event) = Event::new(
@@ -318,124 +296,34 @@ impl<F> Drop for InstrumentedFuture<F> {
     fn drop(&mut self) {
         let future_id = EntityId::new(self.future_handle.id().as_str());
         if let Some(relation) = self.awaited_by.as_mut() {
-            clear_relation_edge(&future_id, relation);
+            transition_relation_edge(&future_id, relation, None);
         }
         if let Some(relation) = self.waits_on.as_mut() {
-            clear_relation_edge(&future_id, relation);
+            transition_relation_edge(&future_id, relation, None);
         }
     }
 }
 
-pub fn instrument_future_named<F>(
+pub fn instrument_future<F>(
     name: impl Into<CompactString>,
     fut: F,
-    source: Source,
-) -> InstrumentedFuture<F::IntoFuture>
-where
-    F: IntoFuture,
-{
-    instrument_future_named_with_source(name, fut, source)
-}
-
-pub fn instrument_future_named_with_source<F>(
-    name: impl Into<CompactString>,
-    fut: F,
-    source: Source,
+    source: UnqualSource,
+    on: Option<EntityRef>,
+    meta: Option<facet_value::Value>,
 ) -> InstrumentedFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
     let fut = fut.into_future();
-    let handle = EntityHandle::new_with_source(name, EntityBody::Future, source);
-    InstrumentedFuture::new(fut, handle, None)
-}
-
-pub fn instrument_future_on<F>(
-    name: impl Into<CompactString>,
-    on: &impl AsEntityRef,
-    fut: F,
-    source: Source,
-) -> InstrumentedFuture<F::IntoFuture>
-where
-    F: IntoFuture,
-{
-    instrument_future_on_with_source(name, on, fut, source)
-}
-
-pub fn instrument_future_on_with_source<F>(
-    name: impl Into<CompactString>,
-    on: &impl AsEntityRef,
-    fut: F,
-    source: Source,
-) -> InstrumentedFuture<F::IntoFuture>
-where
-    F: IntoFuture,
-{
-    let fut = fut.into_future();
-    let on_ref = on.as_entity_ref();
-    let handle = EntityHandle::new_with_source(name, EntityBody::Future, source);
-    InstrumentedFuture::new(fut, handle, Some(on_ref))
-}
-
-#[doc(hidden)]
-pub fn instrument_future_named_with_meta<F>(
-    name: impl Into<CompactString>,
-    fut: F,
-    meta: &facet_value::Value,
-    source: Source,
-) -> InstrumentedFuture<F::IntoFuture>
-where
-    F: IntoFuture,
-{
-    let fut = fut.into_future();
-    let mut entity = Entity::builder(name, EntityBody::Future)
-        .source(source.into_compact_string())
-        .build(&())
-        .expect("entity construction with unit meta should be infallible");
-    entity.meta = meta.clone();
-    let handle = EntityHandle::from_entity(entity);
-    InstrumentedFuture::new(fut, handle, None)
-}
-
-#[macro_export]
-macro_rules! peeps {
-    (name = $name:expr, fut = $fut:expr $(,)?) => {{
-        $crate::instrument_future_named($name, $fut, $crate::Source::caller())
-    }};
-    (name = $name:expr, on = $on:expr, fut = $fut:expr $(,)?) => {{
-        $crate::instrument_future_on($name, &$on, $fut, $crate::Source::caller())
-    }};
-}
-
-#[macro_export]
-macro_rules! peep {
-    ($fut:expr, $name:expr $(,)?) => {{
-        $crate::instrument_future_named($name, $fut, $crate::Source::caller())
-    }};
-    ($fut:expr, $name:expr, {$($k:literal => $v:expr),* $(,)?} $(,)?) => {{
-        let mut __peeps_meta_pairs: Vec<(&'static str, $crate::facet_value::Value)> = Vec::new();
-        $(
-            __peeps_meta_pairs.push((
-                $k,
-                $crate::facet_value::to_value(&$v)
-                    .expect("`peep!` metadata value must be Facet-serializable"),
-            ));
-        )*
-        let __peeps_meta: $crate::facet_value::Value = __peeps_meta_pairs.into_iter().collect();
-        $crate::instrument_future_named_with_meta(
-            $name,
-            $fut,
-            &__peeps_meta,
-            $crate::Source::caller(),
-        )
-    }};
-    ($fut:expr, $name:expr, level = $($rest:tt)*) => {{
-        compile_error!("`level=` is deprecated");
-    }};
-    ($fut:expr, $name:expr, kind = $($rest:tt)*) => {{
-        compile_error!("`kind=` is deprecated");
-    }};
-    ($fut:expr, $name:expr, $($rest:tt)+) => {{
-        compile_error!("invalid `peep!` arguments");
-    }};
+    let handle = if let Some(meta) = meta {
+        let mut entity = Entity::builder(name, EntityBody::Future)
+            .source(source.into_compact_string())
+            .build(&())
+            .expect("entity construction with unit meta should be infallible");
+        entity.meta = meta;
+        EntityHandle::from_entity(entity)
+    } else {
+        EntityHandle::new_with_source(name, EntityBody::Future, source)
+    };
+    InstrumentedFuture::new(fut, handle, on)
 }
