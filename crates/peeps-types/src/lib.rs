@@ -43,6 +43,262 @@ macro_rules! impl_sqlite_json {
     };
 }
 
+#[macro_export]
+macro_rules! impl_entity_body_slot {
+    ($slot:ident :: $variant:ident ($value:ty)) => {
+        impl $crate::EntityBodySlot for $slot {
+            type Value = $value;
+            const KIND_NAME: &'static str = stringify!($variant);
+
+            fn project(body: &$crate::EntityBody) -> Option<&Self::Value> {
+                if let $crate::EntityBody::$variant(value) = body {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
+
+            fn project_mut(body: &mut $crate::EntityBody) -> Option<&mut Self::Value> {
+                if let $crate::EntityBody::$variant(value) = body {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
+        }
+    };
+    ($slot:ty, $value:ty, $variant:ident, $kind_name:expr) => {
+        impl $crate::EntityBodySlot for $slot {
+            type Value = $value;
+            const KIND_NAME: &'static str = $kind_name;
+
+            fn project(body: &$crate::EntityBody) -> Option<&Self::Value> {
+                if let $crate::EntityBody::$variant(value) = body {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
+
+            fn project_mut(body: &mut $crate::EntityBody) -> Option<&mut Self::Value> {
+                if let $crate::EntityBody::$variant(value) = body {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! define_entity_body {
+    (
+        $vis:vis enum EntityBody {
+            $(
+                $(#[$variant_meta:meta])*
+                $variant:ident($value:ty)
+            ),+ $(,)?
+        }
+    ) => {
+        #[derive(::facet::Facet)]
+        #[repr(u8)]
+        #[facet(rename_all = "snake_case")]
+        #[allow(dead_code)]
+        $vis enum EntityBody {
+            $(
+                $(#[$variant_meta])*
+                $variant($value),
+            )+
+        }
+
+        $crate::impl_sqlite_json!(EntityBody);
+
+        $(
+            pub struct $variant;
+            $crate::impl_entity_body_slot!($variant::$variant($value));
+        )+
+    };
+}
+
+#[macro_export]
+macro_rules! declare_entity_body_slots {
+    ($( $slot:ident :: $variant:ident ($value:ty) ),+ $(,)?) => {
+        $(
+            pub struct $slot;
+            $crate::impl_entity_body_slot!($slot::$variant($value));
+        )+
+    };
+}
+
+#[macro_export]
+macro_rules! impl_scope_body_slot {
+    ($slot:ident :: $variant:ident ($value:ty)) => {
+        impl $crate::ScopeBodySlot for $slot {
+            type Value = $value;
+            const KIND_NAME: &'static str = stringify!($variant);
+
+            fn project(body: &$crate::ScopeBody) -> Option<&Self::Value> {
+                if let $crate::ScopeBody::$variant(value) = body {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
+
+            fn project_mut(body: &mut $crate::ScopeBody) -> Option<&mut Self::Value> {
+                if let $crate::ScopeBody::$variant(value) = body {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
+        }
+    };
+    ($slot:ty, $value:ty, $variant:ident, $kind_name:expr) => {
+        impl $crate::ScopeBodySlot for $slot {
+            type Value = $value;
+            const KIND_NAME: &'static str = $kind_name;
+
+            fn project(body: &$crate::ScopeBody) -> Option<&Self::Value> {
+                if let $crate::ScopeBody::$variant(value) = body {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
+
+            fn project_mut(body: &mut $crate::ScopeBody) -> Option<&mut Self::Value> {
+                if let $crate::ScopeBody::$variant(value) = body {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! declare_scope_body_slots {
+    ($( $slot:ident :: $variant:ident ($value:ty) ),+ $(,)?) => {
+        $(
+            pub struct $slot;
+            $crate::impl_scope_body_slot!($slot::$variant($value));
+        )+
+    };
+}
+
+#[macro_export]
+macro_rules! impl_event_target_slot {
+    ($slot:ident :: $variant:ident ($value:ty)) => {
+        impl $crate::EventTargetSlot for $slot {
+            type Value = $value;
+            const KIND_NAME: &'static str = stringify!($variant);
+
+            fn project(target: &$crate::EventTarget) -> Option<&Self::Value> {
+                if let $crate::EventTarget::$variant(value) = target {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
+
+            fn project_mut(target: &mut $crate::EventTarget) -> Option<&mut Self::Value> {
+                if let $crate::EventTarget::$variant(value) = target {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
+        }
+    };
+    ($slot:ty, $value:ty, $variant:ident, $kind_name:expr) => {
+        impl $crate::EventTargetSlot for $slot {
+            type Value = $value;
+            const KIND_NAME: &'static str = $kind_name;
+
+            fn project(target: &$crate::EventTarget) -> Option<&Self::Value> {
+                if let $crate::EventTarget::$variant(value) = target {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
+
+            fn project_mut(target: &mut $crate::EventTarget) -> Option<&mut Self::Value> {
+                if let $crate::EventTarget::$variant(value) = target {
+                    Some(value)
+                } else {
+                    None
+                }
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! declare_event_target_slots {
+    ($( $slot:ident :: $variant:ident ($value:ty) ),+ $(,)?) => {
+        $(
+            pub struct $slot;
+            $crate::impl_event_target_slot!($slot::$variant($value));
+        )+
+    };
+}
+
+#[macro_export]
+macro_rules! impl_event_kind_slot {
+    ($slot:ident :: $variant:ident) => {
+        impl $crate::EventKindSlot for $slot {
+            const KIND: $crate::EventKind = $crate::EventKind::$variant;
+            const KIND_NAME: &'static str = stringify!($variant);
+        }
+    };
+    ($slot:ty, $variant:ident, $kind_name:expr) => {
+        impl $crate::EventKindSlot for $slot {
+            const KIND: $crate::EventKind = $crate::EventKind::$variant;
+            const KIND_NAME: &'static str = $kind_name;
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! declare_event_kind_slots {
+    ($( $slot:ident :: $variant:ident ),+ $(,)?) => {
+        $(
+            pub struct $slot;
+            $crate::impl_event_kind_slot!($slot::$variant);
+        )+
+    };
+}
+
+#[macro_export]
+macro_rules! impl_edge_kind_slot {
+    ($slot:ident :: $variant:ident) => {
+        impl $crate::EdgeKindSlot for $slot {
+            const KIND: $crate::EdgeKind = $crate::EdgeKind::$variant;
+            const KIND_NAME: &'static str = stringify!($variant);
+        }
+    };
+    ($slot:ty, $variant:ident, $kind_name:expr) => {
+        impl $crate::EdgeKindSlot for $slot {
+            const KIND: $crate::EdgeKind = $crate::EdgeKind::$variant;
+            const KIND_NAME: &'static str = $kind_name;
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! declare_edge_kind_slots {
+    ($( $slot:ident :: $variant:ident ),+ $(,)?) => {
+        $(
+            pub struct $slot;
+            $crate::impl_edge_kind_slot!($slot::$variant);
+        )+
+    };
+}
+
 pub(crate) mod diff;
 pub(crate) mod objects;
 pub(crate) mod primitives;

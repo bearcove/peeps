@@ -34,38 +34,35 @@ impl Entity {
     }
 }
 
-/// Typed payload for each entity kind.
-///
-/// Keep variant names short and domain-focused. Prefer `NetRead` over
-/// `NetReadableEntityBody` style names.
-#[derive(Facet)]
-#[repr(u8)]
-#[facet(rename_all = "snake_case")]
-#[allow(dead_code)]
-pub enum EntityBody {
-    // Tokio core and sync primitives
-    Future,
-    Lock(LockEntity),
-    ChannelTx(ChannelEndpointEntity),
-    ChannelRx(ChannelEndpointEntity),
-    Semaphore(SemaphoreEntity),
-    Notify(NotifyEntity),
-    OnceCell(OnceCellEntity),
+crate::define_entity_body! {
+    pub enum EntityBody {
+        // Tokio core and sync primitives
+        Future(FutureEntity),
+        Lock(LockEntity),
+        ChannelTx(ChannelEndpointEntity),
+        ChannelRx(ChannelEndpointEntity),
+        Semaphore(SemaphoreEntity),
+        Notify(NotifyEntity),
+        OnceCell(OnceCellEntity),
 
-    // System and I/O boundaries
-    Command(CommandEntity),
-    FileOp(FileOpEntity),
+        // System and I/O boundaries
+        Command(CommandEntity),
+        FileOp(FileOpEntity),
 
-    // Network boundaries
-    NetConnect(NetEntity),
-    NetAccept(NetEntity),
-    NetRead(NetEntity),
-    NetWrite(NetEntity),
+        // Network boundaries
+        NetConnect(NetEntity),
+        NetAccept(NetEntity),
+        NetRead(NetEntity),
+        NetWrite(NetEntity),
 
-    // RPC lifecycle
-    Request(RequestEntity),
-    Response(ResponseEntity),
+        // RPC lifecycle
+        Request(RequestEntity),
+        Response(ResponseEntity),
+    }
 }
+
+#[derive(Facet)]
+pub struct FutureEntity {}
 
 #[derive(Facet)]
 pub struct LockEntity {
@@ -257,5 +254,3 @@ pub enum ResponseStatus {
     Error,
     Cancelled,
 }
-
-crate::impl_sqlite_json!(EntityBody);

@@ -66,3 +66,10 @@ pub struct ConnectionScopeBody {
 }
 
 crate::impl_sqlite_json!(ScopeBody);
+
+crate::declare_scope_body_slots!(
+    ProcessScopeSlot::Process(ProcessScopeBody),
+    ThreadScopeSlot::Thread(ThreadScopeBody),
+    TaskScopeSlot::Task(TaskScopeBody),
+    ConnectionScopeSlot::Connection(ConnectionScopeBody),
+);

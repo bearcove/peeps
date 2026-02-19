@@ -61,6 +61,20 @@ pub enum EventKind {
 crate::impl_sqlite_json!(EventTarget);
 crate::impl_sqlite_json!(EventKind);
 
+crate::declare_event_target_slots!(
+    EntityTargetSlot::Entity(EntityId),
+    ScopeTargetSlot::Scope(ScopeId),
+);
+
+crate::declare_event_kind_slots!(
+    StateChangedKindSlot::StateChanged,
+    ChannelSentKindSlot::ChannelSent,
+    ChannelReceivedKindSlot::ChannelReceived,
+    ChannelClosedKindSlot::ChannelClosed,
+    ChannelWaitStartedKindSlot::ChannelWaitStarted,
+    ChannelWaitEndedKindSlot::ChannelWaitEnded,
+);
+
 #[derive(Facet)]
 pub struct ChannelSendEvent {
     /// Send attempt outcome.

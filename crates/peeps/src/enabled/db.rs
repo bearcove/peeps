@@ -7,10 +7,7 @@ use std::collections::{hash_map::DefaultHasher, BTreeMap, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::sync::{Mutex as StdMutex, OnceLock};
 
-use super::{
-    current_tokio_task_key, ensure_process_scope_id, COMPACT_TARGET_CHANGES,
-    MAX_CHANGES_BEFORE_COMPACT,
-};
+use super::{current_tokio_task_key, COMPACT_TARGET_CHANGES, MAX_CHANGES_BEFORE_COMPACT};
 
 pub(super) fn runtime_db() -> &'static StdMutex<RuntimeDb> {
     static DB: OnceLock<StdMutex<RuntimeDb>> = OnceLock::new();

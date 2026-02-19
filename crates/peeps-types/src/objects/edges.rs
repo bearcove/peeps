@@ -57,3 +57,10 @@ pub enum EdgeKind {
 }
 
 crate::impl_sqlite_json!(EdgeKind);
+
+crate::declare_edge_kind_slots!(
+    PollsEdgeKindSlot::Polls,
+    WaitingOnEdgeKindSlot::WaitingOn,
+    PairedWithEdgeKindSlot::PairedWith,
+    HoldsEdgeKindSlot::Holds,
+);
