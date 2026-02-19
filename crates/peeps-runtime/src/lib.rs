@@ -147,10 +147,6 @@ pub fn record_event_with_entity_source(mut event: Event, entity_id: &EntityId) {
     }
 }
 
-pub fn build_snapshot_reply(snapshot_id: i64) -> peeps_wire::SnapshotReply {
-    db::build_snapshot_reply(snapshot_id)
-}
-
 pub fn init_dashboard_push_loop(process_name: &str) {
     dashboard::init_dashboard_push_loop(process_name)
 }

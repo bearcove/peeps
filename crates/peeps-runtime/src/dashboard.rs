@@ -95,9 +95,11 @@ async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), S
                         write_client_message(&mut writer, &ClientMessage::CutAck(ack)).await?;
                     }
                     ServerMessage::SnapshotRequest(request) => {
-                        let reply = super::db::build_snapshot_reply(request.snapshot_id);
-                        write_client_message(&mut writer, &ClientMessage::SnapshotReply(reply))
-                            .await?;
+                        let frame = super::db::encode_snapshot_reply_frame(request.snapshot_id)?;
+                        writer
+                            .write_all(&frame)
+                            .await
+                            .map_err(|e| format!("write frame: {e}"))?;
                     }
                 }
             }

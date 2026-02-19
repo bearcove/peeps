@@ -1,3 +1,4 @@
+use facet::Facet;
 use peeps_source::SourceId;
 use peeps_types::{
     Change, Edge, EdgeKind, Entity, EntityBody, EntityId, Event, PTime, PullChangesResponse, Scope,
@@ -539,6 +540,31 @@ struct InternalStampedChange {
     change: InternalChange,
 }
 
+#[derive(Facet)]
+struct SnapshotRef<'a> {
+    entities: Vec<&'a Entity>,
+    scopes: Vec<&'a Scope>,
+    edges: Vec<&'a Edge>,
+    events: Vec<&'a Event>,
+}
+
+#[derive(Facet)]
+struct SnapshotReplyRef<'a> {
+    snapshot_id: i64,
+    /// Process-relative milliseconds at the moment this snapshot was assembled.
+    ptime_now_ms: u64,
+    #[facet(skip_unless_truthy)]
+    snapshot: Option<SnapshotRef<'a>>,
+}
+
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+#[allow(dead_code)]
+enum SnapshotClientMessageRef<'a> {
+    SnapshotReply(SnapshotReplyRef<'a>),
+}
+
 impl InternalStampedChange {
     fn to_change(&self) -> Option<Change> {
         match &self.change {
@@ -587,67 +613,34 @@ impl InternalStampedChange {
     }
 }
 
-pub fn build_snapshot_reply(snapshot_id: i64) -> peeps_wire::SnapshotReply {
+pub fn encode_snapshot_reply_frame(snapshot_id: i64) -> Result<Vec<u8>, String> {
     // Capture process-relative now before locking the db, so the timestamp
     // represents the moment this snapshot was requested.
     let ptime_now_ms = PTime::now().as_millis();
-
-    // [FIXME] omg kill it
-    let (entity_bytes, scope_bytes, edge_bytes, event_bytes): (
-        Vec<Vec<u8>>,
-        Vec<Vec<u8>>,
-        Vec<Vec<u8>>,
-        Vec<Vec<u8>>,
-    ) = {
-        let Ok(db) = runtime_db().lock() else {
-            return peeps_wire::SnapshotReply {
+    let Ok(db) = runtime_db().lock() else {
+        let payload =
+            facet_json::to_vec(&SnapshotClientMessageRef::SnapshotReply(SnapshotReplyRef {
                 snapshot_id,
                 ptime_now_ms,
                 snapshot: None,
-            };
-        };
-        (
-            db.entities
-                .values()
-                .filter_map(|e| facet_json::to_vec(e).ok())
-                .collect(),
-            db.scopes
-                .values()
-                .filter_map(|s| facet_json::to_vec(s).ok())
-                .collect(),
-            db.edges
-                .values()
-                .filter_map(|e| facet_json::to_vec(e).ok())
-                .collect(),
-            db.events
-                .iter()
-                .filter_map(|e| facet_json::to_vec(e).ok())
-                .collect(),
-        )
+            }))
+            .map_err(|e| format!("encode snapshot reply json: {e}"))?;
+        return peeps_wire::encode_frame_default(&payload)
+            .map_err(|e| format!("encode snapshot reply frame: {e}"));
     };
 
-    let snapshot = peeps_types::Snapshot {
-        entities: entity_bytes
-            .iter()
-            .filter_map(|b| facet_json::from_slice(b).ok())
-            .collect(),
-        scopes: scope_bytes
-            .iter()
-            .filter_map(|b| facet_json::from_slice(b).ok())
-            .collect(),
-        edges: edge_bytes
-            .iter()
-            .filter_map(|b| facet_json::from_slice(b).ok())
-            .collect(),
-        events: event_bytes
-            .iter()
-            .filter_map(|b| facet_json::from_slice(b).ok())
-            .collect(),
-    };
-
-    peeps_wire::SnapshotReply {
+    let message = SnapshotClientMessageRef::SnapshotReply(SnapshotReplyRef {
         snapshot_id,
         ptime_now_ms,
-        snapshot: Some(snapshot),
-    }
+        snapshot: Some(SnapshotRef {
+            entities: db.entities.values().collect(),
+            scopes: db.scopes.values().collect(),
+            edges: db.edges.values().collect(),
+            events: db.events.iter().collect(),
+        }),
+    });
+    let payload =
+        facet_json::to_vec(&message).map_err(|e| format!("encode snapshot reply json: {e}"))?;
+    peeps_wire::encode_frame_default(&payload)
+        .map_err(|e| format!("encode snapshot reply frame: {e}"))
 }
