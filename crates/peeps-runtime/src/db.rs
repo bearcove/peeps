@@ -161,7 +161,7 @@ impl RuntimeDb {
 
     pub fn upsert_entity(&mut self, entity: Entity) {
         let entity_id = EntityId::new(entity.id.as_str());
-        let should_link_task_scope = matches!(&entity.body, EntityBody::Future);
+        let should_link_task_scope = matches!(&entity.body, EntityBody::Future(_));
         let entity_json = facet_json::to_vec(&entity).ok();
         self.entities
             .insert(EntityId::new(entity.id.as_str()), entity);

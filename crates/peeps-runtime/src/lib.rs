@@ -1,4 +1,4 @@
-use peeps_types::{EntityBody, EntityId, Event, ScopeBody, ScopeId};
+use peeps_types::{EntityBody, EntityId, Event, FutureEntity, ScopeBody, ScopeId};
 use std::cell::RefCell;
 use std::future::Future;
 use std::sync::OnceLock;
@@ -111,7 +111,7 @@ where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
-    let handle = EntityHandle::new(name, EntityBody::Future, source);
+    let handle = EntityHandle::new(name, EntityBody::Future(FutureEntity {}), source);
     tokio::task::spawn_blocking(move || {
         let _hold = handle;
         f()

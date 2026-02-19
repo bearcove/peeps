@@ -1,91 +1,46 @@
-use peeps_types::PTime;
-use peeps_types::{
-    EdgeKind, Entity, EntityBody, EntityId, Event, EventKind, EventTarget, OperationEdgeMeta,
-    OperationKind, OperationState,
-};
+use peeps_types::{EdgeKind, EntityBody, EntityId, FutureEntity};
 use std::future::{Future, IntoFuture};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use super::db::runtime_db;
 use super::handles::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
-use super::{record_event_with_entity_source, Source, FUTURE_CAUSAL_STACK};
+use super::{Source, FUTURE_CAUSAL_STACK};
 
-pub(super) struct OperationFuture<F> {
+pub struct OperationFuture<F> {
     inner: F,
     actor_id: Option<EntityId>,
     resource_id: EntityId,
-    op_kind: OperationKind,
-    source: String,
-    krate: Option<String>,
-    pending_since_ptime_ms: Option<u64>,
-    has_edge: bool,
+    current_edge: Option<EdgeKind>,
 }
 
 impl<F> OperationFuture<F> {
-    fn new(
-        inner: F,
-        resource_id: EntityId,
-        op_kind: OperationKind,
-        source: String,
-        krate: Option<String>,
-    ) -> Self {
-        let actor_id = current_causal_target().map(|target| target.id().clone());
-        if let Some(actor_id) = actor_id.as_ref() {
-            if let Ok(mut db) = runtime_db().lock() {
-                db.upsert_edge(actor_id, &resource_id, EdgeKind::Touches);
-            }
-        }
+    fn new(inner: F, resource_id: EntityId) -> Self {
         Self {
             inner,
-            actor_id,
+            actor_id: current_causal_target().map(|target| target.id().clone()),
             resource_id,
-            op_kind,
-            source,
-            krate,
-            pending_since_ptime_ms: None,
-            has_edge: false,
+            current_edge: None,
         }
     }
 
-    fn edge_meta(&self, state: OperationState) -> facet_value::Value {
-        let meta = OperationEdgeMeta {
-            op_kind: self.op_kind,
-            state,
-            pending_since_ptime_ms: self.pending_since_ptime_ms,
-            last_change_ptime_ms: PTime::now().as_millis(),
-            source: String::from(self.source.as_str()),
-            krate: self.krate.as_ref().map(|k| String::from(k.as_str())),
-        };
-        facet_value::to_value(&meta).unwrap_or(facet_value::Value::NULL)
-    }
-
-    fn upsert_edge(&mut self, state: OperationState) {
-        let Some(actor_id) = self.actor_id.as_ref() else {
-            return;
-        };
-        if let Ok(mut db) = runtime_db().lock() {
-            db.upsert_edge_with_meta(
-                actor_id,
-                &self.resource_id,
-                EdgeKind::Needs,
-                self.edge_meta(state),
-            );
-            self.has_edge = true;
-        }
-    }
-
-    fn clear_edge(&mut self) {
-        if !self.has_edge {
+    fn transition_edge(&mut self, next: Option<EdgeKind>) {
+        if self.current_edge == next {
             return;
         }
         let Some(actor_id) = self.actor_id.as_ref() else {
+            self.current_edge = next;
             return;
         };
         if let Ok(mut db) = runtime_db().lock() {
-            db.remove_edge(actor_id, &self.resource_id, EdgeKind::Needs);
-            self.has_edge = false;
+            if let Some(current) = self.current_edge {
+                db.remove_edge(actor_id, &self.resource_id, current);
+            }
+            if let Some(edge) = next {
+                db.upsert_edge(actor_id, &self.resource_id, edge);
+            }
         }
+        self.current_edge = next;
     }
 }
 
@@ -97,20 +52,17 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
-        if !this.has_edge {
-            this.upsert_edge(OperationState::Active);
+        if this.current_edge.is_none() {
+            this.transition_edge(Some(EdgeKind::Polls));
         }
 
         match unsafe { Pin::new_unchecked(&mut this.inner) }.poll(cx) {
             Poll::Pending => {
-                if this.pending_since_ptime_ms.is_none() {
-                    this.pending_since_ptime_ms = Some(PTime::now().as_millis());
-                }
-                this.upsert_edge(OperationState::Pending);
+                this.transition_edge(Some(EdgeKind::WaitingOn));
                 Poll::Pending
             }
             Poll::Ready(output) => {
-                this.clear_edge();
+                this.transition_edge(None);
                 Poll::Ready(output)
             }
         }
@@ -119,28 +71,19 @@ where
 
 impl<F> Drop for OperationFuture<F> {
     fn drop(&mut self) {
-        self.clear_edge();
+        self.transition_edge(None);
     }
 }
 
 pub fn instrument_operation_on_with_source<F>(
     on: &EntityHandle,
-    op_kind: OperationKind,
     fut: F,
-    source: &Source,
+    _source: &Source,
 ) -> OperationFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
-    let source_text = String::from(source.as_str());
-    let krate = source.krate().map(String::from);
-    OperationFuture::new(
-        fut.into_future(),
-        EntityId::new(on.id().as_str()),
-        op_kind,
-        source_text,
-        krate,
-    )
+    OperationFuture::new(fut.into_future(), EntityId::new(on.id().as_str()))
 }
 
 pub struct InstrumentedFuture<F> {
@@ -256,10 +199,10 @@ where
         match poll {
             Poll::Pending => {
                 if let Some(relation) = this.awaited_by.as_mut() {
-                    transition_relation_edge(&future_id, relation, Some(EdgeKind::Needs));
+                    transition_relation_edge(&future_id, relation, Some(EdgeKind::WaitingOn));
                 }
                 if let Some(relation) = this.waits_on.as_mut() {
-                    transition_relation_edge(&future_id, relation, Some(EdgeKind::Needs));
+                    transition_relation_edge(&future_id, relation, Some(EdgeKind::WaitingOn));
                 }
                 Poll::Pending
             }
@@ -269,14 +212,6 @@ where
                 }
                 if let Some(relation) = this.waits_on.as_mut() {
                     transition_relation_edge(&future_id, relation, None);
-                }
-
-                if let Ok(event) = Event::new(
-                    EventTarget::Entity(EntityId::new(future_id.as_str())),
-                    EventKind::StateChanged,
-                    &(),
-                ) {
-                    record_event_with_entity_source(event, &future_id);
                 }
 
                 Poll::Ready(output)
@@ -302,24 +237,11 @@ pub fn instrument_future<F>(
     fut: F,
     source: Source,
     on: Option<EntityRef>,
-    meta: Option<facet_value::Value>,
+    _meta: Option<facet_value::Value>,
 ) -> InstrumentedFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
-    let fut = fut.into_future();
-    let handle = if let Some(meta) = meta {
-        let mut builder = Entity::builder(name, EntityBody::Future).source(source.as_str());
-        if let Some(krate) = source.krate() {
-            builder = builder.krate(krate);
-        }
-        let mut entity = builder
-            .build(&())
-            .expect("entity construction with unit meta should be infallible");
-        entity.meta = meta;
-        EntityHandle::from_entity(entity)
-    } else {
-        EntityHandle::new_with_source(name, EntityBody::Future, source)
-    };
-    InstrumentedFuture::new(fut, handle, on)
+    let handle = EntityHandle::new_with_source(name, EntityBody::Future(FutureEntity {}), source);
+    InstrumentedFuture::new(fut.into_future(), handle, on)
 }

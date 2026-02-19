@@ -153,6 +153,13 @@ impl EntityHandle<()> {
             _slot: PhantomData,
         }
     }
+
+    pub fn into_typed<S>(self) -> EntityHandle<S> {
+        EntityHandle {
+            inner: self.inner,
+            _slot: PhantomData,
+        }
+    }
 }
 
 impl<S> EntityHandle<S> {
@@ -257,6 +264,15 @@ impl<S> EntityHandle<S> {
 pub struct WeakEntityHandle<S = ()> {
     inner: Weak<HandleInner>,
     _slot: PhantomData<S>,
+}
+
+impl<S> Clone for WeakEntityHandle<S> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            _slot: PhantomData,
+        }
+    }
 }
 
 impl<S> WeakEntityHandle<S>

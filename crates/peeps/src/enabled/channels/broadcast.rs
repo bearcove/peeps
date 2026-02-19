@@ -1,271 +1,127 @@
-use super::*;
+use super::{Source, SourceRight};
 
-use peeps_types::{
-    BufferState, ChannelCloseCause, ChannelClosedEvent, ChannelDetails, ChannelEndpointEntity,
-    ChannelEndpointLifecycle, ChannelReceiveEvent, ChannelReceiveOutcome, ChannelSendEvent,
-    ChannelSendOutcome, EdgeKind, EntityBody, EntityId, Event, EventTarget, OperationKind,
+use peeps_runtime::{
+    record_event_with_source, AsEntityRef, EntityHandle, EntityRef, WeakEntityHandle,
 };
-use std::future::Future;
-use std::sync::{Arc, Mutex as StdMutex};
+use peeps_types::{
+    BroadcastRxEntity, BroadcastTxEntity, EdgeKind, EntityBody, Event, EventKind, EventTarget,
+};
 use tokio::sync::broadcast;
-
-pub(super) struct BroadcastRuntimeState {
-    pub(super) tx_id: EntityId,
-    pub(super) rx_id: EntityId,
-    pub(super) tx_ref_count: u32,
-    pub(super) rx_ref_count: u32,
-    pub(super) capacity: u32,
-    pub(super) tx_close_cause: Option<ChannelCloseCause>,
-    pub(super) rx_close_cause: Option<ChannelCloseCause>,
-}
 
 pub struct BroadcastSender<T> {
     inner: tokio::sync::broadcast::Sender<T>,
-    handle: EntityHandle,
-    receiver_handle: EntityHandle,
-    channel: Arc<StdMutex<BroadcastRuntimeState>>,
-    name: String,
+    handle: EntityHandle<peeps_types::BroadcastTx>,
 }
 
 pub struct BroadcastReceiver<T> {
     inner: tokio::sync::broadcast::Receiver<T>,
-    handle: EntityHandle,
-    channel: Arc<StdMutex<BroadcastRuntimeState>>,
-    name: String,
+    handle: EntityHandle<peeps_types::BroadcastRx>,
+    tx_handle: WeakEntityHandle<peeps_types::BroadcastTx>,
 }
 
 impl<T> Clone for BroadcastSender<T> {
     fn clone(&self) -> Self {
-        if let Ok(mut state) = self.channel.lock() {
-            state.tx_ref_count = state.tx_ref_count.saturating_add(1);
-        }
         Self {
             inner: self.inner.clone(),
             handle: self.handle.clone(),
-            receiver_handle: self.receiver_handle.clone(),
-            channel: self.channel.clone(),
-            name: self.name.clone(),
         }
     }
 }
 
 impl<T: Clone> Clone for BroadcastReceiver<T> {
     fn clone(&self) -> Self {
-        if let Ok(mut state) = self.channel.lock() {
-            state.rx_ref_count = state.rx_ref_count.saturating_add(1);
-        }
+        let handle = EntityHandle::new(
+            "broadcast:rx.clone",
+            EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }),
+            SourceRight::caller(),
+        )
+        .into_typed::<peeps_types::BroadcastRx>();
         Self {
             inner: self.inner.resubscribe(),
-            handle: self.handle.clone(),
-            channel: self.channel.clone(),
-            name: self.name.clone(),
-        }
-    }
-}
-
-impl<T> Drop for BroadcastSender<T> {
-    fn drop(&mut self) {
-        let mut emit_for_rx = None;
-        if let Ok(mut state) = self.channel.lock() {
-            state.tx_ref_count = state.tx_ref_count.saturating_sub(1);
-            if state.tx_ref_count == 0 {
-                if state.tx_close_cause.is_none() {
-                    state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
-                }
-                if state.rx_close_cause.is_none() {
-                    state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
-                    emit_for_rx = Some(EntityId::new(state.rx_id.as_str()));
-                }
-            }
-        }
-        apply_broadcast_state(&self.channel);
-        if let Some(rx_id) = emit_for_rx {
-            emit_channel_closed(&rx_id, ChannelCloseCause::SenderDropped);
-        }
-    }
-}
-
-impl<T> Drop for BroadcastReceiver<T> {
-    fn drop(&mut self) {
-        let mut emit_for_tx = None;
-        if let Ok(mut state) = self.channel.lock() {
-            state.rx_ref_count = state.rx_ref_count.saturating_sub(1);
-            if state.rx_ref_count == 0 {
-                if state.tx_close_cause.is_none() {
-                    state.tx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
-                    emit_for_tx = Some(EntityId::new(state.tx_id.as_str()));
-                }
-                if state.rx_close_cause.is_none() {
-                    state.rx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
-                }
-            }
-        }
-        apply_broadcast_state(&self.channel);
-        if let Some(tx_id) = emit_for_tx {
-            emit_channel_closed(&tx_id, ChannelCloseCause::ReceiverDropped);
+            handle,
+            tx_handle: self.tx_handle.clone(),
         }
     }
 }
 
 impl<T: Clone> BroadcastSender<T> {
     #[doc(hidden)]
-    #[track_caller]
-    pub fn handle(&self) -> &EntityHandle {
+    pub fn handle(&self) -> &EntityHandle<peeps_types::BroadcastTx> {
         &self.handle
     }
 
-    #[track_caller]
     pub fn subscribe(&self) -> BroadcastReceiver<T> {
-        if let Ok(mut state) = self.channel.lock() {
-            state.rx_ref_count = state.rx_ref_count.saturating_add(1);
-        }
+        let handle = EntityHandle::new(
+            "broadcast:rx.subscribe",
+            EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }),
+            SourceRight::caller(),
+        )
+        .into_typed::<peeps_types::BroadcastRx>();
+        self.handle.link_to_handle(&handle, EdgeKind::PairedWith);
         BroadcastReceiver {
             inner: self.inner.subscribe(),
-            handle: self.receiver_handle.clone(),
-            channel: self.channel.clone(),
-            name: self.name.clone(),
+            handle,
+            tx_handle: self.handle.downgrade(),
         }
     }
 
-    #[track_caller]
-    pub fn send_with_cx(
-        &self,
-        value: T,
-        cx: SourceLeft,
-    ) -> Result<usize, broadcast::error::SendError<T>> {
-        self.send_with_source(value, cx.join(SourceRight::caller()))
-    }
-
+    #[doc(hidden)]
     pub fn send_with_source(
         &self,
         value: T,
         source: Source,
     ) -> Result<usize, broadcast::error::SendError<T>> {
-        match self.inner.send(value) {
-            Ok(receivers) => {
-                if let Ok(event) = Event::channel_sent(
+        let result = self.inner.send(value);
+        let event = Event::new_with_source(
+            EventTarget::Entity(self.handle.id().clone()),
+            EventKind::ChannelSent,
+            source.clone(),
+        );
+        record_event_with_source(event, &source);
+        result
+    }
+}
+
+impl<T: Clone> BroadcastReceiver<T> {
+    #[doc(hidden)]
+    pub fn handle(&self) -> &EntityHandle<peeps_types::BroadcastRx> {
+        &self.handle
+    }
+
+    #[doc(hidden)]
+    pub async fn recv_with_source(
+        &mut self,
+        source: Source,
+    ) -> Result<T, broadcast::error::RecvError> {
+        match self.inner.recv().await {
+            Ok(value) => {
+                let lag = self.inner.len().min(u32::MAX as usize) as u32;
+                let _ = self.handle.mutate(|body| body.lag = lag);
+                let event = Event::new_with_source(
                     EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelSendEvent {
-                        outcome: ChannelSendOutcome::Ok,
-                        queue_len: None,
-                    },
-                ) {
-                    record_event_with_source(event, &source);
-                }
-                Ok(receivers)
+                    EventKind::ChannelReceived,
+                    source.clone(),
+                );
+                record_event_with_source(event, &source);
+                Ok(value)
             }
             Err(err) => {
-                if let Ok(mut state) = self.channel.lock() {
-                    if state.tx_close_cause.is_none() {
-                        state.tx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
-                    }
-                    if state.rx_close_cause.is_none() {
-                        state.rx_close_cause = Some(ChannelCloseCause::ReceiverDropped);
-                    }
+                if let broadcast::error::RecvError::Lagged(n) = err {
+                    let lag = n.min(u32::MAX as u64) as u32;
+                    let _ = self.handle.mutate(|body| body.lag = lag);
                 }
-                apply_broadcast_state(&self.channel);
-                if let Ok(event) = Event::channel_sent(
+                let event = Event::new_with_source(
                     EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelSendEvent {
-                        outcome: ChannelSendOutcome::Closed,
-                        queue_len: None,
-                    },
-                ) {
-                    record_event_with_source(event, &source);
-                }
-                if let Ok(event) = Event::channel_closed(
-                    EventTarget::Entity(self.handle.id().clone()),
-                    &ChannelClosedEvent {
-                        cause: ChannelCloseCause::ReceiverDropped,
-                    },
-                ) {
-                    record_event_with_source(event, &source);
-                }
+                    EventKind::ChannelReceived,
+                    source.clone(),
+                );
+                record_event_with_source(event, &source);
                 Err(err)
             }
         }
     }
 }
 
-impl<T: Clone> BroadcastReceiver<T> {
-    #[doc(hidden)]
-    #[track_caller]
-    pub fn handle(&self) -> &EntityHandle {
-        &self.handle
-    }
-
-    #[track_caller]
-    #[allow(clippy::manual_async_fn)]
-    pub fn recv_with_cx(
-        &mut self,
-        cx: SourceLeft,
-    ) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
-        self.recv_with_source(cx.join(SourceRight::caller()))
-    }
-
-    #[allow(clippy::manual_async_fn)]
-    pub fn recv_with_source(
-        &mut self,
-        source: Source,
-    ) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
-        async move {
-            let result = instrument_operation_on_with_source(
-                &self.handle,
-                OperationKind::Recv,
-                self.inner.recv(),
-                &source,
-            )
-            .await;
-            match result {
-                Ok(value) => {
-                    if let Ok(event) = Event::channel_received(
-                        EventTarget::Entity(self.handle.id().clone()),
-                        &ChannelReceiveEvent {
-                            outcome: ChannelReceiveOutcome::Ok,
-                            queue_len: None,
-                        },
-                    ) {
-                        record_event_with_source(event, &source);
-                    }
-                    Ok(value)
-                }
-                Err(err) => {
-                    if let broadcast::error::RecvError::Closed = err {
-                        if let Ok(mut state) = self.channel.lock() {
-                            if state.tx_close_cause.is_none() {
-                                state.tx_close_cause = Some(ChannelCloseCause::SenderDropped);
-                            }
-                            if state.rx_close_cause.is_none() {
-                                state.rx_close_cause = Some(ChannelCloseCause::SenderDropped);
-                            }
-                        }
-                        apply_broadcast_state(&self.channel);
-                        if let Ok(event) = Event::channel_closed(
-                            EventTarget::Entity(self.handle.id().clone()),
-                            &ChannelClosedEvent {
-                                cause: ChannelCloseCause::SenderDropped,
-                            },
-                        ) {
-                            record_event_with_source(event, &source);
-                        }
-                    }
-                    if let Ok(event) = Event::channel_received(
-                        EventTarget::Entity(self.handle.id().clone()),
-                        &ChannelReceiveEvent {
-                            outcome: ChannelReceiveOutcome::Empty,
-                            queue_len: None,
-                        },
-                    ) {
-                        record_event_with_source(event, &source);
-                    }
-                    Err(err)
-                }
-            }
-        }
-    }
-}
-
-#[track_caller]
 pub fn broadcast<T: Clone>(
     name: impl Into<String>,
     capacity: usize,
@@ -274,68 +130,48 @@ pub fn broadcast<T: Clone>(
     let name = name.into();
     let (tx, rx) = broadcast::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
-    let details = ChannelDetails::Broadcast(peeps_types::BroadcastChannelDetails {
-        buffer: Some(BufferState {
-            occupancy: 0,
-            capacity: Some(capacity_u32),
-        }),
-    });
+
     let tx_handle = EntityHandle::new(
         format!("{name}:tx"),
-        EntityBody::ChannelTx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details,
+        EntityBody::BroadcastTx(BroadcastTxEntity {
+            capacity: capacity_u32,
         }),
         source,
-    );
-    let details = ChannelDetails::Broadcast(peeps_types::BroadcastChannelDetails {
-        buffer: Some(BufferState {
-            occupancy: 0,
-            capacity: Some(capacity_u32),
-        }),
-    });
+    )
+    .into_typed::<peeps_types::BroadcastTx>();
+
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
-        EntityBody::ChannelRx(ChannelEndpointEntity {
-            lifecycle: ChannelEndpointLifecycle::Open,
-            details,
-        }),
+        EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }),
         source,
-    );
-    tx_handle.link_to_handle(&rx_handle, EdgeKind::ChannelLink);
-    let channel = Arc::new(StdMutex::new(BroadcastRuntimeState {
-        tx_id: tx_handle.id().clone(),
-        rx_id: rx_handle.id().clone(),
-        tx_ref_count: 1,
-        rx_ref_count: 1,
-        capacity: capacity_u32,
-        tx_close_cause: None,
-        rx_close_cause: None,
-    }));
+    )
+    .into_typed::<peeps_types::BroadcastRx>();
+
+    tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
+
     (
         BroadcastSender {
             inner: tx,
-            handle: tx_handle,
-            receiver_handle: rx_handle.clone(),
-            channel: channel.clone(),
-            name: name.clone(),
+            handle: tx_handle.clone(),
         },
         BroadcastReceiver {
             inner: rx,
             handle: rx_handle,
-            channel,
-            name,
+            tx_handle: tx_handle.downgrade(),
         },
     )
 }
 
-impl<T: Clone> AsEntityRef for BroadcastSender<T> {
-    fn as_entity_ref(&self) -> EntityRef {
-        self.handle.entity_ref()
-    }
+pub fn broadcast_channel<T: Clone>(
+    name: impl Into<String>,
+    capacity: usize,
+    source: SourceRight,
+) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
+    #[allow(deprecated)]
+    broadcast(name, capacity, source)
 }
 
-impl<T: Clone> AsEntityRef for BroadcastReceiver<T> {
+impl<T: Clone> AsEntityRef for BroadcastSender<T> {
     fn as_entity_ref(&self) -> EntityRef {
         self.handle.entity_ref()
     }

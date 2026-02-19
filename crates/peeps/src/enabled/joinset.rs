@@ -15,7 +15,7 @@ where
         let name = name.into();
         let handle = EntityHandle::new(
             format!("joinset.{name}"),
-            peeps_types::EntityBody::Future,
+            peeps_types::EntityBody::Future(peeps_types::FutureEntity {}),
             source,
         );
         Self {
