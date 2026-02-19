@@ -1,9 +1,0 @@
-[package]
-name = "peeps-mutable"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
-
-[dependencies]
-facet-value.workspace = true
