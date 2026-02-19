@@ -1,5 +1,11 @@
 import type { ComponentType, ReactNode } from "react";
-import { ArrowsLeftRight, BracketsCurly, LinkSimple, StackSimple, Terminal } from "@phosphor-icons/react";
+import {
+  ArrowsLeftRight,
+  BracketsCurly,
+  LinkSimple,
+  StackSimple,
+  Terminal,
+} from "@phosphor-icons/react";
 
 function iconFactory(Icon: ComponentType<any>): (size: number) => ReactNode {
   return (size: number) => <Icon size={size} weight="bold" />;
@@ -42,17 +48,25 @@ const SCOPE_KIND_SPECS: Record<string, ScopeKindSpec> = {
   },
 };
 
-export function canonicalScopeKind(kind: string): string {
-  const normalized = kind.trim().toLowerCase();
+export function canonicalScopeKind(kind: unknown): string {
+  let normalized = "";
+  if (typeof kind === "string") {
+    normalized = kind.trim().toLowerCase();
+  } else if (kind && typeof kind === "object") {
+    const keys = Object.keys(kind);
+    normalized = (keys[0] ?? "unknown").trim().toLowerCase();
+  } else {
+    normalized = "unknown";
+  }
   return CANONICAL_SCOPE_KIND_ALIASES[normalized] ?? normalized;
 }
 
-export function scopeKindDisplayName(kind: string): string {
+export function scopeKindDisplayName(kind: unknown): string {
   const canonical = canonicalScopeKind(kind);
   return SCOPE_KIND_SPECS[canonical]?.displayName ?? canonical;
 }
 
-export function scopeKindIcon(kind: string, size = 14): ReactNode {
+export function scopeKindIcon(kind: unknown, size = 14): ReactNode {
   const canonical = canonicalScopeKind(kind);
   const spec = SCOPE_KIND_SPECS[canonical] ?? SCOPE_KIND_SPECS.unknown;
   return spec.icon(size);

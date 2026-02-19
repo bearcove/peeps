@@ -39,6 +39,7 @@ facet = { git = "https://github.com/facet-rs/facet", branch = "main" }
 facet-format = { git = "https://github.com/facet-rs/facet", branch = "main" }
 facet-value = { git = "https://github.com/facet-rs/facet", branch = "main" }
 facet-json = { git = "https://github.com/facet-rs/facet", branch = "main" }
+facet-typescript = { git = "https://github.com/facet-rs/facet", branch = "main" }
 figue = { git = "https://github.com/bearcove/figue", branch = "main" }
 libc = "0.2"
 parking_lot = "0.12"

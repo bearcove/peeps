@@ -14,7 +14,12 @@ use axum::routing::{any, get, post};
 use axum::Router;
 use facet::Facet;
 use figue as args;
-use peeps_types::Change;
+use peeps_types::{
+    ApiError, Change, ConnectedProcessInfo, ConnectionsResponse, CutStatusResponse, FrameSummary,
+    ProcessSnapshotView, QueryRequest, RecordCurrentResponse, RecordStartRequest,
+    RecordingImportBody, RecordingSessionInfo, ScopeEntityLink, SnapshotCutResponse, SqlRequest,
+    SqlResponse, TimedOutProcess, TriggerCutResponse,
+};
 use peeps_wire::{
     decode_client_message_default, encode_server_message_default, ClientMessage, ServerMessage,
     SnapshotRequest,
@@ -97,161 +102,6 @@ struct StoredFrame {
     process_count: u32,
     capture_duration_ms: f64,
     json: String,
-}
-
-#[derive(Facet)]
-struct ConnectionsResponse {
-    connected_processes: usize,
-    processes: Vec<ConnectedProcessInfo>,
-}
-
-#[derive(Facet)]
-struct ConnectedProcessInfo {
-    conn_id: u64,
-    process_name: String,
-    pid: u32,
-}
-
-#[derive(Facet)]
-struct TriggerCutResponse {
-    cut_id: String,
-    requested_at_ns: i64,
-    requested_connections: usize,
-}
-
-#[derive(Facet)]
-struct CutStatusResponse {
-    cut_id: String,
-    requested_at_ns: i64,
-    pending_connections: usize,
-    acked_connections: usize,
-    pending_conn_ids: Vec<u64>,
-}
-
-#[derive(Facet)]
-struct ApiError {
-    error: String,
-}
-
-#[derive(Facet)]
-struct SqlRequest {
-    sql: String,
-}
-
-#[derive(Facet)]
-struct QueryRequest {
-    name: String,
-    #[facet(skip_unless_truthy)]
-    limit: Option<u32>,
-}
-
-#[derive(Facet)]
-struct SqlResponse {
-    columns: Vec<String>,
-    rows: Vec<facet_value::Value>,
-    row_count: u32,
-}
-
-/// Top-level response for POST /api/snapshot.
-/// Contains one envelope per connected process.
-#[derive(Facet)]
-struct SnapshotCutResponse {
-    /// Wall-clock milliseconds (Unix epoch) when this cut was assembled server-side.
-    captured_at_unix_ms: i64,
-    /// Processes that replied within the timeout window.
-    processes: Vec<ProcessSnapshotView>,
-    /// Processes that were connected when the snapshot was requested but did not
-    /// reply before the timeout. Includes name and pid so the frontend can show
-    /// the process name and offer OS-level sampling (e.g. `sample <pid>`).
-    timed_out_processes: Vec<TimedOutProcess>,
-}
-
-/// Per-process envelope inside a snapshot cut.
-#[derive(Facet)]
-struct ProcessSnapshotView {
-    /// Transport-assigned connection id — the stable process identity on this server.
-    process_id: u64,
-    process_name: String,
-    pid: u32,
-    /// Process-relative milliseconds captured by the instrumented process at snapshot time.
-    ptime_now_ms: u64,
-    snapshot: peeps_types::Snapshot,
-    /// Which entities belong to which scope, for all scopes in this process.
-    /// Derived from the entity_scope_links table at snapshot time.
-    #[facet(default)]
-    scope_entity_links: Vec<ScopeEntityLink>,
-}
-
-/// Maps a scope to one of its member entities, within a single process.
-#[derive(Facet)]
-struct ScopeEntityLink {
-    scope_id: String,
-    entity_id: String,
-}
-
-/// A process that was connected but did not reply to the snapshot request in time.
-#[derive(Facet)]
-struct TimedOutProcess {
-    /// Transport-assigned connection id.
-    process_id: u64,
-    /// Self-reported name from the handshake.
-    process_name: String,
-    /// OS process id — use this to run `sample <pid>` or `spindump <pid>`.
-    pid: u32,
-}
-
-#[derive(Facet)]
-struct RecordStartRequest {
-    #[facet(default)]
-    interval_ms: Option<u32>,
-    #[facet(default)]
-    max_frames: Option<u32>,
-    #[facet(default)]
-    max_memory_bytes: Option<u64>,
-}
-
-#[derive(Facet)]
-struct RecordCurrentResponse {
-    session: Option<RecordingSessionInfo>,
-}
-
-#[derive(Facet)]
-struct RecordingSessionInfo {
-    session_id: String,
-    status: String,
-    interval_ms: u32,
-    started_at_unix_ms: i64,
-    stopped_at_unix_ms: Option<i64>,
-    frame_count: u32,
-    max_frames: u32,
-    max_memory_bytes: u64,
-    overflowed: bool,
-    approx_memory_bytes: u64,
-    avg_capture_ms: f64,
-    max_capture_ms: f64,
-    total_capture_ms: f64,
-    frames: Vec<FrameSummary>,
-}
-
-#[derive(Facet)]
-struct FrameSummary {
-    frame_index: u32,
-    captured_at_unix_ms: i64,
-    process_count: u32,
-    capture_duration_ms: f64,
-}
-
-#[derive(Facet)]
-struct RecordingImportFrame {
-    frame_index: u32,
-    snapshot: facet_value::Value,
-}
-
-#[derive(Facet)]
-struct RecordingImportBody {
-    version: u32,
-    session: RecordingSessionInfo,
-    frames: Vec<RecordingImportFrame>,
 }
 
 #[derive(Facet, Debug)]
@@ -1797,9 +1647,7 @@ fn fetch_scope_entity_links_blocking(
 ) -> Result<Vec<ScopeEntityLink>, String> {
     let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
     let mut stmt = conn
-        .prepare(
-            "SELECT scope_id, entity_id FROM entity_scope_links WHERE conn_id = ?1",
-        )
+        .prepare("SELECT scope_id, entity_id FROM entity_scope_links WHERE conn_id = ?1")
         .map_err(|e| format!("prepare scope_entity_links: {e}"))?;
     let links = stmt
         .query_map(params![to_i64_u64(conn_id)], |row| {

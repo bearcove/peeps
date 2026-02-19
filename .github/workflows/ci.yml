@@ -24,19 +24,22 @@ jobs:
           version: 10
 
       - name: Install frontend deps
-        working-directory: crates/peeps-web/frontend
+        working-directory: frontend
         run: pnpm install --frozen-lockfile
 
       - name: Frontend tests
-        working-directory: crates/peeps-web/frontend
+        working-directory: frontend
         run: pnpm test
 
       - name: Frontend build
-        working-directory: crates/peeps-web/frontend
+        working-directory: frontend
         run: pnpm build
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Generated frontend types are up to date
+        run: pnpm types:check
 
       - name: Install cargo-nextest
         run: cargo install cargo-nextest --locked

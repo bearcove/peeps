@@ -309,6 +309,7 @@ macro_rules! declare_edge_kind_slots {
     };
 }
 
+pub(crate) mod api;
 pub(crate) mod diff;
 pub(crate) mod objects;
 pub(crate) mod primitives;
@@ -316,6 +317,7 @@ pub(crate) mod recording;
 pub(crate) mod snapshots;
 pub(crate) mod sources;
 
+pub use api::*;
 pub use diff::*;
 pub use objects::*;
 pub use primitives::*;

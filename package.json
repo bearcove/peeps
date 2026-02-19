@@ -6,6 +6,8 @@
     "dev": "cargo run -p peeps-web -- --dev",
     "dev:frontend": "pnpm --filter peeps-frontend dev",
     "dev:web": "cargo run -p peeps-web",
+    "types:gen": "cargo run -p peeps-web --bin gen_frontend_types",
+    "types:check": "pnpm types:gen && git diff --exit-code -- frontend/src/api/types.generated.ts",
     "build": "pnpm --filter peeps-frontend build",
     "test": "pnpm --filter peeps-frontend test"
   }

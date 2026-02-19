@@ -8,6 +8,7 @@ license.workspace = true
 axum.workspace = true
 facet.workspace = true
 facet-json.workspace = true
+facet-typescript.workspace = true
 facet-value.workspace = true
 figue.workspace = true
 peeps-sqlite-facet.workspace = true
