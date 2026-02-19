@@ -115,6 +115,48 @@ impl EventId {
     }
 }
 
+#[cfg(feature = "rusqlite")]
+impl ToSql for EntityId {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(self.as_str().into())
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl FromSql for EntityId {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        Ok(EntityId::new(String::column_result(value)?))
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl ToSql for ScopeId {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(self.as_str().into())
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl FromSql for ScopeId {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        Ok(ScopeId::new(String::column_result(value)?))
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl ToSql for EventId {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(self.as_str().into())
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl FromSql for EventId {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        Ok(EventId::new(String::column_result(value)?))
+    }
+}
+
 pub(crate) fn next_entity_id() -> EntityId {
     EntityId(next_opaque_id())
 }

@@ -8,7 +8,9 @@
 //! of being modeled as arrays in JSON fields.
 
 use compact_str::CompactString;
-use peeps_types::{Edge, Entity, Event, PTime, Scope, Snapshot, SourceId};
+use peeps_types::{
+    Edge, Entity, EntityId, Event, EventId, PTime, Scope, ScopeId, Snapshot, SourceId,
+};
 use rusqlite::types::{FromSql, FromSqlResult, ToSql, ToSqlOutput, Value as SqlValue, ValueRef};
 use std::fmt;
 
@@ -95,7 +97,7 @@ pub fn json_text_to_facet(text: &str) -> Result<facet_value::Value, String> {
 
 #[derive(Debug, Clone)]
 pub struct EncodedEntityRow {
-    pub id: CompactString,
+    pub id: EntityId,
     pub birth: PTime,
     pub source_id: SourceId,
     pub name: CompactString,
@@ -104,7 +106,7 @@ pub struct EncodedEntityRow {
 
 #[derive(Debug, Clone)]
 pub struct EncodedScopeRow {
-    pub id: CompactString,
+    pub id: ScopeId,
     pub birth: PTime,
     pub source_id: SourceId,
     pub name: CompactString,
@@ -113,15 +115,15 @@ pub struct EncodedScopeRow {
 
 #[derive(Debug, Clone)]
 pub struct EncodedEdgeRow {
-    pub src_id: CompactString,
-    pub dst_id: CompactString,
+    pub src_id: EntityId,
+    pub dst_id: EntityId,
     pub kind_json: Json,
     pub meta_json: Json,
 }
 
 #[derive(Debug, Clone)]
 pub struct EncodedEventRow {
-    pub id: CompactString,
+    pub id: EventId,
     pub at: PTime,
     pub source_id: SourceId,
     pub target_json: Json,
@@ -138,7 +140,7 @@ pub struct EncodedSnapshotBatch {
 
 pub fn encode_entity_row(entity: &Entity) -> Result<EncodedEntityRow, EncodeError> {
     Ok(EncodedEntityRow {
-        id: CompactString::new(entity.id.as_str()),
+        id: EntityId::new(entity.id.as_str()),
         birth: entity.birth,
         source_id: entity.source,
         name: entity.name.clone(),
@@ -150,7 +152,7 @@ pub fn encode_entity_row(entity: &Entity) -> Result<EncodedEntityRow, EncodeErro
 
 pub fn encode_scope_row(scope: &Scope) -> Result<EncodedScopeRow, EncodeError> {
     Ok(EncodedScopeRow {
-        id: CompactString::new(scope.id.as_str()),
+        id: ScopeId::new(scope.id.as_str()),
         birth: scope.birth,
         source_id: scope.source,
         name: scope.name.clone(),
@@ -162,8 +164,8 @@ pub fn encode_scope_row(scope: &Scope) -> Result<EncodedScopeRow, EncodeError> {
 
 pub fn encode_edge_row(edge: &Edge) -> Result<EncodedEdgeRow, EncodeError> {
     Ok(EncodedEdgeRow {
-        src_id: CompactString::new(edge.src.as_str()),
-        dst_id: CompactString::new(edge.dst.as_str()),
+        src_id: EntityId::new(edge.src.as_str()),
+        dst_id: EntityId::new(edge.dst.as_str()),
         kind_json: Json::new(
             facet_json::to_string(&edge.kind).map_err(|e| EncodeError::Json(e.to_string()))?,
         ),
@@ -175,7 +177,7 @@ pub fn encode_edge_row(edge: &Edge) -> Result<EncodedEdgeRow, EncodeError> {
 
 pub fn encode_event_row(event: &Event) -> Result<EncodedEventRow, EncodeError> {
     Ok(EncodedEventRow {
-        id: CompactString::new(event.id.as_str()),
+        id: EventId::new(event.id.as_str()),
         at: event.at,
         source_id: event.source,
         target_json: Json::new(
@@ -287,7 +289,7 @@ pub fn insert_encoded_snapshot_batch(
         for row in &batch.entities {
             stmt.execute(rusqlite::params![
                 snapshot_id,
-                row.id.as_str(),
+                row.id,
                 row.birth,
                 row.source_id,
                 row.name.as_str(),
@@ -302,7 +304,7 @@ pub fn insert_encoded_snapshot_batch(
         for row in &batch.scopes {
             stmt.execute(rusqlite::params![
                 snapshot_id,
-                row.id.as_str(),
+                row.id,
                 row.birth,
                 row.source_id,
                 row.name.as_str(),
@@ -317,8 +319,8 @@ pub fn insert_encoded_snapshot_batch(
         for row in &batch.edges {
             stmt.execute(rusqlite::params![
                 snapshot_id,
-                row.src_id.as_str(),
-                row.dst_id.as_str(),
+                row.src_id,
+                row.dst_id,
                 row.kind_json,
                 row.meta_json,
             ])?;
@@ -331,7 +333,7 @@ pub fn insert_encoded_snapshot_batch(
         for row in &batch.events {
             stmt.execute(rusqlite::params![
                 snapshot_id,
-                row.id.as_str(),
+                row.id,
                 row.at,
                 row.source_id,
                 row.target_json,
