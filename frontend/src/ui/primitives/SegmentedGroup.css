@@ -38,7 +38,6 @@
 .ui-segmented-option--selected {
     position: relative;
     z-index: 1;
-    border-radius: var(--radius-control);
     background: var(--accent);
     color: var(--accent-fg);
     border-color: var(--accent);

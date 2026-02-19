@@ -132,13 +132,26 @@ export function GraphFilterInput({
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [applyEditorAction]);
 
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        graphFilterInputRef.current?.focus();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <div className="graph-toolbar">
       <div className="graph-toolbar-middle" ref={graphFilterRootRef}>
         <div
           className="graph-filter-input"
           onMouseDown={(event) => {
+            if (event.target === graphFilterInputRef.current) return;
             if (event.target instanceof HTMLElement && event.target.closest(".graph-filter-chip")) return;
+            event.preventDefault();
             graphFilterInputRef.current?.focus();
           }}
         >
