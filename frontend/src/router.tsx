@@ -4,11 +4,11 @@ import { StorybookPage } from "./pages/StorybookPage";
 
 function StorybookSplitScreen() {
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
-      <div style={{ flex: 1, overflow: "hidden" }}>
+    <div style={{ display: "flex", height: "100%", overflow: "auto" }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <StorybookPage colorScheme="dark" />
       </div>
-      <div style={{ flex: 1, overflow: "hidden" }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <StorybookPage colorScheme="light" />
       </div>
     </div>

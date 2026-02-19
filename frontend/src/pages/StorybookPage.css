@@ -1,17 +1,9 @@
 .lab-app {
-    height: 100vh;
     display: flex;
     flex-direction: column;
 }
 
-.lab-app .panel--lab {
-    flex: 1;
-}
-
 .lab-body {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
     padding: 12px;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));

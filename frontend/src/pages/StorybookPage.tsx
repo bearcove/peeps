@@ -235,7 +235,7 @@ export function StorybookPage({ colorScheme }: { colorScheme?: "dark" | "light" 
   const tableRows = useMemo<DemoConnectionRow[]>(() => [
     {
       id: "conn-01",
-      healthLabel: "OK",
+      healthLabel: "Ok",
       healthTone: "ok",
       connectionKind: "connection",
       connectionLabel: "example-roam-rpc-stuck-request: initiator→acceptor",
@@ -253,7 +253,7 @@ export function StorybookPage({ colorScheme }: { colorScheme?: "dark" | "light" 
     },
     {
       id: "conn-02",
-      healthLabel: "WARN",
+      healthLabel: "Warning",
       healthTone: "warn",
       connectionKind: "channel_tx",
       connectionLabel: "vx-store \u00b7 channel.v1.mpsc.send",
@@ -271,7 +271,7 @@ export function StorybookPage({ colorScheme }: { colorScheme?: "dark" | "light" 
     },
     {
       id: "conn-03",
-      healthLabel: "CRIT",
+      healthLabel: "Critical",
       healthTone: "crit",
       connectionKind: "request",
       connectionLabel: "example-roam-rpc-stuck-request \u00b7 DemoRpc.sleepy_forever",
@@ -289,7 +289,7 @@ export function StorybookPage({ colorScheme }: { colorScheme?: "dark" | "light" 
     },
     {
       id: "conn-04",
-      healthLabel: "WARN",
+      healthLabel: "Warning",
       healthTone: "warn",
       connectionKind: "connection",
       connectionLabel: "vxd \u00b7 connection: initiator<->acceptor",
@@ -307,7 +307,7 @@ export function StorybookPage({ colorScheme }: { colorScheme?: "dark" | "light" 
     },
     {
       id: "conn-05",
-      healthLabel: "OK",
+      healthLabel: "Ok",
       healthTone: "ok",
       connectionKind: "request",
       connectionLabel: "vx-vfsd \u00b7 net.readable.wait",
@@ -549,7 +549,7 @@ export function StorybookPage({ colorScheme }: { colorScheme?: "dark" | "light" 
   }, []);
 
   return (
-    <Panel variant="lab" style={{ height: "100%", ...(colorScheme ? { colorScheme, background: "var(--bg-base)", color: "var(--text-primary)" } : undefined) }}>
+    <Panel variant="lab" style={{ ...(colorScheme ? { colorScheme, background: "var(--bg-base)", color: "var(--text-primary)" } : undefined) }}>
       <PanelHeader title="Lab" hint="Primitives and tone language" />
       <div className="lab-body">
         <Section title="UI font — Satoshi" subtitle="UI font in the sizes we actually use" wide>

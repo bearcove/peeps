@@ -2,11 +2,13 @@
 
 .badge {
     font-size: var(--font-size-sm);
-    font-family: var(--font-mono);
     color: var(--text-secondary);
-    padding: 1px 5px;
+    padding: 1px 6px;
     border-radius: var(--radius-control);
     background: var(--bg-elevated);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
 }
 
 .badge--neutral {
@@ -15,18 +17,48 @@
 }
 
 .badge--ok {
-    color: var(--status-success);
-    background: color-mix(in srgb, var(--status-success) 20%, transparent);
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--status-success) 15%, transparent);
+}
+
+.badge--ok::before {
+    content: "";
+    display: block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--status-success);
+    flex-shrink: 0;
 }
 
 .badge--warn {
-    color: var(--status-warning);
-    background: color-mix(in srgb, var(--status-warning) 20%, transparent);
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--status-warning) 15%, transparent);
+}
+
+.badge--warn::before {
+    content: "";
+    display: block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--status-warning);
+    flex-shrink: 0;
 }
 
 .badge--crit {
-    color: var(--status-danger);
-    background: color-mix(in srgb, var(--status-danger) 20%, transparent);
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--status-danger) 15%, transparent);
+}
+
+.badge--crit::before {
+    content: "";
+    display: block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--status-danger);
+    flex-shrink: 0;
 }
 
 .badge--count {
