@@ -1,5 +1,5 @@
 use compact_str::CompactString;
-use peeps_types::{infer_krate_from_source_with_manifest_dir, PTime};
+use peeps_types::PTime;
 use peeps_types::{
     EdgeKind, Entity, EntityBody, EntityId, Event, EventKind, EventTarget, OperationEdgeMeta,
     OperationKind, OperationState,
@@ -10,7 +10,7 @@ use std::task::{Context, Poll};
 
 use super::db::runtime_db;
 use super::handles::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
-use super::{record_event_with_entity_source, CrateContext, UnqualSource, FUTURE_CAUSAL_STACK};
+use super::{record_event_with_entity_source, Source, FUTURE_CAUSAL_STACK};
 
 pub(super) struct OperationFuture<F> {
     inner: F,
@@ -133,19 +133,18 @@ pub(super) fn instrument_operation_on_with_source<F>(
     on: &EntityHandle,
     op_kind: OperationKind,
     fut: F,
-    source: UnqualSource,
-    cx: CrateContext,
+    source: &Source,
 ) -> OperationFuture<F::IntoFuture>
 where
     F: IntoFuture,
 {
-    let source = source.into_compact_string();
-    let krate = infer_krate_from_source_with_manifest_dir(source.as_str(), Some(cx.manifest_dir()));
+    let source_text = CompactString::from(source.as_str());
+    let krate = source.krate().map(CompactString::from);
     OperationFuture::new(
         fut.into_future(),
         EntityId::new(on.id().as_str()),
         op_kind,
-        source,
+        source_text,
         krate,
     )
 }
@@ -307,7 +306,7 @@ impl<F> Drop for InstrumentedFuture<F> {
 pub fn instrument_future<F>(
     name: impl Into<CompactString>,
     fut: F,
-    source: UnqualSource,
+    source: Source,
     on: Option<EntityRef>,
     meta: Option<facet_value::Value>,
 ) -> InstrumentedFuture<F::IntoFuture>
@@ -316,8 +315,11 @@ where
 {
     let fut = fut.into_future();
     let handle = if let Some(meta) = meta {
-        let mut entity = Entity::builder(name, EntityBody::Future)
-            .source(source.into_compact_string())
+        let mut builder = Entity::builder(name, EntityBody::Future).source(source.as_str());
+        if let Some(krate) = source.krate() {
+            builder = builder.krate(krate);
+        }
+        let mut entity = builder
             .build(&())
             .expect("entity construction with unit meta should be infallible");
         entity.meta = meta;

@@ -1,5 +1,4 @@
 use compact_str::{CompactString, ToCompactString};
-use peeps_types::infer_krate_from_source_with_manifest_dir;
 use peeps_types::{EntityBody, EntityId, Event, ScopeBody, ScopeId};
 use std::cell::RefCell;
 use std::future::Future;
@@ -93,7 +92,7 @@ impl Drop for TaskScopeRegistration {
 
 pub(super) fn register_current_task_scope(
     task_name: &str,
-    source: UnqualSource,
+    source: Source,
 ) -> Option<TaskScopeRegistration> {
     let task_key = current_tokio_task_key()?;
     let scope = ScopeHandle::new(
@@ -111,7 +110,7 @@ pub(super) fn register_current_task_scope(
 pub fn spawn_tracked<F>(
     name: impl Into<CompactString>,
     fut: F,
-    source: UnqualSource,
+    source: Source,
 ) -> tokio::task::JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
@@ -121,7 +120,7 @@ where
     tokio::spawn(
         FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
             let _task_scope = register_current_task_scope(name.as_str(), source);
-            instrument_future_named(name, fut, source).await
+            instrument_future(name, fut, source, None, None).await
         }),
     )
 }
@@ -130,7 +129,7 @@ where
 pub fn spawn_blocking_tracked<F, T>(
     name: impl Into<CompactString>,
     f: F,
-    source: UnqualSource,
+    source: Source,
 ) -> tokio::task::JoinHandle<T>
 where
     F: FnOnce() -> T + Send + 'static,
@@ -143,10 +142,9 @@ where
     })
 }
 
-pub(super) fn record_event_with_source(mut event: Event, source: UnqualSource, cx: CrateContext) {
-    event.source = source.into_compact_string();
-    event.krate =
-        infer_krate_from_source_with_manifest_dir(event.source.as_str(), Some(cx.manifest_dir()));
+pub(super) fn record_event_with_source(mut event: Event, source: &Source) {
+    event.krate = source.krate().map(CompactString::from);
+    event.source = CompactString::from(source.as_str());
     if let Ok(mut db) = db::runtime_db().lock() {
         db.record_event(event);
     }

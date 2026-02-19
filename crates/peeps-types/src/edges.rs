@@ -2,8 +2,8 @@ use compact_str::CompactString;
 use facet::Facet;
 
 use crate::{
-    caller_source, infer_krate_from_source_with_manifest_dir, next_event_id, ChannelCloseCause,
-    EntityId, EventId, MetaSerializeError, PTime, ScopeId,
+    caller_source, next_event_id, ChannelCloseCause, EntityId, EventId, MetaSerializeError, PTime,
+    ScopeId,
 };
 
 /// Relationship between two entities.
@@ -124,13 +124,13 @@ impl Event {
         kind: EventKind,
         meta: &M,
         source: impl Into<CompactString>,
-        manifest_dir: Option<&str>,
+        krate: Option<&str>,
     ) -> Result<Self, MetaSerializeError>
     where
         M: for<'facet> Facet<'facet>,
     {
         let source = source.into();
-        let krate = infer_krate_from_source_with_manifest_dir(source.as_str(), manifest_dir);
+        let krate = krate.map(CompactString::from);
 
         Ok(Self {
             id: next_event_id(),
@@ -171,9 +171,9 @@ impl Event {
         target: EventTarget,
         meta: &ChannelSendEvent,
         source: impl Into<CompactString>,
-        manifest_dir: Option<&str>,
+        krate: Option<&str>,
     ) -> Result<Self, MetaSerializeError> {
-        Self::new_with_source(target, EventKind::ChannelSent, meta, source, manifest_dir)
+        Self::new_with_source(target, EventKind::ChannelSent, meta, source, krate)
     }
 
     /// Channel receive event with typed payload metadata.
@@ -190,15 +190,9 @@ impl Event {
         target: EventTarget,
         meta: &ChannelReceiveEvent,
         source: impl Into<CompactString>,
-        manifest_dir: Option<&str>,
+        krate: Option<&str>,
     ) -> Result<Self, MetaSerializeError> {
-        Self::new_with_source(
-            target,
-            EventKind::ChannelReceived,
-            meta,
-            source,
-            manifest_dir,
-        )
+        Self::new_with_source(target, EventKind::ChannelReceived, meta, source, krate)
     }
 
     /// Channel closure event with typed payload metadata.
@@ -215,9 +209,9 @@ impl Event {
         target: EventTarget,
         meta: &ChannelClosedEvent,
         source: impl Into<CompactString>,
-        manifest_dir: Option<&str>,
+        krate: Option<&str>,
     ) -> Result<Self, MetaSerializeError> {
-        Self::new_with_source(target, EventKind::ChannelClosed, meta, source, manifest_dir)
+        Self::new_with_source(target, EventKind::ChannelClosed, meta, source, krate)
     }
 
     /// Channel wait-start event with typed payload metadata.
@@ -234,15 +228,9 @@ impl Event {
         target: EventTarget,
         meta: &ChannelWaitStartedEvent,
         source: impl Into<CompactString>,
-        manifest_dir: Option<&str>,
+        krate: Option<&str>,
     ) -> Result<Self, MetaSerializeError> {
-        Self::new_with_source(
-            target,
-            EventKind::ChannelWaitStarted,
-            meta,
-            source,
-            manifest_dir,
-        )
+        Self::new_with_source(target, EventKind::ChannelWaitStarted, meta, source, krate)
     }
 
     /// Channel wait-end event with typed payload metadata.
@@ -259,15 +247,9 @@ impl Event {
         target: EventTarget,
         meta: &ChannelWaitEndedEvent,
         source: impl Into<CompactString>,
-        manifest_dir: Option<&str>,
+        krate: Option<&str>,
     ) -> Result<Self, MetaSerializeError> {
-        Self::new_with_source(
-            target,
-            EventKind::ChannelWaitEnded,
-            meta,
-            source,
-            manifest_dir,
-        )
+        Self::new_with_source(target, EventKind::ChannelWaitEnded, meta, source, krate)
     }
 }
 

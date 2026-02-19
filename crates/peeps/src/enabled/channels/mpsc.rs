@@ -123,15 +123,14 @@ impl<T> Sender<T> {
         value: T,
         cx: CrateContext,
     ) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + '_ {
-        self.send_with_source(value, UnqualSource::caller(), cx)
+        self.send_with_source(value, cx.join(UnqualSource::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn send_with_source(
         &self,
         value: T,
-        source: UnqualSource,
-        cx: CrateContext,
+        source: Source,
     ) -> impl Future<Output = Result<(), mpsc::error::SendError<T>>> + '_ {
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
@@ -143,7 +142,7 @@ impl<T> Sender<T> {
                             queue_len: Some(state.queue_len),
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     Some(ChannelWaitKind::SendFull)
                 } else {
@@ -151,7 +150,7 @@ impl<T> Sender<T> {
                 }
             });
             let wait_started = wait_kind.map(|kind| {
-                emit_channel_wait_started(self.handle.id(), kind, source, cx);
+                emit_channel_wait_started(self.handle.id(), kind, &source);
                 Instant::now()
             });
 
@@ -159,13 +158,12 @@ impl<T> Sender<T> {
                 &self.handle,
                 OperationKind::Send,
                 self.inner.send(value),
-                source,
-                cx,
+                &source,
             )
             .await;
 
             if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
-                emit_channel_wait_ended(self.handle.id(), kind, started, source, cx);
+                emit_channel_wait_ended(self.handle.id(), kind, started, &source);
             }
 
             match result {
@@ -184,7 +182,7 @@ impl<T> Sender<T> {
                             queue_len: Some(queue_len),
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     Ok(())
                 }
@@ -213,13 +211,13 @@ impl<T> Sender<T> {
                             queue_len: Some(queue_len),
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     if let Ok(event) = Event::channel_closed(
                         EventTarget::Entity(self.handle.id().clone()),
                         &ChannelClosedEvent { cause: close_cause },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     Err(err)
                 }
@@ -238,15 +236,11 @@ impl<T> Receiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn recv_with_cx(&mut self, cx: CrateContext) -> impl Future<Output = Option<T>> + '_ {
-        self.recv_with_source(UnqualSource::caller(), cx)
+        self.recv_with_source(cx.join(UnqualSource::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
-    pub fn recv_with_source(
-        &mut self,
-        source: UnqualSource,
-        cx: CrateContext,
-    ) -> impl Future<Output = Option<T>> + '_ {
+    pub fn recv_with_source(&mut self, source: Source) -> impl Future<Output = Option<T>> + '_ {
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
                 if state.is_receive_empty() {
@@ -257,7 +251,7 @@ impl<T> Receiver<T> {
                             queue_len: Some(state.queue_len),
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     Some(ChannelWaitKind::ReceiveEmpty)
                 } else {
@@ -265,7 +259,7 @@ impl<T> Receiver<T> {
                 }
             });
             let wait_started = wait_kind.map(|kind| {
-                emit_channel_wait_started(self.handle.id(), kind, source, cx);
+                emit_channel_wait_started(self.handle.id(), kind, &source);
                 Instant::now()
             });
 
@@ -273,13 +267,12 @@ impl<T> Receiver<T> {
                 &self.handle,
                 OperationKind::Recv,
                 self.inner.recv(),
-                source,
-                cx,
+                &source,
             )
             .await;
 
             if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
-                emit_channel_wait_ended(self.handle.id(), kind, started, source, cx);
+                emit_channel_wait_ended(self.handle.id(), kind, started, &source);
             }
 
             match result {
@@ -298,7 +291,7 @@ impl<T> Receiver<T> {
                             queue_len: Some(queue_len),
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     Some(value)
                 }
@@ -327,13 +320,13 @@ impl<T> Receiver<T> {
                             queue_len: Some(queue_len),
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     if let Ok(event) = Event::channel_closed(
                         EventTarget::Entity(self.handle.id().clone()),
                         &ChannelClosedEvent { cause: close_cause },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     None
                 }
@@ -355,14 +348,13 @@ impl<T> UnboundedSender<T> {
         value: T,
         cx: CrateContext,
     ) -> Result<(), mpsc::error::SendError<T>> {
-        self.send_with_source(value, UnqualSource::caller(), cx)
+        self.send_with_source(value, cx.join(UnqualSource::caller()))
     }
 
     pub fn send_with_source(
         &self,
         value: T,
-        source: UnqualSource,
-        cx: CrateContext,
+        source: Source,
     ) -> Result<(), mpsc::error::SendError<T>> {
         match self.inner.send(value) {
             Ok(()) => {
@@ -380,7 +372,7 @@ impl<T> UnboundedSender<T> {
                         queue_len: Some(queue_len),
                     },
                 ) {
-                    record_event_with_source(event, source, cx);
+                    record_event_with_source(event, &source);
                 }
                 Ok(())
             }
@@ -409,13 +401,13 @@ impl<T> UnboundedSender<T> {
                         queue_len: Some(queue_len),
                     },
                 ) {
-                    record_event_with_source(event, source, cx);
+                    record_event_with_source(event, &source);
                 }
                 if let Ok(event) = Event::channel_closed(
                     EventTarget::Entity(self.handle.id().clone()),
                     &ChannelClosedEvent { cause: close_cause },
                 ) {
-                    record_event_with_source(event, source, cx);
+                    record_event_with_source(event, &source);
                 }
                 Err(err)
             }
@@ -438,15 +430,11 @@ impl<T> UnboundedReceiver<T> {
     #[track_caller]
     #[allow(clippy::manual_async_fn)]
     pub fn recv_with_cx(&mut self, cx: CrateContext) -> impl Future<Output = Option<T>> + '_ {
-        self.recv_with_source(UnqualSource::caller(), cx)
+        self.recv_with_source(cx.join(UnqualSource::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
-    pub fn recv_with_source(
-        &mut self,
-        source: UnqualSource,
-        cx: CrateContext,
-    ) -> impl Future<Output = Option<T>> + '_ {
+    pub fn recv_with_source(&mut self, source: Source) -> impl Future<Output = Option<T>> + '_ {
         async move {
             let wait_kind = self.channel.lock().ok().and_then(|state| {
                 if state.is_receive_empty() {
@@ -457,7 +445,7 @@ impl<T> UnboundedReceiver<T> {
                             queue_len: Some(state.queue_len),
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     Some(ChannelWaitKind::ReceiveEmpty)
                 } else {
@@ -465,7 +453,7 @@ impl<T> UnboundedReceiver<T> {
                 }
             });
             let wait_started = wait_kind.map(|kind| {
-                emit_channel_wait_started(self.handle.id(), kind, source, cx);
+                emit_channel_wait_started(self.handle.id(), kind, &source);
                 Instant::now()
             });
 
@@ -473,13 +461,12 @@ impl<T> UnboundedReceiver<T> {
                 &self.handle,
                 OperationKind::Recv,
                 self.inner.recv(),
-                source,
-                cx,
+                &source,
             )
             .await;
 
             if let (Some(kind), Some(started)) = (wait_kind, wait_started) {
-                emit_channel_wait_ended(self.handle.id(), kind, started, source, cx);
+                emit_channel_wait_ended(self.handle.id(), kind, started, &source);
             }
 
             match result {
@@ -498,7 +485,7 @@ impl<T> UnboundedReceiver<T> {
                             queue_len: Some(queue_len),
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     Some(value)
                 }
@@ -527,13 +514,13 @@ impl<T> UnboundedReceiver<T> {
                             queue_len: Some(queue_len),
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     if let Ok(event) = Event::channel_closed(
                         EventTarget::Entity(self.handle.id().clone()),
                         &ChannelClosedEvent { cause: close_cause },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     None
                 }

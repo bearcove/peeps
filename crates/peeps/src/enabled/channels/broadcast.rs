@@ -79,14 +79,13 @@ impl<T: Clone> BroadcastSender<T> {
         value: T,
         cx: CrateContext,
     ) -> Result<usize, broadcast::error::SendError<T>> {
-        self.send_with_source(value, UnqualSource::caller(), cx)
+        self.send_with_source(value, cx.join(UnqualSource::caller()))
     }
 
     pub fn send_with_source(
         &self,
         value: T,
-        source: UnqualSource,
-        cx: CrateContext,
+        source: Source,
     ) -> Result<usize, broadcast::error::SendError<T>> {
         match self.inner.send(value) {
             Ok(receivers) => {
@@ -97,7 +96,7 @@ impl<T: Clone> BroadcastSender<T> {
                         queue_len: None,
                     },
                 ) {
-                    record_event_with_source(event, source, cx);
+                    record_event_with_source(event, &source);
                 }
                 Ok(receivers)
             }
@@ -118,7 +117,7 @@ impl<T: Clone> BroadcastSender<T> {
                         queue_len: None,
                     },
                 ) {
-                    record_event_with_source(event, source, cx);
+                    record_event_with_source(event, &source);
                 }
                 if let Ok(event) = Event::channel_closed(
                     EventTarget::Entity(self.handle.id().clone()),
@@ -126,7 +125,7 @@ impl<T: Clone> BroadcastSender<T> {
                         cause: ChannelCloseCause::ReceiverDropped,
                     },
                 ) {
-                    record_event_with_source(event, source, cx);
+                    record_event_with_source(event, &source);
                 }
                 Err(err)
             }
@@ -147,22 +146,20 @@ impl<T: Clone> BroadcastReceiver<T> {
         &mut self,
         cx: CrateContext,
     ) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
-        self.recv_with_source(UnqualSource::caller(), cx)
+        self.recv_with_source(cx.join(UnqualSource::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn recv_with_source(
         &mut self,
-        source: UnqualSource,
-        cx: CrateContext,
+        source: Source,
     ) -> impl Future<Output = Result<T, broadcast::error::RecvError>> + '_ {
         async move {
             let result = instrument_operation_on_with_source(
                 &self.handle,
                 OperationKind::Recv,
                 self.inner.recv(),
-                source,
-                cx,
+                &source,
             )
             .await;
             match result {
@@ -174,7 +171,7 @@ impl<T: Clone> BroadcastReceiver<T> {
                             queue_len: None,
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     Ok(value)
                 }
@@ -195,7 +192,7 @@ impl<T: Clone> BroadcastReceiver<T> {
                                 cause: ChannelCloseCause::SenderDropped,
                             },
                         ) {
-                            record_event_with_source(event, source, cx);
+                            record_event_with_source(event, &source);
                         }
                     }
                     if let Ok(event) = Event::channel_received(
@@ -205,7 +202,7 @@ impl<T: Clone> BroadcastReceiver<T> {
                             queue_len: None,
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     Err(err)
                 }

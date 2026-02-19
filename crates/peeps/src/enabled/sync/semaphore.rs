@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use super::super::db::runtime_db;
 use super::super::futures::instrument_operation_on_with_source;
 use super::super::handles::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
-use super::super::{CrateContext, UnqualSource};
+use super::super::{CrateContext, Source, UnqualSource};
 
 #[derive(Clone)]
 pub struct Semaphore {
@@ -131,14 +131,13 @@ impl Semaphore {
         &self,
         cx: CrateContext,
     ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
-        self.acquire_with_source(UnqualSource::caller(), cx)
+        self.acquire_with_source(cx.join(UnqualSource::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn acquire_with_source(
         &self,
-        source: UnqualSource,
-        cx: CrateContext,
+        source: Source,
     ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
@@ -146,8 +145,7 @@ impl Semaphore {
                 &self.handle,
                 OperationKind::Acquire,
                 self.inner.acquire(),
-                source,
-                cx,
+                &source,
             )
             .await?;
             if let Some(holder_id) = holder_future_id.as_ref() {
@@ -172,15 +170,14 @@ impl Semaphore {
         n: u32,
         cx: CrateContext,
     ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
-        self.acquire_many_with_source(n, UnqualSource::caller(), cx)
+        self.acquire_many_with_source(n, cx.join(UnqualSource::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn acquire_many_with_source(
         &self,
         n: u32,
-        source: UnqualSource,
-        cx: CrateContext,
+        source: Source,
     ) -> impl Future<Output = Result<SemaphorePermit<'_>, tokio::sync::AcquireError>> + '_ {
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
@@ -188,8 +185,7 @@ impl Semaphore {
                 &self.handle,
                 OperationKind::Acquire,
                 self.inner.acquire_many(n),
-                source,
-                cx,
+                &source,
             )
             .await?;
             if let Some(holder_id) = holder_future_id.as_ref() {
@@ -213,14 +209,13 @@ impl Semaphore {
         &self,
         cx: CrateContext,
     ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
-        self.acquire_owned_with_source(UnqualSource::caller(), cx)
+        self.acquire_owned_with_source(cx.join(UnqualSource::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn acquire_owned_with_source(
         &self,
-        source: UnqualSource,
-        cx: CrateContext,
+        source: Source,
     ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
@@ -228,8 +223,7 @@ impl Semaphore {
                 &self.handle,
                 OperationKind::Acquire,
                 Arc::clone(&self.inner).acquire_owned(),
-                source,
-                cx,
+                &source,
             )
             .await?;
             if let Some(holder_id) = holder_future_id.as_ref() {
@@ -254,15 +248,14 @@ impl Semaphore {
         n: u32,
         cx: CrateContext,
     ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
-        self.acquire_many_owned_with_source(n, UnqualSource::caller(), cx)
+        self.acquire_many_owned_with_source(n, cx.join(UnqualSource::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn acquire_many_owned_with_source(
         &self,
         n: u32,
-        source: UnqualSource,
-        cx: CrateContext,
+        source: Source,
     ) -> impl Future<Output = Result<OwnedSemaphorePermit, tokio::sync::AcquireError>> + '_ {
         let holder_future_id = current_causal_target().map(|target| target.id().clone());
         async move {
@@ -270,8 +263,7 @@ impl Semaphore {
                 &self.handle,
                 OperationKind::Acquire,
                 Arc::clone(&self.inner).acquire_many_owned(n),
-                source,
-                cx,
+                &source,
             )
             .await?;
             if let Some(holder_id) = holder_future_id.as_ref() {

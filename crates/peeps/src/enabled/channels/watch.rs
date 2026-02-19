@@ -66,14 +66,13 @@ impl<T: Clone> WatchSender<T> {
         value: T,
         cx: CrateContext,
     ) -> Result<(), watch::error::SendError<T>> {
-        self.send_with_source(value, UnqualSource::caller(), cx)
+        self.send_with_source(value, cx.join(UnqualSource::caller()))
     }
 
     pub fn send_with_source(
         &self,
         value: T,
-        source: UnqualSource,
-        cx: CrateContext,
+        source: Source,
     ) -> Result<(), watch::error::SendError<T>> {
         match self.inner.send(value) {
             Ok(()) => {
@@ -89,7 +88,7 @@ impl<T: Clone> WatchSender<T> {
                         queue_len: None,
                     },
                 ) {
-                    record_event_with_source(event, source, cx);
+                    record_event_with_source(event, &source);
                 }
                 Ok(())
             }
@@ -110,7 +109,7 @@ impl<T: Clone> WatchSender<T> {
                         queue_len: None,
                     },
                 ) {
-                    record_event_with_source(event, source, cx);
+                    record_event_with_source(event, &source);
                 }
                 Err(err)
             }
@@ -119,14 +118,13 @@ impl<T: Clone> WatchSender<T> {
 
     #[track_caller]
     pub fn send_replace_with_cx(&self, value: T, cx: CrateContext) -> T {
-        self.send_replace_with_source(value, UnqualSource::caller(), cx)
+        self.send_replace_with_source(value, cx.join(UnqualSource::caller()))
     }
 
     pub fn send_replace_with_source(
         &self,
         value: T,
-        _source: UnqualSource,
-        _cx: CrateContext,
+        _source: Source,
     ) -> T {
         let old = self.inner.send_replace(value);
         let now = peeps_types::PTime::now();
@@ -164,22 +162,20 @@ impl<T: Clone> WatchReceiver<T> {
         &mut self,
         cx: CrateContext,
     ) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
-        self.changed_with_source(UnqualSource::caller(), cx)
+        self.changed_with_source(cx.join(UnqualSource::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn changed_with_source(
         &mut self,
-        source: UnqualSource,
-        cx: CrateContext,
+        source: Source,
     ) -> impl Future<Output = Result<(), watch::error::RecvError>> + '_ {
         async move {
             let result = instrument_operation_on_with_source(
                 &self.handle,
                 OperationKind::Recv,
                 self.inner.changed(),
-                source,
-                cx,
+                &source,
             )
             .await;
             match result {
@@ -191,7 +187,7 @@ impl<T: Clone> WatchReceiver<T> {
                             queue_len: None,
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     Ok(())
                 }
@@ -212,7 +208,7 @@ impl<T: Clone> WatchReceiver<T> {
                             queue_len: None,
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     Err(err)
                 }

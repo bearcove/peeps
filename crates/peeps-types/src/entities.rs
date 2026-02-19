@@ -1,9 +1,7 @@
 use compact_str::CompactString;
 use facet::Facet;
 
-use crate::{
-    caller_source, infer_krate_from_source, next_entity_id, EntityId, MetaSerializeError, PTime,
-};
+use crate::{caller_source, next_entity_id, EntityId, MetaSerializeError, PTime};
 
 /// A: future, a lock, a channel end (tx, rx), a connection leg, a socket, etc.
 #[derive(Facet)]
@@ -88,9 +86,7 @@ impl EntityBuilder {
         M: for<'facet> Facet<'facet>,
     {
         let source = self.source.unwrap_or_else(caller_source);
-        let krate = self
-            .krate
-            .or_else(|| infer_krate_from_source(source.as_str()));
+        let krate = self.krate;
 
         Ok(Entity {
             id: next_entity_id(),

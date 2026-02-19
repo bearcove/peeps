@@ -3,7 +3,7 @@ use peeps_types::{EdgeKind, Entity, EntityBody, EntityId, Scope, ScopeBody, Scop
 use std::sync::Arc;
 
 use super::db::runtime_db;
-use super::UnqualSource;
+use super::Source;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityRef {
@@ -65,9 +65,13 @@ pub struct ScopeHandle {
 }
 
 impl ScopeHandle {
-    pub fn new(name: impl Into<CompactString>, body: ScopeBody, source: UnqualSource) -> Self {
-        let scope = Scope::builder(name, body)
-            .source(source.into_compact_string())
+    pub fn new(name: impl Into<CompactString>, body: ScopeBody, source: impl Into<Source>) -> Self {
+        let source: Source = source.into();
+        let mut builder = Scope::builder(name, body).source(source.as_str());
+        if let Some(krate) = source.krate() {
+            builder = builder.krate(krate);
+        }
+        let scope = builder
             .build(&())
             .expect("scope construction with unit meta should be infallible");
         let id = ScopeId::new(scope.id.as_str());
@@ -112,17 +116,25 @@ pub struct EntityHandle {
 }
 
 impl EntityHandle {
-    pub fn new(name: impl Into<CompactString>, body: EntityBody, source: UnqualSource) -> Self {
+    pub fn new(
+        name: impl Into<CompactString>,
+        body: EntityBody,
+        source: impl Into<Source>,
+    ) -> Self {
         Self::new_with_source(name, body, source)
     }
 
     pub fn new_with_source(
         name: impl Into<CompactString>,
         body: EntityBody,
-        source: UnqualSource,
+        source: impl Into<Source>,
     ) -> Self {
-        let entity = Entity::builder(name, body)
-            .source(source.into_compact_string())
+        let source: Source = source.into();
+        let mut builder = Entity::builder(name, body).source(source.as_str());
+        if let Some(krate) = source.krate() {
+            builder = builder.krate(krate);
+        }
+        let entity = builder
             .build(&())
             .expect("entity construction with unit meta should be infallible");
         Self::from_entity(entity)

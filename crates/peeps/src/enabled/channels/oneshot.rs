@@ -65,14 +65,13 @@ impl<T> OneshotSender<T> {
 
     #[track_caller]
     pub fn send_with_cx(self, value: T, cx: CrateContext) -> Result<(), T> {
-        self.send_with_source(value, UnqualSource::caller(), cx)
+        self.send_with_source(value, cx.join(UnqualSource::caller()))
     }
 
     pub fn send_with_source(
         mut self,
         value: T,
-        source: UnqualSource,
-        cx: CrateContext,
+        source: Source,
     ) -> Result<(), T> {
         let Some(inner) = self.inner.take() else {
             return Err(value);
@@ -92,7 +91,7 @@ impl<T> OneshotSender<T> {
                         queue_len: None,
                     },
                 ) {
-                    record_event_with_source(event, source, cx);
+                    record_event_with_source(event, &source);
                 }
                 Ok(())
             }
@@ -112,7 +111,7 @@ impl<T> OneshotSender<T> {
                         queue_len: None,
                     },
                 ) {
-                    record_event_with_source(event, source, cx);
+                    record_event_with_source(event, &source);
                 }
                 if let Ok(event) = Event::channel_closed(
                     EventTarget::Entity(self.handle.id().clone()),
@@ -120,7 +119,7 @@ impl<T> OneshotSender<T> {
                         cause: ChannelCloseCause::ReceiverDropped,
                     },
                 ) {
-                    record_event_with_source(event, source, cx);
+                    record_event_with_source(event, &source);
                 }
                 Err(value)
             }
@@ -141,14 +140,13 @@ impl<T> OneshotReceiver<T> {
         self,
         cx: CrateContext,
     ) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
-        self.recv_with_source(UnqualSource::caller(), cx)
+        self.recv_with_source(cx.join(UnqualSource::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn recv_with_source(
         mut self,
-        source: UnqualSource,
-        cx: CrateContext,
+        source: Source,
     ) -> impl Future<Output = Result<T, oneshot::error::RecvError>> {
         async move {
             let inner = self.inner.take().expect("oneshot receiver consumed");
@@ -156,8 +154,7 @@ impl<T> OneshotReceiver<T> {
                 &self.handle,
                 OperationKind::Recv,
                 inner,
-                source,
-                cx,
+                &source,
             )
             .await;
             match result {
@@ -175,7 +172,7 @@ impl<T> OneshotReceiver<T> {
                             queue_len: None,
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     Ok(value)
                 }
@@ -195,7 +192,7 @@ impl<T> OneshotReceiver<T> {
                             queue_len: None,
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     if let Ok(event) = Event::channel_closed(
                         EventTarget::Entity(self.handle.id().clone()),
@@ -203,7 +200,7 @@ impl<T> OneshotReceiver<T> {
                             cause: ChannelCloseCause::SenderDropped,
                         },
                     ) {
-                        record_event_with_source(event, source, cx);
+                        record_event_with_source(event, &source);
                     }
                     Err(err)
                 }

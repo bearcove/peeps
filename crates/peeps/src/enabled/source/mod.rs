@@ -113,6 +113,15 @@ impl Source {
     }
 }
 
+impl From<SourceRight> for Source {
+    fn from(right: SourceRight) -> Self {
+        Self {
+            source: CompactString::from(format!("{}:{}", right.file(), right.line())),
+            krate: None,
+        }
+    }
+}
+
 pub type UnqualSource = SourceRight;
 pub type CrateContext = SourceLeft;
 

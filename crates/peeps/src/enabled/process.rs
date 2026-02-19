@@ -7,9 +7,9 @@ use std::io;
 use std::process::{ExitStatus, Output, Stdio};
 use std::time::Duration;
 
-use super::futures::{instrument_future_on, instrument_future_on_with_source};
+use super::futures::instrument_future;
 use super::handles::EntityHandle;
-use super::{register_current_task_scope, CrateContext, UnqualSource, FUTURE_CAUSAL_STACK};
+use super::{register_current_task_scope, CrateContext, Source, UnqualSource, FUTURE_CAUSAL_STACK};
 
 pub struct Command {
     inner: tokio::process::Command,
@@ -156,14 +156,10 @@ impl Command {
 
     #[track_caller]
     pub fn spawn_with_cx(&mut self, cx: CrateContext) -> io::Result<Child> {
-        self.spawn_with_source(UnqualSource::caller(), cx)
+        self.spawn_with_source(cx.join(UnqualSource::caller()))
     }
 
-    pub fn spawn_with_source(
-        &mut self,
-        source: UnqualSource,
-        _cx: CrateContext,
-    ) -> io::Result<Child> {
+    pub fn spawn_with_source(&mut self, source: Source) -> io::Result<Child> {
         let child = self.inner.spawn()?;
         let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
         Ok(Child {
@@ -177,16 +173,21 @@ impl Command {
         &mut self,
         cx: CrateContext,
     ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        self.status_with_source(UnqualSource::caller(), cx)
+        self.status_with_source(cx.join(UnqualSource::caller()))
     }
 
     pub fn status_with_source(
         &mut self,
-        source: UnqualSource,
-        _cx: CrateContext,
+        source: Source,
     ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
-        instrument_future_on_with_source("command.status", &handle, self.inner.status(), source)
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source.clone());
+        instrument_future(
+            "command.status",
+            self.inner.status(),
+            source,
+            Some(handle.entity_ref()),
+            None,
+        )
     }
 
     #[track_caller]
@@ -194,16 +195,21 @@ impl Command {
         &mut self,
         cx: CrateContext,
     ) -> impl Future<Output = io::Result<Output>> + '_ {
-        self.output_with_source(UnqualSource::caller(), cx)
+        self.output_with_source(cx.join(UnqualSource::caller()))
     }
 
     pub fn output_with_source(
         &mut self,
-        source: UnqualSource,
-        _cx: CrateContext,
+        source: Source,
     ) -> impl Future<Output = io::Result<Output>> + '_ {
-        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source);
-        instrument_future_on_with_source("command.output", &handle, self.inner.output(), source)
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body(), source.clone());
+        instrument_future(
+            "command.output",
+            self.inner.output(),
+            source,
+            Some(handle.entity_ref()),
+            None,
+        )
     }
 
     #[track_caller]
@@ -285,17 +291,22 @@ impl Child {
         &mut self,
         cx: CrateContext,
     ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-        self.wait_with_source(UnqualSource::caller(), cx)
+        self.wait_with_source(cx.join(UnqualSource::caller()))
     }
 
     pub fn wait_with_source(
         &mut self,
-        source: UnqualSource,
-        _cx: CrateContext,
+        source: Source,
     ) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
         let handle = self.handle.clone();
         let wait_fut = self.inner_mut().wait();
-        instrument_future_on_with_source("command.wait", &handle, wait_fut, source)
+        instrument_future(
+            "command.wait",
+            wait_fut,
+            source,
+            Some(handle.entity_ref()),
+            None,
+        )
     }
 
     #[track_caller]
@@ -303,20 +314,20 @@ impl Child {
         self,
         cx: CrateContext,
     ) -> impl Future<Output = io::Result<Output>> {
-        self.wait_with_output_with_source(UnqualSource::caller(), cx)
+        self.wait_with_output_with_source(cx.join(UnqualSource::caller()))
     }
 
     pub fn wait_with_output_with_source(
         mut self,
-        source: UnqualSource,
-        _cx: CrateContext,
+        source: Source,
     ) -> impl Future<Output = io::Result<Output>> {
         let child = self.inner.take().expect("child already consumed");
-        instrument_future_on_with_source(
+        instrument_future(
             "command.wait_with_output",
-            &self.handle,
             child.wait_with_output(),
             source,
+            Some(self.handle.entity_ref()),
+            None,
         )
     }
 

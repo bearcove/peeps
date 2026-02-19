@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use super::super::db::runtime_db;
 use super::super::futures::instrument_operation_on_with_source;
 use super::super::handles::EntityHandle;
-use super::super::{CrateContext, UnqualSource};
+use super::super::{CrateContext, Source, UnqualSource};
 
 pub struct OnceCell<T> {
     inner: tokio::sync::OnceCell<T>,
@@ -51,15 +51,14 @@ impl<T> OnceCell<T> {
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = T> + 'a,
     {
-        self.get_or_init_with_source(f, UnqualSource::caller(), cx)
+        self.get_or_init_with_source(f, cx.join(UnqualSource::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn get_or_init_with_source<'a, F, Fut>(
         &'a self,
         f: F,
-        source: UnqualSource,
-        cx: CrateContext,
+        source: Source,
     ) -> impl Future<Output = &'a T> + 'a
     where
         F: FnOnce() -> Fut + 'a,
@@ -78,8 +77,7 @@ impl<T> OnceCell<T> {
                 &self.handle,
                 OperationKind::OncecellWait,
                 self.inner.get_or_init(f),
-                source,
-                cx,
+                &source,
             )
             .await;
 
@@ -113,15 +111,14 @@ impl<T> OnceCell<T> {
         F: FnOnce() -> Fut + 'a,
         Fut: Future<Output = Result<T, E>> + 'a,
     {
-        self.get_or_try_init_with_source(f, UnqualSource::caller(), cx)
+        self.get_or_try_init_with_source(f, cx.join(UnqualSource::caller()))
     }
 
     #[allow(clippy::manual_async_fn)]
     pub fn get_or_try_init_with_source<'a, F, Fut, E>(
         &'a self,
         f: F,
-        source: UnqualSource,
-        cx: CrateContext,
+        source: Source,
     ) -> impl Future<Output = Result<&'a T, E>> + 'a
     where
         F: FnOnce() -> Fut + 'a,
@@ -140,8 +137,7 @@ impl<T> OnceCell<T> {
                 &self.handle,
                 OperationKind::OncecellWait,
                 self.inner.get_or_try_init(f),
-                source,
-                cx,
+                &source,
             )
             .await;
 

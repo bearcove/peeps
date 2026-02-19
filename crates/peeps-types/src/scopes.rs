@@ -82,9 +82,7 @@ impl ScopeBuilder {
         M: for<'facet> Facet<'facet>,
     {
         let source = self.source.unwrap_or_else(caller_source);
-        let krate = self
-            .krate
-            .or_else(|| infer_krate_from_source(source.as_str()));
+        let krate = self.krate;
 
         Ok(Scope {
             id: next_scope_id(),
