@@ -316,3 +316,9 @@
     gap: 8px;
     flex-wrap: wrap;
 }
+
+.ui-sample-graph {
+    height: 480px;
+    border-radius: var(--radius-control);
+    overflow: hidden;
+}

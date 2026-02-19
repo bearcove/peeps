@@ -47,6 +47,7 @@ export function GraphPanel({
   onGraphFilterTextChange,
   onHideNodeFilter,
   onHideLocationFilter,
+  floatingFilterBar = false,
 }: {
   entityDefs: EntityDef[];
   edgeDefs: EdgeDef[];
@@ -68,6 +69,7 @@ export function GraphPanel({
   onGraphFilterTextChange: (next: string) => void;
   onHideNodeFilter: (entityId: string) => void;
   onHideLocationFilter: (location: string) => void;
+  floatingFilterBar?: boolean;
 }) {
   const [layout, setLayout] = useState<GraphGeometry | null>(null);
 
@@ -141,7 +143,7 @@ export function GraphPanel({
     crateItems.length > 1 || processItems.length > 0 || kindItems.length > 1 || focusedEntityId || entityDefs.length > 0;
 
   return (
-    <div className="graph-panel">
+    <div className={`graph-panel${floatingFilterBar ? " graph-panel--floating-filter" : ""}`}>
       {showToolbar && (
         <GraphFilterInput
           focusedEntityId={focusedEntityId}

@@ -38,6 +38,7 @@ import { Switch } from "../ui/primitives/Switch";
 import type { EntityDef } from "../snapshot";
 import { GraphNode } from "../components/graph/GraphNode";
 import { GraphFilterInput } from "../components/graph/GraphFilterInput";
+import { SampleGraph } from "../components/graph/SampleGraph";
 import "../components/graph/GraphPanel.css";
 import { InspectorPanel } from "../components/inspector/InspectorPanel";
 
@@ -587,6 +588,122 @@ export function useStorybookState() {
     } as unknown as EntityDef;
   }, []);
 
+  const sampleGraphEntities = useMemo<EntityDef[]>(() => {
+    const now = Date.now();
+    const base = {
+      processName: "peeps-example",
+      processPid: 12345,
+      source: "main.rs:1",
+      krate: "peeps-example",
+      birthPtime: 100,
+      ageMs: 0,
+      birthApproxUnixMs: now,
+      inCycle: false,
+      meta: {},
+    };
+    return [
+      {
+        ...base,
+        id: "p1/mutex_a",
+        rawEntityId: "mutex_a",
+        processId: "p1",
+        processName: "vx-store",
+        krate: "tokio",
+        name: "store.state_lock",
+        kind: "lock",
+        body: { lock: { kind: "mutex" } },
+        status: { label: "held", tone: "crit" as const },
+      },
+      {
+        ...base,
+        id: "p1/future_a",
+        rawEntityId: "future_a",
+        processId: "p1",
+        processName: "vx-store",
+        krate: "roam-session",
+        name: "store.incoming.recv",
+        kind: "future",
+        body: "future" as const,
+        status: { label: "polling", tone: "neutral" as const },
+        ageMs: 250,
+      },
+      {
+        ...base,
+        id: "p1/sem_a",
+        rawEntityId: "sem_a",
+        processId: "p1",
+        processName: "vx-store",
+        krate: "tokio",
+        name: "request_limiter",
+        kind: "semaphore",
+        body: { semaphore: { max_permits: 16, handed_out_permits: 14 } },
+        status: { label: "2/16 permits", tone: "warn" as const },
+        stat: "2/16",
+        statTone: "warn" as const,
+      },
+      {
+        ...base,
+        id: "p2/future_b",
+        rawEntityId: "future_b",
+        processId: "p2",
+        processName: "vx-runner",
+        krate: "roam-session",
+        name: "DemoRpc.sleepy_forever",
+        kind: "request",
+        body: { request: { method: "DemoRpc.sleepy_forever", args_preview: "()" } },
+        status: { label: "in_flight", tone: "warn" as const },
+        ageMs: 4800,
+      },
+      {
+        ...base,
+        id: "p2/future_c",
+        rawEntityId: "future_c",
+        processId: "p2",
+        processName: "vx-runner",
+        krate: "peeps-examples",
+        name: "runner.tick",
+        kind: "future",
+        body: "future" as const,
+        status: { label: "polling", tone: "neutral" as const },
+      },
+    ] as EntityDef[];
+  }, []);
+
+  const sampleGraphEdges = useMemo(() => [
+    {
+      id: "e1",
+      source: "p1/future_a",
+      target: "p1/mutex_a",
+      kind: "needs" as const,
+      meta: {},
+      opKind: "lock",
+      state: "pending",
+    },
+    {
+      id: "e2",
+      source: "p1/mutex_a",
+      target: "p1/sem_a",
+      kind: "holds" as const,
+      meta: {},
+    },
+    {
+      id: "e3",
+      source: "p2/future_b",
+      target: "p1/sem_a",
+      kind: "needs" as const,
+      meta: {},
+      opKind: "acquire",
+      state: "pending",
+    },
+    {
+      id: "e4",
+      source: "p2/future_c",
+      target: "p2/future_b",
+      kind: "touches" as const,
+      meta: {},
+    },
+  ], []);
+
   return {
     textValue,
     setTextValue,
@@ -651,6 +768,8 @@ export function useStorybookState() {
     setGraphFilterText,
     graphFilterNodeIds,
     graphFilterLocations,
+    sampleGraphEntities,
+    sampleGraphEdges,
   };
 }
 
@@ -725,6 +844,8 @@ export function StorybookPage({
     setGraphFilterText,
     graphFilterNodeIds,
     graphFilterLocations,
+    sampleGraphEntities,
+    sampleGraphEdges,
   } = sharedState;
 
   const colorVariables = useMemo(() => {
@@ -1005,7 +1126,7 @@ export function StorybookPage({
           </div>
         </Section>
 
-        <Section title="Color System" subtitle="Role tokens + scope palette (graph only)" wide>
+        <Section title="Color System" subtitle="Role tokens + scope palette (graph only)" wide collapsible defaultCollapsed>
           <div className="ui-section-stack">
             <div className="ui-color-vars">
               <div className="ui-typo-kicker">
@@ -1144,8 +1265,6 @@ export function StorybookPage({
 
         <Section title="Graph Filter" subtitle="Token-based filter bar with autocomplete" wide>
           <GraphFilterInput
-            entityCount={42}
-            edgeCount={18}
             focusedEntityId={null}
             onExitFocus={() => {}}
             graphFilterText={graphFilterText}
@@ -1156,6 +1275,17 @@ export function StorybookPage({
             nodeIds={graphFilterNodeIds}
             locations={graphFilterLocations}
           />
+        </Section>
+
+        <Section title="Sample Graph" subtitle="ELK layout + full renderer — two processes, five nodes" wide>
+          <div className="ui-sample-graph">
+            <SampleGraph
+              entityDefs={sampleGraphEntities}
+              edgeDefs={sampleGraphEdges}
+              scopeColorMode="process"
+              subgraphScopeMode="process"
+            />
+          </div>
         </Section>
 
         <Section title="Controls" subtitle="Checkbox, select">

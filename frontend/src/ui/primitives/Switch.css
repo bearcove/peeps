@@ -31,7 +31,7 @@
     width: 12px;
     height: 12px;
     border-radius: 9999px;
-    background: var(--text-secondary);
+    background: var(--text-primary);
     transform: translateX(0);
     transition: transform 120ms ease, background-color 120ms ease;
 }

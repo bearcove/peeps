@@ -25,6 +25,24 @@
     margin-bottom: 0;
 }
 
+.ui-section-head--collapsible {
+    cursor: pointer;
+    user-select: none;
+}
+
+.ui-section-chevron {
+    font-size: var(--font-size-md);
+    line-height: 1;
+    color: var(--text-muted);
+    display: inline-block;
+    transform: rotate(90deg);
+    transition: transform 120ms ease;
+}
+
+.ui-section-chevron--collapsed {
+    transform: rotate(0deg);
+}
+
 .ui-section-subhead {
     font-size: var(--font-size-sm);
     font-weight: 600;

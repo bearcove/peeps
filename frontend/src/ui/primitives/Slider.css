@@ -38,10 +38,19 @@
 
 .ui-slider-track {
     position: relative;
-    height: 6px;
+    height: 20px;
     width: 100%;
-    border-radius: var(--radius-control);
-    background: var(--bg-elevated);
+    display: flex;
+    align-items: center;
+}
+
+.ui-slider-track-rail {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--border-subtle);
 }
 
 .ui-slider-track-fill {
@@ -49,14 +58,14 @@
     left: 0;
     top: 0;
     height: 100%;
-    border-radius: var(--radius-control);
+    border-radius: 9999px;
     background: var(--accent-active);
 }
 
 .ui-slider-thumb {
     width: 14px;
     height: 14px;
-    border-radius: var(--radius-control);
+    border-radius: 50%;
     border: 2px solid var(--bg-base);
     background: var(--accent-active);
     top: 50%;

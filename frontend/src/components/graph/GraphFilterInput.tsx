@@ -37,6 +37,7 @@ export function GraphFilterInput({
   locations: string[];
 }) {
   const graphFilterInputRef = useRef<HTMLInputElement | null>(null);
+  const graphFilterRootRef = useRef<HTMLDivElement | null>(null);
   const [graphFilterSuggestionIndex, setGraphFilterSuggestionIndex] = useState(0);
   const [graphFilterSuggestOpen, setGraphFilterSuggestOpen] = useState(false);
   const [graphFilterEditing, setGraphFilterEditing] = useState(false);
@@ -92,9 +93,24 @@ export function GraphFilterInput({
     setGraphFilterSuggestionIndex(0);
   }, [graphFilterSuggestionIndex, graphFilterSuggestionsList.length]);
 
+  useEffect(() => {
+    function onPointerDown(event: PointerEvent) {
+      const root = graphFilterRootRef.current;
+      if (!root) return;
+      if (event.target instanceof Node && root.contains(event.target)) return;
+      setGraphFilterEditing(false);
+      setGraphFilterSuggestOpen(false);
+      if (document.activeElement === graphFilterInputRef.current) {
+        graphFilterInputRef.current?.blur();
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, []);
+
   return (
     <div className="graph-toolbar">
-      <div className="graph-toolbar-middle">
+      <div className="graph-toolbar-middle" ref={graphFilterRootRef}>
         <div
           className="graph-filter-input"
           onMouseDown={(event) => {
@@ -154,6 +170,23 @@ export function GraphFilterInput({
                 setGraphFilterSuggestionIndex(0);
                 return;
               }
+              if (event.key === "Tab") {
+                event.preventDefault();
+                if (!graphFilterSuggestOpen || graphFilterSuggestionsList.length === 0) {
+                  setGraphFilterSuggestOpen(true);
+                  return;
+                }
+                if (event.shiftKey) {
+                  setGraphFilterSuggestionIndex(
+                    (idx) => (idx + graphFilterSuggestionsList.length - 1) % graphFilterSuggestionsList.length,
+                  );
+                  return;
+                }
+                const choice = graphFilterSuggestionsList[graphFilterSuggestionIndex];
+                if (!choice) return;
+                applyGraphFilterSuggestion(choice.token);
+                return;
+              }
               if (!graphFilterSuggestOpen || graphFilterSuggestionsList.length === 0) return;
               if (event.key === "ArrowDown") {
                 event.preventDefault();
@@ -167,7 +200,7 @@ export function GraphFilterInput({
                 );
                 return;
               }
-              if (event.key === "Enter" || event.key === "Tab") {
+              if (event.key === "Enter") {
                 const choice = graphFilterSuggestionsList[graphFilterSuggestionIndex];
                 if (!choice) return;
                 event.preventDefault();

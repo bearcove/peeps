@@ -985,6 +985,7 @@ where l.conn_id = ${connId}
                 onGraphFilterTextChange={setGraphFilterText}
                 onHideNodeFilter={hideNodeViaTextFilter}
                 onHideLocationFilter={hideLocationViaTextFilter}
+                floatingFilterBar
               />
             ) : leftPaneTab === "scopes" ? (
               <ScopeTablePanel

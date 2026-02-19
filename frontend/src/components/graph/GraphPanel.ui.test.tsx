@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React, { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphPanel } from "./GraphPanel";
 
@@ -79,5 +79,63 @@ describe("GraphPanel filter input interactions", () => {
     await user.click(screen.getByText("-node:<id>"));
     expect(input.value).toBe("");
     expect(screen.getByRole("button", { name: /-node:<id>/i })).toBeTruthy();
+  });
+
+  it("captures Tab and applies current autocomplete choice", async () => {
+    const user = userEvent.setup();
+    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+
+    const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
+    await user.click(input);
+    await user.type(input, "-n");
+    await user.tab();
+
+    expect(screen.getByRole("button", { name: /-node:<id>/i })).toBeTruthy();
+    expect(input.value).toBe("");
+  });
+
+  it("captures Shift+Tab and cycles suggestions backwards", async () => {
+    const user = userEvent.setup();
+    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+
+    const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
+    await user.click(input);
+    await user.type(input, "-");
+    await user.keyboard("{Shift>}{Tab}{/Shift}");
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByRole("button", { name: /-kind:<kind>/i })).toBeTruthy();
+    expect(input.value).toBe("");
+  });
+
+  it("clicking outside unfocuses filter and closes suggestions", async () => {
+    const user = userEvent.setup();
+    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+
+    const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
+    await user.click(input);
+    await user.type(input, "-n");
+    expect(document.activeElement).toBe(input);
+    expect(screen.getByText("-node:<id>")).toBeTruthy();
+
+    await user.click(screen.getByText("No entities in snapshot"));
+
+    await waitFor(() => {
+      expect(document.activeElement).not.toBe(input);
+      expect(screen.queryByText("-node:<id>")).toBeNull();
+    });
+  });
+
+  it("uses the same font size for chips and add-filter input", async () => {
+    const user = userEvent.setup();
+    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+
+    const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
+    await user.click(input);
+    await user.type(input, "-n");
+    await user.click(screen.getByText("-node:<id>"));
+
+    const chip = screen.getByRole("button", { name: /-node:<id>/i });
+    expect(getComputedStyle(chip).fontSize).toBe(getComputedStyle(input).fontSize);
   });
 });

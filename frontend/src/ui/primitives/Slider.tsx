@@ -36,7 +36,9 @@ export function Slider({
       <SliderTrack className="ui-slider-track">
         {({ state }) => (
           <>
-            <div className="ui-slider-track-fill" style={{ width: `${state.getThumbPercent(0) * 100}%` }} />
+            <div className="ui-slider-track-rail">
+              <div className="ui-slider-track-fill" style={{ width: `${state.getThumbPercent(0) * 100}%` }} />
+            </div>
             <SliderThumb className="ui-slider-thumb" />
           </>
         )}

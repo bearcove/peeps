@@ -27,7 +27,6 @@
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-    position: relative;
 }
 
 .graph-toolbar {
@@ -35,17 +34,11 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 8px 12px 0;
+    padding: 8px 12px;
     box-sizing: border-box;
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 20;
     background: transparent;
     font-size: var(--font-size-sm);
     flex-shrink: 0;
-    pointer-events: none;
 }
 
 .graph-toolbar-left,
@@ -61,13 +54,35 @@
     flex: 0 1 min(1100px, calc(100vw - 260px));
     width: min(1100px, calc(100vw - 260px));
     min-width: 300px;
-    pointer-events: auto;
 }
 
 .graph-toolbar-right {
+    margin-left: auto;
+}
+
+.graph-panel--floating-filter {
+    position: relative;
+}
+
+.graph-panel--floating-filter .graph-toolbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    padding: 8px 12px 0;
+    pointer-events: none;
+}
+
+.graph-panel--floating-filter .graph-toolbar-middle {
+    pointer-events: auto;
+}
+
+.graph-panel--floating-filter .graph-toolbar-right {
     position: absolute;
     top: 8px;
     right: 12px;
+    margin-left: 0;
     pointer-events: auto;
 }
 
@@ -112,7 +127,7 @@
     border: 1px solid transparent;
     border-radius: var(--radius-control);
     padding: 2px 8px;
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-md);
     font-family: var(--font-ui);
     cursor: pointer;
     background: var(--accent);
