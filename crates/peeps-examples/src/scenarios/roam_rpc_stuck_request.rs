@@ -7,6 +7,14 @@ use roam_stream::{accept, connect, Connector, HandshakeConfig, NoDispatcher};
 use tokio::net::TcpStream;
 use tokio::process::{Child, Command};
 
+const SOURCE_LEFT: peeps::SourceLeft =
+    peeps::SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
+
+#[track_caller]
+fn source() -> peeps::Source {
+    SOURCE_LEFT.resolve()
+}
+
 #[service]
 trait DemoRpc {
     async fn sleepy_forever(&self) -> String;
@@ -36,7 +44,7 @@ impl Connector for TcpConnector {
 }
 
 pub async fn run() -> Result<(), String> {
-    peeps::init!();
+    peeps::__init_from_macro();
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -65,9 +73,13 @@ pub async fn run() -> Result<(), String> {
         .await
         .map_err(|e| format!("server handshake should succeed: {e}"))?;
 
-    peeps::spawn_tracked!("roam.server_driver", async move {
-        let _ = driver.run().await;
-    });
+    peeps::spawn_tracked(
+        "roam.server_driver",
+        async move {
+            let _ = driver.run().await;
+        },
+        source(),
+    );
 
     println!("server ready: requests to sleepy_forever will stall forever");
     println!("press Ctrl+C to exit");
@@ -86,7 +98,7 @@ pub async fn run() -> Result<(), String> {
 }
 
 pub async fn run_client_process(addr: String) -> Result<(), String> {
-    peeps::init!();
+    peeps::__init_from_macro();
     run_client(addr).await
 }
 
@@ -117,8 +129,14 @@ async fn run_client(addr: String) -> Result<(), String> {
 
     let client = DemoRpcClient::new(client_transport);
     println!("client: sent one sleepy_forever RPC request (intentionally stuck)");
-    let _ = peeps::peep!(client.sleepy_forever(), "roam.client.request_task")
-        .await
-        .map_err(|e| format!("client sleepy_forever request failed: {e}"))?;
+    let _ = peeps::instrument_future(
+        "roam.client.request_task",
+        client.sleepy_forever(),
+        source(),
+        None,
+        None,
+    )
+    .await
+    .map_err(|e| format!("client sleepy_forever request failed: {e}"))?;
     Err("client request unexpectedly completed".to_string())
 }

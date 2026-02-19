@@ -7,6 +7,14 @@ type RequestId = u64;
 type ResponsePayload = String;
 type PendingMap = Arc<peeps::Mutex<HashMap<RequestId, peeps::OneshotSender<ResponsePayload>>>>;
 
+const SOURCE_LEFT: peeps::SourceLeft =
+    peeps::SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
+
+#[track_caller]
+fn source() -> peeps::Source {
+    SOURCE_LEFT.resolve()
+}
+
 fn storage_key_for_request(request_id: RequestId) -> RequestId {
     request_id + 1
 }
@@ -16,66 +24,92 @@ fn lookup_key_for_response(response_id: RequestId) -> RequestId {
 }
 
 pub async fn run() -> Result<(), String> {
-    peeps::init!();
+    peeps::__init_from_macro();
 
-    let pending_by_request_id: PendingMap = Arc::new(peeps::mutex!(
+    let pending_by_request_id: PendingMap = Arc::new(peeps::Mutex::new(
         "demo.pending_oneshot_senders",
         HashMap::new(),
+        peeps::SourceRight::caller(),
     ));
-    let (response_bus_tx, mut response_bus_rx) = peeps::channel!("demo.response_bus", 4);
+    let (response_bus_tx, mut response_bus_rx) =
+        peeps::channel("demo.response_bus", 4, peeps::SourceRight::caller());
 
     let pending_for_request = Arc::clone(&pending_by_request_id);
-    peeps::spawn_tracked!("client.request_42.await_response", async move {
-        let request_id = 42_u64;
-        let (tx, rx) = peeps::oneshot!("demo.request_42.response");
+    peeps::spawn_tracked(
+        "client.request_42.await_response",
+        async move {
+            let request_id = 42_u64;
+            let (tx, rx) = peeps::oneshot("demo.request_42.response", peeps::SourceRight::caller());
 
-        let storage_key = storage_key_for_request(request_id);
-        pending_for_request.lock().insert(storage_key, tx);
-        println!(
+            let storage_key = storage_key_for_request(request_id);
+            pending_for_request.lock().insert(storage_key, tx);
+            println!(
             "inserted sender for request {request_id} under wrong key {storage_key}; receiver now waits"
         );
 
-        peeps::peep!(rx.recv(), "request_42.await_response.blocked")
+            peeps::instrument_future(
+                "request_42.await_response.blocked",
+                rx.recv(),
+                source(),
+                None,
+                None,
+            )
             .await
             .expect("request unexpectedly completed");
-    });
+        },
+        source(),
+    );
 
     let bus_tx_for_network = response_bus_tx.clone();
-    peeps::spawn_tracked!("network.inject_single_response", async move {
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        println!("network delivered one response for request 42");
-        bus_tx_for_network
-            .send((42_u64, String::from("ok")))
-            .await
-            .expect("response bus unexpectedly closed");
-    });
+    peeps::spawn_tracked(
+        "network.inject_single_response",
+        async move {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            println!("network delivered one response for request 42");
+            bus_tx_for_network
+                .send((42_u64, String::from("ok")))
+                .await
+                .expect("response bus unexpectedly closed");
+        },
+        source(),
+    );
 
     let pending_for_router = Arc::clone(&pending_by_request_id);
-    peeps::spawn_tracked!("router.match_response_to_pending_request", async move {
-        loop {
-            let Some((request_id, payload)) =
-                peeps::peep!(response_bus_rx.recv(), "response_bus.recv").await
-            else {
-                return;
-            };
+    peeps::spawn_tracked(
+        "router.match_response_to_pending_request",
+        async move {
+            loop {
+                let Some((request_id, payload)) = peeps::instrument_future(
+                    "response_bus.recv",
+                    response_bus_rx.recv(),
+                    source(),
+                    None,
+                    None,
+                )
+                .await
+                else {
+                    return;
+                };
 
-            let lookup_key = lookup_key_for_response(request_id);
-            let maybe_sender = pending_for_router.lock().remove(&lookup_key);
+                let lookup_key = lookup_key_for_response(request_id);
+                let maybe_sender = pending_for_router.lock().remove(&lookup_key);
 
-            if let Some(sender) = maybe_sender {
-                sender
-                    .send(payload)
-                    .expect("oneshot receiver unexpectedly dropped");
-                println!("response for request {request_id} routed successfully");
-                continue;
-            }
+                if let Some(sender) = maybe_sender {
+                    sender
+                        .send(payload)
+                        .expect("oneshot receiver unexpectedly dropped");
+                    println!("response for request {request_id} routed successfully");
+                    continue;
+                }
 
-            let known_keys: Vec<_> = pending_for_router.lock().keys().copied().collect();
-            println!(
+                let known_keys: Vec<_> = pending_for_router.lock().keys().copied().collect();
+                println!(
                 "router miss: looked for key {lookup_key}, map has {known_keys:?}; sender stays alive but unreachable"
             );
-        }
-    });
+            }
+        },
+        source(),
+    );
 
     println!("example running. open peeps-web and inspect demo.request_42.response");
     println!("press Ctrl+C to exit");

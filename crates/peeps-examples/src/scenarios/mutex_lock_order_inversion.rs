@@ -4,6 +4,14 @@ use std::sync::Barrier;
 use std::time::Duration;
 use tokio::sync::oneshot;
 
+const SOURCE_LEFT: peeps::SourceLeft =
+    peeps::SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
+
+#[track_caller]
+fn source() -> peeps::Source {
+    SOURCE_LEFT.resolve()
+}
+
 fn spawn_lock_order_worker(
     task_name: &'static str,
     first_name: &'static str,
@@ -13,27 +21,39 @@ fn spawn_lock_order_worker(
     ready_barrier: Arc<Barrier>,
     completed_tx: oneshot::Sender<()>,
 ) {
-    peeps::spawn_tracked!(task_name, async move {
-        let _first_guard = first.lock();
-        println!("{task_name} locked {first_name}; waiting for peer");
+    peeps::spawn_tracked(
+        task_name,
+        async move {
+            let _first_guard = first.lock();
+            println!("{task_name} locked {first_name}; waiting for peer");
 
-        ready_barrier.wait();
+            ready_barrier.wait();
 
-        println!(
+            println!(
             "{task_name} attempting {second_name}; this should deadlock due to lock-order inversion"
         );
-        let _second_guard = second.lock();
+            let _second_guard = second.lock();
 
-        println!("{task_name} unexpectedly acquired {second_name}; deadlock did not occur");
-        let _ = completed_tx.send(());
-    });
+            println!("{task_name} unexpectedly acquired {second_name}; deadlock did not occur");
+            let _ = completed_tx.send(());
+        },
+        source(),
+    );
 }
 
 pub async fn run() -> Result<(), String> {
-    peeps::init!();
+    peeps::__init_from_macro();
 
-    let left = Arc::new(peeps::mutex!("demo.shared.left", ()));
-    let right = Arc::new(peeps::mutex!("demo.shared.right", ()));
+    let left = Arc::new(peeps::Mutex::new(
+        "demo.shared.left",
+        (),
+        peeps::SourceRight::caller(),
+    ));
+    let right = Arc::new(peeps::Mutex::new(
+        "demo.shared.right",
+        (),
+        peeps::SourceRight::caller(),
+    ));
     let ready_barrier = Arc::new(Barrier::new(2));
 
     let (alpha_done_tx, alpha_done_rx) = oneshot::channel::<()>();
@@ -59,22 +79,48 @@ pub async fn run() -> Result<(), String> {
         beta_done_tx,
     );
 
-    peeps::spawn_tracked!("observer.alpha_completion", async move {
-        let _ = peeps::peep!(alpha_done_rx, "deadlock.alpha.completion.await").await;
-        println!("observer.alpha_completion unexpectedly unblocked");
-    });
+    peeps::spawn_tracked(
+        "observer.alpha_completion",
+        async move {
+            let _ = peeps::instrument_future(
+                "deadlock.alpha.completion.await",
+                alpha_done_rx,
+                source(),
+                None,
+                None,
+            )
+            .await;
+            println!("observer.alpha_completion unexpectedly unblocked");
+        },
+        source(),
+    );
 
-    peeps::spawn_tracked!("observer.beta_completion", async move {
-        let _ = peeps::peep!(beta_done_rx, "deadlock.beta.completion.await").await;
-        println!("observer.beta_completion unexpectedly unblocked");
-    });
+    peeps::spawn_tracked(
+        "observer.beta_completion",
+        async move {
+            let _ = peeps::instrument_future(
+                "deadlock.beta.completion.await",
+                beta_done_rx,
+                source(),
+                None,
+                None,
+            )
+            .await;
+            println!("observer.beta_completion unexpectedly unblocked");
+        },
+        source(),
+    );
 
-    peeps::spawn_tracked!("observer.async_heartbeat", async move {
-        loop {
-            tokio::time::sleep(Duration::from_secs(2)).await;
-            println!("async heartbeat: runtime is alive while worker threads are deadlocked");
-        }
-    });
+    peeps::spawn_tracked(
+        "observer.async_heartbeat",
+        async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                println!("async heartbeat: runtime is alive while worker threads are deadlocked");
+            }
+        },
+        source(),
+    );
 
     println!(
         "example running. two tracked tokio tasks should deadlock on demo.shared.left/demo.shared.right"
