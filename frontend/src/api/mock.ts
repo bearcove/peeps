@@ -40,6 +40,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
       process_name: "lab-server",
       pid: 4242,
       ptime_now_ms: LAB_SERVER_PTIME_NOW,
+      scope_entity_links: [],
       snapshot: {
         scopes: [],
         events: [],
@@ -126,6 +127,7 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
       process_name: "lab-loader",
       pid: 1313,
       ptime_now_ms: LAB_LOADER_PTIME_NOW,
+      scope_entity_links: [],
       snapshot: {
         scopes: [],
         events: [],

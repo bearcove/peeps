@@ -21,6 +21,13 @@
     opacity: 0.7;
 }
 
+.graph-empty--overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: auto;
+}
+
 /* Graph panel */
 .graph-panel {
     display: flex;
@@ -69,7 +76,7 @@
     top: 0;
     left: 0;
     right: 0;
-    z-index: 20;
+    z-index: 40;
     padding: 8px 12px 0;
     pointer-events: none;
 }
@@ -197,12 +204,17 @@
     top: calc(100% + 4px);
     left: 0;
     right: 0;
-    z-index: 35;
+    z-index: 60;
     display: flex;
     flex-direction: column;
+    max-height: 320px;
+    overflow-y: auto;
+    overflow-x: hidden;
     border: 1px solid var(--border-default);
     border-radius: var(--radius-control);
-    background: var(--bg-elevated);
+    background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     overflow: hidden;
 }
 

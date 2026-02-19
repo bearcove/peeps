@@ -47,6 +47,11 @@ export function GraphCanvas({
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setViewportSize({ width: rect.width, height: rect.height });
+    }
+    if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;

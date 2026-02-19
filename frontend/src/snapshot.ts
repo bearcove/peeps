@@ -1,4 +1,5 @@
 import type { EntityBody, SnapshotCutResponse, SnapshotEdgeKind } from "./api/types";
+import { canonicalScopeKind } from "./scopeKindSpec";
 
 // ── Body type helpers ──────────────────────────────────────────
 
@@ -59,6 +60,64 @@ export type EdgeDef = {
 };
 
 export type SnapshotGroupMode = "none" | "process" | "crate";
+
+export type ScopeDef = {
+  /** Composite key: `${processId}:${scopeId}` */
+  key: string;
+  processId: string;
+  processName: string;
+  processPid: number;
+  scopeId: string;
+  scopeName: string;
+  /** Canonical scope kind: "process" | "thread" | "task" | "connection" | … */
+  scopeKind: string;
+  source: string;
+  krate?: string;
+  /** Process-relative birth time in ms. */
+  birthPtime: number;
+  /** Age at capture time: ptime_now_ms - birthPtime (clamped to 0). */
+  ageMs: number;
+  /** Composite entity IDs (`${processId}/${entityId}`) that belong to this scope. */
+  memberEntityIds: string[];
+};
+
+export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
+  const result: ScopeDef[] = [];
+  for (const proc of snapshot.processes) {
+    const { process_id, process_name, pid, ptime_now_ms, scope_entity_links } = proc;
+    const processIdStr = String(process_id);
+
+    const membersByScope = new Map<string, string[]>();
+    for (const link of scope_entity_links ?? []) {
+      const compositeEntityId = `${processIdStr}/${link.entity_id}`;
+      let list = membersByScope.get(link.scope_id);
+      if (!list) {
+        list = [];
+        membersByScope.set(link.scope_id, list);
+      }
+      list.push(compositeEntityId);
+    }
+
+    for (const scope of proc.snapshot.scopes) {
+      const memberEntityIds = membersByScope.get(scope.id) ?? [];
+      result.push({
+        key: `${processIdStr}:${scope.id}`,
+        processId: processIdStr,
+        processName: process_name,
+        processPid: pid,
+        scopeId: scope.id,
+        scopeName: scope.name,
+        scopeKind: canonicalScopeKind(scope.body ?? "unknown"),
+        source: scope.source,
+        krate: scope.krate,
+        birthPtime: scope.birth,
+        ageMs: Math.max(0, ptime_now_ms - scope.birth),
+        memberEntityIds,
+      });
+    }
+  }
+  return result;
+}
 
 // ── Snapshot conversion ────────────────────────────────────────
 

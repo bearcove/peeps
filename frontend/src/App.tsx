@@ -7,10 +7,12 @@ import { RecordingTimeline } from "./components/timeline/RecordingTimeline";
 import {
   collapseEdgesThroughHiddenNodes,
   convertSnapshot,
+  extractScopes,
   filterLoners,
   getConnectedSubgraph,
   type EntityDef,
   type EdgeDef,
+  type ScopeDef,
 } from "./snapshot";
 import type { SubgraphScopeMode } from "./graph/elkAdapter";
 import {
@@ -25,7 +27,7 @@ import {
 } from "./recording/unionGraph";
 import { GraphPanel, type GraphSelection, type ScopeColorMode, type SnapPhase } from "./components/graph/GraphPanel";
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
-import { ScopeTablePanel, type ScopeTableRow } from "./components/scopes/ScopeTablePanel";
+import { ScopeTablePanel } from "./components/scopes/ScopeTablePanel";
 import { EntityTablePanel } from "./components/entities/EntityTablePanel";
 import { ProcessModal } from "./components/ProcessModal";
 import { AppHeader } from "./components/AppHeader";
@@ -45,7 +47,7 @@ export type SnapshotState =
   | { phase: "idle" }
   | { phase: "cutting" }
   | { phase: "loading" }
-  | { phase: "ready"; entities: EntityDef[]; edges: EdgeDef[] }
+  | { phase: "ready"; entities: EntityDef[]; edges: EdgeDef[]; scopes: ScopeDef[] }
   | { phase: "error"; message: string };
 
 // ── Recording state ────────────────────────────────────────────
@@ -91,9 +93,6 @@ type ScopeEntityFilter = {
   entityIds: Set<string>;
 };
 
-function sqlEscape(value: string): string {
-  return value.replace(/'/g, "''");
-}
 
 function entityMatchesScopeFilter(entity: EntityDef, scopeEntityIds: ReadonlySet<string>): boolean {
   if (scopeEntityIds.has(entity.id)) return true;
@@ -113,7 +112,7 @@ const INSPECTOR_MARGIN = 12;
 export function App() {
   const [leftPaneTab, setLeftPaneTab] = useState<"graph" | "scopes" | "entities">("graph");
   const [selectedScopeKind, setSelectedScopeKind] = useState<string | null>(null);
-  const [selectedScope, setSelectedScope] = useState<ScopeTableRow | null>(null);
+  const [selectedScope, setSelectedScope] = useState<ScopeDef | null>(null);
   const [scopeEntityFilter, setScopeEntityFilter] = useState<ScopeEntityFilter | null>(null);
   const [snap, setSnap] = useState<SnapshotState>({ phase: "idle" });
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -373,32 +372,14 @@ export function App() {
     return new Set(allEntities.map((entity) => entity.processId)).size;
   }, [allEntities]);
 
-  const applyScopeEntityFilter = useCallback(async (scope: ScopeTableRow) => {
-    const connId = Number(scope.processId);
-    if (!Number.isFinite(connId)) return;
-    const streamId = sqlEscape(scope.streamId);
-    const scopeId = sqlEscape(scope.scopeId);
-    const sql = `
-select l.entity_id
-from entity_scope_links l
-where l.conn_id = ${connId}
-  and l.stream_id = '${streamId}'
-  and l.scope_id = '${scopeId}'
-`;
-    const response = await apiClient.fetchSql(sql);
-    const ids = new Set<string>();
-    for (const row of response.rows) {
-      if (!Array.isArray(row) || row.length < 1) continue;
-      const rawEntityId = String(row[0]);
-      ids.add(`${scope.processId}/${rawEntityId}`);
-    }
+  const applyScopeEntityFilter = useCallback((scope: ScopeDef) => {
     setScopeEntityFilter({
       scopeToken: scope.scopeId,
       scopeLabel:
         scope.scopeKind === "process"
-          ? formatProcessLabel(scope.processName, scope.pid)
+          ? formatProcessLabel(scope.processName, scope.processPid)
           : (scope.scopeName || scope.scopeId),
-      entityIds: ids,
+      entityIds: new Set(scope.memberEntityIds),
     });
   }, []);
 
@@ -418,7 +399,7 @@ where l.conn_id = ${connId}
       setSnap({ phase: "loading" });
       const snapshot = await apiClient.fetchSnapshot();
       const converted = convertSnapshot(snapshot, effectiveSubgraphScopeMode);
-      setSnap({ phase: "ready", ...converted });
+      setSnap({ phase: "ready", ...converted, scopes: extractScopes(snapshot) });
     } catch (err) {
       setSnap({ phase: "error", message: err instanceof Error ? err.message : String(err) });
     }
@@ -456,7 +437,7 @@ where l.conn_id = ${connId}
               const frameIndex = current.session.frame_count - 1;
               const frame = await apiClient.fetchRecordingFrame(frameIndex);
               const converted = convertSnapshot(frame, effectiveSubgraphScopeMode);
-              setSnap({ phase: "ready", ...converted });
+              setSnap({ phase: "ready", ...converted, scopes: extractScopes(frame) });
             }
           } catch (e) {
             console.error(e);
@@ -495,7 +476,7 @@ where l.conn_id = ${connId}
         const lastFrameIndex = session.frame_count - 1;
         const lastFrame = await apiClient.fetchRecordingFrame(lastFrameIndex);
         const converted = convertSnapshot(lastFrame, effectiveSubgraphScopeMode);
-        setSnap({ phase: "ready", ...converted });
+        setSnap({ phase: "ready", ...converted, scopes: extractScopes(lastFrame) });
 
         const union = await buildUnionLayout(
           session.frames,
@@ -584,7 +565,7 @@ where l.conn_id = ${connId}
           const lastFrameIndex = session.frames[session.frames.length - 1].frame_index;
           const lastFrame = await apiClient.fetchRecordingFrame(lastFrameIndex);
           const converted = convertSnapshot(lastFrame, effectiveSubgraphScopeMode);
-          setSnap({ phase: "ready", ...converted });
+          setSnap({ phase: "ready", ...converted, scopes: extractScopes(lastFrame) });
 
           const union = await buildUnionLayout(
             session.frames,
@@ -661,7 +642,7 @@ where l.conn_id = ${connId}
         const snapped = nearestProcessedFrame(frameIndex, unionLayout.processedFrameIndices);
         const frameData = unionLayout.frameCache.get(snapped);
         if (frameData) {
-          setSnap({ phase: "ready", entities: frameData.entities, edges: frameData.edges });
+          setSnap({ phase: "ready", entities: frameData.entities, edges: frameData.edges, scopes: [] });
         }
 
         return {
@@ -736,7 +717,7 @@ where l.conn_id = ${connId}
       setUnionFrameLayout(unionFrame);
       const frameData = union.frameCache.get(snapped);
       if (frameData) {
-        setSnap({ phase: "ready", entities: frameData.entities, edges: frameData.edges });
+        setSnap({ phase: "ready", entities: frameData.entities, edges: frameData.edges, scopes: [] });
       }
     } catch (err) {
       console.error(err);
@@ -806,7 +787,7 @@ where l.conn_id = ${connId}
           if (cancelled) break;
           if (existingSnapshot) {
             const converted = convertSnapshot(existingSnapshot, effectiveSubgraphScopeMode);
-            setSnap({ phase: "ready", ...converted });
+            setSnap({ phase: "ready", ...converted, scopes: extractScopes(existingSnapshot) });
             break;
           }
           if (conns.connected_processes > 0) {
@@ -1021,6 +1002,7 @@ where l.conn_id = ${connId}
               />
             ) : leftPaneTab === "scopes" ? (
               <ScopeTablePanel
+                scopes={snap.phase === "ready" ? snap.scopes : []}
                 selectedKind={selectedScopeKind}
                 selectedScopeKey={selectedScope?.key ?? null}
                 onSelectKind={(kind) => {
@@ -1037,20 +1019,16 @@ where l.conn_id = ${connId}
                   }
                 }}
                 onShowGraphScope={(scope) => {
-                  void (async () => {
-                    await applyScopeEntityFilter(scope);
-                    setLeftPaneTab("graph");
-                    setSelection(null);
-                    setFocusedEntityFilter(null);
-                  })();
+                  applyScopeEntityFilter(scope);
+                  setLeftPaneTab("graph");
+                  setSelection(null);
+                  setFocusedEntityFilter(null);
                 }}
                 onViewScopeEntities={(scope) => {
-                  void (async () => {
-                    await applyScopeEntityFilter(scope);
-                    setLeftPaneTab("entities");
-                    setSelection(null);
-                    setFocusedEntityFilter(null);
-                  })();
+                  applyScopeEntityFilter(scope);
+                  setLeftPaneTab("entities");
+                  setSelection(null);
+                  setFocusedEntityFilter(null);
                 }}
               />
             ) : (

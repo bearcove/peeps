@@ -94,6 +94,14 @@ export interface SnapshotScope {
   source: string;
   krate?: string;
   name: string;
+  /** Scope kind: "process" | "thread" | "task" | "connection" */
+  body: string;
+}
+
+/** Maps a scope to one of its member entities, within a single process. */
+export interface ScopeEntityLink {
+  scope_id: string;
+  entity_id: string;
 }
 
 export interface SnapshotEvent {
@@ -125,6 +133,8 @@ export interface ProcessSnapshotView {
   /** Process-relative time (ms since process start) at the capture moment. */
   ptime_now_ms: number;
   snapshot: ProcessSnapshot;
+  /** Which entities belong to which scope, derived from entity_scope_links at snapshot time. */
+  scope_entity_links: ScopeEntityLink[];
 }
 
 export interface TimedOutProcess {

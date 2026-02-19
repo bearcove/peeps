@@ -1,46 +1,36 @@
 import React from "react";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
-import type { MetaValue } from "../../snapshot";
 import { formatProcessLabel } from "../../processLabel";
-import type { ScopeTableRow } from "../scopes/ScopeTablePanel";
-import { MetaSection } from "./MetaTree";
+import type { ScopeDef } from "../../snapshot";
 import "./InspectorPanel.css";
 
-function scopeMeta(raw: string): Record<string, MetaValue> | null {
-  try {
-    const parsed = JSON.parse(raw) as { meta?: unknown };
-    if (!parsed.meta || typeof parsed.meta !== "object" || Array.isArray(parsed.meta)) {
-      return null;
-    }
-    return parsed.meta as Record<string, MetaValue>;
-  } catch {
-    return null;
-  }
-}
-
-export function ScopeInspectorContent({ scope }: { scope: ScopeTableRow }) {
-  const meta = scopeMeta(scope.scopeJson);
-
+export function ScopeInspectorContent({ scope }: { scope: ScopeDef }) {
   return (
-    <>
-      <div className="inspector-kv-table">
-        <KeyValueRow label="Kind">
-          <span className="inspector-mono">{scope.scopeKind}</span>
+    <div className="inspector-kv-table">
+      <KeyValueRow label="Kind">
+        <span className="inspector-mono">{scope.scopeKind}</span>
+      </KeyValueRow>
+      <KeyValueRow label="Process">
+        <span className="inspector-mono">
+          {formatProcessLabel(scope.processName, scope.processPid)}
+        </span>
+      </KeyValueRow>
+      <KeyValueRow label="Scope id">
+        <span className="inspector-mono">{scope.scopeId}</span>
+      </KeyValueRow>
+      {scope.source && (
+        <KeyValueRow label="Source">
+          <span className="inspector-mono">{scope.source}</span>
         </KeyValueRow>
-        <KeyValueRow label="Process">
-          <span className="inspector-mono">{formatProcessLabel(scope.processName, scope.pid)}</span>
+      )}
+      {scope.krate && (
+        <KeyValueRow label="Crate">
+          <span className="inspector-mono">{scope.krate}</span>
         </KeyValueRow>
-        <KeyValueRow label="Scope id">
-          <span className="inspector-mono">{scope.scopeId}</span>
-        </KeyValueRow>
-        <KeyValueRow label="Stream">
-          <span className="inspector-mono">{scope.streamId}</span>
-        </KeyValueRow>
-        <KeyValueRow label="Members">
-          <span className="inspector-mono">{scope.memberCount}</span>
-        </KeyValueRow>
-      </div>
-      <MetaSection meta={meta} />
-    </>
+      )}
+      <KeyValueRow label="Members">
+        <span className="inspector-mono">{scope.memberEntityIds.length}</span>
+      </KeyValueRow>
+    </div>
   );
 }

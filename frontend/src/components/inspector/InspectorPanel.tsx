@@ -1,9 +1,8 @@
 import React from "react";
 import { LinkSimple, X } from "@phosphor-icons/react";
 import { ActionButton } from "../../ui/primitives/ActionButton";
-import type { EntityDef, EdgeDef } from "../../snapshot";
+import type { EntityDef, EdgeDef, ScopeDef } from "../../snapshot";
 import type { UnionLayout } from "../../recording/unionGraph";
-import type { ScopeTableRow } from "../scopes/ScopeTablePanel";
 import { diffEntityBetweenFrames } from "../../recording/unionGraph";
 import { canonicalNodeKind, kindIcon } from "../../nodeKindSpec";
 import { scopeKindIcon } from "../../scopeKindSpec";
@@ -39,7 +38,7 @@ export function InspectorPanel({
   scrubbingUnionLayout?: UnionLayout;
   currentFrameIndex?: number;
   selectedScopeKind?: string | null;
-  selectedScope?: ScopeTableRow | null;
+  selectedScope?: ScopeDef | null;
 }) {
   let content: React.ReactNode;
   let titleIcon: React.ReactNode = null;

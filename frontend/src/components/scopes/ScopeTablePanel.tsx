@@ -1,350 +1,326 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ArrowsClockwise, CircleNotch } from "@phosphor-icons/react";
-import { apiClient } from "../../api";
+import { useMemo, useState } from "react";
 import { Table, type Column } from "../../ui/primitives/Table";
 import { ActionButton } from "../../ui/primitives/ActionButton";
 import { TextInput } from "../../ui/primitives/TextInput";
-import { Select } from "../../ui/primitives/Select";
+import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import { formatProcessLabel } from "../../processLabel";
-import { canonicalScopeKind, scopeKindDisplayName, scopeKindIcon } from "../../scopeKindSpec";
+import { scopeKindDisplayName, scopeKindIcon } from "../../scopeKindSpec";
+import type { ScopeDef } from "../../snapshot";
 import "./ScopeTablePanel.css";
 
-export type ScopeTableRow = {
-  key: string;
-  processId: string;
-  processName: string;
-  pid: number | null;
-  streamId: string;
-  scopeId: string;
-  scopeName: string;
-  scopeKind: string;
-  memberCount: number;
-  scopeJson: string;
-};
+// Sidebar kind ordering — known kinds first, then whatever else appears.
+const KIND_ORDER = ["connection", "process", "task", "thread"];
 
-type SortKey = "process" | "kind" | "name" | "entities";
 type SortDir = "asc" | "desc";
 
-const SCOPE_ROWS_SQL = `
-select
-  s.conn_id as process_id,
-  c.process_name,
-  c.pid,
-  s.stream_id,
-  s.scope_id,
-  json_extract(s.scope_json, '$.name') as scope_name,
-  json_extract(s.scope_json, '$.body') as scope_kind,
-  count(distinct l.entity_id) as member_count,
-  s.scope_json
-from scopes s
-left join connections c on c.conn_id = s.conn_id
-left join entity_scope_links l
-  on l.conn_id = s.conn_id
- and l.stream_id = s.stream_id
- and l.scope_id = s.scope_id
-group by
-  s.conn_id,
-  c.process_name,
-  c.pid,
-  s.stream_id,
-  s.scope_id,
-  json_extract(s.scope_json, '$.name'),
-  json_extract(s.scope_json, '$.body'),
-  s.scope_json
-order by
-  c.process_name asc,
-  scope_kind asc,
-  scope_name asc,
-  s.scope_id asc
-`;
-
-function toRowArray(row: unknown): unknown[] | null {
-  return Array.isArray(row) ? row : null;
-}
-
-function asString(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (value == null) return "";
-  return String(value);
-}
-
-function asNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
-}
-
-function parseScopeRows(rows: unknown[]): ScopeTableRow[] {
-  const out: ScopeTableRow[] = [];
-  for (const raw of rows) {
-    const row = toRowArray(raw);
-    if (!row || row.length < 9) continue;
-
-    const processId = asString(row[0]);
-    const processName = asString(row[1]);
-    const pid = asNumber(row[2]);
-    const streamId = asString(row[3]);
-    const scopeId = asString(row[4]);
-    const scopeName = asString(row[5]) || scopeId;
-    const scopeKind = canonicalScopeKind(asString(row[6]) || "unknown");
-    const memberCount = asNumber(row[7]) ?? 0;
-    const scopeJson = asString(row[8]);
-
-    out.push({
-      key: `${processId}:${streamId}:${scopeId}`,
-      processId,
-      processName,
-      pid,
-      streamId,
-      scopeId,
-      scopeName,
-      scopeKind,
-      memberCount,
-      scopeJson,
-    });
-  }
-  return out;
-}
-
-function compareRows(a: ScopeTableRow, b: ScopeTableRow, key: SortKey): number {
-  if (key === "entities") return a.memberCount - b.memberCount;
-  if (key === "process") {
-    return (
-      a.processName.localeCompare(b.processName) ||
-      (a.pid ?? Number.MAX_SAFE_INTEGER) - (b.pid ?? Number.MAX_SAFE_INTEGER) ||
-      a.processId.localeCompare(b.processId)
-    );
-  }
-  if (key === "kind") {
-    return a.scopeKind.localeCompare(b.scopeKind) || a.scopeName.localeCompare(b.scopeName);
-  }
-  return a.scopeName.localeCompare(b.scopeName) || a.scopeId.localeCompare(b.scopeId);
-}
-
-function sortRows(rows: ScopeTableRow[], key: SortKey, dir: SortDir): ScopeTableRow[] {
-  const sorted = [...rows].sort((a, b) => compareRows(a, b, key));
-  return dir === "asc" ? sorted : sorted.reverse();
-}
-
-const ALL_KINDS_VALUE = "__all_scope_kinds__";
-
 export function ScopeTablePanel({
+  scopes,
   selectedKind,
-  onSelectKind,
   selectedScopeKey,
+  onSelectKind,
   onSelectScope,
   onShowGraphScope,
   onViewScopeEntities,
 }: {
+  scopes: ScopeDef[];
   selectedKind: string | null;
-  onSelectKind: (kind: string | null) => void;
   selectedScopeKey: string | null;
-  onSelectScope: (scope: ScopeTableRow | null) => void;
-  onShowGraphScope: (scope: ScopeTableRow) => void;
-  onViewScopeEntities: (scope: ScopeTableRow) => void;
+  onSelectKind: (kind: string | null) => void;
+  onSelectScope: (scope: ScopeDef | null) => void;
+  onShowGraphScope: (scope: ScopeDef) => void;
+  onViewScopeEntities: (scope: ScopeDef) => void;
 }) {
-  const [rows, setRows] = useState<ScopeTableRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>("process");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState("process");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  const refresh = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await apiClient.fetchSql(SCOPE_ROWS_SQL);
-      const nextRows = parseScopeRows(response.rows);
-      setRows(nextRows);
-      if (selectedScopeKey && !nextRows.some((row) => row.key === selectedScopeKey)) {
-        onSelectScope(null);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
+  // All kinds present, in preferred order.
+  const allKinds = useMemo(() => {
+    const present = Array.from(new Set(scopes.map((s) => s.scopeKind)));
+    const known = KIND_ORDER.filter((k) => present.includes(k));
+    const rest = present.filter((k) => !KIND_ORDER.includes(k)).sort();
+    return [...known, ...rest];
+  }, [scopes]);
+
+  // Auto-pick first kind if none selected.
+  const effectiveKind = selectedKind ?? allKinds[0] ?? null;
+
+  const kindCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const s of scopes) {
+      counts.set(s.scopeKind, (counts.get(s.scopeKind) ?? 0) + 1);
     }
-  }, [selectedScopeKey, onSelectScope]);
+    return counts;
+  }, [scopes]);
 
-  useEffect(() => {
-    void refresh();
-    const id = window.setInterval(() => {
-      void refresh();
-    }, 2000);
-    return () => window.clearInterval(id);
-  }, [refresh]);
-
-  const kindOptions = useMemo(() => {
-    const kinds = Array.from(new Set(rows.map((row) => row.scopeKind))).sort((a, b) =>
-      scopeKindDisplayName(a).localeCompare(scopeKindDisplayName(b)),
-    );
-    return [
-      { value: ALL_KINDS_VALUE, label: "All kinds" },
-      ...kinds.map((kind) => ({ value: kind, label: scopeKindDisplayName(kind) })),
-    ];
-  }, [rows]);
-
-  const filteredRows = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (selectedKind && row.scopeKind !== selectedKind) return false;
-      if (!query) return true;
-      const haystack = [
-        row.processName,
-        row.processId,
-        row.scopeName,
-        row.scopeId,
-        row.scopeKind,
-        row.streamId,
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(query);
+  const filteredScopes = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return scopes.filter((s) => {
+      if (effectiveKind && s.scopeKind !== effectiveKind) return false;
+      if (!q) return true;
+      return (
+        s.scopeName.toLowerCase().includes(q) ||
+        s.processName.toLowerCase().includes(q) ||
+        s.scopeId.toLowerCase().includes(q) ||
+        (s.krate?.toLowerCase().includes(q) ?? false) ||
+        s.source.toLowerCase().includes(q)
+      );
     });
-  }, [rows, selectedKind, search]);
+  }, [scopes, effectiveKind, search]);
 
-  const sortedRows = useMemo(
-    () => sortRows(filteredRows, sortKey, sortDir),
-    [filteredRows, sortKey, sortDir],
+  const sortedScopes = useMemo(() => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    const key = sortKey;
+    return [...filteredScopes].sort((a, b) => {
+      if (key === "entities") return (a.memberEntityIds.length - b.memberEntityIds.length) * dir;
+      if (key === "age") return (a.ageMs - b.ageMs) * dir;
+      if (key === "name")
+        return a.scopeName.localeCompare(b.scopeName) * dir;
+      if (key === "source")
+        return a.source.localeCompare(b.source) * dir;
+      if (key === "crate")
+        return (a.krate ?? "").localeCompare(b.krate ?? "") * dir;
+      // default: process
+      return (
+        (a.processName.localeCompare(b.processName) ||
+          a.processPid - b.processPid) * dir
+      );
+    });
+  }, [filteredScopes, sortKey, sortDir]);
+
+  function onSort(key: string) {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  const processCol: Column<ScopeDef> = {
+    key: "process",
+    label: "Process",
+    sortable: true,
+    width: "1.4fr",
+    render: (s) => (
+      <span className="scope-mono" title={formatProcessLabel(s.processName, s.processPid)}>
+        {formatProcessLabel(s.processName, s.processPid)}
+      </span>
+    ),
+  };
+
+  const entitiesCol: Column<ScopeDef> = {
+    key: "entities",
+    label: "Entities",
+    sortable: true,
+    width: "0.5fr",
+    render: (s) => <span className="scope-mono">{s.memberEntityIds.length}</span>,
+  };
+
+  const actionsCol: Column<ScopeDef> = {
+    key: "actions",
+    label: "Actions",
+    width: "0.9fr",
+    render: (s) => (
+      <div className="scope-actions">
+        <ActionButton
+          size="sm"
+          onClick={(e) => e.stopPropagation()}
+          onPress={() => onShowGraphScope(s)}
+        >
+          Show Graph
+        </ActionButton>
+        <ActionButton
+          size="sm"
+          onClick={(e) => e.stopPropagation()}
+          onPress={() => onViewScopeEntities(s)}
+        >
+          View Entities
+        </ActionButton>
+      </div>
+    ),
+  };
+
+  const columnsByKind = useMemo<Record<string, readonly Column<ScopeDef>[]>>(
+    () => ({
+      connection: [
+        processCol,
+        {
+          key: "name",
+          label: "Connection",
+          sortable: true,
+          width: "2fr",
+          render: (s) => (
+            <span className="scope-name" title={s.scopeName}>
+              {s.scopeName || s.scopeId}
+            </span>
+          ),
+        },
+        entitiesCol,
+        actionsCol,
+      ],
+      process: [
+        processCol,
+        entitiesCol,
+        actionsCol,
+      ],
+      task: [
+        processCol,
+        {
+          key: "name",
+          label: "Task",
+          sortable: true,
+          width: "1.8fr",
+          render: (s) => (
+            <span className="scope-name" title={s.scopeName}>
+              {s.scopeName || s.scopeId}
+            </span>
+          ),
+        },
+        {
+          key: "crate",
+          label: "Crate",
+          sortable: true,
+          width: "0.8fr",
+          render: (s) => (
+            <span className="scope-mono scope-muted">{s.krate ?? "—"}</span>
+          ),
+        },
+        {
+          key: "source",
+          label: "Source",
+          sortable: true,
+          width: "0.8fr",
+          render: (s) => (
+            <span className="scope-mono scope-muted" title={s.source}>
+              {s.source.split("/").pop() ?? s.source}
+            </span>
+          ),
+        },
+        {
+          key: "age",
+          label: "Age",
+          sortable: true,
+          width: "0.6fr",
+          render: (s) => <DurationDisplay ms={s.ageMs} />,
+        },
+        entitiesCol,
+        actionsCol,
+      ],
+      thread: [
+        processCol,
+        {
+          key: "name",
+          label: "Thread",
+          sortable: true,
+          width: "1.8fr",
+          render: (s) => (
+            <span className="scope-name" title={s.scopeName}>
+              {s.scopeName || s.scopeId}
+            </span>
+          ),
+        },
+        {
+          key: "source",
+          label: "Source",
+          sortable: true,
+          width: "0.8fr",
+          render: (s) => (
+            <span className="scope-mono scope-muted" title={s.source}>
+              {s.source.split("/").pop() ?? s.source}
+            </span>
+          ),
+        },
+        entitiesCol,
+        actionsCol,
+      ],
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onShowGraphScope, onViewScopeEntities],
   );
 
-  const columns = useMemo<readonly Column<ScopeTableRow>[]>(
+  const fallbackColumns: readonly Column<ScopeDef>[] = useMemo(
     () => [
-      {
-        key: "process",
-        label: "Process",
-        sortable: true,
-        width: "1.2fr",
-        render: (row) => (
-          <span className="scope-table-process" title={formatProcessLabel(row.processName, row.pid)}>
-            {formatProcessLabel(row.processName, row.pid)}
-          </span>
-        ),
-      },
-      {
-        key: "kind",
-        label: "Kind",
-        sortable: true,
-        width: "0.8fr",
-        render: (row) => (
-          <span className="scope-table-kind">
-            {scopeKindIcon(row.scopeKind, 12)}
-            <span className="scope-table-mono">{scopeKindDisplayName(row.scopeKind)}</span>
-          </span>
-        ),
-      },
+      processCol,
       {
         key: "name",
         label: "Scope",
         sortable: true,
-        width: "1.6fr",
-        render: (row) => (
-          <div className="scope-table-scope-cell" title={`${row.scopeName} · ${row.streamId}/${row.scopeId}`}>
-            <span>
-              {row.scopeKind === "process"
-                ? formatProcessLabel(row.processName, row.pid)
-                : row.scopeName}
-            </span>
-          </div>
+        width: "2fr",
+        render: (s) => (
+          <span className="scope-name" title={s.scopeName}>
+            {s.scopeName || s.scopeId}
+          </span>
         ),
       },
-      {
-        key: "entities",
-        label: "Entities",
-        sortable: true,
-        width: "0.6fr",
-        render: (row) => <span className="scope-table-mono">{row.memberCount}</span>,
-      },
-      {
-        key: "actions",
-        label: "Actions",
-        width: "0.9fr",
-        render: (row) => (
-          <div className="scope-table-actions">
-            <ActionButton
-              size="sm"
-              onClick={(event) => event.stopPropagation()}
-              onPress={() => onShowGraphScope(row)}
-            >
-              Show Graph
-            </ActionButton>
-            <ActionButton
-              size="sm"
-              onClick={(event) => event.stopPropagation()}
-              onPress={() => onViewScopeEntities(row)}
-            >
-              View Entities
-            </ActionButton>
-          </div>
-        ),
-      },
+      entitiesCol,
+      actionsCol,
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [onShowGraphScope, onViewScopeEntities],
   );
 
+  const columns = effectiveKind
+    ? (columnsByKind[effectiveKind] ?? fallbackColumns)
+    : fallbackColumns;
+
   return (
-    <div className="scope-table-panel">
-      <div className="scope-table-toolbar">
-        <span className="scope-table-stats">
-          {filteredRows.length} / {rows.length} scopes
+    <div className="scope-panel">
+      <div className="scope-panel-toolbar">
+        <span className="scope-panel-stats">
+          {filteredScopes.length} / {scopes.length} scopes
         </span>
-        <div className="scope-table-toolbar-controls">
-          <TextInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Search scopes…"
-            aria-label="Search scopes"
-            className="scope-table-search"
-          />
-          <Select
-            value={selectedKind ?? ALL_KINDS_VALUE}
-            onChange={(value) => onSelectKind(value === ALL_KINDS_VALUE ? null : value)}
-            options={kindOptions}
-            aria-label="Filter by scope kind"
-          />
-          <ActionButton size="sm" onPress={refresh} isDisabled={loading}>
-            {loading ? (
-              <CircleNotch size={14} weight="bold" className="spinning" />
-            ) : (
-              <ArrowsClockwise size={14} weight="bold" />
-            )}
-            Refresh
-          </ActionButton>
-        </div>
+        <TextInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search…"
+          aria-label="Search scopes"
+          className="scope-panel-search"
+        />
       </div>
 
-      {error && <div className="scope-table-error">{error}</div>}
+      <div className="scope-panel-body">
+        <nav className="scope-panel-sidebar">
+          {allKinds.length === 0 ? (
+            <span className="scope-panel-empty-kinds">No scopes</span>
+          ) : (
+            allKinds.map((kind) => (
+              <button
+                key={kind}
+                className={`scope-kind-btn${kind === effectiveKind ? " is-active" : ""}`}
+                onClick={() => onSelectKind(kind)}
+              >
+                <span className="scope-kind-btn__icon">{scopeKindIcon(kind, 13)}</span>
+                <span className="scope-kind-btn__label">{scopeKindDisplayName(kind)}</span>
+                <span className="scope-kind-btn__count">{kindCounts.get(kind) ?? 0}</span>
+              </button>
+            ))
+          )}
+        </nav>
 
-      <div className="scope-table-body">
-        <Table
-          aria-label="Scopes"
-          columns={columns}
-          rows={sortedRows}
-          rowKey={(row) => row.key}
-          onRowClick={(row) => {
-            if (row.key === selectedScopeKey) {
-              onSelectScope(null);
-              return;
-            }
-            onSelectScope(row);
-          }}
-          selectedRowKey={selectedScopeKey}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          onSort={(key) => {
-            const nextKey = key as SortKey;
-            if (nextKey === sortKey) {
-              setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
-              return;
-            }
-            setSortKey(nextKey);
-            setSortDir("asc");
-          }}
-        />
+        <div className="scope-panel-table">
+          {scopes.length === 0 ? (
+            <div className="scope-panel-placeholder">
+              Take a snapshot to see scopes.
+            </div>
+          ) : filteredScopes.length === 0 ? (
+            <div className="scope-panel-placeholder">No matching scopes.</div>
+          ) : (
+            <Table
+              aria-label="Scopes"
+              columns={columns}
+              rows={sortedScopes}
+              rowKey={(s) => s.key}
+              selectedRowKey={selectedScopeKey}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSort={onSort}
+              onRowClick={(s) => {
+                onSelectScope(s.key === selectedScopeKey ? null : s);
+              }}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

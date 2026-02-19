@@ -177,6 +177,17 @@ struct ProcessSnapshotView {
     /// Process-relative milliseconds captured by the instrumented process at snapshot time.
     ptime_now_ms: u64,
     snapshot: peeps_types::Snapshot,
+    /// Which entities belong to which scope, for all scopes in this process.
+    /// Derived from the entity_scope_links table at snapshot time.
+    #[facet(default)]
+    scope_entity_links: Vec<ScopeEntityLink>,
+}
+
+/// Maps a scope to one of its member entities, within a single process.
+#[derive(Facet)]
+struct ScopeEntityLink {
+    scope_id: CompactString,
+    entity_id: CompactString,
 }
 
 /// A process that was connected but did not reply to the snapshot request in time.
@@ -683,7 +694,9 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
     let (processes, timed_out_processes) = match pending {
         None => (vec![], vec![]),
         Some(p) => {
-            let processes = p
+            // Collect partial process data first (synchronous), then fetch scope
+            // entity links from the DB for each process (async, one per process).
+            let partial: Vec<(u64, String, u32, u64, peeps_types::Snapshot)> = p
                 .replies
                 .into_iter()
                 .filter_map(|(conn_id, reply)| {
@@ -692,15 +705,35 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
                         .get(&conn_id)
                         .map(|(name, pid)| (name.clone(), *pid))
                         .unwrap_or_else(|| (format!("unknown-{conn_id}"), 0));
-                    Some(ProcessSnapshotView {
-                        process_id: conn_id,
-                        process_name,
-                        pid,
-                        ptime_now_ms: reply.ptime_now_ms,
-                        snapshot,
-                    })
+                    Some((conn_id, process_name, pid, reply.ptime_now_ms, snapshot))
                 })
                 .collect();
+
+            let mut processes = Vec::with_capacity(partial.len());
+            for (conn_id, process_name, pid, ptime_now_ms, snapshot) in partial {
+                let db_path = state.db_path.clone();
+                let scope_entity_links = tokio::task::spawn_blocking(move || {
+                    fetch_scope_entity_links_blocking(&db_path, conn_id)
+                })
+                .await
+                .unwrap_or_else(|e| {
+                    warn!(%e, "scope_entity_links join error");
+                    Ok(vec![])
+                })
+                .unwrap_or_else(|e| {
+                    warn!(%e, "scope_entity_links query error");
+                    vec![]
+                });
+                processes.push(ProcessSnapshotView {
+                    process_id: conn_id,
+                    process_name,
+                    pid,
+                    ptime_now_ms,
+                    snapshot,
+                    scope_entity_links,
+                });
+            }
+            let processes = processes;
 
             // Any conn_id still in pending_conn_ids did not reply in time.
             let timed_out_processes = p
@@ -1757,6 +1790,29 @@ fn now_ms() -> i64 {
 
 fn to_i64_u64(value: u64) -> i64 {
     value.min(i64::MAX as u64) as i64
+}
+
+fn fetch_scope_entity_links_blocking(
+    db_path: &PathBuf,
+    conn_id: u64,
+) -> Result<Vec<ScopeEntityLink>, String> {
+    let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT scope_id, entity_id FROM entity_scope_links WHERE conn_id = ?1",
+        )
+        .map_err(|e| format!("prepare scope_entity_links: {e}"))?;
+    let links = stmt
+        .query_map(params![to_i64_u64(conn_id)], |row| {
+            Ok(ScopeEntityLink {
+                scope_id: row.get::<_, String>(0)?.into(),
+                entity_id: row.get::<_, String>(1)?.into(),
+            })
+        })
+        .map_err(|e| format!("query scope_entity_links: {e}"))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(links)
 }
 
 fn sql_query_blocking(db_path: &PathBuf, sql: &str) -> Result<SqlResponse, String> {

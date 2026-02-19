@@ -4,6 +4,7 @@ import type { EntityDef, EdgeDef } from "../../snapshot";
 import { layoutGraph, type SubgraphScopeMode } from "../../graph/elkAdapter";
 import { measureGraphLayout } from "../../graph/render/NodeLayer";
 import type { GraphGeometry } from "../../graph/geometry";
+import { formatEntityPrimaryLabel, formatEntitySearchText } from "../../entityPresentation";
 import type { ScopeColorPair } from "./scopeColors";
 import { assignScopeColorRgbByKey } from "./scopeColors";
 import type { FrameRenderResult } from "../../recording/unionGraph";
@@ -135,20 +136,8 @@ export function GraphPanel({
     () =>
       entityDefs.map((entity) => ({
         id: entity.id,
-        label: `${entity.name} (${entity.processName}:${entity.processPid})`,
-        searchText: [
-          entity.id,
-          entity.name,
-          entity.kind,
-          entity.source,
-          entity.processId,
-          entity.processName,
-          String(entity.processPid),
-          entity.krate ?? "",
-          JSON.stringify(entity.meta),
-        ]
-          .filter((part) => part.length > 0)
-          .join(" "),
+        label: formatEntityPrimaryLabel(entity),
+        searchText: formatEntitySearchText(entity),
       })),
     [entityDefs],
   );
@@ -164,27 +153,22 @@ export function GraphPanel({
     [entityDefs],
   );
 
-  const showToolbar =
-    crateItems.length > 1 || processItems.length > 0 || kindItems.length > 1 || focusedEntityId || entityDefs.length > 0;
-
   return (
     <div className={`graph-panel${floatingFilterBar ? " graph-panel--floating-filter" : ""}`}>
-      {showToolbar && (
-        <GraphFilterInput
-          focusedEntityId={focusedEntityId}
-          onExitFocus={onExitFocus}
-          scopeFilterLabel={scopeFilterLabel}
-          onClearScopeFilter={onClearScopeFilter}
-          graphFilterText={graphFilterText}
-          onGraphFilterTextChange={onGraphFilterTextChange}
-          crateItems={crateItems}
-          processItems={processItems}
-          kindItems={kindItems}
-          nodeIds={nodeSuggestions}
-          locations={locationSuggestions}
-          focusItems={focusItems}
-        />
-      )}
+      <GraphFilterInput
+        focusedEntityId={focusedEntityId}
+        onExitFocus={onExitFocus}
+        scopeFilterLabel={scopeFilterLabel}
+        onClearScopeFilter={onClearScopeFilter}
+        graphFilterText={graphFilterText}
+        onGraphFilterTextChange={onGraphFilterTextChange}
+        crateItems={crateItems}
+        processItems={processItems}
+        kindItems={kindItems}
+        nodeIds={nodeSuggestions}
+        locations={locationSuggestions}
+        focusItems={focusItems}
+      />
       <GraphViewport
         entityDefs={entityDefs}
         snapPhase={snapPhase}

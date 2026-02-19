@@ -78,39 +78,12 @@ export function GraphViewport({
 
   const geometryKey = geometry ? geometry.nodes.map((n) => n.id).join(",") : "";
   const isBusy = snapPhase === "cutting" || snapPhase === "loading";
+  const isEmpty = entityDefs.length === 0;
   const closeNodeContextMenu = useCallback(() => setNodeContextMenu(null), []);
 
   useEffect(() => {
     setHasFitted(false);
   }, [geometryKey]);
-
-  if (entityDefs.length === 0) {
-    return (
-      <div className="graph-empty">
-        {isBusy ? (
-          <>
-            <CircleNotch size={24} weight="bold" className="spinning graph-empty-icon" />{" "}
-            {GRAPH_EMPTY_MESSAGES[snapPhase]}
-          </>
-        ) : snapPhase === "idle" && waitingForProcesses ? (
-          <>
-            <CircleNotch size={24} weight="bold" className="spinning graph-empty-icon" />
-            <span>Waiting for a process to connect…</span>
-          </>
-        ) : snapPhase === "idle" ? (
-          <>
-            <Camera size={32} weight="thin" className="graph-empty-icon" />
-            <span>{GRAPH_EMPTY_MESSAGES[snapPhase]}</span>
-            <span className="graph-empty-hint">
-              Press "Take Snapshot" to capture the current state of all connected processes
-            </span>
-          </>
-        ) : (
-          GRAPH_EMPTY_MESSAGES[snapPhase]
-        )}
-      </div>
-    );
-  }
 
   return (
     <div className="graph-flow" ref={graphFlowRef}>
@@ -224,6 +197,31 @@ export function GraphViewport({
           </>
         )}
       </GraphCanvas>
+      {isEmpty && (
+        <div className="graph-empty graph-empty--overlay">
+          {isBusy ? (
+            <>
+              <CircleNotch size={24} weight="bold" className="spinning graph-empty-icon" />{" "}
+              {GRAPH_EMPTY_MESSAGES[snapPhase]}
+            </>
+          ) : snapPhase === "idle" && waitingForProcesses ? (
+            <>
+              <CircleNotch size={24} weight="bold" className="spinning graph-empty-icon" />
+              <span>Waiting for a process to connect…</span>
+            </>
+          ) : snapPhase === "idle" ? (
+            <>
+              <Camera size={32} weight="thin" className="graph-empty-icon" />
+              <span>{GRAPH_EMPTY_MESSAGES[snapPhase]}</span>
+              <span className="graph-empty-hint">
+                Press "Take Snapshot" to capture the current state of all connected processes
+              </span>
+            </>
+          ) : (
+            GRAPH_EMPTY_MESSAGES[snapPhase]
+          )}
+        </div>
+      )}
     </div>
   );
 }

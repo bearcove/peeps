@@ -573,6 +573,7 @@ export function useStorybookState() {
       phase: "ready",
       entities: [],
       edges: [],
+      scopes: [],
     }),
     [],
   );

@@ -1,89 +1,156 @@
-.scope-table-panel {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    min-height: 0;
-    background: var(--bg-surface);
+.scope-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-surface);
 }
 
-.scope-table-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 4px 8px;
-    min-height: 36px;
-    box-sizing: border-box;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--bg-surface);
-    font-size: var(--font-size-sm);
-    flex-shrink: 0;
+/* ── Toolbar ── */
+
+.scope-panel-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  min-height: 36px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  font-size: var(--font-size-sm);
+  flex-shrink: 0;
 }
 
-.scope-table-stats {
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
+.scope-panel-stats {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
 }
 
-.scope-table-toolbar-controls {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+.scope-panel-search {
+  max-width: 220px;
 }
 
-.scope-table-search {
-    min-width: 260px;
+/* ── Body: sidebar + table ── */
+
+.scope-panel-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
 }
 
-.scope-table-error {
-    margin: 8px;
-    border: 1px solid color-mix(in oklab, var(--status-danger) 45%, transparent);
-    background: color-mix(in oklab, var(--status-danger) 10%, transparent);
-    color: var(--status-danger);
-    border-radius: var(--radius-control);
-    padding: 8px;
-    font-size: var(--font-size-sm);
+/* ── Sidebar ── */
+
+.scope-panel-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 148px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-subtle);
+  padding: 6px 4px;
+  gap: 2px;
+  overflow-y: auto;
 }
 
-.scope-table-toolbar .ui-action-button {
-    height: var(--control-height);
+.scope-panel-empty-kinds {
+  padding: 8px 10px;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
 }
 
-.scope-table-body {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    padding: 8px;
+.scope-kind-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 80ms, color 80ms;
 }
 
-.scope-table-process,
-.scope-table-mono {
-    font-family: var(--font-mono);
+.scope-kind-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
 }
 
-.scope-table-kind {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+.scope-kind-btn.is-active {
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  color: var(--accent);
 }
 
-.scope-table-scope-cell {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
+.scope-kind-btn__icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.8;
 }
 
-.scope-table-subtle {
-    color: var(--text-muted);
-    font-size: var(--font-size-sm);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+.scope-kind-btn__label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.scope-table-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+.scope-kind-btn__count {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs, 11px);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.scope-kind-btn.is-active .scope-kind-btn__count {
+  color: color-mix(in oklab, var(--accent) 70%, var(--text-muted));
+}
+
+/* ── Table area ── */
+
+.scope-panel-table {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.scope-panel-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* ── Cell helpers ── */
+
+.scope-mono {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.scope-muted {
+  color: var(--text-muted);
+}
+
+.scope-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  max-width: 100%;
+}
+
+.scope-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
