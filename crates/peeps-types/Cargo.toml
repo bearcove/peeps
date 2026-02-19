@@ -12,5 +12,6 @@ rusqlite = ["dep:rusqlite"]
 facet.workspace = true
 facet-format.workspace = true
 facet-value.workspace = true
+facet-json.workspace = true
 peeps-source.workspace = true
 rusqlite = { workspace = true, optional = true }

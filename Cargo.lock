@@ -1194,6 +1194,7 @@ version = "0.1.0"
 dependencies = [
  "facet",
  "facet-format",
+ "facet-json",
  "facet-value",
  "peeps-source",
  "rusqlite",

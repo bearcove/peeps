@@ -25,11 +25,7 @@ pub struct Scope {
 
 impl Scope {
     /// Create a new scope: ID and birth time are generated automatically.
-    pub fn new(
-        source: impl Into<SourceId>,
-        name: impl Into<String>,
-        body: ScopeBody,
-    ) -> Scope {
+    pub fn new(source: impl Into<SourceId>, name: impl Into<String>, body: ScopeBody) -> Scope {
         Scope {
             id: next_scope_id(),
             birth: PTime::now(),
@@ -49,3 +45,5 @@ pub enum ScopeBody {
     Task,
     Connection,
 }
+
+crate::impl_sqlite_json!(ScopeBody);

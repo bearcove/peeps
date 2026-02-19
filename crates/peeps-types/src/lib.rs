@@ -10,6 +10,39 @@
 //! In short: events happen to entities, entities are connected by edges,
 //! and entities live inside scopes.
 
+#[macro_export]
+macro_rules! impl_sqlite_json {
+    ($ty:ty) => {
+        #[cfg(feature = "rusqlite")]
+        impl ::rusqlite::types::ToSql for $ty {
+            fn to_sql(&self) -> ::rusqlite::Result<::rusqlite::types::ToSqlOutput<'_>> {
+                let json = ::facet_json::to_string(self).map_err(|err| {
+                    ::rusqlite::Error::ToSqlConversionFailure(Box::new(::std::io::Error::new(
+                        ::std::io::ErrorKind::InvalidData,
+                        err.to_string(),
+                    )))
+                })?;
+                Ok(json.into())
+            }
+        }
+
+        #[cfg(feature = "rusqlite")]
+        impl ::rusqlite::types::FromSql for $ty {
+            fn column_result(
+                value: ::rusqlite::types::ValueRef<'_>,
+            ) -> ::rusqlite::types::FromSqlResult<Self> {
+                let json = <String as ::rusqlite::types::FromSql>::column_result(value)?;
+                ::facet_json::from_str(&json).map_err(|err| {
+                    ::rusqlite::types::FromSqlError::Other(Box::new(::std::io::Error::new(
+                        ::std::io::ErrorKind::InvalidData,
+                        err.to_string(),
+                    )))
+                })
+            }
+        }
+    };
+}
+
 pub(crate) mod diff;
 pub(crate) mod edges;
 pub(crate) mod entities;
