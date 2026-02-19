@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { GraphPanel, type ScopeColorMode } from "./GraphPanel";
+import { GraphPanel } from "./GraphPanel";
 
 vi.mock("../../graph/elkAdapter", () => ({
   layoutGraph: vi.fn(async () => ({
@@ -18,7 +18,6 @@ afterEach(() => cleanup());
 
 function Harness({ initialFilter }: { initialFilter: string }) {
   const [graphFilterText, setGraphFilterText] = useState(initialFilter);
-  const [scopeColorMode] = useState<ScopeColorMode>("none");
   const [subgraphScopeMode] = useState<"none" | "process" | "crate">("none");
 
   return (
@@ -35,30 +34,15 @@ function Harness({ initialFilter }: { initialFilter: string }) {
         { id: "crate-a", label: "crate-a", meta: 1 },
         { id: "crate-b", label: "crate-b", meta: 1 },
       ]}
-      hiddenKrates={new Set()}
-      onKrateToggle={() => {}}
-      onKrateSolo={() => {}}
       processItems={[
         { id: "1", label: "web(1234)", meta: 1 },
       ]}
-      hiddenProcesses={new Set()}
-      onProcessToggle={() => {}}
-      onProcessSolo={() => {}}
       kindItems={[
         { id: "request", label: "request", meta: 1 },
         { id: "response", label: "response", meta: 1 },
       ]}
-      hiddenKinds={new Set()}
-      onKindToggle={() => {}}
-      onKindSolo={() => {}}
-      scopeColorMode={scopeColorMode}
-      onToggleProcessColorBy={() => {}}
-      onToggleCrateColorBy={() => {}}
+      scopeColorMode={"none"}
       subgraphScopeMode={subgraphScopeMode}
-      onToggleProcessSubgraphs={() => {}}
-      onToggleCrateSubgraphs={() => {}}
-      showLoners={false}
-      onToggleShowLoners={() => {}}
       scopeFilterLabel={null}
       onClearScopeFilter={() => {}}
       unionFrameLayout={undefined}
@@ -80,23 +64,20 @@ describe("GraphPanel filter input interactions", () => {
     await user.click(input);
     expect(input.value).toBe("");
 
-    await user.type(input, "hid");
-    expect(input.value).toBe("hid");
+    await user.type(input, "-n");
+    expect(input.value).toBe("-n");
   });
 
-  it("supports two-stage hide autocomplete", async () => {
+  it("supports signed include/exclude autocomplete", async () => {
     const user = userEvent.setup();
     render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
 
     const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
     await user.click(input);
-    await user.type(input, "hid");
+    await user.type(input, "-n");
 
-    await user.click(screen.getByText("hide:"));
-    expect(input.value).toBe("hide:");
-
-    await user.type(input, "node");
-    await user.click(screen.getByText("hide:node:"));
-    expect(input.value).toBe("hide:node:");
+    await user.click(screen.getByText("-node:<id>"));
+    expect(input.value).toBe("");
+    expect(screen.getByRole("button", { name: /-node:<id>/i })).toBeTruthy();
   });
 });

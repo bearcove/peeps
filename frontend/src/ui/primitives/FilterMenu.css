@@ -45,6 +45,11 @@
     margin: 0;
 }
 
+.ui-filter-setting-row .ui-switch {
+    width: 100%;
+    justify-content: space-between;
+}
+
 .ui-filter-setting-row--subgraphs {
     padding-bottom: 11px;
 }

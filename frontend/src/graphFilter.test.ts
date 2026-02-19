@@ -32,27 +32,27 @@ describe("graphFilterSuggestions", () => {
   });
 
   it("filters node suggestions by value after key", () => {
-    const out = graphFilterSuggestions({ ...baseInput, fragment: "node:alp" });
-    expect(out[0]?.token).toBe("node:1/alpha");
-    expect(out.map((s) => s.token)).not.toContain("node:1/beta");
+    const out = graphFilterSuggestions({ ...baseInput, fragment: "-node:alp" });
+    expect(out[0]?.token).toBe("-node:1/alpha");
+    expect(out.map((s) => s.token)).not.toContain("-node:1/beta");
   });
 
   it("supports fuzzy subsequence matching", () => {
-    const out = graphFilterSuggestions({ ...baseInput, fragment: "location:smr1" });
-    expect(out.map((s) => s.token)).toContain("location:src/main.rs:12");
+    const out = graphFilterSuggestions({ ...baseInput, fragment: "-location:smr1" });
+    expect(out.map((s) => s.token)).toContain("-location:src/main.rs:12");
   });
 
   it("matches process suggestions by label as well as id", () => {
-    const out = graphFilterSuggestions({ ...baseInput, fragment: "process:work" });
-    expect(out[0]?.token).toBe("process:2");
+    const out = graphFilterSuggestions({ ...baseInput, fragment: "-process:work" });
+    expect(out[0]?.token).toBe("-process:2");
   });
 
   it.each([
-    ["n", "node:"],
-    ["loc", "location:"],
-    ["crate", "crate:"],
-    ["proc", "process:"],
-    ["kin", "kind:"],
+    ["+n", "+node:<id>"],
+    ["-loc", "-location:<src>"],
+    ["+crate", "+crate:<name>"],
+    ["-proc", "-process:<id>"],
+    ["+kin", "+kind:<kind>"],
     ["lon", "loners:on"],
     ["col", "colorBy:process"],
     ["group", "groupBy:process"],
@@ -62,20 +62,17 @@ describe("graphFilterSuggestions", () => {
   });
 
   it.each([
-    ["crate:web", "crate:peeps-web"],
-    ["crate:core", "crate:peeps-core"],
-    ["kind:req", "kind:request"],
-    ["kind:res", "kind:response"],
-    ["node:wrk", "node:2/worker-loop"],
-    ["location:enabled", "location:crates/peeps/src/enabled.rs:505"],
+    ["+crate:web", "+crate:peeps-web"],
+    ["-crate:core", "-crate:peeps-core"],
+    ["+kind:req", "+kind:request"],
+    ["-kind:res", "-kind:response"],
+    ["+node:wrk", "+node:2/worker-loop"],
+    ["-location:enabled", "-location:crates/peeps/src/enabled.rs:505"],
     ["groupBy:pro", "groupBy:process"],
     ["groupBy:cr", "groupBy:crate"],
     ["groupBy:n", "groupBy:none"],
     ["colorBy:pro", "colorBy:process"],
     ["colorBy:cr", "colorBy:crate"],
-    ["hid", "hide:"],
-    ["hide:no", "hide:node:"],
-    ["hide:node:alp", "hide:node:1/alpha"],
   ])("suggests value for %s", (fragment, expectedToken) => {
     const out = graphFilterSuggestions({ ...baseInput, fragment });
     expect(out.map((s) => s.token)).toContain(expectedToken);
@@ -85,11 +82,11 @@ describe("graphFilterSuggestions", () => {
 describe("ensureTrailingSpaceForNewFilter", () => {
   it.each([
     ["", ""],
-    ["node:1/a", "node:1/a "],
-    ["node:1/a ", "node:1/a "],
-    ["node:1/a  ", "node:1/a  "],
-    ['location:"a b"', 'location:"a b" '],
-    ['location:"a b" ', 'location:"a b" '],
+    ["-node:1/a", "-node:1/a "],
+    ["-node:1/a ", "-node:1/a "],
+    ["-node:1/a  ", "-node:1/a  "],
+    ['-location:"a b"', '-location:"a b" '],
+    ['-location:"a b" ', '-location:"a b" '],
   ])("normalizes %s", (input, expected) => {
     expect(ensureTrailingSpaceForNewFilter(input)).toBe(expected);
   });
@@ -151,32 +148,32 @@ describe("graphFilterEditorParts", () => {
   });
 
   it("keeps quoted token intact when editing fragment", () => {
-    const out = graphFilterEditorParts('node:1/a location:"src/main.rs:42"', true);
-    expect(out.committed).toEqual(["node:1/a"]);
-    expect(out.fragment).toBe('location:"src/main.rs:42"');
+    const out = graphFilterEditorParts('-node:1/a -location:"src/main.rs:42"', true);
+    expect(out.committed).toEqual(["-node:1/a"]);
+    expect(out.fragment).toBe('-location:"src/main.rs:42"');
   });
 
   it("treats quoted token as committed when not editing", () => {
-    const out = graphFilterEditorParts('node:1/a location:"src/main.rs:42"', false);
-    expect(out.committed).toEqual(["node:1/a", 'location:"src/main.rs:42"']);
+    const out = graphFilterEditorParts('-node:1/a -location:"src/main.rs:42"', false);
+    expect(out.committed).toEqual(["-node:1/a", '-location:"src/main.rs:42"']);
     expect(out.fragment).toBe("");
   });
 
   it("creates empty fragment when text ends with space", () => {
-    const out = graphFilterEditorParts("node:1/a location:src/main.rs:42 ", true);
-    expect(out.committed).toEqual(["node:1/a", "location:src/main.rs:42"]);
+    const out = graphFilterEditorParts("-node:1/a -location:src/main.rs:42 ", true);
+    expect(out.committed).toEqual(["-node:1/a", "-location:src/main.rs:42"]);
     expect(out.fragment).toBe("");
   });
 });
 
-describe("parseGraphFilterQuery hide syntax", () => {
-  it("parses hide:node", () => {
-    const out = parseGraphFilterQuery("hide:node:1/alpha");
-    expect(out.hiddenNodeIds.has("1/alpha")).toBe(true);
+describe("parseGraphFilterQuery include/exclude syntax", () => {
+  it("parses +node", () => {
+    const out = parseGraphFilterQuery("+node:1/alpha");
+    expect(out.includeNodeIds.has("1/alpha")).toBe(true);
   });
 
-  it("parses hide:location", () => {
-    const out = parseGraphFilterQuery('hide:location:"src/main.rs:12"');
-    expect(out.hiddenLocations.has("src/main.rs:12")).toBe(true);
+  it("parses -location", () => {
+    const out = parseGraphFilterQuery('-location:"src/main.rs:12"');
+    expect(out.excludeLocations.has("src/main.rs:12")).toBe(true);
   });
 });

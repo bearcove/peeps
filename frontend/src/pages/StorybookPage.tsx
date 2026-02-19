@@ -59,20 +59,6 @@ type DemoConnectionRow = {
   lastSentTone: DemoTone;
 };
 
-const ROLE_SWATCHES = [
-  { name: "bg.base", token: "--bg-base" },
-  { name: "bg.surface", token: "--bg-surface" },
-  { name: "bg.elevated", token: "--bg-elevated" },
-  { name: "border.subtle", token: "--border-subtle" },
-  { name: "border.default", token: "--border-default" },
-  { name: "text.primary", token: "--text-primary" },
-  { name: "text.secondary", token: "--text-secondary" },
-  { name: "text.muted", token: "--text-muted" },
-  { name: "accent", token: "--accent" },
-  { name: "success", token: "--status-success" },
-  { name: "warning", token: "--status-warning" },
-  { name: "danger", token: "--status-danger" },
-] as const;
 
 export function useStorybookState() {
   const [textValue, setTextValue] = useState("Hello");
@@ -770,7 +756,7 @@ export function StorybookPage({
           : undefined),
       }}
     >
-      <PanelHeader title="Lab" hint="Primitives and tone language" />
+      <PanelHeader title="Storybook" hint="Primitives and tone language" />
       <div className="lab-body">
         <Section title="UI font — Satoshi" subtitle="UI font in the sizes we actually use" wide>
           <div className="ui-typo-sample ui-typo-ui ui-typo-ui--xl">Take a snapshot</div>
@@ -994,22 +980,6 @@ export function StorybookPage({
 
         <Section title="Color System" subtitle="Role tokens + scope palette (graph only)" wide>
           <div className="ui-section-stack">
-            <div className="ui-color-vars">
-              <div className="ui-typo-kicker">Role Palette</div>
-              <div className="ui-role-swatch-grid">
-                {ROLE_SWATCHES.map((item) => (
-                  <div key={item.name} className="ui-role-swatch-card">
-                    <div
-                      className="ui-role-swatch-card__swatch"
-                      style={{ background: `var(${item.token})` }}
-                    />
-                    <div className="ui-role-swatch-card__name">{item.name}</div>
-                    <div className="ui-role-swatch-card__meta">{item.token}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             <div className="ui-color-vars">
               <div className="ui-typo-kicker">
                 Semantic Role Tokens ({roleTokenVariables.length})

@@ -264,11 +264,16 @@ export function computeChangeFrames(unionLayout: UnionLayout): number[] {
 export function renderFrameFromUnion(
   frameIndex: number,
   unionLayout: UnionLayout,
+  includeKrates: ReadonlySet<string>,
+  includeProcesses: ReadonlySet<string>,
+  includeKinds: ReadonlySet<string>,
+  includeNodeIds: ReadonlySet<string>,
+  includeLocations: ReadonlySet<string>,
   hiddenKrates: ReadonlySet<string>,
   hiddenProcesses: ReadonlySet<string>,
   hiddenKinds: ReadonlySet<string>,
-  hiddenNodeIds: ReadonlySet<string>,
-  hiddenLocations: ReadonlySet<string>,
+  excludeNodeIds: ReadonlySet<string>,
+  excludeLocations: ReadonlySet<string>,
   focusedEntityId: string | null,
   ghostMode?: boolean,
   showLoners: boolean = true,
@@ -281,11 +286,16 @@ export function renderFrameFromUnion(
   // Apply krate/process filters.
   let filteredEntities = frameData.entities.filter(
     (e) =>
+      (includeKrates.size === 0 || includeKrates.has(e.krate ?? "~no-crate")) &&
+      (includeProcesses.size === 0 || includeProcesses.has(e.processId)) &&
+      (includeKinds.size === 0 || includeKinds.has(canonicalNodeKind(e.kind))) &&
+      (includeNodeIds.size === 0 || includeNodeIds.has(e.id)) &&
+      (includeLocations.size === 0 || includeLocations.has(e.source)) &&
       (hiddenKrates.size === 0 || !hiddenKrates.has(e.krate ?? "~no-crate")) &&
       (hiddenProcesses.size === 0 || !hiddenProcesses.has(e.processId)) &&
       (hiddenKinds.size === 0 || !hiddenKinds.has(canonicalNodeKind(e.kind))) &&
-      !hiddenNodeIds.has(e.id) &&
-      !hiddenLocations.has(e.source),
+      !excludeNodeIds.has(e.id) &&
+      !excludeLocations.has(e.source),
   );
   let filteredEdges = frameData.edges;
   const filteredEntityIds = new Set(filteredEntities.map((entity) => entity.id));

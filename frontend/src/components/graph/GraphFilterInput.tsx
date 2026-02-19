@@ -67,11 +67,7 @@ export function GraphFilterInput({
 
   const applyGraphFilterSuggestion = useCallback(
     (token: string) => {
-      let next = replaceTrailingFragment(graphFilterText, token);
-      if (token === "hide:" || (token.startsWith("hide:") && token.endsWith(":"))) {
-        if (next.endsWith(" ")) next = next.slice(0, -1);
-      }
-      onGraphFilterTextChange(next);
+      onGraphFilterTextChange(replaceTrailingFragment(graphFilterText, token));
       setGraphFilterSuggestOpen(false);
       setGraphFilterSuggestionIndex(0);
       graphFilterInputRef.current?.focus();
@@ -213,8 +209,9 @@ export function GraphFilterInput({
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => applyGraphFilterSuggestion(suggestion.token)}
               >
-                <span className="graph-filter-suggestion-label">{suggestion.label}</span>
                 <span className="graph-filter-suggestion-token">{suggestion.token}</span>
+                <span className="graph-filter-suggestion-sep"> - </span>
+                <span className="graph-filter-suggestion-label">{suggestion.description}</span>
               </button>
             ))}
           </div>

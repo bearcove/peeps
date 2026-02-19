@@ -96,11 +96,16 @@ export function quoteFilterValue(value: string): string {
 }
 
 export function parseGraphFilterQuery(filterText: string): GraphFilterParseResult {
-  const hiddenNodeIds = new Set<string>();
-  const hiddenLocations = new Set<string>();
-  const hiddenCrates = new Set<string>();
-  const hiddenProcesses = new Set<string>();
-  const hiddenKinds = new Set<string>();
+  const includeNodeIds = new Set<string>();
+  const excludeNodeIds = new Set<string>();
+  const includeLocations = new Set<string>();
+  const excludeLocations = new Set<string>();
+  const includeCrates = new Set<string>();
+  const excludeCrates = new Set<string>();
+  const includeProcesses = new Set<string>();
+  const excludeProcesses = new Set<string>();
+  const includeKinds = new Set<string>();
+  const excludeKinds = new Set<string>();
   const tokens = tokenizeFilterQuery(filterText);
   const parsed: ParsedGraphFilterToken[] = [];
   let colorBy: GraphFilterMode | undefined;
@@ -114,9 +119,14 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
       continue;
     }
 
-    const key = raw.slice(0, colon);
+    let signed = 0;
+    if (raw.startsWith("+")) signed = 1;
+    if (raw.startsWith("-")) signed = -1;
+    const signedRaw = signed === 0 ? raw : raw.slice(1);
+    const signedColon = signedRaw.indexOf(":");
+    const key = signedRaw.slice(0, signedColon);
     const keyLower = key.toLowerCase();
-    const valueRaw = stripFilterQuotes(raw.slice(colon + 1));
+    const valueRaw = stripFilterQuotes(signedRaw.slice(signedColon + 1));
     const value = valueRaw.trim();
     if (!value) {
       parsed.push({ raw, key, value: valueRaw, valid: false });
@@ -124,20 +134,20 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
     }
 
     let valid = false;
-    if (keyLower === "node" || keyLower === "id") {
-      hiddenNodeIds.add(value);
+    if (signed !== 0 && (keyLower === "node" || keyLower === "id")) {
+      (signed > 0 ? includeNodeIds : excludeNodeIds).add(value);
       valid = true;
-    } else if (keyLower === "location" || keyLower === "source") {
-      hiddenLocations.add(value);
+    } else if (signed !== 0 && (keyLower === "location" || keyLower === "source")) {
+      (signed > 0 ? includeLocations : excludeLocations).add(value);
       valid = true;
-    } else if (keyLower === "crate") {
-      hiddenCrates.add(value);
+    } else if (signed !== 0 && keyLower === "crate") {
+      (signed > 0 ? includeCrates : excludeCrates).add(value);
       valid = true;
-    } else if (keyLower === "process") {
-      hiddenProcesses.add(value);
+    } else if (signed !== 0 && keyLower === "process") {
+      (signed > 0 ? includeProcesses : excludeProcesses).add(value);
       valid = true;
-    } else if (keyLower === "kind") {
-      hiddenKinds.add(value);
+    } else if (signed !== 0 && keyLower === "kind") {
+      (signed > 0 ? includeKinds : excludeKinds).add(value);
       valid = true;
     } else if (keyLower === "loners") {
       if (value === "on" || value === "true" || value === "yes") {
@@ -152,30 +162,6 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
         colorBy = value;
         valid = true;
       }
-    } else if (keyLower === "hide") {
-      const secondColon = value.indexOf(":");
-      if (secondColon > 0) {
-        const subKey = value.slice(0, secondColon).toLowerCase();
-        const subValue = stripFilterQuotes(value.slice(secondColon + 1)).trim();
-        if (subValue.length > 0) {
-          if (subKey === "node" || subKey === "id") {
-            hiddenNodeIds.add(subValue);
-            valid = true;
-          } else if (subKey === "location" || subKey === "source") {
-            hiddenLocations.add(subValue);
-            valid = true;
-          } else if (subKey === "crate") {
-            hiddenCrates.add(subValue);
-            valid = true;
-          } else if (subKey === "process") {
-            hiddenProcesses.add(subValue);
-            valid = true;
-          } else if (subKey === "kind") {
-            hiddenKinds.add(subValue);
-            valid = true;
-          }
-        }
-      }
     } else if (keyLower === "groupby") {
       if (value === "process" || value === "crate" || value === "none") {
         groupBy = value;
@@ -188,11 +174,16 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
 
   return {
     tokens: parsed,
-    hiddenNodeIds,
-    hiddenLocations,
-    hiddenCrates,
-    hiddenProcesses,
-    hiddenKinds,
+    includeNodeIds,
+    excludeNodeIds,
+    includeLocations,
+    excludeLocations,
+    includeCrates,
+    excludeCrates,
+    includeProcesses,
+    excludeProcesses,
+    includeKinds,
+    excludeKinds,
     showLoners,
     colorBy,
     groupBy,
@@ -254,9 +245,9 @@ function rankMatch(queryLower: string, targetLower: string): number {
   return Number.POSITIVE_INFINITY;
 }
 
-function uniquePush(out: GraphFilterSuggestion[], label: string, token: string): void {
+function uniquePush(out: GraphFilterSuggestion[], token: string, description: string): void {
   if (out.some((item) => item.token === token)) return;
-  out.push({ label, token });
+  out.push({ token, description });
 }
 
 function sortedMatches<T>(
@@ -282,149 +273,116 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
   const lowerFragment = fragment.toLowerCase();
   const out: GraphFilterSuggestion[] = [];
 
-  if (!fragment || !fragment.includes(":")) {
-    const keySuggestions: readonly { key: string; label: string }[] = [
-      { key: "node:", label: "hide node (`node:`)" },
-      { key: "location:", label: "hide location (`location:`)" },
-      { key: "crate:", label: "hide crate (`crate:`)" },
-      { key: "process:", label: "hide process (`process:`)" },
-      { key: "kind:", label: "hide kind (`kind:`)" },
-      { key: "hide:", label: "hide (2-stage)" },
-      { key: "loners:on", label: "show loners (`loners:on`)" },
-      { key: "loners:off", label: "hide loners (`loners:off`)" },
-      { key: "colorBy:process", label: "color by process" },
-      { key: "colorBy:crate", label: "color by crate" },
-      { key: "groupBy:process", label: "group by process" },
-      { key: "groupBy:crate", label: "group by crate" },
-      { key: "groupBy:none", label: "disable subgraphs" },
-    ];
+  const signed = fragment.startsWith("+") ? "+" : fragment.startsWith("-") ? "-" : "";
+  const unsignedFragment = signed ? fragment.slice(1) : fragment;
+  const unsignedLower = unsignedFragment.toLowerCase();
+  const signedDesc = signed === "+" ? "Include only matching" : "Exclude matching";
 
+  if (!unsignedFragment || !unsignedFragment.includes(":")) {
+    const keySuggestions: readonly { key: string; label: string }[] = [
+      { key: "+node:<id>", label: "Include only matching nodes by entity id" },
+      { key: "-node:<id>", label: "Exclude matching nodes by entity id" },
+      { key: "+location:<src>", label: "Include only matching source locations" },
+      { key: "-location:<src>", label: "Exclude matching source locations" },
+      { key: "+crate:<name>", label: "Include only matching crates" },
+      { key: "-crate:<name>", label: "Exclude matching crates" },
+      { key: "+process:<id>", label: "Include only matching processes" },
+      { key: "-process:<id>", label: "Exclude matching processes" },
+      { key: "+kind:<kind>", label: "Include only matching kinds" },
+      { key: "-kind:<kind>", label: "Exclude matching kinds" },
+      { key: "loners:on", label: "Show unconnected nodes" },
+      { key: "loners:off", label: "Hide unconnected nodes" },
+      { key: "colorBy:process", label: "Color nodes by process" },
+      { key: "colorBy:crate", label: "Color nodes by crate" },
+      { key: "groupBy:process", label: "Group by process subgraphs" },
+      { key: "groupBy:crate", label: "Group by crate subgraphs" },
+      { key: "groupBy:none", label: "Disable grouping" },
+    ];
     const matched = sortedMatches(keySuggestions, lowerFragment, (entry) => `${entry.key} ${entry.label}`);
-    for (const entry of matched) uniquePush(out, entry.label, entry.key);
+    for (const entry of matched) uniquePush(out, entry.key, entry.label);
     return out;
   }
 
-  const colon = fragment.indexOf(":");
-  const keyLower = fragment.slice(0, colon).toLowerCase();
-  const rawValue = fragment.slice(colon + 1);
+  const colon = unsignedFragment.indexOf(":");
+  const keyLower = unsignedFragment.slice(0, colon).toLowerCase();
+  const rawValue = unsignedFragment.slice(colon + 1);
   const valueLower = rawValue.replace(/^"/, "").toLowerCase();
 
-  if (keyLower === "node" || keyLower === "id") {
+  if ((keyLower === "node" || keyLower === "id") && signed) {
     for (const id of sortedMatches(input.nodeIds, valueLower, (v) => v)) {
-      uniquePush(out, `node ${id}`, `node:${quoteFilterValue(id)}`);
+      uniquePush(out, `${signed}node:${quoteFilterValue(id)}`, `${signedDesc} node ${id}`);
     }
     return out;
   }
-  if (keyLower === "hide") {
-    const secondColon = rawValue.indexOf(":");
-    if (secondColon < 1) {
-      const stageOne = sortedMatches(
-        [
-          { sub: "node", label: "node" },
-          { sub: "location", label: "location" },
-          { sub: "crate", label: "crate" },
-          { sub: "process", label: "process" },
-          { sub: "kind", label: "kind" },
-        ],
-        valueLower,
-        (v) => v.sub,
-      );
-      for (const row of stageOne) {
-        uniquePush(out, `hide ${row.label}`, `hide:${row.sub}:`);
-      }
-      return out;
-    }
-
-    const subKey = rawValue.slice(0, secondColon).toLowerCase();
-    const subValueLower = rawValue.slice(secondColon + 1).replace(/^"/, "").toLowerCase();
-    if (subKey === "node" || subKey === "id") {
-      for (const id of sortedMatches(input.nodeIds, subValueLower, (v) => v)) {
-        uniquePush(out, `hide node ${id}`, `hide:node:${quoteFilterValue(id)}`);
-      }
-      return out;
-    }
-    if (subKey === "location" || subKey === "source") {
-      for (const location of sortedMatches(input.locations, subValueLower, (v) => v)) {
-        uniquePush(out, `hide location ${location}`, `hide:location:${quoteFilterValue(location)}`);
-      }
-      return out;
-    }
-    if (subKey === "crate") {
-      for (const item of sortedMatches(input.crates, subValueLower, (v) => `${v.id} ${v.label}`)) {
-        uniquePush(out, `hide crate ${item.label}`, `hide:crate:${quoteFilterValue(item.id)}`);
-      }
-      return out;
-    }
-    if (subKey === "process") {
-      for (const item of sortedMatches(input.processes, subValueLower, (v) => `${v.id} ${v.label}`)) {
-        uniquePush(out, `hide process ${item.label}`, `hide:process:${quoteFilterValue(item.id)}`);
-      }
-      return out;
-    }
-    if (subKey === "kind") {
-      for (const item of sortedMatches(input.kinds, subValueLower, (v) => `${v.id} ${v.label}`)) {
-        uniquePush(out, `hide kind ${item.label}`, `hide:kind:${quoteFilterValue(item.id)}`);
-      }
-      return out;
-    }
-    return out;
-  }
-  if (keyLower === "location" || keyLower === "source") {
+  if ((keyLower === "location" || keyLower === "source") && signed) {
     for (const location of sortedMatches(input.locations, valueLower, (v) => v)) {
-      uniquePush(out, `location ${location}`, `location:${quoteFilterValue(location)}`);
+      uniquePush(out, `${signed}location:${quoteFilterValue(location)}`, `${signedDesc} location ${location}`);
     }
     return out;
   }
-  if (keyLower === "crate") {
+  if (keyLower === "crate" && signed) {
     for (const item of sortedMatches(input.crates, valueLower, (v) => `${v.id} ${v.label}`)) {
-      uniquePush(out, `crate ${item.label}`, `crate:${quoteFilterValue(item.id)}`);
+      uniquePush(out, `${signed}crate:${quoteFilterValue(item.id)}`, `${signedDesc} crate ${item.label}`);
     }
     return out;
   }
-  if (keyLower === "process") {
+  if (keyLower === "process" && signed) {
     for (const item of sortedMatches(input.processes, valueLower, (v) => `${v.id} ${v.label}`)) {
-      uniquePush(out, `process ${item.label}`, `process:${quoteFilterValue(item.id)}`);
+      uniquePush(out, `${signed}process:${quoteFilterValue(item.id)}`, `${signedDesc} process ${item.label}`);
     }
     return out;
   }
-  if (keyLower === "kind") {
+  if (keyLower === "kind" && signed) {
     for (const item of sortedMatches(input.kinds, valueLower, (v) => `${v.id} ${v.label}`)) {
-      uniquePush(out, `kind ${item.label}`, `kind:${quoteFilterValue(item.id)}`);
+      uniquePush(out, `${signed}kind:${quoteFilterValue(item.id)}`, `${signedDesc} kind ${item.label}`);
     }
     return out;
   }
   if (keyLower === "loners") {
     for (const mode of sortedMatches(["on", "off"], valueLower, (v) => v)) {
-      uniquePush(out, `loners ${mode}`, `loners:${mode}`);
+      uniquePush(out, `loners:${mode}`, mode === "on" ? "Show unconnected nodes" : "Hide unconnected nodes");
     }
     return out;
   }
   if (keyLower === "colorby") {
     for (const mode of sortedMatches(["process", "crate"], valueLower, (v) => v)) {
-      uniquePush(out, `color by ${mode}`, `colorBy:${mode}`);
+      uniquePush(out, `colorBy:${mode}`, `Color nodes by ${mode}`);
     }
     return out;
   }
   if (keyLower === "groupby") {
     for (const mode of sortedMatches(["process", "crate", "none"], valueLower, (v) => v)) {
-      uniquePush(out, `group by ${mode}`, `groupBy:${mode}`);
+      uniquePush(out, `groupBy:${mode}`, mode === "none" ? "Disable grouping" : `Group by ${mode}`);
     }
     return out;
   }
 
-  const fallbackKeys: readonly { key: string; label: string }[] = [
-    { key: "node:", label: "hide node (`node:`)" },
-    { key: "location:", label: "hide location (`location:`)" },
-    { key: "crate:", label: "hide crate (`crate:`)" },
-    { key: "process:", label: "hide process (`process:`)" },
-    { key: "kind:", label: "hide kind (`kind:`)" },
-    { key: "hide:", label: "hide (2-stage)" },
-    { key: "loners:", label: "show/hide loners (`loners:on|off`)" },
-    { key: "colorBy:", label: "color by (`colorBy:`)" },
-    { key: "groupBy:", label: "group by (`groupBy:`)" },
-  ];
-  for (const entry of sortedMatches(fallbackKeys, lowerFragment, (v) => `${v.key} ${v.label}`)) {
-    uniquePush(out, entry.label, entry.key);
+  const fallbackKeys: readonly { key: string; label: string }[] = signed
+    ? [
+        { key: `${signed}node:<id>`, label: "Filter by node id" },
+        { key: `${signed}location:<src>`, label: "Filter by source location" },
+        { key: `${signed}crate:<name>`, label: "Filter by crate" },
+        { key: `${signed}process:<id>`, label: "Filter by process" },
+        { key: `${signed}kind:<kind>`, label: "Filter by kind" },
+      ]
+    : [
+        { key: "loners:on", label: "Show unconnected nodes" },
+        { key: "loners:off", label: "Hide unconnected nodes" },
+        { key: "colorBy:process", label: "Color nodes by process" },
+        { key: "colorBy:crate", label: "Color nodes by crate" },
+        { key: "groupBy:process", label: "Group by process subgraphs" },
+        { key: "groupBy:crate", label: "Group by crate subgraphs" },
+        { key: "groupBy:none", label: "Disable grouping" },
+      ];
+  for (const entry of sortedMatches(fallbackKeys, signed ? unsignedLower : lowerFragment, (v) => `${v.key} ${v.label}`)) {
+    uniquePush(out, entry.key, entry.label);
+  }
+  if (!signed && (lowerFragment === "+" || lowerFragment === "-")) {
+    uniquePush(out, `${lowerFragment}node:<id>`, "Filter by node id");
+    uniquePush(out, `${lowerFragment}location:<src>`, "Filter by source location");
+    uniquePush(out, `${lowerFragment}crate:<name>`, "Filter by crate");
+    uniquePush(out, `${lowerFragment}process:<id>`, "Filter by process");
+    uniquePush(out, `${lowerFragment}kind:<kind>`, "Filter by kind");
   }
   return out;
 }

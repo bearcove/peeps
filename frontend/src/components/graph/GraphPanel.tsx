@@ -36,25 +36,10 @@ export function GraphPanel({
   onExitFocus,
   waitingForProcesses,
   crateItems,
-  hiddenKrates: _hiddenKrates,
-  onKrateToggle: _onKrateToggle,
-  onKrateSolo: _onKrateSolo,
   processItems,
-  hiddenProcesses: _hiddenProcesses,
-  onProcessToggle: _onProcessToggle,
-  onProcessSolo: _onProcessSolo,
   kindItems,
-  hiddenKinds: _hiddenKinds,
-  onKindToggle: _onKindToggle,
-  onKindSolo: _onKindSolo,
   scopeColorMode,
-  onToggleProcessColorBy: _onToggleProcessColorBy,
-  onToggleCrateColorBy: _onToggleCrateColorBy,
   subgraphScopeMode,
-  onToggleProcessSubgraphs: _onToggleProcessSubgraphs,
-  onToggleCrateSubgraphs: _onToggleCrateSubgraphs,
-  showLoners: _showLoners,
-  onToggleShowLoners: _onToggleShowLoners,
   scopeFilterLabel,
   onClearScopeFilter,
   unionFrameLayout,
@@ -72,25 +57,10 @@ export function GraphPanel({
   onExitFocus: () => void;
   waitingForProcesses: boolean;
   crateItems: FilterMenuItem[];
-  hiddenKrates: ReadonlySet<string>;
-  onKrateToggle: (krate: string) => void;
-  onKrateSolo: (krate: string) => void;
   processItems: FilterMenuItem[];
-  hiddenProcesses: ReadonlySet<string>;
-  onProcessToggle: (pid: string) => void;
-  onProcessSolo: (pid: string) => void;
   kindItems: FilterMenuItem[];
-  hiddenKinds: ReadonlySet<string>;
-  onKindToggle: (kind: string) => void;
-  onKindSolo: (kind: string) => void;
   scopeColorMode: ScopeColorMode;
-  onToggleProcessColorBy: () => void;
-  onToggleCrateColorBy: () => void;
   subgraphScopeMode: SubgraphScopeMode;
-  onToggleProcessSubgraphs: () => void;
-  onToggleCrateSubgraphs: () => void;
-  showLoners: boolean;
-  onToggleShowLoners: () => void;
   scopeFilterLabel?: string | null;
   onClearScopeFilter?: () => void;
   unionFrameLayout?: FrameRenderResult;

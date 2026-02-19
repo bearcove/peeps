@@ -1,9 +1,8 @@
 .ui-switch {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
     gap: 10px;
-    width: 100%;
+    width: fit-content;
     font-size: var(--font-size-sm);
     color: inherit;
     user-select: none;
@@ -18,8 +17,8 @@
 .ui-switch-track {
     width: 30px;
     height: 16px;
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--border-subtle) 80%, var(--bg-elevated));
+    border-radius: 9999px;
+    background: var(--bg-elevated);
     border: 1px solid var(--border-default);
     display: inline-flex;
     align-items: center;
@@ -31,19 +30,19 @@
 .ui-switch-thumb {
     width: 12px;
     height: 12px;
-    border-radius: var(--radius-control);
-    background: var(--bg-base);
+    border-radius: 9999px;
+    background: var(--text-secondary);
     transform: translateX(0);
-    transition: transform 120ms ease;
+    transition: transform 120ms ease, background-color 120ms ease;
 }
 
 .ui-switch[data-selected] .ui-switch-track {
-    background: color-mix(in srgb, var(--border-default) 72%, var(--bg-elevated));
-    border-color: var(--border-default);
+    background: var(--accent);
+    border-color: var(--accent);
 }
 
 .ui-switch[data-selected] .ui-switch-thumb {
-    background: var(--accent-active);
+    background: var(--accent-fg);
     transform: translateX(14px);
 }
 

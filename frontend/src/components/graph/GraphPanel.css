@@ -97,7 +97,7 @@
     border-radius: var(--radius-control);
     padding: 2px 8px;
     font-size: calc(var(--font-size-sm) * 0.92);
-    font-family: var(--font-mono);
+    font-family: var(--font-ui);
     cursor: pointer;
     background: var(--accent);
     color: var(--accent-fg);
@@ -136,8 +136,7 @@
 .graph-filter-suggestion {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+    gap: 6px;
     border: 0;
     background: transparent;
     color: var(--text-default);
@@ -153,9 +152,19 @@
 }
 
 .graph-filter-suggestion-token {
-    color: var(--text-muted);
-    font-family: var(--font-mono);
+    color: var(--text-primary);
+    font-family: var(--font-ui);
     font-size: var(--font-size-sm);
+    font-weight: 700;
+}
+
+.graph-filter-suggestion-sep {
+    color: var(--text-muted);
+}
+
+.graph-filter-suggestion-label {
+    color: var(--text-muted);
+    font-weight: 400;
 }
 
 .graph-stat {

@@ -54,9 +54,9 @@
     --accent-active: light-dark(#000000, #cccccc);
     --accent-fg: light-dark(#ffffff, #111111);
 
-    --status-success: light-dark(#2f9f45, color-mix(in oklab, #3fb950 65%, white));
-    --status-warning: light-dark(#b37f1c, color-mix(in oklab, #d4820a 70%, white));
-    --status-danger: light-dark(#d24640, color-mix(in oklab, #f85149 65%, white));
+    --status-success: light-dark(#1c9e3c, color-mix(in oklab, #3fb950 65%, white));
+    --status-warning: light-dark(#b8860b, color-mix(in oklab, #d4820a 70%, white));
+    --status-danger: light-dark(#b91c1c, color-mix(in oklab, #f85149 65%, white));
 
     --focus-ring: color-mix(in srgb, var(--accent) 30%, transparent);
 

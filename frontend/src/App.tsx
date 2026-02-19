@@ -121,12 +121,6 @@ export function App() {
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
-  const [hiddenKrates, setHiddenKrates] = useState<ReadonlySet<string>>(new Set());
-  const [hiddenProcesses, setHiddenProcesses] = useState<ReadonlySet<string>>(new Set());
-  const [hiddenKinds, setHiddenKinds] = useState<ReadonlySet<string>>(new Set());
-  const [scopeColorMode, setScopeColorMode] = useState<ScopeColorMode>("none");
-  const [subgraphScopeMode, setSubgraphScopeMode] = useState<SubgraphScopeMode>("none");
-  const [showLoners, setShowLoners] = useState(false);
   const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:process loners:off");
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [isLive, setIsLive] = useState(true);
@@ -215,18 +209,9 @@ export function App() {
   const allEntities = snap.phase === "ready" ? snap.entities : [];
   const allEdges = snap.phase === "ready" ? snap.edges : [];
   const graphTextFilters = useMemo(() => parseGraphFilterQuery(graphFilterText), [graphFilterText]);
-  const effectiveHiddenKrates = useMemo(
-    () => new Set<string>([...hiddenKrates, ...graphTextFilters.hiddenCrates]),
-    [hiddenKrates, graphTextFilters.hiddenCrates],
-  );
-  const effectiveHiddenProcesses = useMemo(
-    () => new Set<string>([...hiddenProcesses, ...graphTextFilters.hiddenProcesses]),
-    [hiddenProcesses, graphTextFilters.hiddenProcesses],
-  );
-  const effectiveHiddenKinds = useMemo(
-    () => new Set<string>([...hiddenKinds, ...graphTextFilters.hiddenKinds]),
-    [hiddenKinds, graphTextFilters.hiddenKinds],
-  );
+  const effectiveHiddenKrates = graphTextFilters.excludeCrates;
+  const effectiveHiddenProcesses = graphTextFilters.excludeProcesses;
+  const effectiveHiddenKinds = graphTextFilters.excludeKinds;
   const effectiveShowLoners = graphTextFilters.showLoners ?? false;
   const effectiveScopeColorMode: ScopeColorMode = graphTextFilters.colorBy ?? "none";
   const effectiveSubgraphScopeMode: SubgraphScopeMode =
@@ -235,11 +220,16 @@ export function App() {
     (ignore: "crate" | "process" | "kind" | null) => {
       let entities = allEntities.filter(
         (e) =>
+          (graphTextFilters.includeCrates.size === 0 || graphTextFilters.includeCrates.has(e.krate ?? "~no-crate")) &&
+          (graphTextFilters.includeProcesses.size === 0 || graphTextFilters.includeProcesses.has(e.processId)) &&
+          (graphTextFilters.includeKinds.size === 0 || graphTextFilters.includeKinds.has(canonicalNodeKind(e.kind))) &&
+          (graphTextFilters.includeNodeIds.size === 0 || graphTextFilters.includeNodeIds.has(e.id)) &&
+          (graphTextFilters.includeLocations.size === 0 || graphTextFilters.includeLocations.has(e.source)) &&
           (ignore === "crate" || effectiveHiddenKrates.size === 0 || !effectiveHiddenKrates.has(e.krate ?? "~no-crate")) &&
           (ignore === "process" || effectiveHiddenProcesses.size === 0 || !effectiveHiddenProcesses.has(e.processId)) &&
           (ignore === "kind" || effectiveHiddenKinds.size === 0 || !effectiveHiddenKinds.has(canonicalNodeKind(e.kind))) &&
-          !graphTextFilters.hiddenNodeIds.has(e.id) &&
-          !graphTextFilters.hiddenLocations.has(e.source),
+          !graphTextFilters.excludeNodeIds.has(e.id) &&
+          !graphTextFilters.excludeLocations.has(e.source),
       );
       const entityIds = new Set(entities.map((entity) => entity.id));
       let edges = collapseEdgesThroughHiddenNodes(allEdges, entityIds);
@@ -268,11 +258,11 @@ export function App() {
   );
 
   const hideNodeViaTextFilter = useCallback((entityId: string) => {
-    setGraphFilterText((prev) => appendFilterToken(prev, `node:${quoteFilterValue(entityId)}`));
+    setGraphFilterText((prev) => appendFilterToken(prev, `-node:${quoteFilterValue(entityId)}`));
   }, []);
 
   const hideLocationViaTextFilter = useCallback((location: string) => {
-    setGraphFilterText((prev) => appendFilterToken(prev, `location:${quoteFilterValue(location)}`));
+    setGraphFilterText((prev) => appendFilterToken(prev, `-location:${quoteFilterValue(location)}`));
   }, []);
 
   const crateItems = useMemo<FilterMenuItem[]>(() => {
@@ -347,85 +337,6 @@ export function App() {
         meta: count,
       }));
   }, [applyBaseFilters]);
-
-  const handleKrateToggle = useCallback((krate: string) => {
-    setHiddenKrates((prev) => {
-      const next = new Set(prev);
-      if (next.has(krate)) next.delete(krate);
-      else next.add(krate);
-      return next;
-    });
-  }, []);
-
-  const handleKrateSolo = useCallback(
-    (krate: string) => {
-      setHiddenKrates((prev) => {
-        const otherKrates = crateItems.filter((i) => i.id !== krate).map((i) => i.id);
-        const alreadySolo = otherKrates.every((id) => prev.has(id)) && !prev.has(krate);
-        if (alreadySolo) return new Set();
-        return new Set(otherKrates);
-      });
-    },
-    [crateItems],
-  );
-
-  const handleProcessToggle = useCallback((pid: string) => {
-    setHiddenProcesses((prev) => {
-      const next = new Set(prev);
-      if (next.has(pid)) next.delete(pid);
-      else next.add(pid);
-      return next;
-    });
-  }, []);
-
-  const handleProcessSolo = useCallback(
-    (pid: string) => {
-      setHiddenProcesses((prev) => {
-        const otherProcesses = processItems.filter((i) => i.id !== pid).map((i) => i.id);
-        const alreadySolo = otherProcesses.every((id) => prev.has(id)) && !prev.has(pid);
-        if (alreadySolo) return new Set();
-        return new Set(otherProcesses);
-      });
-    },
-    [processItems],
-  );
-
-  const handleKindToggle = useCallback((kind: string) => {
-    setHiddenKinds((prev) => {
-      const next = new Set(prev);
-      if (next.has(kind)) next.delete(kind);
-      else next.add(kind);
-      return next;
-    });
-  }, []);
-
-  const handleKindSolo = useCallback(
-    (kind: string) => {
-      setHiddenKinds((prev) => {
-        const otherKinds = kindItems.filter((item) => item.id !== kind).map((item) => item.id);
-        const alreadySolo = otherKinds.every((id) => prev.has(id)) && !prev.has(kind);
-        if (alreadySolo) return new Set();
-        return new Set(otherKinds);
-      });
-    },
-    [kindItems],
-  );
-
-  const handleToggleProcessColorBy = useCallback(() => {
-    setScopeColorMode((prev) => (prev === "process" ? "none" : "process"));
-  }, []);
-
-  const handleToggleCrateColorBy = useCallback(() => {
-    setScopeColorMode((prev) => (prev === "crate" ? "none" : "crate"));
-  }, []);
-
-  const handleToggleProcessSubgraphs = useCallback(() => {
-    setSubgraphScopeMode((prev) => (prev === "process" ? "none" : "process"));
-  }, []);
-
-  const handleToggleCrateSubgraphs = useCallback(() => {
-    setSubgraphScopeMode((prev) => (prev === "crate" ? "none" : "crate"));
-  }, []);
 
   const { entities, edges } = useMemo(() => {
     const { entities: filteredEntities, edges: filteredEdges } = applyBaseFilters(null);
@@ -585,11 +496,16 @@ where l.conn_id = ${connId}
         const unionFrame = renderFrameFromUnion(
           snappedLast,
           union,
+          graphTextFilters.includeCrates,
+          graphTextFilters.includeProcesses,
+          graphTextFilters.includeKinds,
+          graphTextFilters.includeNodeIds,
+          graphTextFilters.includeLocations,
           effectiveHiddenKrates,
           effectiveHiddenProcesses,
           effectiveHiddenKinds,
-          graphTextFilters.hiddenNodeIds,
-          graphTextFilters.hiddenLocations,
+          graphTextFilters.excludeNodeIds,
+          graphTextFilters.excludeLocations,
           focusedEntityId,
           ghostMode,
           effectiveShowLoners,
@@ -669,11 +585,16 @@ where l.conn_id = ${connId}
           const unionFrame = renderFrameFromUnion(
             snappedLast,
             union,
+            graphTextFilters.includeCrates,
+            graphTextFilters.includeProcesses,
+            graphTextFilters.includeKinds,
+            graphTextFilters.includeNodeIds,
+            graphTextFilters.includeLocations,
             effectiveHiddenKrates,
             effectiveHiddenProcesses,
             effectiveHiddenKinds,
-            graphTextFilters.hiddenNodeIds,
-            graphTextFilters.hiddenLocations,
+            graphTextFilters.excludeNodeIds,
+            graphTextFilters.excludeLocations,
             focusedEntityId,
             ghostMode,
             effectiveShowLoners,
@@ -699,11 +620,16 @@ where l.conn_id = ${connId}
         const result = renderFrameFromUnion(
           frameIndex,
           unionLayout,
+          graphTextFilters.includeCrates,
+          graphTextFilters.includeProcesses,
+          graphTextFilters.includeKinds,
+          graphTextFilters.includeNodeIds,
+          graphTextFilters.includeLocations,
           effectiveHiddenKrates,
           effectiveHiddenProcesses,
           effectiveHiddenKinds,
-          graphTextFilters.hiddenNodeIds,
-          graphTextFilters.hiddenLocations,
+          graphTextFilters.excludeNodeIds,
+          graphTextFilters.excludeLocations,
           focusedEntityId,
           ghostMode,
           effectiveShowLoners,
@@ -771,11 +697,16 @@ where l.conn_id = ${connId}
       const unionFrame = renderFrameFromUnion(
         snapped,
         union,
+        graphTextFilters.includeCrates,
+        graphTextFilters.includeProcesses,
+        graphTextFilters.includeKinds,
+        graphTextFilters.includeNodeIds,
+        graphTextFilters.includeLocations,
         effectiveHiddenKrates,
         effectiveHiddenProcesses,
         effectiveHiddenKinds,
-        graphTextFilters.hiddenNodeIds,
-        graphTextFilters.hiddenLocations,
+        graphTextFilters.excludeNodeIds,
+        graphTextFilters.excludeLocations,
         focusedEntityId,
         ghostMode,
         effectiveShowLoners,
@@ -796,11 +727,16 @@ where l.conn_id = ${connId}
       const result = renderFrameFromUnion(
         recording.currentFrameIndex,
         recording.unionLayout,
+        graphTextFilters.includeCrates,
+        graphTextFilters.includeProcesses,
+        graphTextFilters.includeKinds,
+        graphTextFilters.includeNodeIds,
+        graphTextFilters.includeLocations,
         effectiveHiddenKrates,
         effectiveHiddenProcesses,
         effectiveHiddenKinds,
-        graphTextFilters.hiddenNodeIds,
-        graphTextFilters.hiddenLocations,
+        graphTextFilters.excludeNodeIds,
+        graphTextFilters.excludeLocations,
         focusedEntityId,
         ghostMode,
         effectiveShowLoners,
@@ -811,11 +747,16 @@ where l.conn_id = ${connId}
       const result = renderFrameFromUnion(
         recording.frames[lastFrame]?.frame_index ?? 0,
         recording.unionLayout,
+        graphTextFilters.includeCrates,
+        graphTextFilters.includeProcesses,
+        graphTextFilters.includeKinds,
+        graphTextFilters.includeNodeIds,
+        graphTextFilters.includeLocations,
         effectiveHiddenKrates,
         effectiveHiddenProcesses,
         effectiveHiddenKinds,
-        graphTextFilters.hiddenNodeIds,
-        graphTextFilters.hiddenLocations,
+        graphTextFilters.excludeNodeIds,
+        graphTextFilters.excludeLocations,
         focusedEntityId,
         ghostMode,
         effectiveShowLoners,
@@ -1033,25 +974,10 @@ where l.conn_id = ${connId}
                 }}
                 waitingForProcesses={waitingForProcesses}
                 crateItems={crateItems}
-                hiddenKrates={hiddenKrates}
-                onKrateToggle={handleKrateToggle}
-                onKrateSolo={handleKrateSolo}
                 processItems={processItems}
-                hiddenProcesses={hiddenProcesses}
-                onProcessToggle={handleProcessToggle}
-                onProcessSolo={handleProcessSolo}
                 kindItems={kindItems}
-                hiddenKinds={hiddenKinds}
-                onKindToggle={handleKindToggle}
-                onKindSolo={handleKindSolo}
                 scopeColorMode={effectiveScopeColorMode}
-                onToggleProcessColorBy={handleToggleProcessColorBy}
-                onToggleCrateColorBy={handleToggleCrateColorBy}
                 subgraphScopeMode={effectiveSubgraphScopeMode}
-                onToggleProcessSubgraphs={handleToggleProcessSubgraphs}
-                onToggleCrateSubgraphs={handleToggleCrateSubgraphs}
-                showLoners={effectiveShowLoners}
-                onToggleShowLoners={() => setShowLoners((prev) => !prev)}
                 scopeFilterLabel={scopeEntityFilter?.scopeToken ?? null}
                 onClearScopeFilter={() => setScopeEntityFilter(null)}
                 unionFrameLayout={unionFrameLayout}
