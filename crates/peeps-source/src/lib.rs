@@ -1,11 +1,12 @@
 #![doc = include_str!("README.md")]
 
+use camino::{Utf8Path, Utf8PathBuf};
 use facet::Facet;
 #[cfg(feature = "rusqlite")]
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use std::collections::BTreeMap;
+use std::fmt;
 use std::panic::Location;
-use std::path::Path;
 use std::sync::{Mutex as StdMutex, OnceLock};
 
 #[derive(Clone, Copy, Debug)]
@@ -34,15 +35,23 @@ impl SourceRight {
 #[derive(Clone, Copy, Debug)]
 pub struct SourceLeft {
     manifest_dir: &'static str,
+    krate: &'static str,
 }
 
 impl SourceLeft {
-    pub const fn new(manifest_dir: &'static str) -> Self {
-        Self { manifest_dir }
+    pub const fn new(manifest_dir: &'static str, krate: &'static str) -> Self {
+        Self {
+            manifest_dir,
+            krate,
+        }
     }
 
     pub const fn manifest_dir(self) -> &'static str {
         self.manifest_dir
+    }
+
+    pub const fn krate(self) -> &'static str {
+        self.krate
     }
 
     #[track_caller]
@@ -55,52 +64,61 @@ impl SourceLeft {
     }
 }
 
-/// A fully resolved source code location, including create information that identifies where things
-/// are being done, where futures are being polled, where locks are being awaited on, etc.
+/// A fully resolved source code location, including crate identity.
 #[derive(Clone, Debug)]
 pub struct Source {
-    source: String,
-    krate: Option<String>,
+    /// Absolute UTF-8 path to the source file on disk.
+    path: Utf8PathBuf,
+    /// 1-based source line number.
+    line: u32,
+    /// Crate name that owns this source location.
+    krate: String,
 }
 
 impl Source {
-    pub fn new(source: impl Into<String>, krate: Option<String>) -> Self {
-        Self {
-            source: source.into(),
-            krate,
-        }
-    }
-
     pub fn resolve(left: SourceLeft, right: SourceRight) -> Self {
         Self::resolve_parts(
             left.manifest_dir(),
+            left.krate(),
             right.location.file(),
             right.location.line(),
         )
     }
 
-    fn resolve_parts(manifest_dir: &str, file: &str, line: u32) -> Self {
-        let file = Path::new(file);
-        let resolved = if file.is_absolute() {
+    fn resolve_parts(manifest_dir: &str, krate: &str, file: &str, line: u32) -> Self {
+        let file = Utf8Path::new(file);
+        let path = if file.is_absolute() {
             file.to_path_buf()
         } else {
-            Path::new(manifest_dir).join(file)
+            Utf8Path::new(manifest_dir).join(file)
         };
-        let source = String::from(format!("{}:{}", resolved.display(), line));
-        let krate = infer_crate_name_from_manifest_dir(manifest_dir);
-        Self { source, krate }
+        Self {
+            path,
+            line,
+            krate: String::from(krate),
+        }
     }
 
-    pub fn as_str(&self) -> &str {
-        self.source.as_str()
+    pub fn path(&self) -> &Utf8Path {
+        &self.path
     }
 
-    pub fn krate(&self) -> Option<&str> {
-        self.krate.as_ref().map(|k| k.as_str())
+    pub const fn line(&self) -> u32 {
+        self.line
     }
 
-    pub fn into_string(self) -> String {
-        self.source
+    pub fn krate(&self) -> &str {
+        self.krate.as_str()
+    }
+
+    pub fn into_display_string(self) -> String {
+        format!("{}:{}", self.path, self.line)
+    }
+}
+
+impl fmt::Display for Source {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.path, self.line)
     }
 }
 
@@ -178,32 +196,9 @@ impl From<SourceRight> for Source {
     }
 }
 
-fn infer_crate_name_from_manifest_dir(manifest_dir: &str) -> Option<String> {
-    let manifest_path = Path::new(manifest_dir).join("Cargo.toml");
-    let content = std::fs::read_to_string(manifest_path).ok()?;
-    let mut in_package = false;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            in_package = trimmed == "[package]";
-            continue;
-        }
-        if !in_package || !trimmed.starts_with("name") {
-            continue;
-        }
-        let (_, raw_value) = trimmed.split_once('=')?;
-        let value = raw_value.trim();
-        if value.len() < 2 || !value.starts_with('"') || !value.ends_with('"') {
-            return None;
-        }
-        return Some(String::from(&value[1..value.len() - 1]));
-    }
-    None
-}
-
 struct SourceIntern {
     next_id: u64,
-    by_key: BTreeMap<(String, Option<String>), SourceId>,
+    by_key: BTreeMap<(Utf8PathBuf, u32, String), SourceId>,
     by_id: BTreeMap<SourceId, Source>,
 }
 
@@ -218,11 +213,9 @@ impl SourceIntern {
 
     fn intern(&mut self, source: Source) -> SourceId {
         let key = (
-            String::from(source.source.as_str()),
-            source
-                .krate
-                .as_ref()
-                .map(|k| String::from(k.as_str())),
+            source.path.clone(),
+            source.line,
+            String::from(source.krate.as_str()),
         );
         if let Some(existing) = self.by_key.get(&key).copied() {
             return existing;
@@ -251,86 +244,31 @@ impl SourceIntern {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn resolves_relative_path_from_manifest_dir() {
-        let source = Source::resolve_parts("/repo/crate", "src/lib.rs", 42);
-        let expected = PathBuf::from("/repo/crate").join("src/lib.rs");
-        assert_eq!(source.as_str(), format!("{}:42", expected.display()));
+        let source = Source::resolve_parts("/repo/crate", "my-crate", "src/lib.rs", 42);
+        assert_eq!(source.path(), Utf8Path::new("/repo/crate/src/lib.rs"));
+        assert_eq!(source.line(), 42);
+        assert_eq!(source.krate(), "my-crate");
+        assert_eq!(source.to_string(), "/repo/crate/src/lib.rs:42");
     }
 
     #[test]
     fn preserves_absolute_path() {
-        let source = Source::resolve_parts("/repo/crate", "/other/place/main.rs", 7);
-        assert_eq!(source.as_str(), "/other/place/main.rs:7");
-    }
-
-    #[test]
-    fn infers_crate_name_from_manifest() {
-        let base = std::env::temp_dir().join(format!(
-            "peeps-source-test-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("clock before unix epoch")
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&base).expect("failed to create temp manifest dir");
-        std::fs::write(
-            base.join("Cargo.toml"),
-            "[package]\nname = \"source-left-right-test\"\nversion = \"0.1.0\"\n",
-        )
-        .expect("failed to write Cargo.toml");
-
-        let source = Source::resolve_parts(
-            base.to_str().expect("temp path must be valid utf-8"),
-            "src/lib.rs",
-            1,
-        );
-
-        assert_eq!(source.krate(), Some("source-left-right-test"));
-        std::fs::remove_dir_all(base).expect("failed to cleanup temp manifest dir");
-    }
-
-    #[test]
-    fn crate_name_is_none_when_manifest_missing() {
-        let base = std::env::temp_dir().join(format!(
-            "peeps-source-test-missing-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("clock before unix epoch")
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&base).expect("failed to create temp dir");
-
-        let source = Source::resolve_parts(
-            base.to_str().expect("temp path must be valid utf-8"),
-            "src/lib.rs",
-            1,
-        );
-
-        assert_eq!(source.krate(), None);
-        std::fs::remove_dir_all(base).expect("failed to cleanup temp dir");
+        let source = Source::resolve_parts("/repo/crate", "my-crate", "/other/place/main.rs", 7);
+        assert_eq!(source.path(), Utf8Path::new("/other/place/main.rs"));
+        assert_eq!(source.line(), 7);
+        assert_eq!(source.krate(), "my-crate");
     }
 
     #[test]
     fn intern_round_trips_source() {
-        let source = Source::new("/repo/src/lib.rs:12", Some(String::from("peeps")));
+        let source = Source::resolve_parts("/repo", "peeps", "src/lib.rs", 12);
         let source_id = intern_source(source.clone());
-        assert_eq!(
-            source_for_id(source_id)
-                .expect("source should be present")
-                .as_str(),
-            source.as_str()
-        );
-        assert_eq!(
-            source_for_id(source_id)
-                .expect("source should be present")
-                .krate(),
-            source.krate()
-        );
+        let loaded = source_for_id(source_id).expect("source should be present");
+        assert_eq!(loaded.path(), source.path());
+        assert_eq!(loaded.line(), source.line());
+        assert_eq!(loaded.krate(), source.krate());
     }
 }

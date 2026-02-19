@@ -1,7 +1,7 @@
 use peeps_types::{EntityBody, OnceCellEntity, OnceCellState};
 use std::future::Future;
 
-use super::super::{Source, SourceRight};
+use super::super::{local_source, Source, SourceRight};
 use peeps_runtime::{instrument_operation_on_with_source, EntityHandle};
 
 pub struct OnceCell<T> {
@@ -17,7 +17,7 @@ impl<T> OnceCell<T> {
                 waiter_count: 0,
                 state: OnceCellState::Empty,
             }),
-            Source::new(source.into_string(), None),
+            local_source(source),
         )
         .into_typed::<peeps_types::OnceCell>();
         Self {

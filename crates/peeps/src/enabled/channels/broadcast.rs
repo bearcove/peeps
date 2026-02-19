@@ -1,4 +1,4 @@
-use super::{Source, SourceRight};
+use super::{local_source, Source, SourceRight};
 
 use peeps_runtime::{
     record_event_with_source, AsEntityRef, EntityHandle, EntityRef, WeakEntityHandle,
@@ -33,7 +33,7 @@ impl<T: Clone> Clone for BroadcastReceiver<T> {
         let handle = EntityHandle::new(
             "broadcast:rx.clone",
             EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }),
-            Source::new(SourceRight::caller().into_string(), None),
+            local_source(SourceRight::caller()),
         )
         .into_typed::<peeps_types::BroadcastRx>();
         Self {
@@ -54,13 +54,13 @@ impl<T: Clone> BroadcastSender<T> {
         let handle = EntityHandle::new(
             "broadcast:rx.subscribe",
             EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }),
-            Source::new(SourceRight::caller().into_string(), None),
+            local_source(SourceRight::caller()),
         )
         .into_typed::<peeps_types::BroadcastRx>();
         self.handle.link_to_handle_with_source(
             &handle,
             EdgeKind::PairedWith,
-            Source::new(SourceRight::caller().into_string(), None),
+            local_source(SourceRight::caller()),
         );
         BroadcastReceiver {
             inner: self.inner.subscribe(),
@@ -140,21 +140,21 @@ pub fn broadcast<T: Clone>(
         EntityBody::BroadcastTx(BroadcastTxEntity {
             capacity: capacity_u32,
         }),
-        Source::new(source.into_string(), None),
+        local_source(source),
     )
     .into_typed::<peeps_types::BroadcastTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
         EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }),
-        Source::new(source.into_string(), None),
+        local_source(source),
     )
     .into_typed::<peeps_types::BroadcastRx>();
 
     tx_handle.link_to_handle_with_source(
         &rx_handle,
         EdgeKind::PairedWith,
-        Source::new(source.into_string(), None),
+        local_source(source),
     );
 
     (

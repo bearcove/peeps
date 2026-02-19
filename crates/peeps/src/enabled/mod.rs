@@ -10,6 +10,13 @@ pub use self::rpc::*;
 pub use self::sync::*;
 pub use peeps_runtime::*;
 
+const PEEPS_LOCAL_SOURCE_LEFT: SourceLeft =
+    SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
+
+pub(crate) fn local_source(right: SourceRight) -> Source {
+    PEEPS_LOCAL_SOURCE_LEFT.join(right)
+}
+
 // facade! expands to a call to this
 #[doc(hidden)]
 pub fn __init_from_macro() {
@@ -19,11 +26,16 @@ pub fn __init_from_macro() {
 #[macro_export]
 macro_rules! facade {
     () => {
-        $crate::__init_from_macro();
 
         pub mod peeps {
             pub const PEEPS_SOURCE_LEFT: $crate::SourceLeft =
-                $crate::SourceLeft::new(env!("CARGO_MANIFEST_DIR"));
+                $crate::SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
+
+            #[track_caller]
+            fn __source() -> $crate::Source {
+                $crate::__init_from_macro();
+                PEEPS_SOURCE_LEFT.resolve()
+            }
 
             pub trait MutexExt<T> {
                 fn lock(&self) -> $crate::MutexGuard<'_, T>;
@@ -33,12 +45,12 @@ macro_rules! facade {
             impl<T> MutexExt<T> for $crate::Mutex<T> {
                 #[track_caller]
                 fn lock(&self) -> $crate::MutexGuard<'_, T> {
-                    self.lock_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.lock_with_source(__source())
                 }
 
                 #[track_caller]
                 fn try_lock(&self) -> Option<$crate::MutexGuard<'_, T>> {
-                    self.try_lock_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.try_lock_with_source(__source())
                 }
             }
 
@@ -52,22 +64,22 @@ macro_rules! facade {
             impl<T> RwLockExt<T> for $crate::RwLock<T> {
                 #[track_caller]
                 fn read(&self) -> $crate::parking_lot::RwLockReadGuard<'_, T> {
-                    self.read_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.read_with_source(__source())
                 }
 
                 #[track_caller]
                 fn write(&self) -> $crate::parking_lot::RwLockWriteGuard<'_, T> {
-                    self.write_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.write_with_source(__source())
                 }
 
                 #[track_caller]
                 fn try_read(&self) -> Option<$crate::parking_lot::RwLockReadGuard<'_, T>> {
-                    self.try_read_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.try_read_with_source(__source())
                 }
 
                 #[track_caller]
                 fn try_write(&self) -> Option<$crate::parking_lot::RwLockWriteGuard<'_, T>> {
-                    self.try_write_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.try_write_with_source(__source())
                 }
             }
 
@@ -88,7 +100,7 @@ macro_rules! facade {
                 ) -> impl core::future::Future<
                     Output = Result<(), $crate::tokio::sync::mpsc::error::SendError<T>>,
                 > + '_ {
-                    self.send_with_source(value, PEEPS_SOURCE_LEFT.resolve())
+                    self.send_with_source(value, __source())
                 }
             }
 
@@ -99,7 +111,7 @@ macro_rules! facade {
             impl<T> ReceiverExt<T> for $crate::Receiver<T> {
                 #[track_caller]
                 fn recv(&mut self) -> impl core::future::Future<Output = Option<T>> + '_ {
-                    self.recv_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.recv_with_source(__source())
                 }
             }
 
@@ -116,7 +128,7 @@ macro_rules! facade {
                     &self,
                     value: T,
                 ) -> Result<(), $crate::tokio::sync::mpsc::error::SendError<T>> {
-                    self.send_with_source(value, PEEPS_SOURCE_LEFT.resolve())
+                    self.send_with_source(value, __source())
                 }
             }
 
@@ -127,7 +139,7 @@ macro_rules! facade {
             impl<T> UnboundedReceiverExt<T> for $crate::UnboundedReceiver<T> {
                 #[track_caller]
                 fn recv(&mut self) -> impl core::future::Future<Output = Option<T>> + '_ {
-                    self.recv_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.recv_with_source(__source())
                 }
             }
 
@@ -138,7 +150,7 @@ macro_rules! facade {
             impl<T> OneshotSenderExt<T> for $crate::OneshotSender<T> {
                 #[track_caller]
                 fn send(self, value: T) -> Result<(), T> {
-                    self.send_with_source(value, PEEPS_SOURCE_LEFT.resolve())
+                    self.send_with_source(value, __source())
                 }
             }
 
@@ -157,7 +169,7 @@ macro_rules! facade {
                 ) -> impl core::future::Future<
                     Output = Result<T, $crate::tokio::sync::oneshot::error::RecvError>,
                 > {
-                    self.recv_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.recv_with_source(__source())
                 }
             }
 
@@ -174,7 +186,7 @@ macro_rules! facade {
                     &self,
                     value: T,
                 ) -> Result<usize, $crate::tokio::sync::broadcast::error::SendError<T>> {
-                    self.send_with_source(value, PEEPS_SOURCE_LEFT.resolve())
+                    self.send_with_source(value, __source())
                 }
             }
 
@@ -193,7 +205,7 @@ macro_rules! facade {
                 ) -> impl core::future::Future<
                     Output = Result<T, $crate::tokio::sync::broadcast::error::RecvError>,
                 > + '_ {
-                    self.recv_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.recv_with_source(__source())
                 }
             }
 
@@ -211,12 +223,12 @@ macro_rules! facade {
                     &self,
                     value: T,
                 ) -> Result<(), $crate::tokio::sync::watch::error::SendError<T>> {
-                    self.send_with_source(value, PEEPS_SOURCE_LEFT.resolve())
+                    self.send_with_source(value, __source())
                 }
 
                 #[track_caller]
                 fn send_replace(&self, value: T) -> T {
-                    self.send_replace_with_source(value, PEEPS_SOURCE_LEFT.resolve())
+                    self.send_replace_with_source(value, __source())
                 }
             }
 
@@ -237,7 +249,7 @@ macro_rules! facade {
                 ) -> impl core::future::Future<
                     Output = Result<(), $crate::tokio::sync::watch::error::RecvError>,
                 > + '_ {
-                    self.changed_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.changed_with_source(__source())
                 }
 
                 #[track_caller]
@@ -260,7 +272,7 @@ macro_rules! facade {
             impl NotifyExt for $crate::Notify {
                 #[track_caller]
                 fn notified(&self) -> impl core::future::Future<Output = ()> + '_ {
-                    self.notified_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.notified_with_source(__source())
                 }
 
                 #[track_caller]
@@ -287,6 +299,7 @@ macro_rules! facade {
                 ) -> impl core::future::Future<Output = Result<&'a T, E>> + 'a
                 where
                     T: 'a,
+                    E: 'a,
                     F: FnOnce() -> Fut + 'a,
                     Fut: core::future::Future<Output = Result<T, E>> + 'a;
             }
@@ -299,7 +312,7 @@ macro_rules! facade {
                     F: FnOnce() -> Fut + 'a,
                     Fut: core::future::Future<Output = T> + 'a,
                 {
-                    self.get_or_init_with_source(f, PEEPS_SOURCE_LEFT.resolve())
+                    self.get_or_init_with_source(f, __source())
                 }
 
                 #[track_caller]
@@ -309,10 +322,11 @@ macro_rules! facade {
                 ) -> impl core::future::Future<Output = Result<&'a T, E>> + 'a
                 where
                     T: 'a,
+                    E: 'a,
                     F: FnOnce() -> Fut + 'a,
                     Fut: core::future::Future<Output = Result<T, E>> + 'a,
                 {
-                    self.get_or_try_init_with_source(f, PEEPS_SOURCE_LEFT.resolve())
+                    self.get_or_try_init_with_source(f, __source())
                 }
             }
 
@@ -348,7 +362,7 @@ macro_rules! facade {
                 ) -> impl core::future::Future<
                     Output = Result<$crate::SemaphorePermit<'_>, $crate::tokio::sync::AcquireError>,
                 > + '_ {
-                    self.acquire_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.acquire_with_source(__source())
                 }
 
                 #[track_caller]
@@ -358,7 +372,7 @@ macro_rules! facade {
                 ) -> impl core::future::Future<
                     Output = Result<$crate::SemaphorePermit<'_>, $crate::tokio::sync::AcquireError>,
                 > + '_ {
-                    self.acquire_many_with_source(n, PEEPS_SOURCE_LEFT.resolve())
+                    self.acquire_many_with_source(n, __source())
                 }
 
                 #[track_caller]
@@ -367,7 +381,7 @@ macro_rules! facade {
                 ) -> impl core::future::Future<
                     Output = Result<$crate::OwnedSemaphorePermit, $crate::tokio::sync::AcquireError>,
                 > + '_ {
-                    self.acquire_owned_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.acquire_owned_with_source(__source())
                 }
 
                 #[track_caller]
@@ -377,7 +391,7 @@ macro_rules! facade {
                 ) -> impl core::future::Future<
                     Output = Result<$crate::OwnedSemaphorePermit, $crate::tokio::sync::AcquireError>,
                 > + '_ {
-                    self.acquire_many_owned_with_source(n, PEEPS_SOURCE_LEFT.resolve())
+                    self.acquire_many_owned_with_source(n, __source())
                 }
             }
 
@@ -405,7 +419,7 @@ macro_rules! facade {
                 where
                     F: core::future::Future<Output = T> + Send + 'static,
                 {
-                    self.spawn_with_source(label, future, PEEPS_SOURCE_LEFT.resolve())
+                    self.spawn_with_source(label, future, __source())
                 }
 
                 #[track_caller]
@@ -414,7 +428,7 @@ macro_rules! facade {
                 ) -> impl core::future::Future<
                     Output = Option<Result<T, $crate::tokio::task::JoinError>>,
                 > + '_ {
-                    self.join_next_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.join_next_with_source(__source())
                 }
             }
 
@@ -433,21 +447,21 @@ macro_rules! facade {
             impl CommandExt for $crate::Command {
                 #[track_caller]
                 fn spawn(&mut self) -> std::io::Result<$crate::Child> {
-                    self.spawn_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.spawn_with_source(__source())
                 }
 
                 #[track_caller]
                 fn status(
                     &mut self,
                 ) -> impl core::future::Future<Output = std::io::Result<std::process::ExitStatus>> + '_ {
-                    self.status_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.status_with_source(__source())
                 }
 
                 #[track_caller]
                 fn output(
                     &mut self,
                 ) -> impl core::future::Future<Output = std::io::Result<std::process::Output>> + '_ {
-                    self.output_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.output_with_source(__source())
                 }
             }
 
@@ -467,14 +481,14 @@ macro_rules! facade {
                 fn wait(
                     &mut self,
                 ) -> impl core::future::Future<Output = std::io::Result<std::process::ExitStatus>> + '_ {
-                    self.wait_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.wait_with_source(__source())
                 }
 
                 #[track_caller]
                 fn wait_with_output(
                     self,
                 ) -> impl core::future::Future<Output = std::io::Result<std::process::Output>> {
-                    self.wait_with_output_with_source(PEEPS_SOURCE_LEFT.resolve())
+                    self.wait_with_output_with_source(__source())
                 }
             }
 

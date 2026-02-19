@@ -1,4 +1,4 @@
-use super::{Source, SourceRight};
+use super::{local_source, Source, SourceRight};
 
 use peeps_runtime::{
     current_causal_target, instrument_operation_on_with_source, record_event_with_source,
@@ -216,21 +216,21 @@ pub fn channel<T>(
             queue_len: 0,
             capacity: Some(capacity_u32),
         }),
-        Source::new(source.into_string(), None),
+        local_source(source),
     )
     .into_typed::<peeps_types::MpscTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
         EntityBody::MpscRx(MpscRxEntity {}),
-        Source::new(source.into_string(), None),
+        local_source(source),
     )
     .into_typed::<peeps_types::MpscRx>();
 
     tx_handle.link_to_handle_with_source(
         &rx_handle,
         EdgeKind::PairedWith,
-        Source::new(source.into_string(), None),
+        local_source(source),
     );
 
     (
@@ -268,21 +268,21 @@ pub fn unbounded_channel<T>(
             queue_len: 0,
             capacity: None,
         }),
-        Source::new(source.into_string(), None),
+        local_source(source),
     )
     .into_typed::<peeps_types::MpscTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
         EntityBody::MpscRx(MpscRxEntity {}),
-        Source::new(source.into_string(), None),
+        local_source(source),
     )
     .into_typed::<peeps_types::MpscRx>();
 
     tx_handle.link_to_handle_with_source(
         &rx_handle,
         EdgeKind::PairedWith,
-        Source::new(source.into_string(), None),
+        local_source(source),
     );
 
     (

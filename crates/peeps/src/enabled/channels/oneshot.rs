@@ -1,4 +1,4 @@
-use super::{Source, SourceRight};
+use super::{local_source, Source, SourceRight};
 
 use peeps_runtime::{
     instrument_operation_on_with_source, record_event_with_source, EntityHandle, WeakEntityHandle,
@@ -87,21 +87,21 @@ pub fn oneshot<T>(
     let tx_handle = EntityHandle::new(
         format!("{name}:tx"),
         EntityBody::OneshotTx(OneshotTxEntity { sent: false }),
-        Source::new(source.into_string(), None),
+        local_source(source),
     )
     .into_typed::<peeps_types::OneshotTx>();
 
     let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
         EntityBody::OneshotRx(OneshotRxEntity {}),
-        Source::new(source.into_string(), None),
+        local_source(source),
     )
     .into_typed::<peeps_types::OneshotRx>();
 
     tx_handle.link_to_handle_with_source(
         &rx_handle,
         EdgeKind::PairedWith,
-        Source::new(source.into_string(), None),
+        local_source(source),
     );
 
     (

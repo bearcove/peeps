@@ -10,4 +10,5 @@ rusqlite = ["dep:rusqlite"]
 
 [dependencies]
 facet.workspace = true
+camino.workspace = true
 rusqlite = { workspace = true, optional = true }

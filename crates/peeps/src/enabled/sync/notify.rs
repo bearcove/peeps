@@ -1,7 +1,7 @@
 use peeps_types::{EntityBody, NotifyEntity};
 use std::sync::Arc;
 
-use super::super::{Source, SourceRight};
+use super::super::{local_source, Source, SourceRight};
 use peeps_runtime::{instrument_operation_on_with_source, EntityHandle};
 
 #[derive(Clone)]
@@ -15,7 +15,7 @@ impl Notify {
         let handle = EntityHandle::new(
             name.into(),
             EntityBody::Notify(NotifyEntity { waiter_count: 0 }),
-            Source::new(source.into_string(), None),
+            local_source(source),
         )
         .into_typed::<peeps_types::Notify>();
         Self {

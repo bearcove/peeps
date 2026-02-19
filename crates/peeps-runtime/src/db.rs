@@ -8,8 +8,8 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Mutex as StdMutex, OnceLock};
 
 use super::{
-    current_process_scope_id, current_tokio_task_key, Source, SourceRight, COMPACT_TARGET_CHANGES,
-    MAX_CHANGES_BEFORE_COMPACT,
+    current_process_scope_id, current_tokio_task_key, local_source, SourceRight,
+    COMPACT_TARGET_CHANGES, MAX_CHANGES_BEFORE_COMPACT,
 };
 
 pub fn runtime_db() -> &'static StdMutex<RuntimeDb> {
@@ -223,7 +223,7 @@ impl RuntimeDb {
         }
 
         let scope = Scope::new(
-            Source::new("tokio::task::try_id", None),
+            local_source(SourceRight::caller()),
             format!("task.{task_key}"),
             ScopeBody::Task(TaskScopeBody {
                 task_key: task_key.clone(),
@@ -361,12 +361,7 @@ impl RuntimeDb {
     }
 
     pub fn upsert_edge(&mut self, src: &EntityId, dst: &EntityId, kind: EdgeKind) {
-        self.upsert_edge_with_source(
-            src,
-            dst,
-            kind,
-            Source::new(SourceRight::caller().into_string(), None),
-        );
+        self.upsert_edge_with_source(src, dst, kind, local_source(SourceRight::caller()));
     }
 
     pub fn upsert_edge_with_source(

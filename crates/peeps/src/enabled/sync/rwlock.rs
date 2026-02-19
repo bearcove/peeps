@@ -1,6 +1,6 @@
 use peeps_types::{EdgeKind, EntityBody, LockEntity, LockKind};
 
-use super::super::{Source, SourceRight};
+use super::super::{local_source, Source, SourceRight};
 use peeps_runtime::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
 
 pub struct RwLock<T> {
@@ -15,7 +15,7 @@ impl<T> RwLock<T> {
             EntityBody::Lock(LockEntity {
                 kind: LockKind::RwLock,
             }),
-            Source::new(source.into_string(), None),
+            local_source(source),
         )
         .into_typed::<peeps_types::Lock>();
         Self {

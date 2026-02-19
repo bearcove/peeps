@@ -3,7 +3,7 @@ use peeps_types::{
     ResponseStatus,
 };
 
-use super::{Source, SourceRight};
+use super::{local_source, Source, SourceRight};
 use peeps_runtime::{record_event_with_source, EntityHandle, EntityRef};
 
 #[derive(Clone)]
@@ -60,21 +60,21 @@ impl RpcResponseHandle {
     pub fn mark_ok(&self) {
         self.set_status_with_source(
             ResponseStatus::Ok,
-            Source::new(SourceRight::caller().into_string(), None),
+            local_source(SourceRight::caller()),
         );
     }
 
     pub fn mark_error(&self) {
         self.set_status_with_source(
             ResponseStatus::Error,
-            Source::new(SourceRight::caller().into_string(), None),
+            local_source(SourceRight::caller()),
         );
     }
 
     pub fn mark_cancelled(&self) {
         self.set_status_with_source(
             ResponseStatus::Cancelled,
-            Source::new(SourceRight::caller().into_string(), None),
+            local_source(SourceRight::caller()),
         );
     }
 }
@@ -90,7 +90,7 @@ pub fn rpc_request(
         args_preview: args_preview.into(),
     });
     RpcRequestHandle {
-        handle: EntityHandle::new(method, body, Source::new(source.into_string(), None))
+        handle: EntityHandle::new(method, body, local_source(source))
             .into_typed::<peeps_types::Request>(),
     }
 }
@@ -102,7 +102,7 @@ pub fn rpc_response(method: impl Into<String>, source: SourceRight) -> RpcRespon
         status: ResponseStatus::Pending,
     });
     RpcResponseHandle {
-        handle: EntityHandle::new(method, body, Source::new(source.into_string(), None))
+        handle: EntityHandle::new(method, body, local_source(source))
             .into_typed::<peeps_types::Response>(),
     }
 }
@@ -117,7 +117,7 @@ pub fn rpc_response_for(
         method: method.clone(),
         status: ResponseStatus::Pending,
     });
-    let source = Source::new(source.into_string(), None);
+    let source = local_source(source);
     let response = RpcResponseHandle {
         handle: EntityHandle::new(method, body, source.clone())
             .into_typed::<peeps_types::Response>(),

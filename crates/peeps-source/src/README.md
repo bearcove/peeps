@@ -5,13 +5,13 @@ sometimes returns relative paths for files.
 
 So the model is split in two at the facade boundary, then joined immediately:
 
-1. `SourceLeft`: ambient crate context (`$CARGO_MANIFEST_DIR`)
+1. `SourceLeft`: ambient crate context (`$CARGO_MANIFEST_DIR`, `$CARGO_PKG_NAME`)
 2. `SourceRight`: unqualified callsite (`Location::caller()`)
 3. `Source`: resolved source (`left.join(right)`)
 
 `SourceLeft`:
 
-- Where it comes from: facade-expanded crate constant built from `env!("CARGO_MANIFEST_DIR")`
+- Where it comes from: facade-expanded crate constant built from `env!("CARGO_MANIFEST_DIR")` and `env!("CARGO_PKG_NAME")`
 - When it is captured: compile time in the calling crate
 - Where it is used: only to resolve `SourceRight` into `Source` (path + crate identity)
 
@@ -32,7 +32,7 @@ Example target shape:
 ```rust
 pub mod peeps {
     pub const PEEPS_SOURCE_LEFT: ::peeps::SourceLeft =
-        ::peeps::SourceLeft::new(env!("CARGO_MANIFEST_DIR"));
+        ::peeps::SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
 
     impl<T> MutexExt<T> for ::peeps::Mutex<T> {
         #[track_caller]

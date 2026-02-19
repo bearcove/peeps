@@ -1,7 +1,7 @@
 use peeps_types::{EdgeKind, EntityBody, LockEntity, LockKind};
 use std::ops::{Deref, DerefMut};
 
-use super::super::{Source, SourceRight};
+use super::super::{local_source, Source, SourceRight};
 use peeps_runtime::{
     current_causal_target, AsEntityRef, EdgeHandle, EntityHandle, EntityRef, HELD_MUTEX_STACK,
 };
@@ -38,7 +38,7 @@ impl<T> Mutex<T> {
             EntityBody::Lock(LockEntity {
                 kind: LockKind::Mutex,
             }),
-            Source::new(source.into_string(), None),
+            local_source(source),
         )
         .into_typed::<peeps_types::Lock>();
         Self {

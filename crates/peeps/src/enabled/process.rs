@@ -4,7 +4,7 @@ use std::future::Future;
 use std::io;
 use std::process::{ExitStatus, Output, Stdio};
 
-use super::{Source, SourceRight};
+use super::{local_source, Source, SourceRight};
 use peeps_runtime::{instrument_future, EntityHandle};
 
 pub struct Command {
@@ -215,7 +215,7 @@ impl Child {
         let handle = EntityHandle::new(
             name,
             body,
-            Source::new(SourceRight::caller().into_string(), None),
+            local_source(SourceRight::caller()),
         );
         Self {
             inner: Some(child),

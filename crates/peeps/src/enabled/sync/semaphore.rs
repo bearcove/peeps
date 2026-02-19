@@ -4,7 +4,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
-use super::super::{Source, SourceRight};
+use super::super::{local_source, Source, SourceRight};
 use peeps_runtime::{
     current_causal_target, instrument_operation_on_with_source, AsEntityRef, EdgeHandle,
     EntityHandle, EntityRef, WeakEntityHandle,
@@ -50,7 +50,7 @@ impl Semaphore {
                 max_permits,
                 handed_out_permits: 0,
             }),
-            Source::new(source.into_string(), None),
+            local_source(source),
         )
         .into_typed::<peeps_types::Semaphore>();
         Self {
