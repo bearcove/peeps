@@ -45,7 +45,7 @@
 
 .ui-section-subhead {
     font-size: var(--font-size-sm);
-    font-weight: 600;
+    font-weight: 400;
     color: var(--text-muted);
 }
 
@@ -59,4 +59,3 @@
     padding: 3px 6px;
     border-radius: var(--radius-control);
 }
-
