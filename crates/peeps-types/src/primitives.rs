@@ -1,5 +1,7 @@
 use compact_str::{CompactString, ToCompactString};
 use facet::Facet;
+#[cfg(feature = "rusqlite")]
+use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
@@ -43,6 +45,28 @@ impl PTime {
 
     pub fn as_millis(&self) -> u64 {
         self.0
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl ToSql for PTime {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        let as_i64 = i64::try_from(self.0).map_err(|_| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("PTime out of SQLite i64 range: {}", self.0),
+            )))
+        })?;
+        Ok(as_i64.into())
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl FromSql for PTime {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        let raw_i64 = i64::column_result(value)?;
+        let raw_u64 = u64::try_from(raw_i64).map_err(|_| FromSqlError::OutOfRange(raw_i64))?;
+        Ok(PTime(raw_u64))
     }
 }
 

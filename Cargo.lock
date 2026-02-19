@@ -1226,6 +1226,7 @@ dependencies = [
  "facet-format",
  "facet-value",
  "peeps-source",
+ "rusqlite",
 ]
 
 [[package]]

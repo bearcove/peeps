@@ -8,7 +8,7 @@
 //! of being modeled as arrays in JSON fields.
 
 use compact_str::CompactString;
-use peeps_types::{Edge, Entity, Event, Scope, Snapshot, SourceId};
+use peeps_types::{Edge, Entity, Event, PTime, Scope, Snapshot, SourceId};
 use rusqlite::types::{Value as SqlValue, ValueRef};
 use std::fmt;
 
@@ -67,7 +67,7 @@ pub fn json_text_to_facet(text: &str) -> Result<facet_value::Value, String> {
 #[derive(Debug, Clone)]
 pub struct EncodedEntityRow {
     pub id: CompactString,
-    pub birth_ms: u64,
+    pub birth: PTime,
     pub source_id: SourceId,
     pub name: CompactString,
     pub body_json: String,
@@ -76,7 +76,7 @@ pub struct EncodedEntityRow {
 #[derive(Debug, Clone)]
 pub struct EncodedScopeRow {
     pub id: CompactString,
-    pub birth_ms: u64,
+    pub birth: PTime,
     pub source_id: SourceId,
     pub name: CompactString,
     pub body_json: String,
@@ -93,11 +93,10 @@ pub struct EncodedEdgeRow {
 #[derive(Debug, Clone)]
 pub struct EncodedEventRow {
     pub id: CompactString,
-    pub at_ms: u64,
+    pub at: PTime,
     pub source: CompactString,
     pub target_json: String,
     pub kind_json: String,
-    pub meta_json: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -111,7 +110,7 @@ pub struct EncodedSnapshotBatch {
 pub fn encode_entity_row(entity: &Entity) -> Result<EncodedEntityRow, EncodeError> {
     Ok(EncodedEntityRow {
         id: CompactString::new(entity.id.as_str()),
-        birth_ms: entity.birth.as_millis(),
+        birth: entity.birth,
         source_id: entity.source,
         name: entity.name.clone(),
         body_json: facet_json::to_string(&entity.body)
@@ -122,7 +121,7 @@ pub fn encode_entity_row(entity: &Entity) -> Result<EncodedEntityRow, EncodeErro
 pub fn encode_scope_row(scope: &Scope) -> Result<EncodedScopeRow, EncodeError> {
     Ok(EncodedScopeRow {
         id: CompactString::new(scope.id.as_str()),
-        birth_ms: scope.birth.as_millis(),
+        birth: scope.birth,
         source_id: scope.source,
         name: scope.name.clone(),
         body_json: facet_json::to_string(&scope.body)
@@ -144,13 +143,11 @@ pub fn encode_edge_row(edge: &Edge) -> Result<EncodedEdgeRow, EncodeError> {
 pub fn encode_event_row(event: &Event) -> Result<EncodedEventRow, EncodeError> {
     Ok(EncodedEventRow {
         id: CompactString::new(event.id.as_str()),
-        at_ms: event.at.as_millis(),
+        at: event.at,
         source: event.source.clone(),
         target_json: facet_json::to_string(&event.target)
             .map_err(|e| EncodeError::Json(e.to_string()))?,
         kind_json: facet_json::to_string(&event.kind)
-            .map_err(|e| EncodeError::Json(e.to_string()))?,
-        meta_json: facet_json::to_string(&event.meta)
             .map_err(|e| EncodeError::Json(e.to_string()))?,
     })
 }
@@ -245,7 +242,7 @@ pub fn insert_encoded_snapshot_batch(
         tables.edges.as_str()
     );
     let events_sql = format!(
-        "{} [{}] (snapshot_id, id, at_ms, source, target_json, kind_json, meta_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "{} [{}] (snapshot_id, id, at_ms, source, target_json, kind_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         mode.verb(),
         tables.events.as_str()
     );
@@ -256,7 +253,7 @@ pub fn insert_encoded_snapshot_batch(
             stmt.execute(rusqlite::params![
                 snapshot_id,
                 row.id.as_str(),
-                row.birth_ms as i64,
+                row.birth,
                 row.source_id,
                 row.name.as_str(),
                 row.body_json,
@@ -271,7 +268,7 @@ pub fn insert_encoded_snapshot_batch(
             stmt.execute(rusqlite::params![
                 snapshot_id,
                 row.id.as_str(),
-                row.birth_ms as i64,
+                row.birth,
                 row.source_id,
                 row.name.as_str(),
                 row.body_json,
@@ -300,11 +297,10 @@ pub fn insert_encoded_snapshot_batch(
             stmt.execute(rusqlite::params![
                 snapshot_id,
                 row.id.as_str(),
-                row.at_ms as i64,
+                row.at,
                 row.source.as_str(),
                 row.target_json,
                 row.kind_json,
-                row.meta_json,
             ])?;
             counts.events += 1;
         }

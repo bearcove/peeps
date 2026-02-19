@@ -9,5 +9,5 @@ compact_str.workspace = true
 facet-json.workspace = true
 facet-value.workspace = true
 peeps-source = { workspace = true, features = ["rusqlite"] }
-peeps-types.workspace = true
+peeps-types = { workspace = true, features = ["rusqlite"] }
 rusqlite.workspace = true

@@ -4,9 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+rusqlite = ["dep:rusqlite"]
+
 [dependencies]
 compact_str.workspace = true
 facet.workspace = true
 facet-format.workspace = true
 facet-value.workspace = true
 peeps-source.workspace = true
+rusqlite = { workspace = true, optional = true }
