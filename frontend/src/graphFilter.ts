@@ -27,6 +27,7 @@ export type GraphFilterParseResult = {
 export type GraphFilterSuggestion = {
   token: string;
   description: string;
+  applyToken?: string;
 };
 
 export type GraphFilterSuggestionItem = {
@@ -151,25 +152,26 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
     const keyLower = key.toLowerCase();
     const valueRaw = stripFilterQuotes(signedRaw.slice(signedColon + 1));
     const value = valueRaw.trim();
+    const isPlaceholderValue = /^<[^>]+>$/.test(value);
     if (!value) {
       parsed.push({ raw, key, value: valueRaw, valid: false });
       continue;
     }
 
     let valid = false;
-    if (signed !== 0 && (keyLower === "node" || keyLower === "id")) {
+    if (signed !== 0 && !isPlaceholderValue && (keyLower === "node" || keyLower === "id")) {
       (signed > 0 ? includeNodeIds : excludeNodeIds).add(value);
       valid = true;
-    } else if (signed !== 0 && (keyLower === "location" || keyLower === "source")) {
+    } else if (signed !== 0 && !isPlaceholderValue && (keyLower === "location" || keyLower === "source")) {
       (signed > 0 ? includeLocations : excludeLocations).add(value);
       valid = true;
-    } else if (signed !== 0 && keyLower === "crate") {
+    } else if (signed !== 0 && !isPlaceholderValue && keyLower === "crate") {
       (signed > 0 ? includeCrates : excludeCrates).add(value);
       valid = true;
-    } else if (signed !== 0 && keyLower === "process") {
+    } else if (signed !== 0 && !isPlaceholderValue && keyLower === "process") {
       (signed > 0 ? includeProcesses : excludeProcesses).add(value);
       valid = true;
-    } else if (signed !== 0 && keyLower === "kind") {
+    } else if (signed !== 0 && !isPlaceholderValue && keyLower === "kind") {
       (signed > 0 ? includeKinds : excludeKinds).add(value);
       valid = true;
     } else if (keyLower === "loners") {
@@ -425,9 +427,9 @@ function rankMatch(queryLower: string, targetLower: string): number {
   return Number.POSITIVE_INFINITY;
 }
 
-function uniquePush(out: GraphFilterSuggestion[], token: string, description: string): void {
+function uniquePush(out: GraphFilterSuggestion[], token: string, description: string, applyToken?: string): void {
   if (out.some((item) => item.token === token)) return;
-  out.push({ token, description });
+  out.push({ token, description, applyToken });
 }
 
 function sortedMatches<T>(
@@ -459,17 +461,17 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
   const signedDesc = signed === "+" ? "Include only matching" : "Exclude matching";
 
   if (!unsignedFragment || !unsignedFragment.includes(":")) {
-    const keySuggestions: readonly { key: string; label: string }[] = [
-      { key: "+node:<id>", label: "Include only matching nodes by entity id" },
-      { key: "-node:<id>", label: "Exclude matching nodes by entity id" },
-      { key: "+location:<src>", label: "Include only matching source locations" },
-      { key: "-location:<src>", label: "Exclude matching source locations" },
-      { key: "+crate:<name>", label: "Include only matching crates" },
-      { key: "-crate:<name>", label: "Exclude matching crates" },
-      { key: "+process:<id>", label: "Include only matching processes" },
-      { key: "-process:<id>", label: "Exclude matching processes" },
-      { key: "+kind:<kind>", label: "Include only matching kinds" },
-      { key: "-kind:<kind>", label: "Exclude matching kinds" },
+    const keySuggestions: readonly { key: string; label: string; applyToken?: string }[] = [
+      { key: "+node:<id>", label: "Include only matching nodes by entity id", applyToken: "+node:" },
+      { key: "-node:<id>", label: "Exclude matching nodes by entity id", applyToken: "-node:" },
+      { key: "+location:<src>", label: "Include only matching source locations", applyToken: "+location:" },
+      { key: "-location:<src>", label: "Exclude matching source locations", applyToken: "-location:" },
+      { key: "+crate:<name>", label: "Include only matching crates", applyToken: "+crate:" },
+      { key: "-crate:<name>", label: "Exclude matching crates", applyToken: "-crate:" },
+      { key: "+process:<id>", label: "Include only matching processes", applyToken: "+process:" },
+      { key: "-process:<id>", label: "Exclude matching processes", applyToken: "-process:" },
+      { key: "+kind:<kind>", label: "Include only matching kinds", applyToken: "+kind:" },
+      { key: "-kind:<kind>", label: "Exclude matching kinds", applyToken: "-kind:" },
       { key: "loners:on", label: "Show unconnected nodes" },
       { key: "loners:off", label: "Hide unconnected nodes" },
       { key: "colorBy:process", label: "Color nodes by process" },
@@ -479,7 +481,7 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       { key: "groupBy:none", label: "Disable grouping" },
     ];
     const matched = sortedMatches(keySuggestions, lowerFragment, (entry) => `${entry.key} ${entry.label}`);
-    for (const entry of matched) uniquePush(out, entry.key, entry.label);
+    for (const entry of matched) uniquePush(out, entry.key, entry.label, entry.applyToken);
     return out;
   }
 
@@ -537,13 +539,13 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
     return out;
   }
 
-  const fallbackKeys: readonly { key: string; label: string }[] = signed
+  const fallbackKeys: readonly { key: string; label: string; applyToken?: string }[] = signed
     ? [
-        { key: `${signed}node:<id>`, label: "Filter by node id" },
-        { key: `${signed}location:<src>`, label: "Filter by source location" },
-        { key: `${signed}crate:<name>`, label: "Filter by crate" },
-        { key: `${signed}process:<id>`, label: "Filter by process" },
-        { key: `${signed}kind:<kind>`, label: "Filter by kind" },
+        { key: `${signed}node:<id>`, label: "Filter by node id", applyToken: `${signed}node:` },
+        { key: `${signed}location:<src>`, label: "Filter by source location", applyToken: `${signed}location:` },
+        { key: `${signed}crate:<name>`, label: "Filter by crate", applyToken: `${signed}crate:` },
+        { key: `${signed}process:<id>`, label: "Filter by process", applyToken: `${signed}process:` },
+        { key: `${signed}kind:<kind>`, label: "Filter by kind", applyToken: `${signed}kind:` },
       ]
     : [
         { key: "loners:on", label: "Show unconnected nodes" },
@@ -555,14 +557,14 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
         { key: "groupBy:none", label: "Disable grouping" },
       ];
   for (const entry of sortedMatches(fallbackKeys, signed ? unsignedLower : lowerFragment, (v) => `${v.key} ${v.label}`)) {
-    uniquePush(out, entry.key, entry.label);
+    uniquePush(out, entry.key, entry.label, entry.applyToken);
   }
   if (!signed && (lowerFragment === "+" || lowerFragment === "-")) {
-    uniquePush(out, `${lowerFragment}node:<id>`, "Filter by node id");
-    uniquePush(out, `${lowerFragment}location:<src>`, "Filter by source location");
-    uniquePush(out, `${lowerFragment}crate:<name>`, "Filter by crate");
-    uniquePush(out, `${lowerFragment}process:<id>`, "Filter by process");
-    uniquePush(out, `${lowerFragment}kind:<kind>`, "Filter by kind");
+    uniquePush(out, `${lowerFragment}node:<id>`, "Filter by node id", `${lowerFragment}node:`);
+    uniquePush(out, `${lowerFragment}location:<src>`, "Filter by source location", `${lowerFragment}location:`);
+    uniquePush(out, `${lowerFragment}crate:<name>`, "Filter by crate", `${lowerFragment}crate:`);
+    uniquePush(out, `${lowerFragment}process:<id>`, "Filter by process", `${lowerFragment}process:`);
+    uniquePush(out, `${lowerFragment}kind:<kind>`, "Filter by kind", `${lowerFragment}kind:`);
   }
   return out;
 }

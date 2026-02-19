@@ -112,6 +112,11 @@ export function GraphFilterInput({
 
   const applyGraphFilterSuggestion = useCallback(
     (token: string) => {
+      if (token.endsWith(":")) {
+        applyEditorAction({ type: "set_draft", draft: token });
+        graphFilterInputRef.current?.focus();
+        return;
+      }
       applyEditorAction({ type: "apply_suggestion", token });
       graphFilterInputRef.current?.focus();
     },
@@ -209,7 +214,7 @@ export function GraphFilterInput({
                 }
                 const choice = graphFilterSuggestionsList[activeSuggestionIndex];
                 if (!choice) return;
-                applyGraphFilterSuggestion(choice.token);
+                applyGraphFilterSuggestion(choice.applyToken ?? choice.token);
                 return;
               }
               if (!editorState.suggestionsOpen || graphFilterSuggestionsList.length === 0) return;
@@ -232,7 +237,7 @@ export function GraphFilterInput({
                 const choice = graphFilterSuggestionsList[activeSuggestionIndex];
                 if (!choice) return;
                 event.preventDefault();
-                applyGraphFilterSuggestion(choice.token);
+                applyGraphFilterSuggestion(choice.applyToken ?? choice.token);
               }
             }}
             placeholder={
@@ -240,6 +245,7 @@ export function GraphFilterInput({
                 ? "filters: node:.. location:.. crate:.. process:.. kind:.. loners:on|off colorBy:.. groupBy:.."
                 : "add filter…"
             }
+            title="⌘K"
             className="graph-filter-fragment-input"
             aria-label="Graph filter query"
           />
@@ -255,7 +261,7 @@ export function GraphFilterInput({
                   index === activeSuggestionIndex && "graph-filter-suggestion--active",
                 ].filter(Boolean).join(" ")}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => applyGraphFilterSuggestion(suggestion.token)}
+                onClick={() => applyGraphFilterSuggestion(suggestion.applyToken ?? suggestion.token)}
               >
                 <span className="graph-filter-suggestion-token">{suggestion.token}</span>
                 <span className="graph-filter-suggestion-sep"> - </span>

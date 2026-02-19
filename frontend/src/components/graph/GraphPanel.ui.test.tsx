@@ -74,11 +74,16 @@ describe("GraphPanel filter input interactions", () => {
 
     const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
     await user.click(input);
-    await user.type(input, "-n");
+    await user.type(input, "-k");
 
-    await user.click(screen.getByText("-node:<id>"));
+    await user.click(screen.getByText("-kind:<kind>"));
+    expect(input.value).toBe("-kind:");
+    expect(screen.queryByRole("button", { name: /-kind:<kind>/i })).toBeNull();
+    expect(screen.getByText("-kind:request")).toBeTruthy();
+
+    await user.click(screen.getByText("-kind:request"));
     expect(input.value).toBe("");
-    expect(screen.getByRole("button", { name: /-node:<id>/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /-kind:request/i })).toBeTruthy();
   });
 
   it("backspace at end removes last chip but keeps previous chip committed", async () => {
@@ -102,11 +107,11 @@ describe("GraphPanel filter input interactions", () => {
 
     const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
     await user.click(input);
-    await user.type(input, "-n");
+    await user.type(input, "-k");
     await user.tab();
 
-    expect(screen.getByRole("button", { name: /-node:<id>/i })).toBeTruthy();
-    expect(input.value).toBe("");
+    expect(input.value).toBe("-kind:");
+    expect(screen.queryByRole("button", { name: /-kind:<kind>/i })).toBeNull();
   });
 
   it("captures Shift+Tab and cycles suggestions backwards", async () => {
@@ -119,8 +124,9 @@ describe("GraphPanel filter input interactions", () => {
     await user.keyboard("{Shift>}{Tab}{/Shift}");
     await user.keyboard("{Enter}");
 
-    expect(screen.getByRole("button", { name: /-kind:<kind>/i })).toBeTruthy();
-    expect(input.value).toBe("");
+    expect(input.value).toBe("-kind:");
+    expect(screen.queryByRole("button", { name: /-kind:<kind>/i })).toBeNull();
+    expect(screen.getByText("-kind:request")).toBeTruthy();
   });
 
   it("clicking outside unfocuses filter and closes suggestions", async () => {
@@ -147,10 +153,11 @@ describe("GraphPanel filter input interactions", () => {
 
     const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
     await user.click(input);
-    await user.type(input, "-n");
-    await user.click(screen.getByText("-node:<id>"));
+    await user.type(input, "-k");
+    await user.click(screen.getByText("-kind:<kind>"));
+    await user.click(screen.getByText("-kind:request"));
 
-    const chip = screen.getByRole("button", { name: /-node:<id>/i });
+    const chip = screen.getByRole("button", { name: /-kind:request/i });
     expect(getComputedStyle(chip).fontSize).toBe(getComputedStyle(input).fontSize);
   });
 });

@@ -152,13 +152,13 @@ export function GraphCanvas({
             >
               <circle cx="1" cy="1" r="0.8" className="graph-canvas__dot" />
             </pattern>
-            <marker id="arrowhead-8" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+            <marker id="arrowhead-8" markerWidth="8" markerHeight="8" refX="0" refY="4" orient="auto" markerUnits="userSpaceOnUse">
               <path d="M 0 0 L 8 4 L 0 8 Z" fill="context-stroke" />
             </marker>
-            <marker id="arrowhead-10" markerWidth="10" markerHeight="10" refX="10" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+            <marker id="arrowhead-10" markerWidth="10" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse">
               <path d="M 0 0 L 10 5 L 0 10 Z" fill="context-stroke" />
             </marker>
-            <marker id="arrowhead-14" markerWidth="14" markerHeight="14" refX="14" refY="7" orient="auto" markerUnits="userSpaceOnUse">
+            <marker id="arrowhead-14" markerWidth="14" markerHeight="14" refX="0" refY="7" orient="auto" markerUnits="userSpaceOnUse">
               <path d="M 0 0 L 14 7 L 0 14 Z" fill="context-stroke" />
             </marker>
           </defs>

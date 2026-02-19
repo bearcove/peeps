@@ -11,6 +11,10 @@
     width: 100%;
 }
 
+.ui-input::placeholder {
+    color: var(--text-muted);
+}
+
 .ui-input:focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px var(--focus-ring);
