@@ -4,4 +4,4 @@ pub mod sync;
 pub mod time;
 pub mod rpc;
 
-pub use task::*;
+pub use task::{spawn, spawn_blocking};
