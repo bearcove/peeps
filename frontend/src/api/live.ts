@@ -9,17 +9,21 @@ import type {
   SnapshotCutResponse,
   TriggerCutResponse,
 } from "./types.generated";
-
-interface ApiErrorResponse {
-  error?: string;
-}
+import { apiLog } from "../debug";
 
 async function readErrorMessage(res: Response): Promise<string> {
   const body = await res.text();
   if (!body) return `${res.status} ${res.statusText}`;
   try {
-    const parsed = JSON.parse(body) as ApiErrorResponse;
-    if (parsed.error) return parsed.error;
+    const parsed = JSON.parse(body) as unknown;
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "error" in parsed &&
+      typeof (parsed as { error?: unknown }).error === "string"
+    ) {
+      return (parsed as { error: string }).error;
+    }
   } catch {
     // Fall back to response body text.
   }
@@ -27,25 +31,39 @@ async function readErrorMessage(res: Response): Promise<string> {
 }
 
 async function getJson<T>(url: string): Promise<T> {
+  apiLog("GET %s request", url);
   const res = await fetch(url);
+  apiLog("GET %s response %d", url, res.status);
   if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
+    const message = await readErrorMessage(res);
+    apiLog("GET %s error %s", url, message);
+    throw new Error(message);
   }
-  return res.json() as Promise<T>;
+  const payload = (await res.json()) as T;
+  apiLog("GET %s payload %O", url, payload);
+  return payload;
 }
 
 async function getJsonOrNullOn404<T>(url: string): Promise<T | null> {
+  apiLog("GET %s request", url);
   const res = await fetch(url);
+  apiLog("GET %s response %d", url, res.status);
   if (res.status === 404) {
+    apiLog("GET %s 404 -> null", url);
     return null;
   }
   if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
+    const message = await readErrorMessage(res);
+    apiLog("GET %s error %s", url, message);
+    throw new Error(message);
   }
-  return res.json() as Promise<T>;
+  const payload = (await res.json()) as T;
+  apiLog("GET %s payload %O", url, payload);
+  return payload;
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
+  apiLog("POST %s request body=%O", url, body);
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -53,10 +71,15 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
     },
     body: JSON.stringify(body),
   });
+  apiLog("POST %s response %d", url, res.status);
   if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
+    const message = await readErrorMessage(res);
+    apiLog("POST %s error %s", url, message);
+    throw new Error(message);
   }
-  return res.json() as Promise<T>;
+  const payload = (await res.json()) as T;
+  apiLog("POST %s payload %O", url, payload);
+  return payload;
 }
 
 function expectRecordingSession(
@@ -91,20 +114,28 @@ export function createLiveApiClient(): ApiClient {
     fetchRecordingCurrent: () => getJson<RecordCurrentResponse>("/api/record/current"),
     fetchRecordingFrame: (frameIndex: number) => getJson<SnapshotCutResponse>(`/api/record/current/frame/${frameIndex}`),
     exportRecording: async () => {
+      apiLog("GET /api/record/current/export request");
       const res = await fetch("/api/record/current/export");
+      apiLog("GET /api/record/current/export response %d", res.status);
       if (!res.ok) {
-        throw new Error(await readErrorMessage(res));
+        const message = await readErrorMessage(res);
+        apiLog("GET /api/record/current/export error %s", message);
+        throw new Error(message);
       }
       return res.blob();
     },
     importRecording: async (file: File) => {
+      apiLog("POST /api/record/import request size=%d", file.size);
       const res = await fetch("/api/record/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: file,
       });
+      apiLog("POST /api/record/import response %d", res.status);
       if (!res.ok) {
-        throw new Error(await readErrorMessage(res));
+        const message = await readErrorMessage(res);
+        apiLog("POST /api/record/import error %s", message);
+        throw new Error(message);
       }
       return expectRecordingSession(
         (await res.json()) as RecordCurrentResponse,

@@ -132,7 +132,7 @@ async fn flush_backtrace_records(
 ) -> Result<(), String> {
     let records = super::backtrace_records_after(*last_sent_backtrace_id);
     for record in records {
-        let record_id = record.id;
+        let record_id = record.id.get();
         write_client_message(writer, &ClientMessage::BacktraceRecord(record)).await?;
         *last_sent_backtrace_id = record_id;
     }

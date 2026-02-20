@@ -38,11 +38,10 @@ import { SCOPE_DARK_RGB, SCOPE_LIGHT_RGB } from "../components/graph/scopeColors
 import { AppHeader } from "../components/AppHeader";
 import type { RecordingState, SnapshotState } from "../App";
 import { Switch } from "../ui/primitives/Switch";
-import type { SnapshotSource } from "../api/types.generated";
-import type { EntityDef } from "../snapshot";
+import type { EntityDef, RenderSource } from "../snapshot";
 
-function fakeSource(krate: string, path: string, line: number): SnapshotSource {
-  return { id: 0, path, line, krate };
+function fakeSource(krate: string, path: string, line: number): RenderSource {
+  return { path, line, krate };
 }
 import { GraphNode } from "../components/graph/GraphNode";
 import { GraphFilterInput } from "../components/graph/GraphFilterInput";
@@ -606,8 +605,7 @@ export function useStorybookState() {
     };
     const tx = {
       ...base,
-      id: "101/chan_tx",
-      rawEntityId: "chan_tx",
+      id: "chan_tx",
       name: "roam_driver:tx",
       kind: "mpsc_tx",
       body: { mpsc_tx: { queue_len: 0, capacity: 256 } },
@@ -617,8 +615,7 @@ export function useStorybookState() {
     } as unknown as EntityDef;
     const rx = {
       ...base,
-      id: "101/chan_rx",
-      rawEntityId: "chan_rx",
+      id: "chan_rx",
       name: "roam_driver:rx",
       kind: "mpsc_rx",
       body: { mpsc_rx: {} },
@@ -627,8 +624,7 @@ export function useStorybookState() {
 
     return {
       ...base,
-      id: "101/roam_driver",
-      rawEntityId: "roam_driver",
+      id: "roam_driver",
       name: "roam_driver",
       kind: "channel_pair",
       body: tx.body,
@@ -655,8 +651,7 @@ export function useStorybookState() {
     return [
       {
         ...base,
-        id: "p1/mutex_a",
-        rawEntityId: "mutex_a",
+        id: "mutex_a",
         processId: "p1",
         processName: "vx-store",
         source: fakeSource("tokio", "sync/mutex.rs", 42),
@@ -668,8 +663,7 @@ export function useStorybookState() {
       },
       {
         ...base,
-        id: "p1/future_a",
-        rawEntityId: "future_a",
+        id: "future_a",
         processId: "p1",
         processName: "vx-store",
         source: fakeSource("roam-session", "session.rs", 88),
@@ -682,8 +676,7 @@ export function useStorybookState() {
       },
       {
         ...base,
-        id: "p1/sem_a",
-        rawEntityId: "sem_a",
+        id: "sem_a",
         processId: "p1",
         processName: "vx-store",
         source: fakeSource("tokio", "sync/semaphore.rs", 12),
@@ -697,8 +690,7 @@ export function useStorybookState() {
       },
       {
         ...base,
-        id: "p2/future_b",
-        rawEntityId: "future_b",
+        id: "future_b",
         processId: "p2",
         processName: "vx-runner",
         source: fakeSource("roam-session", "rpc.rs", 17),
@@ -711,8 +703,7 @@ export function useStorybookState() {
       },
       {
         ...base,
-        id: "p2/future_c",
-        rawEntityId: "future_c",
+        id: "future_c",
         processId: "p2",
         processName: "vx-runner",
         source: fakeSource("moire-examples", "main.rs", 20),
@@ -735,20 +726,20 @@ export function useStorybookState() {
       },
       {
         id: "e2",
-        source: "p1/mutex_a",
-        target: "p1/sem_a",
+        source: "mutex_a",
+        target: "sem_a",
         kind: "holds" as const,
       },
       {
         id: "e3",
-        source: "p2/future_b",
-        target: "p1/sem_a",
+        source: "future_b",
+        target: "sem_a",
         kind: "waiting_on" as const,
       },
       {
         id: "e4",
-        source: "p2/future_c",
-        target: "p2/future_b",
+        source: "future_c",
+        target: "future_b",
         kind: "polls" as const,
       },
     ],

@@ -216,7 +216,7 @@ const MOCK_SNAPSHOT = {
       },
     },
   ],
-} as SnapshotCutResponse;
+} as unknown as SnapshotCutResponse;
 
 const retryDelay = 120;
 

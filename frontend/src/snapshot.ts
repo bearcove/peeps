@@ -1,4 +1,4 @@
-import type { EdgeKind, EntityBody, ResolvedTopFrame, SnapshotCutResponse, SnapshotSource } from "./api/types.generated";
+import type { EdgeKind, EntityBody, SnapshotCutResponse } from "./api/types.generated";
 import { canonicalScopeKind } from "./scopeKindSpec";
 
 // ── Body type helpers ──────────────────────────────────────────
@@ -15,12 +15,24 @@ export type Tone = "ok" | "warn" | "crit" | "neutral";
 
 export type MetaValue = string | number | boolean | null | MetaValue[] | { [key: string]: MetaValue };
 
+export type RenderSource = {
+  path: string;
+  line: number;
+  krate: string;
+};
+
+export type RenderTopFrame = {
+  function_name: string;
+  crate_name: string;
+  module_path: string;
+  source_file: string;
+  line?: number;
+  column?: number;
+};
+
 // f[impl display.entity]
 export type EntityDef = {
-  /** Composite identity: "${processId}/${rawEntityId}". Unique across all processes. */
   id: string;
-  /** Original entity ID as reported by the process. */
-  rawEntityId: string;
   processId: string;
   processName: string;
   processPid: number;
@@ -28,9 +40,9 @@ export type EntityDef = {
   kind: string;
   body: EntityBody;
   backtraceId: number;
-  source: SnapshotSource;
+  source: RenderSource;
   krate?: string;
-  topFrame?: ResolvedTopFrame;
+  topFrame?: RenderTopFrame;
   /** Process-relative birth time in ms (PTime). Not comparable across processes. */
   birthPtime: number;
   /** Age at capture time: ptime_now_ms - birthPtime (clamped to 0). */
@@ -64,7 +76,6 @@ export type SnapshotGroupMode = "none" | "process" | "crate";
 
 // f[impl display.scope]
 export type ScopeDef = {
-  /** Composite key: `${processId}:${scopeId}` */
   key: string;
   processId: string;
   processName: string;
@@ -74,43 +85,29 @@ export type ScopeDef = {
   /** Canonical scope kind: "process" | "thread" | "task" | "connection" | … */
   scopeKind: string;
   backtraceId: number;
-  source: SnapshotSource;
+  source: RenderSource;
   krate?: string;
-  topFrame?: ResolvedTopFrame;
+  topFrame?: RenderTopFrame;
   /** Process-relative birth time in ms. */
   birthPtime: number;
   /** Age at capture time: ptime_now_ms - birthPtime (clamped to 0). */
   ageMs: number;
-  /** Composite entity IDs (`${processId}/${entityId}`) that belong to this scope. */
   memberEntityIds: string[];
 };
 
-// f[impl display.source.strict]
-function resolveSourceStrict(
-  sourcesMap: Map<number, SnapshotSource>,
-  sourceId: number,
-  context: string,
-  processId: number,
-): SnapshotSource {
-  const source = sourcesMap.get(sourceId);
-  if (!source) throw new Error(`[snapshot] unknown source id ${sourceId} in process ${processId}`);
-  if (typeof source.path !== "string" || source.path.length === 0) {
-    throw new Error(`[snapshot] ${context} has invalid source.path in process ${processId}`);
-  }
-  if (!Number.isInteger(source.line) || source.line <= 0) {
-    throw new Error(`[snapshot] ${context} has invalid source.line in process ${processId}`);
-  }
-  if (typeof source.krate !== "string" || source.krate.length === 0) {
-    throw new Error(`[snapshot] ${context} has invalid source.krate in process ${processId}`);
-  }
-  return source;
+function backtraceSource(backtraceId: number): RenderSource {
+  return {
+    path: `backtrace:${backtraceId}`,
+    line: 0,
+    krate: "~no-crate",
+  };
 }
 
 // f[impl display.backtrace.required]
 function requireBacktraceId(owner: unknown, context: string, processId: number): number {
-  const value = (owner as { backtrace_id?: unknown }).backtrace_id;
+  const value = (owner as { backtrace?: unknown }).backtrace;
   if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-    throw new Error(`[snapshot] ${context} missing/invalid backtrace_id in process ${processId}`);
+    throw new Error(`[snapshot] ${context} missing/invalid backtrace in process ${processId}`);
   }
   return value;
 }
@@ -122,29 +119,20 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
     const { process_id, process_name, pid, ptime_now_ms, scope_entity_links } = proc;
     const processIdStr = String(process_id);
 
-    const sourcesMap = new Map(proc.snapshot.sources.map((s) => [s.id, s]));
-
     const membersByScope = new Map<string, string[]>();
     for (const link of scope_entity_links ?? []) {
-      const compositeEntityId = `${processIdStr}/${link.entity_id}`;
       let list = membersByScope.get(link.scope_id);
       if (!list) {
         list = [];
         membersByScope.set(link.scope_id, list);
       }
-      list.push(compositeEntityId);
+      list.push(link.entity_id);
     }
 
     for (const scope of proc.snapshot.scopes) {
       const memberEntityIds = membersByScope.get(scope.id) ?? [];
-      const resolvedSource = resolveSourceStrict(
-        sourcesMap,
-        scope.source,
-        `scope ${processIdStr}/${scope.id}`,
-        process_id,
-      );
       const backtraceId = requireBacktraceId(scope, `scope ${processIdStr}/${scope.id}`, process_id);
-      const topFrame = proc.top_frames?.[backtraceId];
+      const resolvedSource = backtraceSource(backtraceId);
       result.push({
         key: `${processIdStr}:${scope.id}`,
         processId: processIdStr,
@@ -155,8 +143,8 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
         scopeKind: canonicalScopeKind(scope.body),
         backtraceId,
         source: resolvedSource,
-        krate: resolvedSource.krate,
-        topFrame,
+        krate: undefined,
+        topFrame: undefined,
         birthPtime: scope.birth,
         ageMs: Math.max(0, ptime_now_ms - scope.birth),
         memberEntityIds,
@@ -508,22 +496,12 @@ export function convertSnapshot(
     const { process_id, process_name, pid, ptime_now_ms } = proc;
     const anchorUnixMs = snapshot.captured_at_unix_ms - ptime_now_ms;
 
-    const sourcesMap = new Map(proc.snapshot.sources.map((s) => [s.id, s]));
-
     for (const e of proc.snapshot.entities) {
-      const compositeId = `${process_id}/${e.id}`;
       const ageMs = Math.max(0, ptime_now_ms - e.birth);
-      const resolvedSource = resolveSourceStrict(
-        sourcesMap,
-        e.source,
-        `entity ${compositeId}`,
-        process_id,
-      );
-      const backtraceId = requireBacktraceId(e, `entity ${compositeId}`, process_id);
-      const topFrame = proc.top_frames?.[backtraceId];
+      const backtraceId = requireBacktraceId(e, `entity ${e.id}`, process_id);
+      const resolvedSource = backtraceSource(backtraceId);
       allEntities.push({
-        id: compositeId,
-        rawEntityId: e.id,
+        id: e.id,
         processId: String(process_id),
         processName: process_name,
         processPid: pid,
@@ -532,8 +510,8 @@ export function convertSnapshot(
         body: e.body,
         backtraceId,
         source: resolvedSource,
-        krate: resolvedSource.krate,
-        topFrame,
+        krate: undefined,
+        topFrame: undefined,
         birthPtime: e.birth,
         ageMs,
         birthApproxUnixMs: anchorUnixMs + e.birth,
@@ -546,26 +524,14 @@ export function convertSnapshot(
     }
   }
 
-  // Build raw entity ID → composite ID lookup for cross-process edge resolution.
-  // paired_with edges (RPC) have their src set to the request's raw ID from the other process.
-  const rawToCompositeId = new Map<string, string>();
-  for (const entity of allEntities) {
-    rawToCompositeId.set(entity.rawEntityId, entity.id);
-  }
-
-  // Second pass: build edges, resolving cross-process src IDs for paired_with.
+  // Second pass: build edges.
   for (const proc of snapshot.processes) {
-    const { process_id } = proc;
     for (let i = 0; i < proc.snapshot.edges.length; i++) {
       const e = proc.snapshot.edges[i];
-      const localSrc = `${process_id}/${e.src}`;
-      const srcComposite =
-        e.kind === "paired_with" ? (rawToCompositeId.get(e.src) ?? localSrc) : localSrc;
-      const dstComposite = `${process_id}/${e.dst}`;
       allEdges.push({
-        id: `e${i}-${srcComposite}-${dstComposite}-${e.kind}`,
-        source: srcComposite,
-        target: dstComposite,
+        id: `e${i}-${e.src}-${e.dst}-${e.kind}`,
+        source: e.src,
+        target: e.dst,
         kind: e.kind,
       });
     }

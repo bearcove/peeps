@@ -68,18 +68,7 @@ pub(crate) fn capture_backtrace_id() -> BacktraceId {
         panic!("failed to capture backtrace for enabled API boundary: {err}")
     });
     // r[impl wire.backtrace-record]
-    remember_backtrace_record(moire_wire::BacktraceRecord {
-        id: captured.backtrace.id.get(),
-        frames: captured
-            .backtrace
-            .frames
-            .into_iter()
-            .map(|frame| moire_wire::BacktraceFrameKey {
-                module_id: frame.module_id.get(),
-                rel_pc: frame.rel_pc,
-            })
-            .collect(),
-    });
+    remember_backtrace_record(captured.backtrace);
 
     backtrace_id
 }
@@ -93,14 +82,15 @@ pub(crate) fn remember_backtrace_record(record: moire_wire::BacktraceRecord) {
     let Ok(mut records) = backtrace_records().lock() else {
         panic!("backtrace record mutex poisoned; cannot continue");
     };
-    match records.get(&record.id) {
+    let record_id = record.id.get();
+    match records.get(&record_id) {
         Some(existing) if existing == &record => {}
         Some(_) => panic!(
             "backtrace record invariant violated: conflicting payload for id {}",
-            record.id
+            record_id
         ),
         None => {
-            records.insert(record.id, record);
+            records.insert(record_id, record);
         }
     }
 }

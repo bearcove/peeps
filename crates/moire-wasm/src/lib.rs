@@ -3,7 +3,6 @@
 //! Instrumentation is intentionally no-op on wasm.
 
 use std::future::Future;
-use std::time::Duration;
 
 #[doc(hidden)]
 pub use tokio;
@@ -148,53 +147,38 @@ pub mod oneshot {
     }
 }
 
-/// Handle that can be used to abort a spawned task.
-///
-/// On wasm this is a no-op because fire-and-forget tasks cannot be cancelled.
-#[derive(Debug)]
-pub struct AbortHandle;
+/// Time utilities matching `moire::time` on native.
+pub mod time {
+    use std::future::Future;
+    use std::time::Duration;
 
-impl AbortHandle {
-    pub fn abort(&self) -> bool {
-        false
+    /// Sleep for a duration, equivalent to `tokio::time::sleep`.
+    pub async fn sleep(duration: Duration) {
+        gloo_timers::future::sleep(duration).await;
+    }
+
+    /// Run a future with a timeout. Returns `None` if the timeout fires first.
+    pub async fn timeout<F, T>(duration: Duration, future: F) -> Option<T>
+    where
+        F: Future<Output = T>,
+    {
+        use futures_util::future::{select, Either};
+        use std::pin::pin;
+
+        let sleep_fut = pin!(gloo_timers::future::sleep(duration));
+        let work_fut = pin!(future);
+
+        match select(work_fut, sleep_fut).await {
+            Either::Left((result, _)) => Some(result),
+            Either::Right((_, _)) => None,
+        }
     }
 }
 
-/// Spawn a task concurrently on the browser executor.
-pub fn spawn<F>(_name: &'static str, future: F)
+/// Spawn a task concurrently on the browser executor, equivalent to `moire::spawn`.
+pub fn spawn<F>(future: F)
 where
     F: Future<Output = ()> + 'static,
 {
     wasm_bindgen_futures::spawn_local(future);
-}
-
-/// Spawn a task and return an abort handle.
-pub fn spawn_with_abort<F>(_name: &'static str, future: F) -> AbortHandle
-where
-    F: Future<Output = ()> + 'static,
-{
-    wasm_bindgen_futures::spawn_local(future);
-    AbortHandle
-}
-
-/// Sleep for a duration.
-pub async fn sleep(duration: Duration, _label: impl Into<String>) {
-    gloo_timers::future::sleep(duration).await;
-}
-
-/// Run a future with a timeout.
-pub async fn timeout<F, T>(duration: Duration, future: F, _label: impl Into<String>) -> Option<T>
-where
-    F: Future<Output = T>,
-{
-    use futures_util::future::{select, Either};
-    use std::pin::pin;
-
-    let sleep_fut = pin!(gloo_timers::future::sleep(duration));
-    let work_fut = pin!(future);
-
-    match select(work_fut, sleep_fut).await {
-        Either::Left((result, _)) => Some(result),
-        Either::Right((_, _)) => None,
-    }
 }

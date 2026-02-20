@@ -74,7 +74,7 @@ export function EntityScopeLinksSection({
           setLinks([]);
           return;
         }
-        const entityId = sqlEscape(entity.rawEntityId);
+        const entityId = sqlEscape(entity.id);
         const sql = `
 select
   l.conn_id as process_id,
@@ -109,7 +109,7 @@ order by l.stream_id asc, l.scope_id asc
     return () => {
       cancelled = true;
     };
-  }, [entity.processId, entity.rawEntityId]);
+  }, [entity.processId, entity.id]);
 
   if (loading) {
     return (

@@ -1,4 +1,5 @@
 use facet::Facet;
+pub use moire_trace_types::{BacktraceRecord, FrameKey as BacktraceFrameKey};
 use moire_types::{CutAck, CutRequest, PullChangesResponse, Snapshot};
 use std::fmt;
 
@@ -178,19 +179,6 @@ pub struct SnapshotReply {
     pub snapshot: Option<Snapshot>,
 }
 
-#[derive(Facet, Debug, Clone, PartialEq, Eq)]
-pub struct BacktraceFrameKey {
-    pub module_id: u64,
-    pub rel_pc: u64,
-}
-
-#[derive(Facet, Debug, Clone, PartialEq, Eq)]
-// r[impl wire.backtrace-record]
-pub struct BacktraceRecord {
-    pub id: u64,
-    pub frames: Vec<BacktraceFrameKey>,
-}
-
 #[derive(Facet)]
 pub struct ClientError {
     pub process_name: String,
@@ -275,6 +263,7 @@ pub fn decode_server_message_default(frame: &[u8]) -> Result<ServerMessage, Wire
 #[cfg(test)]
 mod tests {
     use super::*;
+    use moire_trace_types::{BacktraceId, ModuleId};
     use moire_types::{CutId, SeqNo, Snapshot, StreamCursor, StreamId};
 
     fn client_payload_json(message: &ClientMessage) -> String {
@@ -340,14 +329,14 @@ mod tests {
     #[test]
     fn client_backtrace_record_wire_shape() {
         let json = client_payload_json(&ClientMessage::BacktraceRecord(BacktraceRecord {
-            id: 42,
+            id: BacktraceId::new(42).expect("non-zero backtrace id"),
             frames: vec![
                 BacktraceFrameKey {
-                    module_id: 1,
+                    module_id: ModuleId::new(1).expect("non-zero module id"),
                     rel_pc: 4096,
                 },
                 BacktraceFrameKey {
-                    module_id: 2,
+                    module_id: ModuleId::new(2).expect("non-zero module id"),
                     rel_pc: 8192,
                 },
             ],

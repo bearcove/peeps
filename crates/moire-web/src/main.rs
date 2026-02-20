@@ -135,6 +135,7 @@ const DEFAULT_VITE_ADDR: &str = "[::]:9131";
 const PROXY_BODY_LIMIT_BYTES: usize = 8 * 1024 * 1024;
 const SQLITE_BUSY_TIMEOUT_MS: u64 = 5_000;
 const EAGER_SYMBOLICATION_CONCURRENCY: usize = 1;
+const SYMBOLICATION_CUT_DRAIN_TIMEOUT_MS: u64 = 2_000;
 const SYMBOLICATION_UNRESOLVED_SCAFFOLD: &str =
     "symbolication engine not wired: eager scaffold stored unresolved marker";
 const TOP_FRAME_CRATE_EXCLUSIONS: &[&str] = &[
@@ -710,6 +711,7 @@ async fn wait_for_symbolication_cut_drain(db_path: Arc<PathBuf>, snapshot: &Snap
         return;
     }
 
+    let start = Instant::now();
     loop {
         let db_path = db_path.clone();
         let pairs_check = pairs.clone();
@@ -721,7 +723,15 @@ async fn wait_for_symbolication_cut_drain(db_path: Arc<PathBuf>, snapshot: &Snap
 
         match pending_count {
             Ok(0) => return,
-            Ok(_) => {
+            Ok(pending) => {
+                if start.elapsed() >= Duration::from_millis(SYMBOLICATION_CUT_DRAIN_TIMEOUT_MS) {
+                    warn!(
+                        pending,
+                        timeout_ms = SYMBOLICATION_CUT_DRAIN_TIMEOUT_MS,
+                        "symbolication cut-drain timed out; returning snapshot early"
+                    );
+                    return;
+                }
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
             Err(e) => {
@@ -1778,13 +1788,13 @@ async fn read_messages(
                         .ok_or_else(|| {
                             format!(
                                 "invariant violated: unknown connection {conn_id} for backtrace {}",
-                                record.id
+                                record.id.get()
                             )
                         })?
                 };
                 // r[impl symbolicate.server-store]
-                let backtrace_id = record.id;
-                let frames = backtrace_frames_for_store(conn_id, backtrace_id, &manifest, &record)?;
+                let backtrace_id = record.id.get();
+                let frames = backtrace_frames_for_store(&manifest, &record)?;
                 let inserted =
                     persist_backtrace_record(state.db_path.clone(), conn_id, backtrace_id, frames)
                         .await?;
@@ -1844,19 +1854,12 @@ fn validate_handshake(handshake: &moire_wire::Handshake) -> Result<(), String> {
 }
 
 fn backtrace_frames_for_store(
-    conn_id: u64,
-    backtrace_id: u64,
     module_manifest: &[StoredModuleManifestEntry],
     record: &BacktraceRecord,
 ) -> Result<Vec<BacktraceFramePersist>, String> {
     let mut frames = Vec::with_capacity(record.frames.len());
     for (frame_index, frame) in record.frames.iter().enumerate() {
-        let module_id = frame.module_id;
-        if module_id == 0 {
-            return Err(format!(
-                "invariant violated: conn {conn_id} backtrace {backtrace_id} frame {frame_index} has module_id=0"
-            ));
-        }
+        let module_id = frame.module_id.get();
         let module_idx = (module_id - 1) as usize;
         let (module_path, module_identity) = if let Some(module) = module_manifest.get(module_idx) {
             (module.module_path.clone(), module.module_identity.clone())

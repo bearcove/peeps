@@ -11,6 +11,7 @@
 //! | Item | Tokio equivalent |
 //! |---|---|
 //! | [`sleep`] | `tokio::time::sleep` |
+//! | [`timeout`] | `tokio::time::timeout` |
 //! | [`interval`] | `tokio::time::interval` |
 //! | [`Interval`] | `tokio::time::Interval` |
 use std::future::Future;
@@ -50,5 +51,22 @@ pub fn interval(period: Duration) -> Interval {
     Interval {
         inner: tokio::time::interval(period),
         handle: EntityHandle::new("time.interval", FutureEntity {}),
+    }
+}
+
+/// Run a future with a timeout. Returns `None` if the timeout fires first.
+///
+/// Equivalent to `tokio::time::timeout` but wraps the sleep as an instrumented entity.
+pub async fn timeout<F, T>(duration: Duration, future: F) -> Option<T>
+where
+    F: Future<Output = T>,
+{
+    let sleep_fut = sleep(duration);
+    tokio::pin!(sleep_fut);
+    tokio::pin!(future);
+
+    tokio::select! {
+        result = future => Some(result),
+        _ = sleep_fut => None,
     }
 }

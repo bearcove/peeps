@@ -18,3 +18,11 @@ impl Interval {
 pub fn interval(period: Duration) -> Interval {
     Interval(tokio::time::interval(period))
 }
+
+/// Run a future with a timeout. Returns `None` if the timeout fires first.
+pub async fn timeout<F, T>(duration: Duration, future: F) -> Option<T>
+where
+    F: Future<Output = T>,
+{
+    tokio::time::timeout(duration, future).await.ok()
+}

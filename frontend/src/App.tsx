@@ -3,6 +3,7 @@ import "./App.css";
 import type { FilterMenuItem } from "./ui/primitives/FilterMenu";
 import { apiClient } from "./api";
 import type { ConnectionsResponse, FrameSummary } from "./api/types.generated";
+import { appLog, snapshotLog } from "./debug";
 import { RecordingTimeline } from "./components/timeline/RecordingTimeline";
 import {
   collapseEdgesThroughHiddenNodes,
@@ -403,6 +404,7 @@ export function App() {
   }, []);
 
   const takeSnapshot = useCallback(async () => {
+    snapshotLog("takeSnapshot start");
     setSnap({ phase: "cutting" });
     setSelection(null);
     setInspectedSelection(null);
@@ -410,16 +412,30 @@ export function App() {
     setFocusedEntityFilter(null);
     try {
       const triggered = await apiClient.triggerCut();
+      snapshotLog("cut triggered id=%s requested=%d", triggered.cut_id, triggered.requested_connections);
       let status = await apiClient.fetchCutStatus(triggered.cut_id);
+      snapshotLog("cut status id=%s pending=%d acked=%d", status.cut_id, status.pending_connections, status.acked_connections);
       while (status.pending_connections > 0) {
         await new Promise<void>((resolve) => window.setTimeout(resolve, 600));
         status = await apiClient.fetchCutStatus(triggered.cut_id);
+        snapshotLog("cut status id=%s pending=%d acked=%d", status.cut_id, status.pending_connections, status.acked_connections);
       }
       setSnap({ phase: "loading" });
+      snapshotLog("snapshot request start");
       const snapshot = await apiClient.fetchSnapshot();
+      snapshotLog(
+        "snapshot response captured_at=%d processes=%d timed_out=%d",
+        snapshot.captured_at_unix_ms,
+        snapshot.processes.length,
+        snapshot.timed_out_processes.length,
+      );
       const converted = convertSnapshot(snapshot, effectiveSubgraphScopeMode);
+      snapshotLog("snapshot converted entities=%d edges=%d", converted.entities.length, converted.edges.length);
       setSnap({ phase: "ready", ...converted, scopes: extractScopes(snapshot) });
+      snapshotLog("takeSnapshot complete");
     } catch (err) {
+      console.error("[snapshot] takeSnapshot failed", err);
+      snapshotLog("takeSnapshot failed %O", err);
       setSnap({ phase: "error", message: err instanceof Error ? err.message : String(err) });
     }
   }, [effectiveSubgraphScopeMode, setFocusedEntityFilter]);
@@ -797,23 +813,31 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
     async function poll() {
+      appLog("startup poll loop begin");
       while (!cancelled) {
         try {
           const conns = await apiClient.fetchConnections();
+          appLog("connections loaded count=%d", conns.connected_processes);
           if (cancelled) break;
           setConnections(conns);
           const existingSnapshot = await apiClient.fetchExistingSnapshot();
+          appLog("existing snapshot %s", existingSnapshot ? "hit" : "miss");
           if (cancelled) break;
           if (existingSnapshot) {
             const converted = convertSnapshot(existingSnapshot, effectiveSubgraphScopeMode);
             setSnap({ phase: "ready", ...converted, scopes: extractScopes(existingSnapshot) });
+            appLog("startup poll done using existing snapshot");
             break;
           }
           if (conns.connected_processes > 0) {
-            takeSnapshot();
+            appLog("startup poll triggering takeSnapshot");
+            await takeSnapshot();
+            appLog("startup poll takeSnapshot returned");
             break;
           }
         } catch (e) {
+          console.error("[app] startup poll failed", e);
+          appLog("startup poll failed %O", e);
           console.error(e);
         }
         await new Promise<void>((resolve) => setTimeout(resolve, 2000));
@@ -828,6 +852,10 @@ export function App() {
   useEffect(() => {
     isLiveRef.current = isLive;
   }, [isLive]);
+
+  useEffect(() => {
+    appLog("snap phase=%s", snap.phase);
+  }, [snap.phase]);
 
   useEffect(() => {
     if (!inspectorOpen || inspectorPosition) return;

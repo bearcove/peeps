@@ -1214,6 +1214,7 @@ dependencies = [
  "facet-json",
  "facet-value",
  "figue",
+ "moire-types",
  "ureq",
 ]
 

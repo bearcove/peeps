@@ -22,6 +22,7 @@ impl fmt::Display for InvariantError {
 impl Error for InvariantError {}
 
 #[derive(Facet, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[facet(transparent)]
 pub struct ModuleId(u64);
 
 impl ModuleId {
@@ -38,6 +39,7 @@ impl ModuleId {
 }
 
 #[derive(Facet, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[facet(transparent)]
 // r[impl model.backtrace]
 pub struct BacktraceId(u64);
 
@@ -179,4 +181,3 @@ pub struct ModuleRecord {
     pub identity: ModuleIdentity,
     pub arch: ModuleArch,
 }
-
