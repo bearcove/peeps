@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use moire::spawn_tracked;
+use crate::scenarios::spawn_tracked;
 use moire::sync::Semaphore;
 
 pub async fn run() -> Result<(), String> {

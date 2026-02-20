@@ -2,9 +2,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::scenarios::spawn_tracked;
+use moire::sync::mpsc::channel;
+use moire::sync::oneshot::{oneshot, OneshotSender};
+use moire::sync::Mutex;
+
 type RequestId = u64;
 type ResponsePayload = String;
-type PendingMap = Arc<moire::Mutex<HashMap<RequestId, moire::OneshotSender<ResponsePayload>>>>;
+type PendingMap = Arc<Mutex<HashMap<RequestId, OneshotSender<ResponsePayload>>>>;
 
 fn storage_key_for_request(request_id: RequestId) -> RequestId {
     request_id + 1
@@ -15,16 +20,14 @@ fn lookup_key_for_response(response_id: RequestId) -> RequestId {
 }
 
 pub async fn run() -> Result<(), String> {
-    let pending_by_request_id: PendingMap = Arc::new(moire::Mutex::new(
-        "demo.pending_oneshot_senders",
-        HashMap::new(),
-    ));
-    let (response_bus_tx, mut response_bus_rx) = moire::channel("demo.response_bus", 4);
+    let pending_by_request_id: PendingMap =
+        Arc::new(Mutex::new("demo.pending_oneshot_senders", HashMap::new()));
+    let (response_bus_tx, mut response_bus_rx) = channel("demo.response_bus", 4);
 
     let pending_for_request = Arc::clone(&pending_by_request_id);
     spawn_tracked("client.request_42.await_response", async move {
         let request_id = 42_u64;
-        let (tx, rx) = moire::oneshot("demo.request_42.response");
+        let (tx, rx) = oneshot("demo.request_42.response");
 
         let storage_key = storage_key_for_request(request_id);
         pending_for_request.lock().insert(storage_key, tx);

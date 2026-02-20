@@ -157,7 +157,7 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-async fn dispatch_command(root_dir: &std::path::Path, command: CommandKind) -> AnyResult<()> {
+async fn dispatch_command(_root_dir: &std::path::Path, command: CommandKind) -> AnyResult<()> {
     match command {
         CommandKind::ChannelFullStall => scenarios::channel_full_stall::run().await,
         CommandKind::MutexLockOrderInversion => scenarios::mutex_lock_order_inversion::run().await,
@@ -170,7 +170,7 @@ async fn dispatch_command(root_dir: &std::path::Path, command: CommandKind) -> A
         }
         #[cfg(feature = "roam")]
         CommandKind::RoamRustSwiftStuckRequest => {
-            scenarios::roam_rust_swift_stuck_request::run(root_dir).await
+            scenarios::roam_rust_swift_stuck_request::run(_root_dir).await
         }
         CommandKind::SemaphoreStarvation => scenarios::semaphore_starvation::run().await,
     }
