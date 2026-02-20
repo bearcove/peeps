@@ -30,22 +30,6 @@ pub struct Child {
     handle: EntityHandle,
 }
 
-/// Instrumented equivalent of [`tokio::task::JoinSet`] for command-related tasks.
-/// Instrumented join set for command workflows.
-pub struct JoinSet<T> {
-    pub(super) inner: tokio::task::JoinSet<T>,
-    pub(super) handle: EntityHandle,
-}
-
-/// Interval wrapper used for command diagnostics.
-pub struct DiagnosticInterval {
-    _inner: tokio::time::Interval,
-    _handle: EntityHandle,
-}
-
-/// Type alias for an instrumented diagnostics interval.
-pub type Interval = DiagnosticInterval;
-
 impl Command {
     /// Creates a new instrumented command builder, mirroring [`tokio::process::Command::new`].
     pub fn new(program: impl AsRef<OsStr>) -> Self {

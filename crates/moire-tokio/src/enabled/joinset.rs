@@ -2,10 +2,16 @@ use std::cell::RefCell;
 use std::future::Future;
 
 use super::capture_backtrace_id;
-use super::process::JoinSet;
+use moire_types::EntityBody;
 use moire_runtime::{
     instrument_future, register_current_task_scope, EntityHandle, FUTURE_CAUSAL_STACK,
 };
+
+/// Instrumented equivalent of [`tokio::task::JoinSet`], used to track joined task sets.
+pub struct JoinSet<T> {
+    pub(super) inner: tokio::task::JoinSet<T>,
+    pub(super) handle: EntityHandle,
+}
 
 // r[impl api.joinset]
 impl<T> JoinSet<T>
@@ -18,7 +24,7 @@ where
         let name = name.into();
         let handle = EntityHandle::new(
             format!("joinset.{name}"),
-            moire_types::EntityBody::Future(moire_types::FutureEntity {}),
+            EntityBody::Future(moire_types::FutureEntity {}),
             source,
         );
         Self {
