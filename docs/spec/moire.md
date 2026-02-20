@@ -65,54 +65,54 @@ The `moire` crate re-exports the appropriate backend based on target:
 ### Tasks
 
 > r[api.spawn]
-> `moire::spawn(name, future)` spawns a named async task. The task is registered as a `future` entity and its execution is tracked.
+> `moire::spawn(name, future)` wraps `tokio::spawn`. It spawns a named async task registered as a `future` entity with its execution tracked.
 
 > r[api.spawn-blocking]
-> `moire::spawn_blocking(name, f)` spawns a named blocking task on the blocking thread pool. The task is registered as a `future` entity.
+> `moire::spawn_blocking(name, f)` wraps `tokio::task::spawn_blocking`. It spawns a named blocking task on the blocking thread pool, registered as a `future` entity.
 
 > r[api.joinset]
-> `moire::JoinSet::named(name)` creates a named join set. Tasks added via `JoinSet::spawn(label, future)` are individually tracked. Awaiting `JoinSet::join_next()` is instrumented.
+> `moire::JoinSet` wraps `tokio::task::JoinSet`. `JoinSet::named(name)` creates a named join set. Tasks added via `JoinSet::spawn(label, future)` are individually tracked. Awaiting `JoinSet::join_next()` is instrumented.
 
 ### Channels
 
 > r[api.mpsc]
-> `moire::channel(name, capacity)` creates a bounded mpsc channel. `moire::unbounded_channel(name)` creates an unbounded mpsc channel. Sends and receives are recorded as `channel_sent` and `channel_received` events, including wait duration and close status.
+> `moire::channel(name, capacity)` and `moire::unbounded_channel(name)` wrap `tokio::sync::mpsc`. Sends and receives are recorded as `channel_sent` and `channel_received` events, including wait duration and close status.
 
 > r[api.broadcast]
-> `moire::broadcast(name, capacity)` creates a broadcast channel. Sender lag is tracked on the `broadcast_rx` entity.
+> `moire::broadcast(name, capacity)` wraps `tokio::sync::broadcast`. Sender lag is tracked on the `broadcast_rx` entity.
 
 > r[api.oneshot]
-> `moire::oneshot(name)` creates a oneshot channel. The sender's `sent` flag is tracked.
+> `moire::oneshot(name)` wraps `tokio::sync::oneshot`. The sender's `sent` flag is tracked.
 
 > r[api.watch]
-> `moire::watch(name, initial)` creates a watch channel. The sender's `last_update_at` timestamp is tracked.
+> `moire::watch(name, initial)` wraps `tokio::sync::watch`. The sender's `last_update_at` timestamp is tracked.
 
 ### Synchronization
 
 > r[api.mutex]
-> `moire::Mutex::new(name, value)` creates an instrumented synchronous mutex (backed by `parking_lot`). Locking is blocking, not async. Contention is tracked on the `lock` entity with kind `mutex`.
+> `moire::Mutex::new(name, value)` wraps `parking_lot::Mutex`. Locking is synchronous and blocking, not async. Contention is tracked on the `lock` entity with kind `mutex`.
 
 > r[api.rwlock]
-> `moire::RwLock::new(name, value)` creates an instrumented synchronous read-write lock (backed by `parking_lot`). Locking is blocking, not async. Contention is tracked on the `lock` entity with kind `rwlock`.
+> `moire::RwLock::new(name, value)` wraps `parking_lot::RwLock`. Locking is synchronous and blocking, not async. Contention is tracked on the `lock` entity with kind `rwlock`.
 
 > r[api.semaphore]
-> `moire::Semaphore::new(name, permits)` creates an instrumented semaphore. `max_permits` and `handed_out_permits` are tracked.
+> `moire::Semaphore::new(name, permits)` wraps `tokio::sync::Semaphore`. `max_permits` and `handed_out_permits` are tracked.
 
 > r[api.notify]
-> `moire::Notify::new(name)` creates an instrumented `Notify`. `waiter_count` is tracked.
+> `moire::Notify::new(name)` wraps `tokio::sync::Notify`. `waiter_count` is tracked.
 
 > r[api.once-cell]
-> `moire::OnceCell::new(name)` creates an instrumented `OnceCell`. `waiter_count` and initialization state are tracked.
+> `moire::OnceCell::new(name)` wraps `tokio::sync::OnceCell`. `waiter_count` and initialization state are tracked.
 
 ### Processes
 
 > r[api.command]
-> `moire::Command::new(program)` creates an instrumented child process handle. Program, arguments, and environment are recorded on the `command` entity. `spawn()`, `status()`, `output()`, and `wait()` are individually instrumented.
+> `moire::Command::new(program)` wraps `tokio::process::Command`. Program, arguments, and environment are recorded on the `command` entity. `spawn()`, `status()`, `output()`, and `wait()` are individually instrumented.
 
 ### RPC
 
 > r[api.rpc-request]
-> `moire::rpc_request(method, args_json)` registers an outbound or inbound RPC request entity with the method name split into `service_name` and `method_name`.
+> `moire::rpc_request(method, args_json)` registers an RPC request entity. The method string is split on the last `.` into `service_name` and `method_name`.
 
 > r[api.rpc-response]
 > `moire::rpc_response_for(method, request)` registers a response entity paired with its request via a `paired_with` edge. The response status starts as `pending` and is updated as the call completes.
