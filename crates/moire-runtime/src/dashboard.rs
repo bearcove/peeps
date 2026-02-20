@@ -146,8 +146,8 @@ async fn flush_backtrace_records(
     last_sent_manifest_revision: &mut u64,
     last_sent_backtrace_id: &mut u64,
 ) -> Result<(), String> {
-    send_handshake_if_manifest_changed(writer, process_name, last_sent_manifest_revision).await?;
     let records = super::backtrace_records_after(*last_sent_backtrace_id);
+    send_handshake_if_manifest_changed(writer, process_name, last_sent_manifest_revision).await?;
     for record in records {
         let record_id = record.id.get();
         write_client_message(writer, &ClientMessage::BacktraceRecord(record)).await?;

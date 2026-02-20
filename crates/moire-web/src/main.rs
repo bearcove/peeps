@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap};
 use std::io::Read;
 use std::path::{Path as FsPath, PathBuf};
 use std::process::Stdio;
@@ -71,6 +71,7 @@ struct ServerState {
 struct ConnectedProcess {
     process_name: String,
     pid: u32,
+    handshake_received: bool,
     module_manifest: Vec<StoredModuleManifestEntry>,
     tx: mpsc::Sender<Vec<u8>>,
 }
@@ -146,6 +147,7 @@ const SQLITE_BUSY_TIMEOUT_MS: u64 = 5_000;
 const SYMBOLICATION_STREAM_STALL_TICKS_LIMIT: u32 = 100;
 const SYMBOLICATION_UNRESOLVED_STALLED: &str =
     "symbolication stalled: no progress before stream timeout";
+const SYMBOLICATION_UNRESOLVED_EAGER_PREFIX: &str = "symbolication engine not wired:";
 const TOP_FRAME_CRATE_EXCLUSIONS: &[&str] = &[
     "std",
     "core",
@@ -2004,12 +2006,13 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
         guard.next_conn_id += 1;
         guard.connections.insert(
             conn_id,
-            ConnectedProcess {
-                process_name: format!("unknown-{conn_id}"),
-                pid: 0,
-                module_manifest: Vec::new(),
-                tx: msg_tx,
-            },
+                ConnectedProcess {
+                    process_name: format!("unknown-{conn_id}"),
+                    pid: 0,
+                    handshake_received: false,
+                    module_manifest: Vec::new(),
+                    tx: msg_tx,
+                },
         );
         conn_id
     };
@@ -2117,6 +2120,7 @@ async fn read_messages(
                 if let Some(conn) = guard.connections.get_mut(&conn_id) {
                     conn.process_name = process_name.clone();
                     conn.pid = pid;
+                    conn.handshake_received = true;
                     conn.module_manifest = stored_manifest.clone();
                 }
                 drop(guard);
@@ -2213,12 +2217,12 @@ async fn read_messages(
                 );
             }
             ClientMessage::BacktraceRecord(record) => {
-                let manifest = {
+                let (handshake_received, manifest) = {
                     let guard = state.inner.lock().await;
                     guard
                         .connections
                         .get(&conn_id)
-                        .map(|conn| conn.module_manifest.clone())
+                        .map(|conn| (conn.handshake_received, conn.module_manifest.clone()))
                         .ok_or_else(|| {
                             format!(
                                 "invariant violated: unknown connection {conn_id} for backtrace {}",
@@ -2226,6 +2230,12 @@ async fn read_messages(
                             )
                         })?
                 };
+                if !handshake_received {
+                    return Err(format!(
+                        "protocol violation: received backtrace {} before handshake on conn {conn_id}",
+                        record.id.get()
+                    ));
+                }
                 // r[impl symbolicate.server-store]
                 let backtrace_id = record.id.get();
                 let frames = backtrace_frames_for_store(&manifest, &record)?;
@@ -3085,7 +3095,13 @@ fn symbolicate_pending_frames_for_pairs_blocking(
                AND sf.frame_index = bf.frame_index
              WHERE bf.conn_id = ?1
                AND bf.backtrace_id = ?2
-               AND sf.conn_id IS NULL
+               AND (
+                    sf.conn_id IS NULL
+                    OR (
+                        sf.status = 'unresolved'
+                        AND sf.unresolved_reason LIKE 'symbolication engine not wired:%'
+                    )
+               )
              ORDER BY bf.frame_index ASC",
         )
         .map_err(|e| format!("prepare pending frame query: {e}"))?;
@@ -3116,7 +3132,31 @@ fn symbolicate_pending_frames_for_pairs_blocking(
                 if let Some(hit) =
                     lookup_symbolication_cache(&tx, job.module_identity.as_str(), job.rel_pc)?
                 {
-                    hit
+                    if hit.status == "unresolved"
+                        && hit
+                            .unresolved_reason
+                            .as_deref()
+                            .is_some_and(should_retry_unresolved_reason)
+                    {
+                        debug!(
+                            conn_id = job.conn_id,
+                            backtrace_id = job.backtrace_id,
+                            frame_index = job.frame_index,
+                            module_identity = %job.module_identity,
+                            rel_pc = format_args!("{:#x}", job.rel_pc),
+                            "retrying previously scaffolded unresolved cache entry"
+                        );
+                        let resolved = resolve_frame_symbolication(job, &mut module_cache);
+                        upsert_symbolication_cache(
+                            &tx,
+                            job.module_identity.as_str(),
+                            job.rel_pc,
+                            &resolved,
+                        )?;
+                        resolved
+                    } else {
+                        hit
+                    }
                 } else {
                     let resolved = resolve_frame_symbolication(job, &mut module_cache);
                     upsert_symbolication_cache(
@@ -3160,6 +3200,10 @@ fn symbolicate_pending_frames_for_pairs_blocking(
     Ok(processed)
 }
 
+fn should_retry_unresolved_reason(reason: &str) -> bool {
+    reason.starts_with(SYMBOLICATION_UNRESOLVED_EAGER_PREFIX)
+}
+
 fn resolve_frame_symbolication(
     job: &PendingFrameJob,
     module_cache: &mut HashMap<String, ModuleSymbolizerState>,
@@ -3181,15 +3225,35 @@ fn resolve_frame_symbolication(
         ));
     }
 
-    let state = module_cache
-        .entry(job.module_path.clone())
-        .or_insert_with(|| match addr2line::Loader::new(job.module_path.as_str()) {
-            Ok(loader) => ModuleSymbolizerState::Ready(loader),
-            Err(e) => ModuleSymbolizerState::Failed(format!(
-                "open debug object '{}': {e}",
-                job.module_path
-            )),
-        });
+    let state = match module_cache.entry(job.module_path.clone()) {
+        Entry::Occupied(entry) => entry.into_mut(),
+        Entry::Vacant(entry) => {
+            let open_started = Instant::now();
+            let loaded = match addr2line::Loader::new(job.module_path.as_str()) {
+                Ok(loader) => {
+                    debug!(
+                        module_path = %job.module_path,
+                        elapsed_ms = open_started.elapsed().as_millis(),
+                        "symbolication debug object opened"
+                    );
+                    ModuleSymbolizerState::Ready(loader)
+                }
+                Err(e) => {
+                    debug!(
+                        module_path = %job.module_path,
+                        elapsed_ms = open_started.elapsed().as_millis(),
+                        error = %e,
+                        "symbolication debug object open failed"
+                    );
+                    ModuleSymbolizerState::Failed(format!(
+                        "open debug object '{}': {e}",
+                        job.module_path
+                    ))
+                }
+            };
+            entry.insert(loaded)
+        }
+    };
 
     let ModuleSymbolizerState::Ready(loader) = state else {
         let ModuleSymbolizerState::Failed(reason) = state else {
@@ -3204,9 +3268,17 @@ fn resolve_frame_symbolication(
     let mut source_line = None::<i64>;
     let mut source_col = None::<i64>;
 
+    let lookup_started = Instant::now();
     let mut frames = match loader.find_frames(lookup_pc) {
         Ok(frames) => frames,
         Err(e) => {
+            debug!(
+                module_path = %job.module_path,
+                rel_pc = format_args!("{:#x}", job.rel_pc),
+                elapsed_ms = lookup_started.elapsed().as_millis(),
+                error = %e,
+                "symbolication frame lookup failed"
+            );
             return unresolved(format!(
                 "lookup frames for '{}' +0x{:x}: {e}",
                 job.module_path, job.rel_pc
@@ -3254,6 +3326,12 @@ fn resolve_frame_symbolication(
     }
 
     let Some(source_file_path) = source_file else {
+        debug!(
+            module_path = %job.module_path,
+            rel_pc = format_args!("{:#x}", job.rel_pc),
+            elapsed_ms = lookup_started.elapsed().as_millis(),
+            "symbolication frame lookup missing source location"
+        );
         return unresolved(format!(
             "no source location in debug info for '{}' +0x{:x}",
             job.module_path, job.rel_pc
