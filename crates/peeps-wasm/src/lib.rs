@@ -15,7 +15,17 @@ pub fn __init_from_macro() {}
 macro_rules! facade {
     () => {
         pub mod peeps {
-            pub mod prelude {}
+            pub trait FutureExt: core::future::Future + Sized {
+                fn tracked(self, _name: impl Into<String>) -> Self {
+                    self
+                }
+            }
+
+            impl<F> FutureExt for F where F: core::future::Future + Sized {}
+
+            pub mod prelude {
+                pub use super::FutureExt;
+            }
         }
     };
 }

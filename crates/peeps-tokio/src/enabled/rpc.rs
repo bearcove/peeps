@@ -1,10 +1,9 @@
 use peeps_types::{
-    EdgeKind, EntityBody, EntityId, Event, EventKind, EventTarget, RequestEntity, ResponseEntity,
-    ResponseError, ResponseStatus,
+    EdgeKind, EntityBody, EntityId, RequestEntity, ResponseEntity, ResponseStatus,
 };
 
 use super::SourceId;
-use peeps_runtime::{record_event_with_source, EntityHandle, EntityRef};
+use peeps_runtime::{EntityHandle, EntityRef};
 
 #[derive(Clone)]
 pub struct RpcRequestHandle {
@@ -26,75 +25,6 @@ impl RpcRequestHandle {
 
     pub fn handle(&self) -> &EntityHandle<peeps_types::Request> {
         &self.handle
-    }
-}
-
-#[derive(Clone)]
-pub struct RpcResponseHandle {
-    handle: EntityHandle<peeps_types::Response>,
-}
-
-impl RpcResponseHandle {
-    pub fn id(&self) -> &EntityId {
-        self.handle.id()
-    }
-
-    pub fn handle(&self) -> &EntityHandle<peeps_types::Response> {
-        &self.handle
-    }
-
-    #[doc(hidden)]
-    pub fn set_status_with_source(&self, status: ResponseStatus, source: SourceId) {
-        let changed = self.handle.mutate(|body| body.status = status);
-        if !changed {
-            return;
-        }
-        let event = Event::new_with_source(
-            EventTarget::Entity(self.handle.id().clone()),
-            EventKind::StateChanged,
-            source,
-        );
-        record_event_with_source(event, source);
-    }
-
-    #[doc(hidden)]
-    pub fn mark_ok_with_source(&self, source: SourceId) {
-        self.mark_ok_json_with_source(peeps_types::Json::new("null"), source);
-    }
-
-    #[doc(hidden)]
-    pub fn mark_ok_json_with_source(&self, body_json: peeps_types::Json, source: SourceId) {
-        self.set_status_with_source(ResponseStatus::Ok(body_json), source);
-    }
-
-    #[doc(hidden)]
-    pub fn mark_error_with_source(&self, source: SourceId) {
-        self.mark_internal_error_with_source("error", source);
-    }
-
-    #[doc(hidden)]
-    pub fn mark_internal_error_with_source(&self, message: impl Into<String>, source: SourceId) {
-        self.set_status_with_source(
-            ResponseStatus::Error(ResponseError::Internal(message.into())),
-            source,
-        );
-    }
-
-    #[doc(hidden)]
-    pub fn mark_user_error_json_with_source(
-        &self,
-        error_json: peeps_types::Json,
-        source: SourceId,
-    ) {
-        self.set_status_with_source(
-            ResponseStatus::Error(ResponseError::UserJson(error_json)),
-            source,
-        );
-    }
-
-    #[doc(hidden)]
-    pub fn mark_cancelled_with_source(&self, source: SourceId) {
-        self.set_status_with_source(ResponseStatus::Cancelled, source);
     }
 }
 
@@ -130,7 +60,10 @@ pub fn rpc_request_with_body(
     }
 }
 
-pub fn rpc_response(method: impl Into<String>, source: SourceId) -> RpcResponseHandle {
+pub fn rpc_response(
+    method: impl Into<String>,
+    source: SourceId,
+) -> EntityHandle<peeps_types::Response> {
     let method = method.into();
     let (service_name, method_name) = split_method_parts(method.as_str());
     let service_name = String::from(service_name);
@@ -150,19 +83,17 @@ pub fn rpc_response_with_body(
     name: impl Into<String>,
     body: ResponseEntity,
     source: SourceId,
-) -> RpcResponseHandle {
+) -> EntityHandle<peeps_types::Response> {
     let name = name.into();
     let body = EntityBody::Response(body);
-    RpcResponseHandle {
-        handle: EntityHandle::new(name, body, source).into_typed::<peeps_types::Response>(),
-    }
+    EntityHandle::new(name, body, source).into_typed::<peeps_types::Response>()
 }
 
 pub fn rpc_response_for(
     method: impl Into<String>,
     request: &EntityRef,
     source: SourceId,
-) -> RpcResponseHandle {
+) -> EntityHandle<peeps_types::Response> {
     let method = method.into();
     let (service_name, method_name) = split_method_parts(method.as_str());
     let service_name = String::from(service_name);
@@ -184,15 +115,11 @@ pub fn rpc_response_for_with_body(
     request: &EntityRef,
     body: ResponseEntity,
     source: SourceId,
-) -> RpcResponseHandle {
+) -> EntityHandle<peeps_types::Response> {
     let name = name.into();
     let body = EntityBody::Response(body);
-    let response = RpcResponseHandle {
-        handle: EntityHandle::new(name, body, source).into_typed::<peeps_types::Response>(),
-    };
-    response
-        .handle
-        .link_to_with_source(request, EdgeKind::PairedWith, source);
+    let response = EntityHandle::new(name, body, source).into_typed::<peeps_types::Response>();
+    response.link_to_with_source(request, EdgeKind::PairedWith, source);
     response
 }
 

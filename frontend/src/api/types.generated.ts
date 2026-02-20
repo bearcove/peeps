@@ -92,6 +92,10 @@ export interface ScopeEntityLink {
  */
 export interface Snapshot {
   /**
+   * Resolved source table for every `SourceId` referenced in this snapshot.
+   */
+  sources: SnapshotSource[];
+  /**
    * Runtime entities present in this snapshot.
    */
   entities: Entity[];
@@ -435,6 +439,28 @@ export interface LockEntity {
 export type LockKind = "mutex" | "rw_lock" | "other";
 
 export type FutureEntity = object;
+
+/**
+ * A resolved source mapping entry for interned source IDs referenced in a snapshot.
+ */
+export interface SnapshotSource {
+  /**
+   * Interned source identifier referenced by entities/scopes/edges/events.
+   */
+  id: SourceId;
+  /**
+   * Absolute UTF-8 path to the source file.
+   */
+  path: string;
+  /**
+   * 1-based source line.
+   */
+  line: number;
+  /**
+   * Crate name owning this source location.
+   */
+  krate: string;
+}
 
 export interface SqlResponse {
   columns: string[];

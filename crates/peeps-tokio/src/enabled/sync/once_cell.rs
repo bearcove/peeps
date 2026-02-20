@@ -10,7 +10,8 @@ pub struct OnceCell<T> {
 }
 
 impl<T> OnceCell<T> {
-    pub fn new(name: impl Into<String>, source: SourceId) -> Self {
+    #[doc(hidden)]
+    pub fn new_with_source(name: impl Into<String>, source: SourceId) -> Self {
         let handle = EntityHandle::new(
             name.into(),
             EntityBody::OnceCell(OnceCellEntity {

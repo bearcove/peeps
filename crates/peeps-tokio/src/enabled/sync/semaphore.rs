@@ -42,7 +42,8 @@ pub struct OwnedSemaphorePermit {
 }
 
 impl Semaphore {
-    pub fn new(name: impl Into<String>, permits: usize, source: SourceId) -> Self {
+    #[doc(hidden)]
+    pub fn new_with_source(name: impl Into<String>, permits: usize, source: SourceId) -> Self {
         let max_permits = permits.min(u32::MAX as usize) as u32;
         let handle = EntityHandle::new(
             name.into(),

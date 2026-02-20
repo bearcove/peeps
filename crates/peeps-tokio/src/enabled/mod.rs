@@ -30,6 +30,103 @@ macro_rules! facade {
                 PEEPS_SOURCE_LEFT.resolve().into()
             }
 
+            #[track_caller]
+            pub fn mutex<T>(name: &'static str, value: T) -> $crate::Mutex<T> {
+                $crate::Mutex::new_with_source(name, value, __source())
+            }
+
+            #[track_caller]
+            pub fn rwlock<T>(name: &'static str, value: T) -> $crate::RwLock<T> {
+                $crate::RwLock::new_with_source(name, value, __source())
+            }
+
+            #[track_caller]
+            pub fn notify(name: impl Into<String>) -> $crate::Notify {
+                $crate::Notify::new_with_source(name, __source())
+            }
+
+            #[track_caller]
+            pub fn once_cell<T>(name: impl Into<String>) -> $crate::OnceCell<T> {
+                $crate::OnceCell::new_with_source(name, __source())
+            }
+
+            #[track_caller]
+            pub fn semaphore(name: impl Into<String>, permits: usize) -> $crate::Semaphore {
+                $crate::Semaphore::new_with_source(name, permits, __source())
+            }
+
+            #[track_caller]
+            pub fn channel<T>(
+                name: impl Into<String>,
+                capacity: usize,
+            ) -> ($crate::Sender<T>, $crate::Receiver<T>) {
+                $crate::channel(name, capacity, __source())
+            }
+
+            #[track_caller]
+            pub fn unbounded_channel<T>(
+                name: impl Into<String>,
+            ) -> ($crate::UnboundedSender<T>, $crate::UnboundedReceiver<T>) {
+                $crate::unbounded_channel(name, __source())
+            }
+
+            #[track_caller]
+            pub fn oneshot<T>(
+                name: impl Into<String>,
+            ) -> ($crate::OneshotSender<T>, $crate::OneshotReceiver<T>) {
+                $crate::oneshot(name, __source())
+            }
+
+            #[track_caller]
+            pub fn spawn_tracked<F>(
+                name: impl Into<String>,
+                fut: F,
+            ) -> $crate::tokio::task::JoinHandle<F::Output>
+            where
+                F: core::future::Future + Send + 'static,
+                F::Output: Send + 'static,
+            {
+                $crate::spawn_tracked(name, fut, __source())
+            }
+
+            #[track_caller]
+            pub fn instrument_future<F>(
+                name: impl Into<String>,
+                fut: F,
+                on: Option<$crate::EntityRef>,
+                meta: Option<$crate::facet_value::Value>,
+            ) -> $crate::InstrumentedFuture<F::IntoFuture>
+            where
+                F: core::future::IntoFuture,
+            {
+                $crate::instrument_future(name, fut, __source(), on, meta)
+            }
+
+            pub trait FutureExt: core::future::Future + Sized {
+                fn tracked(
+                    self,
+                    name: impl Into<String>,
+                ) -> $crate::InstrumentedFuture<Self::IntoFuture>
+                where
+                    Self: core::future::IntoFuture;
+            }
+
+            impl<F> FutureExt for F
+            where
+                F: core::future::Future + Sized,
+            {
+                #[track_caller]
+                fn tracked(
+                    self,
+                    name: impl Into<String>,
+                ) -> $crate::InstrumentedFuture<Self::IntoFuture>
+                where
+                    Self: core::future::IntoFuture,
+                {
+                    $crate::instrument_future(name, self, __source(), None, None)
+                }
+            }
+
             pub trait MutexExt<T> {
                 fn lock(&self) -> $crate::MutexGuard<'_, T>;
                 fn try_lock(&self) -> Option<$crate::MutexGuard<'_, T>>;
@@ -510,6 +607,7 @@ macro_rules! facade {
                 pub use super::OneshotReceiverExt;
                 pub use super::OneshotSenderExt;
                 pub use super::OnceCellExt;
+                pub use super::FutureExt;
                 pub use super::ReceiverExt;
                 pub use super::RwLockExt;
                 pub use super::SemaphoreExt;

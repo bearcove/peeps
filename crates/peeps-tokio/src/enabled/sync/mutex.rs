@@ -32,7 +32,8 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
 }
 
 impl<T> Mutex<T> {
-    pub fn new(name: &'static str, value: T, source: SourceId) -> Self {
+    #[doc(hidden)]
+    pub fn new_with_source(name: &'static str, value: T, source: SourceId) -> Self {
         let handle = EntityHandle::new(
             name,
             EntityBody::Lock(LockEntity {
