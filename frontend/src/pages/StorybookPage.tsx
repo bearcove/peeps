@@ -1309,6 +1309,7 @@ export function StorybookPage({
             crateItems={filterCrateItems}
             processItems={filterProcessItems}
             kindItems={filterKindItems}
+            moduleItems={[]}
             nodeIds={graphFilterNodeIds}
             locations={graphFilterLocations}
             focusItems={graphFilterFocusItems}

@@ -47,6 +47,7 @@ function Harness({ initialFilter }: { initialFilter: string }) {
         { id: "request", label: "request", meta: 1 },
         { id: "response", label: "response", meta: 1 },
       ]}
+      moduleItems={[]}
       scopeColorMode={"none"}
       subgraphScopeMode={subgraphScopeMode}
       scopeFilterLabel={null}
@@ -148,9 +149,8 @@ describe("GraphPanel filter input interactions", () => {
     await user.keyboard("{Shift>}{Tab}{/Shift}");
     await user.keyboard("{Enter}");
 
-    expect(input.value).toBe("-kind:");
-    expect(screen.queryByRole("button", { name: /-kind:<kind>/i })).toBeNull();
-    expect(screen.getByText("-kind:request")).toBeTruthy();
+    expect(input.value).toBe("-module:");
+    expect(screen.queryByRole("button", { name: /-module:<path>/i })).toBeNull();
   });
 
   it("clicking outside unfocuses filter and closes suggestions", async () => {

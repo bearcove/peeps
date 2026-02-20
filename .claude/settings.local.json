@@ -22,7 +22,9 @@
       "mcp__tracey__tracey_status",
       "mcp__tracey__tracey_uncovered",
       "Bash(git push:*)",
-      "mcp__tracey__tracey_validate"
+      "mcp__tracey__tracey_validate",
+      "Bash(pnpm --filter frontend exec tsc:*)",
+      "Bash(pnpm exec vitest:*)"
     ]
   }
 }
