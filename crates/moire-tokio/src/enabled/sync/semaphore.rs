@@ -12,6 +12,7 @@ use moire_runtime::{
 };
 
 #[derive(Clone)]
+/// Instrumented version of [`tokio::sync::Semaphore`].
 pub struct Semaphore {
     inner: Arc<tokio::sync::Semaphore>,
     handle: EntityHandle<moire_types::Semaphore>,
@@ -24,6 +25,7 @@ struct HolderEdge {
     _edge: EdgeHandle,
 }
 
+/// Instrumented equivalent of [`tokio::sync::SemaphorePermit`].
 pub struct SemaphorePermit<'a> {
     inner: Option<tokio::sync::SemaphorePermit<'a>>,
     semaphore: Arc<tokio::sync::Semaphore>,
@@ -33,6 +35,7 @@ pub struct SemaphorePermit<'a> {
     max_permits: Arc<AtomicU32>,
 }
 
+/// Instrumented equivalent of [`tokio::sync::OwnedSemaphorePermit`].
 pub struct OwnedSemaphorePermit {
     inner: Option<tokio::sync::OwnedSemaphorePermit>,
     semaphore: Arc<tokio::sync::Semaphore>,
@@ -43,6 +46,7 @@ pub struct OwnedSemaphorePermit {
 }
 
 impl Semaphore {
+    /// Creates a new semaphore, matching [`tokio::sync::Semaphore::new`].
     pub fn new(name: impl Into<String>, permits: usize) -> Self {
         let source = capture_backtrace_id();
         let max_permits = permits.min(u32::MAX as usize) as u32;
@@ -63,18 +67,22 @@ impl Semaphore {
         }
     }
 
+    /// Returns available permits, matching [`tokio::sync::Semaphore::available_permits`].
     pub fn available_permits(&self) -> usize {
         self.inner.available_permits()
     }
 
+    /// Closes the semaphore, matching [`tokio::sync::Semaphore::close`].
     pub fn close(&self) {
         self.inner.close();
     }
 
+    /// Returns whether the semaphore is closed, matching [`tokio::sync::Semaphore::is_closed`].
     pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
     }
 
+    /// Adds permits, equivalent to [`tokio::sync::Semaphore::add_permits`].
     pub fn add_permits(&self, n: usize) {
         self.inner.add_permits(n);
         let delta = n.min(u32::MAX as usize) as u32;
@@ -84,6 +92,7 @@ impl Semaphore {
             .saturating_add(delta);
         self.sync_state(max);
     }
+    /// Acquires a permit asynchronously, matching [`tokio::sync::Semaphore::acquire`].
     pub async fn acquire(&self) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
         let source = capture_backtrace_id();
         let holder_ref = current_causal_target();
@@ -102,6 +111,7 @@ impl Semaphore {
             max_permits: Arc::clone(&self.max_permits),
         })
     }
+    /// Acquires multiple permits asynchronously, matching [`tokio::sync::Semaphore::acquire_many`].
     pub async fn acquire_many(
         &self,
         n: u32,
@@ -124,6 +134,7 @@ impl Semaphore {
             max_permits: Arc::clone(&self.max_permits),
         })
     }
+    /// Acquires an owned permit asynchronously, matching [`tokio::sync::Semaphore::acquire_owned`].
     pub async fn acquire_owned(&self) -> Result<OwnedSemaphorePermit, tokio::sync::AcquireError> {
         let source = capture_backtrace_id();
         let holder_ref = current_causal_target();
@@ -146,6 +157,7 @@ impl Semaphore {
             max_permits: Arc::clone(&self.max_permits),
         })
     }
+    /// Acquires multiple owned permits asynchronously, matching [`tokio::sync::Semaphore::acquire_many_owned`].
     pub async fn acquire_many_owned(
         &self,
         n: u32,
@@ -172,6 +184,7 @@ impl Semaphore {
         })
     }
 
+    /// Tries to acquire a permit immediately, matching [`tokio::sync::Semaphore::try_acquire`].
     pub fn try_acquire(&self) -> Result<SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
         let permit = self.inner.try_acquire()?;
         let holder_ref = current_causal_target();
@@ -186,6 +199,7 @@ impl Semaphore {
         })
     }
 
+    /// Tries to acquire multiple permits immediately, matching [`tokio::sync::Semaphore::try_acquire_many`].
     pub fn try_acquire_many(
         &self,
         n: u32,
@@ -203,6 +217,7 @@ impl Semaphore {
         })
     }
 
+    /// Tries to acquire an owned permit immediately, matching [`tokio::sync::Semaphore::try_acquire_owned`].
     pub fn try_acquire_owned(&self) -> Result<OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
         let permit = Arc::clone(&self.inner).try_acquire_owned()?;
         let holder_ref = current_causal_target();
@@ -217,6 +232,7 @@ impl Semaphore {
         })
     }
 
+    /// Tries to acquire multiple owned permits immediately, matching [`tokio::sync::Semaphore::try_acquire_many_owned`].
     pub fn try_acquire_many_owned(
         &self,
         n: u32,

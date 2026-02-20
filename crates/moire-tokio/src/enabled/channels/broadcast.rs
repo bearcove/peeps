@@ -9,11 +9,17 @@ use moire_types::{
 };
 use tokio::sync::broadcast;
 
+/// Instrumented version of [`tokio::sync::broadcast::Sender`].
+///
+/// This wraps the Tokio broadcast sender and records send/subscribe lifecycle.
 pub struct BroadcastSender<T> {
     inner: tokio::sync::broadcast::Sender<T>,
     handle: EntityHandle<moire_types::BroadcastTx>,
 }
 
+/// Instrumented version of [`tokio::sync::broadcast::Receiver`].
+///
+/// This wraps the Tokio broadcast receiver and records message receive events.
 pub struct BroadcastReceiver<T> {
     inner: tokio::sync::broadcast::Receiver<T>,
     handle: EntityHandle<moire_types::BroadcastRx>,
@@ -44,6 +50,7 @@ impl<T: Clone> BroadcastSender<T> {
     pub fn handle(&self) -> &EntityHandle<moire_types::BroadcastTx> {
         &self.handle
     }
+    /// Subscribes a receiver, equivalent to [`tokio::sync::broadcast::Sender::subscribe`].
     pub fn subscribe(&self) -> BroadcastReceiver<T> {
         let source = capture_backtrace_id();
         let handle = EntityHandle::new(
@@ -60,6 +67,7 @@ impl<T: Clone> BroadcastSender<T> {
             tx_handle: self.handle.downgrade(),
         }
     }
+    /// Sends a value through the channel, mirroring [`tokio::sync::broadcast::Sender::send`].
     pub fn send(&self, value: T) -> Result<usize, broadcast::error::SendError<T>> {
         let source = capture_backtrace_id();
         let result = self.inner.send(value);
@@ -78,6 +86,7 @@ impl<T: Clone> BroadcastReceiver<T> {
     pub fn handle(&self) -> &EntityHandle<moire_types::BroadcastRx> {
         &self.handle
     }
+    /// Receives the next broadcast value, equivalent to [`tokio::sync::broadcast::Receiver::recv`].
     pub async fn recv(&mut self) -> Result<T, broadcast::error::RecvError> {
         let source = capture_backtrace_id();
         match self.inner.recv().await {
@@ -109,6 +118,7 @@ impl<T: Clone> BroadcastReceiver<T> {
     }
 }
 
+/// Creates an instrumented broadcast channel, matching [`tokio::sync::broadcast::channel`].
 pub fn broadcast<T: Clone>(
     name: impl Into<String>,
     capacity: usize,
@@ -149,6 +159,7 @@ pub fn broadcast<T: Clone>(
     )
 }
 
+/// Alias for [`broadcast`], kept for API parity with Tokio naming.
 pub fn broadcast_channel<T: Clone>(
     name: impl Into<String>,
     capacity: usize,

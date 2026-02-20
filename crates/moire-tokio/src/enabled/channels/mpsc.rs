@@ -10,22 +10,32 @@ use moire_types::{
 };
 use tokio::sync::mpsc;
 
+/// Instrumented version of [`tokio::sync::mpsc::Sender`].
+///
+/// Tracks queue length and send activity for diagnostics.
 pub struct Sender<T> {
     inner: tokio::sync::mpsc::Sender<T>,
     handle: EntityHandle<moire_types::MpscTx>,
 }
 
+/// Instrumented version of [`tokio::sync::mpsc::Receiver`].
+///
+/// Tracks receive activity and queue length for diagnostics.
 pub struct Receiver<T> {
     inner: tokio::sync::mpsc::Receiver<T>,
     handle: EntityHandle<moire_types::MpscRx>,
     tx_handle: WeakEntityHandle<moire_types::MpscTx>,
 }
 
+/// Instrumented version of [`tokio::sync::mpsc::UnboundedSender`].
+/// Tracks unbounded send activity for diagnostics.
 pub struct UnboundedSender<T> {
     inner: tokio::sync::mpsc::UnboundedSender<T>,
     handle: EntityHandle<moire_types::MpscTx>,
 }
 
+/// Instrumented version of [`tokio::sync::mpsc::UnboundedReceiver`].
+/// Tracks unbounded receive activity for diagnostics.
 pub struct UnboundedReceiver<T> {
     inner: tokio::sync::mpsc::UnboundedReceiver<T>,
     handle: EntityHandle<moire_types::MpscRx>,
@@ -56,6 +66,7 @@ impl<T> Sender<T> {
         &self.handle
     }
 
+    /// Attempts to enqueue a value without waiting, equivalent to [`tokio::sync::mpsc::Sender::try_send`].
     pub fn try_send(&self, value: T) -> Result<(), mpsc::error::TrySendError<T>> {
         match self.inner.try_send(value) {
             Ok(()) => {
@@ -68,9 +79,12 @@ impl<T> Sender<T> {
         }
     }
 
+    /// Returns true if the sender is closed.
     pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
     }
+
+    /// Sends a value and awaits slot availability, matching [`tokio::sync::mpsc::Sender::send`].
     pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
         let source = capture_backtrace_id();
         let result =
@@ -95,6 +109,7 @@ impl<T> Receiver<T> {
     pub fn handle(&self) -> &EntityHandle<moire_types::MpscRx> {
         &self.handle
     }
+    /// Receives the next message, matching [`tokio::sync::mpsc::Receiver::recv`].
     pub async fn recv(&mut self) -> Option<T> {
         let source = capture_backtrace_id();
         let result =
@@ -113,6 +128,7 @@ impl<T> Receiver<T> {
         result
     }
 
+    /// Closes the receive half, equivalent to [`tokio::sync::mpsc::Receiver::close`].
     pub fn close(&mut self) {
         self.inner.close();
     }
@@ -123,6 +139,7 @@ impl<T> UnboundedSender<T> {
     pub fn handle(&self) -> &EntityHandle<moire_types::MpscTx> {
         &self.handle
     }
+    /// Sends a value on an unbounded channel, matching [`tokio::sync::mpsc::UnboundedSender::send`].
     pub fn send(&self, value: T) -> Result<(), mpsc::error::SendError<T>> {
         let source = capture_backtrace_id();
         match self.inner.send(value) {
@@ -150,6 +167,7 @@ impl<T> UnboundedSender<T> {
         }
     }
 
+    /// Returns true if the unbounded sender is closed.
     pub fn is_closed(&self) -> bool {
         self.inner.is_closed()
     }
@@ -160,6 +178,7 @@ impl<T> UnboundedReceiver<T> {
     pub fn handle(&self) -> &EntityHandle<moire_types::MpscRx> {
         &self.handle
     }
+    /// Receives the next unbounded message, matching [`tokio::sync::mpsc::UnboundedReceiver::recv`].
     pub async fn recv(&mut self) -> Option<T> {
         let source = capture_backtrace_id();
         let result =
@@ -178,11 +197,13 @@ impl<T> UnboundedReceiver<T> {
         result
     }
 
+    /// Closes the unbounded receive half.
     pub fn close(&mut self) {
         self.inner.close();
     }
 }
 
+/// Creates a bounded channel, equivalent to [`tokio::sync::mpsc::channel`].
 pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
     let source = capture_backtrace_id();
     let name = name.into();
@@ -221,10 +242,12 @@ pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Recei
     )
 }
 
+/// Alias for [`channel`] with the upstream constructor name.
 pub fn mpsc_channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
     channel(name, capacity)
 }
 
+/// Creates an unbounded channel, equivalent to [`tokio::sync::mpsc::unbounded_channel`].
 pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     let source = capture_backtrace_id();
     let name = name.into();
@@ -262,6 +285,7 @@ pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, Unb
     )
 }
 
+/// Alias for [`unbounded_channel`] with the upstream constructor name.
 pub fn mpsc_unbounded_channel<T>(
     name: impl Into<String>,
 ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {

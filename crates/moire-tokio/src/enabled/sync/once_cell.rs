@@ -5,12 +5,14 @@ use std::future::Future;
 use super::super::capture_backtrace_id;
 use moire_runtime::{instrument_operation_on_with_source, EntityHandle};
 
+/// Instrumented version of [`tokio::sync::OnceCell`].
 pub struct OnceCell<T> {
     inner: tokio::sync::OnceCell<T>,
     handle: EntityHandle<moire_types::OnceCell>,
 }
 
 impl<T> OnceCell<T> {
+    /// Creates a new instrumented once-cell, matching [`tokio::sync::OnceCell::new`].
     pub fn new(name: impl Into<String>) -> Self {
         let source = capture_backtrace_id();
         let handle = EntityHandle::new(
@@ -28,13 +30,17 @@ impl<T> OnceCell<T> {
         }
     }
 
+    /// Returns a reference if initialized, matching [`tokio::sync::OnceCell::get`].
     pub fn get(&self) -> Option<&T> {
         self.inner.get()
     }
 
+    /// Returns whether the cell is initialized, matching [`tokio::sync::OnceCell::initialized`].
     pub fn initialized(&self) -> bool {
         self.inner.initialized()
     }
+
+    /// Gets or initializes the value asynchronously, matching [`tokio::sync::OnceCell::get_or_init`].
     pub async fn get_or_init<'a, F, Fut>(&'a self, f: F) -> &'a T
     where
         F: FnOnce() -> Fut + 'a,
@@ -64,6 +70,7 @@ impl<T> OnceCell<T> {
 
         result
     }
+    /// Gets or tries to initialize the value asynchronously, matching [`tokio::sync::OnceCell::get_or_try_init`].
     pub async fn get_or_try_init<'a, F, Fut, E>(&'a self, f: F) -> Result<&'a T, E>
     where
         F: FnOnce() -> Fut + 'a,
@@ -97,6 +104,7 @@ impl<T> OnceCell<T> {
         result
     }
 
+    /// Sets the value, matching [`tokio::sync::OnceCell::set`].
     pub fn set(&self, value: T) -> Result<(), T> {
         let result = self.inner.set(value).map_err(|e| match e {
             tokio::sync::SetError::AlreadyInitializedError(v) => v,

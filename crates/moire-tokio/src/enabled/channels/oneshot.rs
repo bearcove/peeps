@@ -9,11 +9,17 @@ use moire_types::{
 };
 use tokio::sync::oneshot;
 
+/// Instrumented version of [`tokio::sync::oneshot::Sender`].
+///
+/// Tracks send outcome for diagnostics.
 pub struct OneshotSender<T> {
     inner: Option<tokio::sync::oneshot::Sender<T>>,
     handle: EntityHandle<moire_types::OneshotTx>,
 }
 
+/// Instrumented version of [`tokio::sync::oneshot::Receiver`].
+///
+/// Tracks receive events for diagnostics.
 pub struct OneshotReceiver<T> {
     inner: Option<tokio::sync::oneshot::Receiver<T>>,
     handle: EntityHandle<moire_types::OneshotRx>,
@@ -25,6 +31,8 @@ impl<T> OneshotSender<T> {
     pub fn handle(&self) -> &EntityHandle<moire_types::OneshotTx> {
         &self.handle
     }
+    /// Sends a single value, equivalent to [`tokio::sync::oneshot::Sender::send`].
+    /// Records a one-shot send event and consumption status.
     pub fn send(mut self, value: T) -> Result<(), T> {
         let source = capture_backtrace_id();
         let Some(inner) = self.inner.take() else {
@@ -59,6 +67,8 @@ impl<T> OneshotReceiver<T> {
     pub fn handle(&self) -> &EntityHandle<moire_types::OneshotRx> {
         &self.handle
     }
+    /// Waits for the oneshot message, matching [`tokio::sync::oneshot::Receiver::await`].
+    /// Equivalent to receiving the value in Tokio's oneshot receiver API.
     pub async fn recv(mut self) -> Result<T, oneshot::error::RecvError> {
         let source = capture_backtrace_id();
         let inner = self.inner.take().expect("oneshot receiver consumed");
@@ -73,6 +83,7 @@ impl<T> OneshotReceiver<T> {
     }
 }
 
+/// Creates an instrumented oneshot channel, equivalent to [`tokio::sync::oneshot::channel`].
 pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
     let source = capture_backtrace_id();
     let name: String = name.into();
@@ -107,6 +118,7 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
     )
 }
 
+/// Alias for [`oneshot`], kept for Tokio API parity.
 pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
     oneshot(name)
 }

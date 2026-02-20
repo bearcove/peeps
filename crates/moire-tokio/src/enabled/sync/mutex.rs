@@ -7,11 +7,13 @@ use moire_runtime::{
     current_causal_target, AsEntityRef, EdgeHandle, EntityHandle, EntityRef, HELD_MUTEX_STACK,
 };
 
+/// Instrumented version of [`parking_lot::Mutex`], preserving lock semantics with diagnostics.
 pub struct Mutex<T> {
     inner: parking_lot::Mutex<T>,
     handle: EntityHandle<moire_types::Lock>,
 }
 
+/// Guard returned by [`Mutex`], equivalent to [`parking_lot::MutexGuard`].
 pub struct MutexGuard<'a, T> {
     inner: parking_lot::MutexGuard<'a, T>,
     lock_id: moire_types::EntityId,
@@ -33,6 +35,7 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
 }
 
 impl<T> Mutex<T> {
+    /// Creates a new instrumented mutex, equivalent to [`parking_lot::Mutex::new`].
     pub fn new(name: &'static str, value: T) -> Self {
         let source = capture_backtrace_id();
         let handle = EntityHandle::new(
@@ -48,11 +51,13 @@ impl<T> Mutex<T> {
             handle,
         }
     }
+    /// Acquires the lock, matching [`parking_lot::Mutex::lock`].
     pub fn lock(&self) -> MutexGuard<'_, T> {
         self._lock()
     }
 
     #[doc(hidden)]
+    /// Internal helper for lock acquisition with ownership edge tracking.
     pub fn _lock(&self) -> MutexGuard<'_, T> {
         let source = capture_backtrace_id();
         let owner_ref = current_causal_target();
@@ -70,11 +75,13 @@ impl<T> Mutex<T> {
 
         self.wrap_guard(inner, owner_ref.as_ref(), None)
     }
+    /// Attempts lock acquisition without blocking, matching [`parking_lot::Mutex::try_lock`].
     pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
         self._try_lock()
     }
 
     #[doc(hidden)]
+    /// Internal helper for non-blocking lock attempt.
     pub fn _try_lock(&self) -> Option<MutexGuard<'_, T>> {
         let owner_ref = current_causal_target();
         self.inner
