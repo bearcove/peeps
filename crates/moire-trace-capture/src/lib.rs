@@ -133,6 +133,7 @@ mod platform {
     use moire_trace_types::{BacktraceId, BacktraceRecord, FrameKey, ModuleId, ModulePath};
     use std::collections::BTreeMap;
     use std::ffi::{c_void, CStr};
+    use std::sync::{Mutex as StdMutex, OnceLock};
 
     pub fn validate_frame_pointers_impl() -> Result<(), String> {
         #[inline(never)]
@@ -333,12 +334,38 @@ mod platform {
         Ok(raw_ips)
     }
 
+    #[derive(Debug, Clone)]
     struct RawModuleInfo {
         runtime_base: u64,
         path: String,
     }
 
+    fn module_info_cache() -> &'static StdMutex<BTreeMap<u64, RawModuleInfo>> {
+        static CACHE: OnceLock<StdMutex<BTreeMap<u64, RawModuleInfo>>> = OnceLock::new();
+        CACHE.get_or_init(|| StdMutex::new(BTreeMap::new()))
+    }
+
     fn module_info_for_ip(ip: u64) -> Result<RawModuleInfo, CaptureError> {
+        let cached = {
+            let Ok(cache) = module_info_cache().lock() else {
+                panic!("module info cache mutex poisoned; cannot continue");
+            };
+            cache.get(&ip).cloned()
+        };
+        if let Some(info) = cached {
+            return Ok(info);
+        }
+
+        let resolved = resolve_module_info_for_ip(ip)?;
+
+        let Ok(mut cache) = module_info_cache().lock() else {
+            panic!("module info cache mutex poisoned; cannot continue");
+        };
+        cache.insert(ip, resolved.clone());
+        Ok(resolved)
+    }
+
+    fn resolve_module_info_for_ip(ip: u64) -> Result<RawModuleInfo, CaptureError> {
         let mut info = std::mem::MaybeUninit::<libc::Dl_info>::zeroed();
         let ok = unsafe { libc::dladdr(ip as usize as *const c_void, info.as_mut_ptr()) };
         if ok == 0 {
