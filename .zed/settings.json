@@ -9,6 +9,7 @@
         "cargo": {
           "features": ["diagnostics"],
         },
+        "check": { "workspace": true },
       },
     },
   },

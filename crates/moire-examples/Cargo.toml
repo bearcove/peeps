@@ -7,6 +7,7 @@ repository.workspace = true
 
 [features]
 default = []
+diagnostics = []
 roam = ["dep:roam", "dep:roam-stream"]
 
 [dependencies]

@@ -2,9 +2,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use moire::spawn_tracked;
+use moire::sync::Semaphore;
 
 pub async fn run() -> Result<(), String> {
-    let gate = Arc::new(moire::Semaphore::new("demo.api_gate", 1));
+    let gate = Arc::new(Semaphore::new("demo.api_gate", 1));
 
     let holder_gate = Arc::clone(&gate);
     spawn_tracked("permit_holder", async move {
