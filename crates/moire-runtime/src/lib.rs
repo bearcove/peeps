@@ -86,6 +86,7 @@ pub(crate) fn capture_backtrace_id() -> BacktraceId {
 }
 
 fn next_backtrace_id_raw() -> u64 {
+    // r[impl model.backtrace.id-layout]
     const BACKTRACE_COUNTER_BITS: u32 = 37;
     const BACKTRACE_COUNTER_MAX: u64 = (1u64 << BACKTRACE_COUNTER_BITS) - 1;
 

@@ -1,4 +1,5 @@
 use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap};
+use std::hash::{Hash, Hasher};
 use std::io::Read;
 use std::path::{Path as FsPath, PathBuf};
 use std::process::Stdio;
@@ -38,6 +39,7 @@ use tokio::process::Child;
 use tokio::sync::{mpsc, Mutex, Notify};
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
+use std::collections::hash_map::DefaultHasher;
 
 #[derive(Clone)]
 struct AppState {
@@ -524,6 +526,7 @@ async fn api_snapshot_current(State(state): State<AppState>) -> impl IntoRespons
 }
 
 async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut socket: WebSocket) {
+    // r[impl symbolicate.stream]
     let pairs = {
         let guard = state.inner.lock().await;
         guard
@@ -631,6 +634,7 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
                 );
             }
             if unchanged_ticks >= SYMBOLICATION_STREAM_STALL_TICKS_LIMIT {
+                // r[impl symbolicate.stream.stall-completion]
                 let forced_updates: Vec<SnapshotFrameRecord> = table
                     .frames
                     .iter()
@@ -988,7 +992,7 @@ struct SymbolicatedFrameRow {
     unresolved_reason: Option<String>,
 }
 
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 struct FrameDedupKey {
     module_identity: String,
     module_path: String,
@@ -1075,6 +1079,7 @@ fn load_snapshot_backtrace_table_blocking(
     db_path: &PathBuf,
     pairs: &[(u64, u64)],
 ) -> Result<SnapshotBacktraceTable, String> {
+    // r[impl api.snapshot.frame-catalog]
     let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
 
     let mut backtrace_owner: BTreeMap<u64, u64> = BTreeMap::new();
@@ -1109,7 +1114,6 @@ fn load_snapshot_backtrace_table_blocking(
     let mut backtraces = Vec::with_capacity(backtrace_owner.len());
     let mut frame_id_by_key: BTreeMap<FrameDedupKey, u64> = BTreeMap::new();
     let mut frame_by_id: BTreeMap<u64, SnapshotBacktraceFrame> = BTreeMap::new();
-    let mut next_frame_id = 1u64;
 
     for (backtrace_id, conn_id) in backtrace_owner {
         let raw_rows = raw_stmt
@@ -1208,10 +1212,29 @@ fn load_snapshot_backtrace_table_blocking(
                     *existing
                 }
                 None => {
-                    let assigned = next_frame_id;
-                    next_frame_id = next_frame_id
-                        .checked_add(1)
-                        .ok_or_else(|| String::from("invariant violated: frame id overflow"))?;
+                    let assigned = stable_frame_id(&key)?;
+                    if let Some(existing_key) =
+                        frame_id_by_key.iter().find_map(|(existing_key, existing_id)| {
+                            if *existing_id == assigned {
+                                Some(existing_key.clone())
+                            } else {
+                                None
+                            }
+                        })
+                    {
+                        if existing_key != key {
+                            return Err(format!(
+                                "invariant violated: stable frame_id collision id={} existing=({}, {}, {:#x}) incoming=({}, {}, {:#x})",
+                                assigned,
+                                existing_key.module_identity,
+                                existing_key.module_path,
+                                existing_key.rel_pc,
+                                key.module_identity,
+                                key.module_path,
+                                key.rel_pc
+                            ));
+                        }
+                    }
                     frame_id_by_key.insert(key, assigned);
                     frame_by_id.insert(assigned, frame.clone());
                     assigned
@@ -1232,6 +1255,26 @@ fn load_snapshot_backtrace_table_blocking(
         .collect();
 
     Ok(SnapshotBacktraceTable { backtraces, frames })
+}
+
+fn stable_frame_id(key: &FrameDedupKey) -> Result<u64, String> {
+    // r[impl api.snapshot.frame-id-stable]
+    // Keep frame ids JavaScript-safe (<= 2^53 - 1).
+    const JS_SAFE_MAX: u64 = (1u64 << 53) - 1;
+    let mut hasher = DefaultHasher::new();
+    key.hash(&mut hasher);
+    let mut id = hasher.finish() & JS_SAFE_MAX;
+    if id == 0 {
+        // Zero is reserved as invalid across API IDs.
+        id = 1;
+    }
+    if id > JS_SAFE_MAX {
+        return Err(format!(
+            "invariant violated: generated frame_id {} exceeds JS-safe max {}",
+            id, JS_SAFE_MAX
+        ));
+    }
+    Ok(id)
 }
 
 async fn api_record_start(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {
@@ -3420,6 +3463,7 @@ fn resolve_frame_symbolication(
         return unresolved(reason.clone());
     };
 
+    // r[impl symbolicate.addr-space]
     let lookup_pc = match linked_image_base.checked_add(job.rel_pc) {
         Some(pc) => pc,
         None => {

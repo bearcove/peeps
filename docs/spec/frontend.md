@@ -35,7 +35,7 @@ The `ApiClient` interface is the authoritative contract between the dashboard an
 > `GET /api/snapshot/current` returns the most recent `SnapshotCutResponse` if one exists, or HTTP 404 if no snapshot has been taken yet.
 
 > r[api.snapshot.backtraces]
-> Every `SnapshotCutResponse` MUST include a `backtraces` collection containing one expanded entry for every `BacktraceId` referenced anywhere in that snapshot (entities, scopes, edges, or events). The frontend MUST be able to render call stacks directly from this payload without issuing additional backtrace-fetch requests.
+> Every `SnapshotCutResponse` MUST include a `backtraces` collection containing one entry for every `BacktraceId` referenced anywhere in that snapshot (entities, scopes, edges, or events). Each entry carries ordered `frame_ids`, and the corresponding frame payloads are provided by `SnapshotCutResponse.frames` (deduplicated frame catalog keyed by `frame_id`). The frontend MUST reconstruct call stacks from these two collections without issuing additional backtrace-fetch requests.
 
 ### Cuts
 
@@ -86,6 +86,9 @@ The dashboard converts raw wire types into richer display types before rendering
 > r[display.backtrace.required+2]
 > Every entity and scope in a snapshot MUST carry a `backtrace_id` field that is a positive integer. If the field is absent, zero, or non-integer, snapshot conversion MUST throw with an explicit error message identifying the process and the context (entity ID or scope ID). Silent fallback is not permitted.
 
+> f[display.backtrace.catalog]
+> Snapshot conversion MUST build a frame catalog indexed by `frame_id`, reject duplicate or invalid frame IDs, and reconstruct each backtrace by resolving `frame_ids` through that catalog. Missing frame references are invariant violations and MUST throw.
+
 ### Tone
 
 > r[display.tone]
@@ -105,7 +108,7 @@ The dashboard converts raw wire types into richer display types before rendering
 > - `ageMs`: `max(0, ptime_now_ms - birthPtime)` at capture time
 > - `birthApproxUnixMs`: approximate wall-clock birth computed as `(captured_at_unix_ms - ptime_now_ms) + birthPtime`
 > - `meta`: arbitrary display metadata (populated by entity-kind-specific logic)
-> - `inCycle`: whether this entity participates in a `waiting_on` deadlock cycle
+> - `inCycle`: whether this entity participates in a detected deadlock cycle
 > - `status`: derived `{ label: string; tone: Tone }` (see below)
 > - `stat`: optional short fill-indicator string (e.g. `"3/8"`)
 > - `statTone`: optional `Tone` for the stat indicator
@@ -163,6 +166,9 @@ The dashboard converts raw wire types into richer display types before rendering
 > - `kind`: the wire `EdgeKind`
 > - `sourcePort`: optional ELK port ID on the source node, used when the source is a merged pair node
 > - `targetPort`: optional ELK port ID on the target node, used when the target is a merged pair node
+
+> r[display.edge.direction]
+> Edge direction is semantic, not cosmetic. For `waiting_on`, the edge MUST point from waiter to awaited resource (`waiter -> resource`). For `holds`, the edge MUST point from resource to current holder (`resource -> holder`). The renderer MUST preserve this direction; arrowheads MUST terminate at `target`.
 
 ### ScopeDef
 
@@ -235,7 +241,21 @@ The dashboard converts raw wire types into richer display types before rendering
 ### Deadlock cycle detection
 
 > r[merge.cycles]
-> After all merges, the `waiting_on` edges are traversed with DFS to find strongly-connected components. Every entity whose ID appears in a cycle MUST have `inCycle` set to `true`. Entities not in any cycle MUST have `inCycle` set to `false`.
+> After all merges, deadlock cycle detection MUST run on the directed graph formed by `waiting_on` and `holds` edges. Strongly-connected components of size >= 2 in this graph are deadlock cycles. Every entity whose ID appears in a deadlock cycle MUST have `inCycle` set to `true`. Entities not in any deadlock cycle MUST have `inCycle` set to `false`.
+
+> r[merge.cycles.multi]
+> Multiple disconnected deadlock cycles in the same snapshot MUST be detected independently. Detection MUST NOT collapse them into a single result.
+
+### Deadlock problems list
+
+> r[problems.deadlock.list]
+> The graph view MUST expose a clickable Problems list. For each detected deadlock cycle, the list MUST contain one problem item with severity `crit`.
+
+> r[problems.deadlock.message]
+> Selecting a deadlock problem MUST show the message: `You have a deadlock.`
+
+> r[problems.deadlock.highlight]
+> Selecting a deadlock problem MUST highlight the exact cycle path in the graph in red. Every edge that participates in the selected cycle MUST switch to the deadlock highlight style. Edges not in the selected cycle MUST remain in their normal style.
 
 ---
 

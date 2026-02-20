@@ -127,6 +127,7 @@ function requireBacktraceId(owner: unknown, context: string, processId: number):
 }
 
 export function buildBacktraceIndex(snapshot: SnapshotCutResponse): BacktraceIndex {
+  // f[impl display.backtrace.catalog]
   const frameCatalog: FrameCatalog = new Map<number, SnapshotBacktraceFrame>();
   for (const frame of snapshot.frames) {
     const id = frame.frame_id;
