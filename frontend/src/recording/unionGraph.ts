@@ -51,6 +51,7 @@ function selectFrameIndices(frames: FrameSummary[], interval: number): number[] 
   return indices;
 }
 
+// f[impl recording.union] f[impl recording.union.presence] f[impl recording.union.downsample] f[impl recording.frame]
 export async function buildUnionLayout(
   frames: FrameSummary[],
   apiClient: ApiClient,
@@ -230,6 +231,7 @@ export function computeChangeSummaries(unionLayout: UnionLayout): Map<number, Fr
   return result;
 }
 
+// f[impl recording.changes]
 export function computeChangeFrames(unionLayout: UnionLayout): number[] {
   const processed = unionLayout.processedFrameIndices;
   if (processed.length === 0) return [];
@@ -261,6 +263,7 @@ export function computeChangeFrames(unionLayout: UnionLayout): number[] {
 
 // ── Per-frame rendering ───────────────────────────────────────
 
+// f[impl recording.union.ghost] f[impl filter.order]
 export function renderFrameFromUnion(
   frameIndex: number,
   unionLayout: UnionLayout,

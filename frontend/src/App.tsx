@@ -53,6 +53,7 @@ export type SnapshotState =
 
 // ── Recording state ────────────────────────────────────────────
 
+// f[impl recording.lifecycle]
 export type RecordingState =
   | { phase: "idle" }
   | {

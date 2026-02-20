@@ -85,6 +85,7 @@ export type GraphFilterEditorAction =
   | { type: "close_suggestions" }
   | { type: "set_suggestion_index"; index: number };
 
+// f[impl filter.token.tokenize]
 export function tokenizeFilterQuery(input: string): string[] {
   const tokens: string[] = [];
   let current = "";
@@ -132,6 +133,9 @@ export function quoteFilterValue(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
 }
 
+// f[impl filter.token.syntax]
+// f[impl filter.axis.node] f[impl filter.axis.location] f[impl filter.axis.crate] f[impl filter.axis.process] f[impl filter.axis.kind]
+// f[impl filter.control.focus] f[impl filter.control.loners] f[impl filter.control.colorby] f[impl filter.control.groupby] f[impl filter.control.labelby]
 export function parseGraphFilterQuery(filterText: string): GraphFilterParseResult {
   const includeNodeIds = new Set<string>();
   const excludeNodeIds = new Set<string>();
@@ -497,6 +501,7 @@ function sortedMatches<T>(
     .map((row) => row.value);
 }
 
+// f[impl filter.suggest] f[impl filter.suggest.fragment]
 export function graphFilterSuggestions(input: GraphFilterSuggestionInput): GraphFilterSuggestion[] {
   const fragment = input.fragment.trim();
   const lowerFragment = fragment.toLowerCase();

@@ -2,7 +2,7 @@ use facet::Facet;
 use moire_types::{CutAck, CutRequest, PullChangesResponse, Snapshot};
 use std::fmt;
 
-pub const DEFAULT_MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
+pub const DEFAULT_MAX_FRAME_BYTES: usize = 128 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FrameCodecError {

@@ -10,10 +10,12 @@ type ResponseBody = Extract<EntityBody, { response: unknown }>;
 
 // ── Display types ──────────────────────────────────────────────
 
+// f[impl display.tone]
 export type Tone = "ok" | "warn" | "crit" | "neutral";
 
 export type MetaValue = string | number | boolean | null | MetaValue[] | { [key: string]: MetaValue };
 
+// f[impl display.entity]
 export type EntityDef = {
   /** Composite identity: "${processId}/${rawEntityId}". Unique across all processes. */
   id: string;
@@ -45,6 +47,7 @@ export type EntityDef = {
   rpcPair?: { req: EntityDef; resp: EntityDef };
 };
 
+// f[impl display.edge]
 export type EdgeDef = {
   id: string;
   source: string;
@@ -58,6 +61,7 @@ export type EdgeDef = {
 
 export type SnapshotGroupMode = "none" | "process" | "crate";
 
+// f[impl display.scope]
 export type ScopeDef = {
   /** Composite key: `${processId}:${scopeId}` */
   key: string;
@@ -79,6 +83,7 @@ export type ScopeDef = {
   memberEntityIds: string[];
 };
 
+// f[impl display.source.strict]
 function resolveSourceStrict(
   sourcesMap: Map<number, SnapshotSource>,
   sourceId: number,
@@ -99,6 +104,7 @@ function resolveSourceStrict(
   return source;
 }
 
+// f[impl display.backtrace.required]
 function requireBacktraceId(owner: unknown, context: string, processId: number): number {
   const value = (owner as { backtrace_id?: unknown }).backtrace_id;
   if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
@@ -107,6 +113,7 @@ function requireBacktraceId(owner: unknown, context: string, processId: number):
   return value;
 }
 
+// f[impl display.id.scope-key]
 export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
   const result: ScopeDef[] = [];
   for (const proc of snapshot.processes) {
@@ -161,6 +168,7 @@ export function bodyToKind(body: EntityBody): string {
   return Object.keys(body)[0];
 }
 
+// f[impl display.entity.status]
 export function deriveStatus(body: EntityBody): { label: string; tone: Tone } {
   if ("future" in body) return { label: "polling", tone: "neutral" };
   if ("request" in body) return { label: "in_flight", tone: "warn" };
@@ -208,6 +216,7 @@ export function deriveStatus(body: EntityBody): { label: string; tone: Tone } {
   return { label: "unknown", tone: "neutral" };
 }
 
+// f[impl display.entity.stat]
 export function deriveStat(body: EntityBody): string | undefined {
   if ("semaphore" in body) {
     const { max_permits, handed_out_permits } = body.semaphore;
@@ -226,6 +235,7 @@ export function deriveStat(body: EntityBody): string | undefined {
   return undefined;
 }
 
+// f[impl display.entity.stat-tone]
 export function deriveStatTone(body: EntityBody): Tone | undefined {
   if ("mpsc_tx" in body) {
     const { queue_len, capacity } = body.mpsc_tx;
@@ -236,6 +246,7 @@ export function deriveStatTone(body: EntityBody): Tone | undefined {
   return undefined;
 }
 
+// f[impl merge.cycles]
 export function detectCycleNodes(entities: EntityDef[], edges: EdgeDef[]): Set<string> {
   const adj = new Map<string, string[]>();
   for (const e of edges) {
@@ -271,6 +282,7 @@ export function detectCycleNodes(entities: EntityDef[], edges: EdgeDef[]): Set<s
 const TX_KINDS = new Set(["mpsc_tx", "broadcast_tx", "watch_tx", "oneshot_tx"]);
 const RX_KINDS = new Set(["mpsc_rx", "broadcast_rx", "watch_rx", "oneshot_rx"]);
 
+// f[impl merge.channel] f[impl merge.channel.id] f[impl merge.channel.name] f[impl merge.channel.status] f[impl merge.channel.guard]
 export function mergeChannelPairs(
   entities: EntityDef[],
   edges: EdgeDef[],
@@ -365,6 +377,7 @@ function buildGroupKeyByEntity(
   return out;
 }
 
+// f[impl merge.rpc] f[impl merge.rpc.id] f[impl merge.rpc.name] f[impl merge.rpc.status] f[impl merge.rpc.group]
 export function mergeRpcPairs(
   entities: EntityDef[],
   edges: EdgeDef[],
@@ -459,6 +472,7 @@ export function mergeRpcPairs(
   return { entities: newEntities, edges: newEdges };
 }
 
+// f[impl merge.coalesce]
 function coalesceContextEdges(edges: EdgeDef[]): EdgeDef[] {
   // If we already have a richer causal/structural edge for a pair,
   // suppress parallel `polls` to avoid double-rendering the same relation.
@@ -474,6 +488,7 @@ function coalesceContextEdges(edges: EdgeDef[]): EdgeDef[] {
   });
 }
 
+// f[impl convert.order] f[impl display.id.composite]
 export function convertSnapshot(
   snapshot: SnapshotCutResponse,
   groupMode: SnapshotGroupMode = "none",
@@ -566,6 +581,7 @@ export function convertSnapshot(
   return { entities: mergedEntities, edges: coalescedEdges };
 }
 
+// f[impl filter.control.focus]
 export function getConnectedSubgraph(
   entityId: string,
   entities: EntityDef[],
@@ -588,6 +604,7 @@ export function getConnectedSubgraph(
   };
 }
 
+// f[impl filter.control.loners]
 export function filterLoners(
   entities: EntityDef[],
   edges: EdgeDef[],
@@ -613,6 +630,7 @@ export function filterLoners(
   };
 }
 
+// f[impl graph.collapse] f[impl graph.collapse.id] f[impl graph.collapse.no-dup]
 export function collapseEdgesThroughHiddenNodes(
   edges: EdgeDef[],
   visibleEntityIds: ReadonlySet<string>,
