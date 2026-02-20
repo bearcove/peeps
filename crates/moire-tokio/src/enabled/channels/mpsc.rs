@@ -242,11 +242,6 @@ pub fn channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Recei
     )
 }
 
-/// Alias for [`channel`] with the upstream constructor name.
-pub fn mpsc_channel<T>(name: impl Into<String>, capacity: usize) -> (Sender<T>, Receiver<T>) {
-    channel(name, capacity)
-}
-
 /// Creates an unbounded channel, equivalent to [`tokio::sync::mpsc::unbounded_channel`].
 pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
     let source = capture_backtrace_id();
@@ -283,13 +278,6 @@ pub fn unbounded_channel<T>(name: impl Into<String>) -> (UnboundedSender<T>, Unb
             tx_handle: tx_handle.downgrade(),
         },
     )
-}
-
-/// Alias for [`unbounded_channel`] with the upstream constructor name.
-pub fn mpsc_unbounded_channel<T>(
-    name: impl Into<String>,
-) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
-    unbounded_channel(name)
 }
 
 impl<T> AsEntityRef for Sender<T> {

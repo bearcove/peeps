@@ -188,11 +188,6 @@ pub fn watch<T: Clone>(name: impl Into<String>, initial: T) -> (WatchSender<T>, 
     )
 }
 
-/// Alias for [`watch`], kept for Tokio API parity.
-pub fn watch_channel<T: Clone>(name: impl Into<String>, initial: T) -> (WatchSender<T>, WatchReceiver<T>) {
-    watch(name, initial)
-}
-
 impl<T: Clone> AsEntityRef for WatchSender<T> {
     fn as_entity_ref(&self) -> EntityRef {
         self.handle.entity_ref()

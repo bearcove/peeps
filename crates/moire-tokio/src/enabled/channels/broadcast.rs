@@ -159,14 +159,6 @@ pub fn broadcast<T: Clone>(
     )
 }
 
-/// Alias for [`broadcast`], kept for API parity with Tokio naming.
-pub fn broadcast_channel<T: Clone>(
-    name: impl Into<String>,
-    capacity: usize,
-) -> (BroadcastSender<T>, BroadcastReceiver<T>) {
-    broadcast(name, capacity)
-}
-
 impl<T: Clone> AsEntityRef for BroadcastSender<T> {
     fn as_entity_ref(&self) -> EntityRef {
         self.handle.entity_ref()

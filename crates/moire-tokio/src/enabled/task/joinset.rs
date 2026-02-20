@@ -18,6 +18,19 @@ impl<T> JoinSet<T>
 where
     T: Send + 'static,
 {
+    /// Creates an instrumented join set with a caller-specified name.
+    pub fn new() -> Self {
+        let source = capture_backtrace_id();
+        Self {
+            inner: tokio::task::JoinSet::new(),
+            handle: EntityHandle::new(
+                "joinset",
+                EntityBody::Future(moire_types::FutureEntity {}),
+                source,
+            ),
+        }
+    }
+
     /// Creates an instrumented join set equivalent to [`tokio::task::JoinSet::new`].
     pub fn named(name: impl Into<String>) -> Self {
         let source = capture_backtrace_id();
@@ -31,11 +44,6 @@ where
             inner: tokio::task::JoinSet::new(),
             handle,
         }
-    }
-
-    /// Alias for [`JoinSet::named`], matching Tokio naming.
-    pub fn with_name(name: impl Into<String>) -> Self {
-        Self::named(name)
     }
 
     /// Spawns a future into the set, matching [`tokio::task::JoinSet::spawn`].

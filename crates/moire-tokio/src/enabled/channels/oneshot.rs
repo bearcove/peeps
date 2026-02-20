@@ -117,8 +117,3 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
         },
     )
 }
-
-/// Alias for [`oneshot`], kept for Tokio API parity.
-pub fn oneshot_channel<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver<T>) {
-    oneshot(name)
-}

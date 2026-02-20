@@ -32,7 +32,7 @@ pub struct Interval {
 }
 
 impl Interval {
-    /// Creates an instrumented interval, matching [`tokio::time::interval`].
+    /// Creates an instrumented interval, equivalent to [`tokio::time::Interval::new`].
     pub fn new(period: Duration) -> Self {
         let source = capture_backtrace_id();
         Self {
@@ -56,4 +56,9 @@ impl Interval {
             None,
         )
     }
+}
+
+/// Creates an instrumented interval, matching [`tokio::time::interval`].
+pub fn interval(period: Duration) -> Interval {
+    Interval::new(period)
 }
