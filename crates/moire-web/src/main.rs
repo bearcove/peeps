@@ -4,6 +4,7 @@ use std::path::{Path as FsPath, PathBuf};
 use std::process::Stdio;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::body::{self, Body, Bytes};
@@ -163,6 +164,7 @@ const TOP_FRAME_CRATE_EXCLUSIONS: &[&str] = &[
 
 const REAPER_PIPE_FD_ENV: &str = "MOIRE_REAPER_PIPE_FD";
 const REAPER_PGID_ENV: &str = "MOIRE_REAPER_PGID";
+static SYMBOLIZER_LOADER_ATTEMPT_ID: AtomicU64 = AtomicU64::new(1);
 
 fn main() {
     // Reaper mode: watch the pipe, kill the process group when it closes.
@@ -3156,6 +3158,15 @@ fn symbolicate_pending_frames_for_pairs_blocking(
             .map_err(|e| format!("read pending frame row: {e}"))?;
 
         for job in &jobs {
+            debug!(
+                conn_id = job.conn_id,
+                backtrace_id = job.backtrace_id,
+                frame_index = job.frame_index,
+                module_identity = %job.module_identity,
+                module_path = %job.module_path,
+                rel_pc = format_args!("{:#x}", job.rel_pc),
+                "symbolication job start"
+            );
             if job.module_path.starts_with("<unknown-module-id:") {
                 unknown_module_jobs = unknown_module_jobs.saturating_add(1);
             }
@@ -3163,6 +3174,16 @@ fn symbolicate_pending_frames_for_pairs_blocking(
                 if let Some(hit) =
                     lookup_symbolication_cache(&tx, job.module_identity.as_str(), job.rel_pc)?
                 {
+                    debug!(
+                        conn_id = job.conn_id,
+                        backtrace_id = job.backtrace_id,
+                        frame_index = job.frame_index,
+                        module_identity = %job.module_identity,
+                        rel_pc = format_args!("{:#x}", job.rel_pc),
+                        cache_status = %hit.status,
+                        unresolved_reason = hit.unresolved_reason.as_deref().unwrap_or(""),
+                        "symbolication cache hit"
+                    );
                     if hit.status == "unresolved"
                         && hit
                             .unresolved_reason
@@ -3189,6 +3210,14 @@ fn symbolicate_pending_frames_for_pairs_blocking(
                         hit
                     }
                 } else {
+                    debug!(
+                        conn_id = job.conn_id,
+                        backtrace_id = job.backtrace_id,
+                        frame_index = job.frame_index,
+                        module_identity = %job.module_identity,
+                        rel_pc = format_args!("{:#x}", job.rel_pc),
+                        "symbolication cache miss"
+                    );
                     let resolved = resolve_frame_symbolication(job, &mut module_cache);
                     upsert_symbolication_cache(
                         &tx,
@@ -3199,8 +3228,28 @@ fn symbolicate_pending_frames_for_pairs_blocking(
                     resolved
                 }
             } else {
+                debug!(
+                    conn_id = job.conn_id,
+                    backtrace_id = job.backtrace_id,
+                    frame_index = job.frame_index,
+                    module_path = %job.module_path,
+                    rel_pc = format_args!("{:#x}", job.rel_pc),
+                    "symbolication bypassing cache: unknown module identity"
+                );
                 resolve_frame_symbolication(job, &mut module_cache)
             };
+            debug!(
+                conn_id = job.conn_id,
+                backtrace_id = job.backtrace_id,
+                frame_index = job.frame_index,
+                module_path = %job.module_path,
+                rel_pc = format_args!("{:#x}", job.rel_pc),
+                status = %cache.status,
+                unresolved_reason = cache.unresolved_reason.as_deref().unwrap_or(""),
+                function_name = cache.function_name.as_deref().unwrap_or(""),
+                source_file = cache.source_file_path.as_deref().unwrap_or(""),
+                "symbolication job complete"
+            );
             upsert_symbolicated_frame(
                 &tx,
                 job.conn_id,
@@ -3246,15 +3295,23 @@ fn resolve_frame_symbolication(
     job: &PendingFrameJob,
     module_cache: &mut HashMap<String, ModuleSymbolizerState>,
 ) -> SymbolicationCacheEntry {
-    let unresolved = |reason: String| SymbolicationCacheEntry {
-        status: String::from("unresolved"),
-        function_name: None,
-        crate_name: None,
-        crate_module_path: None,
-        source_file_path: None,
-        source_line: None,
-        source_col: None,
-        unresolved_reason: Some(reason),
+    let unresolved = |reason: String| {
+        debug!(
+            module_path = %job.module_path,
+            rel_pc = format_args!("{:#x}", job.rel_pc),
+            reason = %reason,
+            "symbolication unresolved"
+        );
+        SymbolicationCacheEntry {
+            status: String::from("unresolved"),
+            function_name: None,
+            crate_name: None,
+            crate_module_path: None,
+            source_file_path: None,
+            source_line: None,
+            source_col: None,
+            unresolved_reason: Some(reason),
+        }
     };
     if job.module_path.starts_with("<unknown-module-id:") {
         debug!(
@@ -3272,9 +3329,16 @@ fn resolve_frame_symbolication(
         Entry::Occupied(entry) => entry.into_mut(),
         Entry::Vacant(entry) => {
             let open_started = Instant::now();
+            let loader_attempt_id = SYMBOLIZER_LOADER_ATTEMPT_ID.fetch_add(1, Ordering::Relaxed);
+            debug!(
+                loader_attempt_id,
+                module_path = %job.module_path,
+                "symbolication debug object open start"
+            );
             let loaded = match addr2line::Loader::new(job.module_path.as_str()) {
                 Ok(loader) => {
                     debug!(
+                        loader_attempt_id,
                         module_path = %job.module_path,
                         elapsed_ms = open_started.elapsed().as_millis(),
                         "symbolication debug object opened"
@@ -3283,6 +3347,7 @@ fn resolve_frame_symbolication(
                 }
                 Err(e) => {
                     debug!(
+                        loader_attempt_id,
                         module_path = %job.module_path,
                         elapsed_ms = open_started.elapsed().as_millis(),
                         error = %e,
@@ -3312,6 +3377,12 @@ fn resolve_frame_symbolication(
     let mut source_col = None::<i64>;
 
     let lookup_started = Instant::now();
+    debug!(
+        module_path = %job.module_path,
+        rel_pc = format_args!("{:#x}", job.rel_pc),
+        lookup_pc = format_args!("{:#x}", lookup_pc),
+        "symbolication frame lookup start"
+    );
     let mut frames = match loader.find_frames(lookup_pc) {
         Ok(frames) => frames,
         Err(e) => {
@@ -3328,6 +3399,12 @@ fn resolve_frame_symbolication(
             ))
         }
     };
+    debug!(
+        module_path = %job.module_path,
+        rel_pc = format_args!("{:#x}", job.rel_pc),
+        elapsed_ms = lookup_started.elapsed().as_millis(),
+        "symbolication frame lookup ready"
+    );
 
     loop {
         match frames.next() {
