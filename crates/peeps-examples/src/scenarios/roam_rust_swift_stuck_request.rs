@@ -1,16 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
+use crate::peeps::prelude::*;
 use roam_stream::{accept, HandshakeConfig, NoDispatcher};
 use tokio::process::{Child, Command};
-
-const SOURCE_LEFT: peeps::SourceLeft =
-    peeps::SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
-
-#[track_caller]
-fn source() -> peeps::SourceId {
-    SOURCE_LEFT.resolve().into()
-}
 
 fn swift_package_path(workspace_root: &Path) -> PathBuf {
     workspace_root.join("crates/peeps-examples/swift/roam-rust-swift-stuck-request")
@@ -59,29 +52,17 @@ pub async fn run(workspace_root: &Path) -> Result<(), String> {
         .await
         .map_err(|e| format!("roam handshake with swift peer should succeed: {e}"))?;
 
-    peeps::spawn_tracked(
-        "roam.rust_host_driver",
-        async move {
-            let _ = driver.run().await;
-        },
-        source(),
-    );
+    crate::peeps::spawn_tracked("roam.rust_host_driver", async move {
+        let _ = driver.run().await;
+    });
 
     let request_handle = handle.clone();
-    peeps::spawn_tracked(
-        "rust.calls.swift_noop",
-        async move {
-            let _ = peeps::instrument_future(
-                "rpc.call.swift.noop.stall",
-                request_handle.call_raw(0xfeed_f00d, "swift.noop.stall", Vec::new()),
-                source(),
-                None,
-                None,
-            )
+    crate::peeps::spawn_tracked("rust.calls.swift_noop", async move {
+        let _ = request_handle
+            .call_raw(0xfeed_f00d, "swift.noop.stall", Vec::new())
+            .tracked("rpc.call.swift.noop.stall")
             .await;
-        },
-        source(),
-    );
+    });
 
     println!("example running. rust issues one RPC call that swift intentionally never answers.");
     println!("open peeps-web and inspect request/connection wait edges across this process.");

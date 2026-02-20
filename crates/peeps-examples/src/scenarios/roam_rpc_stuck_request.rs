@@ -2,18 +2,11 @@ use std::io;
 use std::process::Stdio;
 use std::time::Duration;
 
+use crate::peeps::prelude::*;
 use roam::service;
 use roam_stream::{accept, connect, Connector, HandshakeConfig, NoDispatcher};
 use tokio::net::TcpStream;
 use tokio::process::{Child, Command};
-
-const SOURCE_LEFT: peeps::SourceLeft =
-    peeps::SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
-
-#[track_caller]
-fn source() -> peeps::SourceId {
-    SOURCE_LEFT.resolve().into()
-}
 
 #[service]
 trait DemoRpc {
@@ -73,13 +66,9 @@ pub async fn run() -> Result<(), String> {
         .await
         .map_err(|e| format!("server handshake should succeed: {e}"))?;
 
-    peeps::spawn_tracked(
-        "roam.server_driver",
-        async move {
-            let _ = driver.run().await;
-        },
-        source(),
-    );
+    crate::peeps::spawn_tracked("roam.server_driver", async move {
+        let _ = driver.run().await;
+    });
 
     println!("server ready: requests to sleepy_forever will stall forever");
     println!("press Ctrl+C to exit");
@@ -129,14 +118,10 @@ async fn run_client(addr: String) -> Result<(), String> {
 
     let client = DemoRpcClient::new(client_transport);
     println!("client: sent one sleepy_forever RPC request (intentionally stuck)");
-    let _ = peeps::instrument_future(
-        "roam.client.request_task",
-        client.sleepy_forever(),
-        source(),
-        None,
-        None,
-    )
-    .await
-    .map_err(|e| format!("client sleepy_forever request failed: {e}"))?;
+    let _ = client
+        .sleepy_forever()
+        .tracked("roam.client.request_task")
+        .await
+        .map_err(|e| format!("client sleepy_forever request failed: {e}"))?;
     Err("client request unexpectedly completed".to_string())
 }

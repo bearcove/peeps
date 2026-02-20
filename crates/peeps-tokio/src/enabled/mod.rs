@@ -106,7 +106,7 @@ macro_rules! facade {
                 fn tracked(
                     self,
                     name: impl Into<String>,
-                ) -> $crate::InstrumentedFuture<Self::IntoFuture>
+                ) -> $crate::InstrumentedFuture<<Self as core::future::IntoFuture>::IntoFuture>
                 where
                     Self: core::future::IntoFuture;
             }
@@ -119,7 +119,7 @@ macro_rules! facade {
                 fn tracked(
                     self,
                     name: impl Into<String>,
-                ) -> $crate::InstrumentedFuture<Self::IntoFuture>
+                ) -> $crate::InstrumentedFuture<<Self as core::future::IntoFuture>::IntoFuture>
                 where
                     Self: core::future::IntoFuture,
                 {

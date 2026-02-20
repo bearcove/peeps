@@ -35,7 +35,8 @@ pub async fn run() -> Result<(), String> {
             "inserted sender for request {request_id} under wrong key {storage_key}; receiver now waits"
         );
 
-        crate::peeps::instrument_future("request_42.await_response.blocked", rx.recv(), None, None)
+        rx.recv()
+            .tracked("request_42.await_response.blocked")
             .await
             .expect("request unexpectedly completed");
     });
@@ -53,13 +54,8 @@ pub async fn run() -> Result<(), String> {
     let pending_for_router = Arc::clone(&pending_by_request_id);
     crate::peeps::spawn_tracked("router.match_response_to_pending_request", async move {
         loop {
-            let Some((request_id, payload)) = crate::peeps::instrument_future(
-                "response_bus.recv",
-                response_bus_rx.recv(),
-                None,
-                None,
-            )
-            .await
+            let Some((request_id, payload)) =
+                response_bus_rx.recv().tracked("response_bus.recv").await
             else {
                 return;
             };

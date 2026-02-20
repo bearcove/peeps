@@ -60,24 +60,14 @@ pub async fn run() -> Result<(), String> {
     );
 
     crate::peeps::spawn_tracked("observer.alpha_completion", async move {
-        let _ = crate::peeps::instrument_future(
-            "deadlock.alpha.completion.await",
-            alpha_done_rx,
-            None,
-            None,
-        )
-        .await;
+        let _ = alpha_done_rx
+            .tracked("deadlock.alpha.completion.await")
+            .await;
         println!("observer.alpha_completion unexpectedly unblocked");
     });
 
     crate::peeps::spawn_tracked("observer.beta_completion", async move {
-        let _ = crate::peeps::instrument_future(
-            "deadlock.beta.completion.await",
-            beta_done_rx,
-            None,
-            None,
-        )
-        .await;
+        let _ = beta_done_rx.tracked("deadlock.beta.completion.await").await;
         println!("observer.beta_completion unexpectedly unblocked");
     });
 
