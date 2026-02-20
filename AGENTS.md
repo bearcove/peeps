@@ -21,9 +21,6 @@ When the user provides copy, preserve cadence and phrasing. Do not smooth or rew
 
 ## Internals Index
 
-- `internals/examples-conventions.md` - Example authoring and runner contract (`just ex` flow, process-group lifecycle, multi-process examples).
-- `internals/recording-mode-plan.md` - Recording mode roadmap + final target data model + checkbox tracker.
-- `internals/RESOURCES.md` - External references and technical material used while shaping instrumentation and model decisions.
-- `internals/async-stack-sketch.md` - Current async stack and causality sketch notes.
-- `internals/scope-ui.md` - Scope UI direction and constraints.
-- `internals/prompts/on-accepts-wrapper.md` - Prompt/spec notes for on-accept wrappers.
+- `examples/README.md` - Example authoring and runner contract (`just ex` flow, process-group lifecycle, multi-process examples).
+- `docs/RESOURCES.md` - External references and technical material used while shaping instrumentation and model decisions.
+- `internals/frame-pointer-trace-plan.md` - Source attribution replacement plan (still active).
