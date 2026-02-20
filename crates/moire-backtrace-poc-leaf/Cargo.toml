@@ -6,5 +6,5 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-backtrace.workspace = true
-libc.workspace = true
+moire-trace-capture.workspace = true
+moire-trace-types.workspace = true

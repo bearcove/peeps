@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -1489,6 +1489,9 @@ async fn read_messages(
 
         match message {
             ClientMessage::Handshake(handshake) => {
+                // r[impl wire.handshake.reject]
+                validate_handshake(&handshake)
+                    .map_err(|e| format!("reject handshake for conn {conn_id}: {e}"))?;
                 let mut guard = state.inner.lock().await;
                 if let Some(conn) = guard.connections.get_mut(&conn_id) {
                     conn.process_name = handshake.process_name.to_string();
@@ -1576,6 +1579,51 @@ async fn read_messages(
             }
         }
     }
+}
+
+fn validate_handshake(handshake: &moire_wire::Handshake) -> Result<(), String> {
+    if handshake.process_name.trim().is_empty() {
+        return Err("process_name must be non-empty".to_string());
+    }
+
+    for (index, module) in handshake.module_manifest.iter().enumerate() {
+        if module.module_path.trim().is_empty() {
+            return Err(format!(
+                "module_manifest[{index}].module_path must be non-empty"
+            ));
+        }
+        if !Path::new(module.module_path.as_str()).is_absolute() {
+            return Err(format!(
+                "module_manifest[{index}].module_path must be absolute"
+            ));
+        }
+        if module.runtime_base == 0 {
+            return Err(format!(
+                "module_manifest[{index}].runtime_base must be non-zero"
+            ));
+        }
+        if module.arch.trim().is_empty() {
+            return Err(format!("module_manifest[{index}].arch must be non-empty"));
+        }
+        match &module.identity {
+            moire_wire::ModuleIdentity::BuildId(build_id) => {
+                if build_id.trim().is_empty() {
+                    return Err(format!(
+                        "module_manifest[{index}].identity.build_id must be non-empty"
+                    ));
+                }
+            }
+            moire_wire::ModuleIdentity::DebugId(debug_id) => {
+                if debug_id.trim().is_empty() {
+                    return Err(format!(
+                        "module_manifest[{index}].identity.debug_id must be non-empty"
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn json_ok<T>(value: &T) -> axum::response::Response

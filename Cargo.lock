@@ -1187,8 +1187,8 @@ dependencies = [
 name = "moire-backtrace-poc-leaf"
 version = "0.1.0"
 dependencies = [
- "backtrace",
- "libc",
+ "moire-trace-capture",
+ "moire-trace-types",
 ]
 
 [[package]]
@@ -1279,7 +1279,6 @@ dependencies = [
 name = "moire-trace-capture"
 version = "0.1.0"
 dependencies = [
- "backtrace",
  "libc",
  "moire-trace-types",
 ]

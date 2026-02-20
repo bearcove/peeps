@@ -1,6 +1,8 @@
-use backtrace::trace;
-use std::ffi::c_void;
-use std::ffi::CStr;
+use moire_trace_capture::{capture_current, CaptureOptions};
+use moire_trace_types::{BacktraceId, ModuleId};
+use std::collections::BTreeMap;
+use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug, Clone)]
 pub struct CapturedTrace {
@@ -34,19 +36,50 @@ pub mod pipeline {
 
 #[inline(never)]
 fn capture_trace(label: &str) -> CapturedTrace {
-    let mut frames = Vec::new();
+    static NEXT_BACKTRACE_ID: AtomicU64 = AtomicU64::new(1);
+    let backtrace_id = BacktraceId::new(NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed))
+        .expect("invariant violated: generated backtrace id must be non-zero");
 
-    trace(|frame| {
-        let ip = frame.ip() as usize;
-        let module_info = module_info_for_ip(ip as *const c_void);
-        frames.push(CapturedFrame {
-            ip: ip as u64,
-            module_base: module_info.as_ref().map(|info| info.base),
-            module_path: module_info.and_then(|info| info.path),
-        });
+    let captured = capture_current(
+        backtrace_id,
+        CaptureOptions {
+            max_frames: NonZeroUsize::new(1024)
+                .expect("invariant violated: max_frames must be non-zero"),
+            skip_frames: 1,
+        },
+    )
+    .expect("invariant violated: frame-pointer capture failed in PoC");
 
-        true
-    });
+    let modules_by_id: BTreeMap<ModuleId, (u64, String)> = captured
+        .modules
+        .iter()
+        .map(|module| {
+            (
+                module.id,
+                (module.runtime_base, module.path.as_str().to_string()),
+            )
+        })
+        .collect();
+
+    let frames: Vec<CapturedFrame> = captured
+        .backtrace
+        .frames
+        .iter()
+        .map(|frame| {
+            let (module_base, module_path) = modules_by_id
+                .get(&frame.module_id)
+                .expect("invariant violated: frame references unknown module id");
+            let ip = module_base
+                .checked_add(frame.rel_pc)
+                .expect("invariant violated: ip overflow");
+
+            CapturedFrame {
+                ip,
+                module_base: Some(*module_base),
+                module_path: Some(module_path.clone()),
+            }
+        })
+        .collect();
 
     if frames.is_empty() {
         panic!("invariant violated: no frames collected");
@@ -56,37 +89,4 @@ fn capture_trace(label: &str) -> CapturedTrace {
         label: label.to_owned(),
         frames,
     }
-}
-
-struct ModuleInfo {
-    base: u64,
-    path: Option<String>,
-}
-
-fn module_info_for_ip(ip: *const c_void) -> Option<ModuleInfo> {
-    let mut info = std::mem::MaybeUninit::<libc::Dl_info>::zeroed();
-    let ok = unsafe { libc::dladdr(ip, info.as_mut_ptr()) };
-    if ok == 0 {
-        return None;
-    }
-
-    let info = unsafe { info.assume_init() };
-    if info.dli_fbase.is_null() {
-        return None;
-    }
-
-    let path = if info.dli_fname.is_null() {
-        None
-    } else {
-        Some(
-            unsafe { CStr::from_ptr(info.dli_fname) }
-                .to_string_lossy()
-                .into_owned(),
-        )
-    };
-
-    Some(ModuleInfo {
-        base: info.dli_fbase as usize as u64,
-        path,
-    })
 }

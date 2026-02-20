@@ -78,17 +78,9 @@ The `ApiClient` interface is the authoritative contract between the dashboard an
 
 The dashboard converts raw wire types into richer display types before rendering. This conversion is pure and deterministic — the same wire snapshot always produces the same display data.
 
-### Composite IDs
-
-> r[display.id.composite]
-> Every entity on the display side has a composite ID of the form `"${process_id}/${raw_entity_id}"`. This string uniquely identifies an entity across all connected processes in a single snapshot.
-
-> r[display.id.scope-key]
-> Every scope on the display side has a composite key of the form `"${process_id}:${scope_id}"`.
-
 ### Backtrace IDs
 
-> r[display.backtrace.validate]
+> r[display.backtrace.required+2]
 > Every entity and scope in a snapshot MUST carry a `backtrace_id` field that is a positive integer. If the field is absent, zero, or non-integer, snapshot conversion MUST throw with an explicit error message identifying the process and the context (entity ID or scope ID). Silent fallback is not permitted.
 
 ### Tone
@@ -98,10 +90,9 @@ The dashboard converts raw wire types into richer display types before rendering
 
 ### EntityDef
 
-> r[display.entity.fields]
+> r[display.entity+2]
 > An `EntityDef` is the dashboard-side representation of an entity. It carries:
-> - `id`: composite entity ID
-> - `rawEntityId`: the original ID as reported by the process
+> - `id`: the raw wire `EntityId`
 > - `processId`, `processName`, `processPid`: process identity
 > - `name`: human-facing label
 > - `kind`: the first key of `body` (e.g. `"future"`, `"lock"`, `"mpsc_tx"`)
@@ -161,40 +152,39 @@ The dashboard converts raw wire types into richer display types before rendering
 
 ### EdgeDef
 
-> r[display.edge]
+> r[display.edge+2]
 > An `EdgeDef` is the dashboard-side representation of an edge. It carries:
-> - `id`: a stable string ID of the form `"e${i}-${srcComposite}-${dstComposite}-${kind}"`
-> - `source`: composite entity ID of the source
-> - `target`: composite entity ID of the destination
+> - `id`: a stable string ID of the form `"e${i}-${src}-${dst}-${kind}"`
+> - `source`: raw `EntityId` of the source
+> - `target`: raw `EntityId` of the destination
 > - `kind`: the wire `EdgeKind`
 > - `sourcePort`: optional ELK port ID on the source node, used when the source is a merged pair node
 > - `targetPort`: optional ELK port ID on the target node, used when the target is a merged pair node
 
 ### ScopeDef
 
-> r[display.scope.fields]
+> r[display.scope+2]
 > A `ScopeDef` is the dashboard-side representation of a scope. It carries:
-> - `key`: composite scope key (`"${processId}:${scopeId}"`)
+> - `id`: the raw wire `ScopeId`
 > - `processId`, `processName`, `processPid`
-> - `scopeId`, `scopeName`
+> - `scopeName`
 > - `scopeKind`: canonical kind string (`"process"`, `"thread"`, `"task"`, `"connection"`)
 > - `backtraceId`: the `BacktraceId` from the wire scope, as a positive integer
 > - `birthPtime`, `ageMs`
-> - `memberEntityIds`: list of composite entity IDs currently associated with this scope
+> - `memberEntityIds`: list of raw `EntityId` values currently associated with this scope
 
 ---
 
 ## Snapshot Conversion Pipeline
 
-> r[convert.pipeline]
+> r[convert.order+2]
 > Raw `SnapshotCutResponse` wire data is converted to display data through the following ordered pipeline:
-> 1. Collect all entities and edges across all processes. Validate that every entity and scope carries a positive non-zero `backtrace_id`; throw with an explicit error message if any is missing or invalid.
-> 2. Build a raw-entity-ID-to-composite-ID lookup for cross-process edge resolution.
-> 3. Resolve edges: for `paired_with` edges, the `src` is looked up in the global raw-ID map (cross-process); for all other kinds, `src` is scoped to the current process.
-> 4. Merge channel pairs (`mergeChannelPairs`).
-> 5. Merge RPC pairs (`mergeRpcPairs`).
-> 6. Coalesce redundant `polls` edges (`coalesceContextEdges`).
-> 7. Detect deadlock cycle membership (`detectCycleNodes`), marking `inCycle` on all entities in a cycle.
+> 1. Collect all entities and edges across all processes into a single global entity map keyed by raw `EntityId`. Validate that every entity and scope carries a positive non-zero `backtrace_id`; throw with an explicit error message if any is missing or invalid.
+> 2. Resolve edges: for `paired_with` edges, the `src` is looked up in the global entity map (cross-process); for all other kinds, `src` is scoped to the current process.
+> 3. Merge channel pairs (`mergeChannelPairs`).
+> 4. Merge RPC pairs (`mergeRpcPairs`).
+> 5. Coalesce redundant `polls` edges (`coalesceContextEdges`).
+> 6. Detect deadlock cycle membership (`detectCycleNodes`), marking `inCycle` on all entities in a cycle.
 
 ---
 
@@ -262,13 +252,13 @@ The graph filter is a space-separated list of tokens parsed from a single text i
 
 Signed tokens form an allowlist (`+`) or denylist (`-`). Multiple tokens of the same sign and axis combine as a union (OR). If any `+` token is present for an axis, only entities matching at least one of the `+` values on that axis are shown.
 
-> r[filter.axis.node]
-> `+node:<id>` / `-node:<id>` — include or exclude the entity with the given composite ID. The key may also be spelled `id`.
+> r[filter.axis.node+2]
+> `+node:<id>` / `-node:<id>` — include or exclude the entity with the given raw `EntityId`. The key may also be spelled `id`.
 
-> r[filter.axis.location.bt]
+> r[filter.axis.location+2]
 > `+location:<src>` / `-location:<src>` — include or exclude entities whose backtrace has been resolved and whose top application frame's `"source_file:line"` matches the given string. The key may also be spelled `source`. Entities whose backtraces have not yet been resolved are treated as non-matching for this axis.
 
-> r[filter.axis.crate.bt]
+> r[filter.axis.crate+2]
 > `+crate:<name>` / `-crate:<name>` — include or exclude entities whose backtrace has been resolved and whose top application frame's `crate_name` matches the given name. Entities whose backtraces have not yet been resolved are treated as non-matching for this axis.
 
 > r[filter.axis.process]
@@ -279,19 +269,19 @@ Signed tokens form an allowlist (`+`) or denylist (`-`). Multiple tokens of the 
 
 ### Unsigned control tokens
 
-> r[filter.control.focus]
-> `focus:<id>` (also `subgraph:<id>`) — after all axis filters are applied, restrict the visible graph to the connected subgraph reachable from the entity with the given composite ID via any edge in either direction (BFS). Entities not reachable from the focus node are hidden.
+> r[filter.control.focus+2]
+> `focus:<id>` (also `subgraph:<id>`) — after all axis filters are applied, restrict the visible graph to the connected subgraph reachable from the entity with the given raw `EntityId` via any edge in either direction (BFS). Entities not reachable from the focus node are hidden.
 
 > r[filter.control.loners]
 > `loners:on` / `loners:off` — when `off`, entities that have no edges to any other visible entity MUST be hidden from the graph. The default behavior (no token) is equivalent to `loners:on`.
 
-> r[filter.control.colorby.bt]
+> r[filter.control.colorby+2]
 > `colorBy:process` — color entity nodes by their process membership. `colorBy:crate` — color entity nodes by the `crate_name` of their resolved backtrace top frame; entities whose backtraces have not been resolved receive the default color. When absent, all nodes use the default color.
 
-> r[filter.control.groupby.bt]
+> r[filter.control.groupby+2]
 > `groupBy:process` / `groupBy:crate` — render entities inside labeled subgraph boxes grouped by process or by the `crate_name` of their resolved backtrace top frame. `groupBy:none` removes grouping. Entities with unresolved backtraces are placed in an implicit ungrouped region when grouping by crate. Grouping also affects RPC pair merging: request and response entities in different groups are not merged.
 
-> r[filter.control.labelby.bt]
+> r[filter.control.labelby+2]
 > `labelBy:process` / `labelBy:crate` / `labelBy:location` — display a secondary label on each entity card showing the process name, the `crate_name` of the resolved backtrace top frame, or the `source_file:line` of the resolved backtrace top frame respectively. When the relevant backtrace is not yet resolved, the secondary label is omitted.
 
 ### Filter application order
@@ -319,7 +309,7 @@ Signed tokens form an allowlist (`+`) or denylist (`-`). Multiple tokens of the 
 > r[filter.suggest]
 > The filter input MUST provide autocomplete suggestions based on the current draft token. Suggestions are ranked by prefix match, substring match, and fuzzy subsequence match (in that order). Suggestions that are already present as committed tokens MUST be omitted.
 
-> r[filter.suggest.fragment]
+> r[filter.suggest.fragment+2]
 > Suggestions are generated against the in-progress fragment (the token currently being typed). When the fragment is empty or has no `:`, top-level operator and control tokens are suggested. When the fragment begins with `+` or `-` and no `:`, signed axis key suggestions are offered. When a `:` is present, value completions for the given key are offered using available entity IDs, process IDs, kinds, and — for `crate` and `location` axes — the crate names and source locations from all already-resolved backtraces.
 
 ---

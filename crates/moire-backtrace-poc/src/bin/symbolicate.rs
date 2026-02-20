@@ -5,9 +5,18 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const RESET: &str = "\x1b[0m";
+const BOLD: &str = "\x1b[1m";
+const DIM: &str = "\x1b[2m";
+const RED: &str = "\x1b[31m";
+const GREEN: &str = "\x1b[32m";
+const YELLOW: &str = "\x1b[33m";
+const BLUE: &str = "\x1b[34m";
+const CYAN: &str = "\x1b[36m";
+
 fn main() {
     if let Err(err) = run() {
-        eprintln!("{err}");
+        eprintln!("{}error:{} {err}", RED, RESET);
         std::process::exit(1);
     }
 }
@@ -26,7 +35,13 @@ fn run() -> Result<(), String> {
         return Err("invariant violated: trace bundle contained zero traces".to_owned());
     }
 
-    println!("trace bundle: {}", args.input.display());
+    println!(
+        "{}{}Trace Bundle{} {}",
+        BOLD,
+        BLUE,
+        RESET,
+        args.input.display()
+    );
 
     let mut module_cache: HashMap<String, ModuleResolver> = HashMap::new();
 
@@ -38,15 +53,25 @@ fn run() -> Result<(), String> {
             ));
         }
 
-        println!("\ntrace={} frame_count={}", trace.label, trace.frames.len());
+        println!(
+            "\n{}{}trace{}={} {}{}frame_count{}={}",
+            BOLD,
+            BLUE,
+            RESET,
+            trace.label,
+            BOLD,
+            CYAN,
+            RESET,
+            trace.frames.len()
+        );
 
         for (idx, frame) in trace.frames.iter().enumerate() {
             let module_path = match &frame.module_path {
                 Some(path) => path,
                 None => {
                     println!(
-                        "  #{idx:02} ip=0x{:016x} unresolved=no_module_path",
-                        frame.ip
+                        "  {}#{idx:02}{} {}ip{}=0x{:016x} {}unresolved{}=no_module_path",
+                        YELLOW, RESET, DIM, RESET, frame.ip, RED, RESET
                     );
                     continue;
                 }
@@ -56,15 +81,34 @@ fn run() -> Result<(), String> {
                 Some(base) => base,
                 None => {
                     println!(
-                        "  #{idx:02} ip=0x{:016x} module={} unresolved=no_module_base",
-                        frame.ip, module_path
+                        "  {}#{idx:02}{} {}ip{}=0x{:016x} {}module{}={} {}unresolved{}=no_module_base",
+                        YELLOW, RESET, DIM, RESET, frame.ip, CYAN, RESET, module_path, RED, RESET
                     );
                     continue;
                 }
             };
 
             if !module_cache.contains_key(module_path) {
-                let resolver = ModuleResolver::new(module_path)?;
+                let resolver = match ModuleResolver::new(module_path) {
+                    Ok(resolver) => resolver,
+                    Err(err) => {
+                        println!(
+                            "  {}#{idx:02}{} {}ip{}=0x{:016x} {}module{}={} {}unresolved{}={}",
+                            YELLOW,
+                            RESET,
+                            DIM,
+                            RESET,
+                            frame.ip,
+                            CYAN,
+                            RESET,
+                            module_path,
+                            RED,
+                            RESET,
+                            err
+                        );
+                        continue;
+                    }
+                };
                 module_cache.insert(module_path.clone(), resolver);
             }
 
@@ -95,23 +139,41 @@ fn run() -> Result<(), String> {
             let (function_name, source_path, line, column, absolute_flag) =
                 resolver.resolve(probe)?;
             let (crate_name, module_name) = split_crate_and_module(&function_name);
+            let source_link = format_source_link(&source_path, line, column, absolute_flag);
 
             println!(
-                "  #{idx:02} ip=0x{:016x} runtime_base=0x{:016x} module={} module_offset=0x{:016x} probe=0x{:016x} crate={} module_path={} fn={} file={} line={} col={} file_is_absolute={}",
+                "  {}#{idx:02}{} {}ip{}=0x{:016x} {}runtime_base{}=0x{:016x} {}module{}={} {}module_offset{}=0x{:016x} {}probe{}=0x{:016x} {}crate{}={} {}module_path{}={} {}fn{}={} {}src{}={} {}abs{}={}",
+                YELLOW,
+                RESET,
+                DIM,
+                RESET,
                 frame.ip,
+                CYAN,
+                RESET,
                 runtime_base,
+                CYAN,
+                RESET,
                 module_path,
+                CYAN,
+                RESET,
                 module_offset,
+                CYAN,
+                RESET,
                 probe,
+                GREEN,
+                RESET,
                 crate_name,
+                GREEN,
+                RESET,
                 module_name,
+                GREEN,
+                RESET,
                 function_name,
-                source_path,
-                line.map(|v: u32| v.to_string())
-                    .unwrap_or_else(|| "?".to_owned()),
-                column
-                    .map(|v: u32| v.to_string())
-                    .unwrap_or_else(|| "?".to_owned()),
+                BLUE,
+                RESET,
+                source_link,
+                DIM,
+                RESET,
                 absolute_flag,
             );
         }
@@ -310,4 +372,29 @@ fn strip_rust_hash_suffix(name: &str) -> &str {
         }
     }
     name
+}
+
+fn hyperlink(label: &str, target: &str) -> String {
+    format!("\x1b]8;;{target}\x1b\\{label}\x1b]8;;\x1b\\")
+}
+
+fn format_source_link(
+    path: &str,
+    line: Option<u32>,
+    column: Option<u32>,
+    absolute: bool,
+) -> String {
+    let mut label = String::from(path);
+    if let Some(line) = line {
+        label.push(':');
+        label.push_str(line.to_string().as_str());
+        if let Some(column) = column {
+            label.push(':');
+            label.push_str(column.to_string().as_str());
+        }
+    }
+    if absolute {
+        return hyperlink(label.as_str(), format!("file://{path}").as_str());
+    }
+    label
 }

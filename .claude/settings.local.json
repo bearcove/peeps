@@ -21,7 +21,8 @@
       "Bash(cargo build:*)",
       "mcp__tracey__tracey_status",
       "mcp__tracey__tracey_uncovered",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "mcp__tracey__tracey_validate"
     ]
   }
 }

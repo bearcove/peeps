@@ -63,6 +63,7 @@ impl From<FrameCodecError> for WireError {
     }
 }
 
+// r[impl wire.framing]
 pub fn encode_frame(payload: &[u8], max_payload_bytes: usize) -> Result<Vec<u8>, FrameCodecError> {
     if payload.len() > max_payload_bytes {
         return Err(FrameCodecError::PayloadTooLarge {
@@ -196,6 +197,7 @@ pub struct ClientError {
     pub last_frame_utf8: Option<String>,
 }
 
+// r[impl wire.client-message]
 #[derive(Facet)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
@@ -207,6 +209,7 @@ pub enum ClientMessage {
     Error(ClientError),
 }
 
+// r[impl wire.server-message]
 #[derive(Facet)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]

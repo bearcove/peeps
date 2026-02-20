@@ -71,7 +71,10 @@ impl fmt::Display for CaptureError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnsupportedPlatform { target_os } => {
-                write!(f, "unsupported platform for trace capture backend: {target_os}; only macOS is implemented")
+                write!(
+                    f,
+                    "unsupported platform for trace capture backend: {target_os}; only Unix targets are implemented"
+                )
             }
             Self::EmptyBacktrace => write!(f, "invariant violated: captured backtrace must be non-empty"),
             Self::MissingModuleInfo { ip } => {
@@ -107,7 +110,7 @@ impl Error for CaptureError {
 // r[impl process.frame-pointers]
 pub fn trace_capabilities() -> TraceCapabilities {
     TraceCapabilities {
-        trace_v1: cfg!(target_os = "macos"),
+        trace_v1: cfg!(unix) && cfg!(any(target_arch = "x86_64", target_arch = "aarch64")),
         requires_frame_pointers: true,
         sampling_supported: false,
         alloc_tracking_supported: false,
@@ -128,6 +131,7 @@ recompile with -C force-frame-pointers=yes"
     });
 }
 
+// r[impl process.backtrace-capture]
 pub fn capture_current(
     backtrace_id: BacktraceId,
     options: CaptureOptions,
@@ -135,10 +139,9 @@ pub fn capture_current(
     platform::capture_current_impl(backtrace_id, options)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 mod platform {
     use super::{CaptureError, CaptureOptions, CapturedBacktrace, CapturedModule};
-    use backtrace::trace;
     use moire_trace_types::{BacktraceId, BacktraceRecord, FrameKey, ModuleId, ModulePath};
     use std::collections::BTreeMap;
     use std::ffi::{c_void, CStr};
@@ -246,26 +249,12 @@ mod platform {
         ))
     }
 
+    // r[impl process.backtrace-capture.impl]
     pub fn capture_current_impl(
         backtrace_id: BacktraceId,
         options: CaptureOptions,
     ) -> Result<CapturedBacktrace, CaptureError> {
-        let mut raw_ips = Vec::new();
-        let mut skip_remaining = options.skip_frames;
-
-        trace(|frame| {
-            if skip_remaining > 0 {
-                skip_remaining -= 1;
-                return true;
-            }
-
-            if raw_ips.len() >= options.max_frames.get() {
-                return false;
-            }
-
-            raw_ips.push(frame.ip() as usize as u64);
-            true
-        });
+        let raw_ips = collect_raw_ips(options)?;
 
         if raw_ips.is_empty() {
             return Err(CaptureError::EmptyBacktrace);
@@ -322,6 +311,40 @@ mod platform {
         Ok(CapturedBacktrace { backtrace, modules })
     }
 
+    fn collect_raw_ips(options: CaptureOptions) -> Result<Vec<u64>, CaptureError> {
+        let mut raw_ips = Vec::new();
+        let mut skip_remaining = options.skip_frames;
+        let mut frame_ptr =
+            read_frame_pointer().map_err(|_| CaptureError::UnsupportedPlatform {
+                target_os: std::env::consts::OS,
+            })?;
+
+        while frame_ptr != 0 && raw_ips.len() < options.max_frames.get() {
+            if frame_ptr % std::mem::align_of::<usize>() != 0 {
+                break;
+            }
+
+            let next_frame_ptr = unsafe { *(frame_ptr as *const usize) };
+            let return_ip = unsafe { *((frame_ptr as *const usize).add(1)) };
+
+            if return_ip != 0 {
+                if skip_remaining > 0 {
+                    skip_remaining -= 1;
+                } else {
+                    raw_ips.push(return_ip as u64);
+                }
+            }
+
+            if next_frame_ptr == 0 || next_frame_ptr <= frame_ptr {
+                break;
+            }
+
+            frame_ptr = next_frame_ptr;
+        }
+
+        Ok(raw_ips)
+    }
+
     struct RawModuleInfo {
         runtime_base: u64,
         path: String,
@@ -359,7 +382,7 @@ mod platform {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(unix))]
 mod platform {
     use super::{CaptureError, CaptureOptions, CapturedBacktrace};
     use moire_trace_types::BacktraceId;
