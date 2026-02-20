@@ -12,6 +12,9 @@ members = [
   "crates/peeps-wire",
   "crates/peeps-sqlite-facet",
   "crates/peeps-examples",
+  "crates/peeps-backtrace-poc",
+  "crates/peeps-backtrace-poc-router",
+  "crates/peeps-backtrace-poc-leaf",
 ]
 
 [workspace.package]

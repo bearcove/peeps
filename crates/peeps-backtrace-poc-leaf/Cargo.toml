@@ -1,0 +1,10 @@
+[package]
+name = "peeps-backtrace-poc-leaf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+backtrace.workspace = true
+libc.workspace = true

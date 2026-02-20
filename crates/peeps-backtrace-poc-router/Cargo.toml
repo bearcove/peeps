@@ -1,0 +1,9 @@
+[package]
+name = "peeps-backtrace-poc-router"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+peeps-backtrace-poc-leaf = { path = "../peeps-backtrace-poc-leaf" }
