@@ -16,6 +16,7 @@ members = [
   "crates/moire-backtrace-poc",
   "crates/moire-backtrace-poc-router",
   "crates/moire-backtrace-poc-leaf",
+  "crates/facet-typescript-repro",
 ]
 
 [workspace.package]
