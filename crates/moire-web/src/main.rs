@@ -3357,6 +3357,15 @@ fn resolve_frame_symbolication(
     } else {
         None
     };
+    debug!(
+        module_path = %job.module_path,
+        rel_pc = format_args!("{:#x}", job.rel_pc),
+        elapsed_ms = lookup_started.elapsed().as_millis(),
+        function_name = %function_name,
+        source_file = %source_file_path,
+        source_line = source_line,
+        "symbolication frame resolved"
+    );
     SymbolicationCacheEntry {
         status: String::from("resolved"),
         function_name: Some(function_name),
