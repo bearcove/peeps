@@ -1,4 +1,4 @@
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 
 /// Pass-through `parking_lot::Mutex` wrapper, accepting a name parameter for API parity.
 pub struct Mutex<T>(parking_lot::Mutex<T>);
