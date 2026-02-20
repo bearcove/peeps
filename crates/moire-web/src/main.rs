@@ -14,7 +14,6 @@ use axum::routing::{any, get, post};
 use axum::Router;
 use facet::Facet;
 use figue as args;
-use moire_trace_types::BacktraceRecord;
 use moire_types::{
     ApiError, Change, ConnectedProcessInfo, ConnectionsResponse, CutStatusResponse, FrameSummary,
     ProcessSnapshotView, QueryRequest, RecordCurrentResponse, RecordStartRequest,
@@ -22,8 +21,9 @@ use moire_types::{
     SnapshotCutResponse, SqlRequest, SqlResponse, TimedOutProcess, TriggerCutResponse,
 };
 use moire_wire::{
-    decode_protocol_magic, encode_server_message_default, Handshake, ModuleIdentity,
-    ModuleManifestEntry, ServerMessage, SnapshotReply, SnapshotRequest,
+    decode_client_message_default, decode_protocol_magic, encode_server_message_default,
+    BacktraceRecord, ClientMessage, ModuleIdentity, ModuleManifestEntry, ServerMessage,
+    SnapshotRequest,
 };
 use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -104,18 +104,6 @@ struct StoredFrame {
     process_count: u32,
     capture_duration_ms: f64,
     json: String,
-}
-
-#[derive(Facet)]
-#[repr(u8)]
-#[facet(rename_all = "snake_case")]
-enum IngestClientMessage {
-    Handshake(Handshake),
-    SnapshotReply(SnapshotReply),
-    DeltaBatch(moire_types::PullChangesResponse),
-    CutAck(moire_types::CutAck),
-    Error(moire_wire::ClientError),
-    BacktraceRecord(BacktraceRecord),
 }
 
 #[derive(Clone)]
@@ -1636,11 +1624,14 @@ async fn read_messages(
             .await
             .map_err(|e| format!("read frame payload: {e}"))?;
 
-        let message = facet_json::from_slice::<IngestClientMessage>(&payload)
+        let mut framed = Vec::with_capacity(4 + payload_len);
+        framed.extend_from_slice(&len_buf);
+        framed.extend_from_slice(&payload);
+        let message = decode_client_message_default(&framed)
             .map_err(|e| format!("decode client message: {e}"))?;
 
         match message {
-            IngestClientMessage::Handshake(handshake) => {
+            ClientMessage::Handshake(handshake) => {
                 // r[impl wire.handshake.reject]
                 validate_handshake(&handshake)
                     .map_err(|e| format!("reject handshake for conn {conn_id}: {e}"))?;
@@ -1670,7 +1661,7 @@ async fn read_messages(
                     warn!(conn_id, %e, "failed to persist module manifest");
                 }
             }
-            IngestClientMessage::SnapshotReply(reply) => {
+            ClientMessage::SnapshotReply(reply) => {
                 debug!(
                     conn_id,
                     snapshot_id = reply.snapshot_id,
@@ -1700,12 +1691,12 @@ async fn read_messages(
                     notify.notify_one();
                 }
             }
-            IngestClientMessage::DeltaBatch(batch) => {
+            ClientMessage::DeltaBatch(batch) => {
                 if let Err(e) = persist_delta_batch(state.db_path.clone(), conn_id, batch).await {
                     warn!(conn_id, %e, "failed to persist delta batch");
                 }
             }
-            IngestClientMessage::CutAck(ack) => {
+            ClientMessage::CutAck(ack) => {
                 let cut_id_text = ack.cut_id.0.to_string();
                 let cursor_stream_id = ack.cursor.stream_id.0.to_string();
                 let cursor_next_seq_no = ack.cursor.next_seq_no.0;
@@ -1730,7 +1721,7 @@ async fn read_messages(
                     warn!(conn_id, %e, "failed to persist cut ack");
                 }
             }
-            IngestClientMessage::Error(msg) => {
+            ClientMessage::Error(msg) => {
                 warn!(
                     conn_id,
                     process_name = %msg.process_name,
@@ -1739,7 +1730,7 @@ async fn read_messages(
                     "client reported protocol/runtime error"
                 );
             }
-            IngestClientMessage::BacktraceRecord(record) => {
+            ClientMessage::BacktraceRecord(record) => {
                 let manifest = {
                     let guard = state.inner.lock().await;
                     guard
@@ -1749,12 +1740,12 @@ async fn read_messages(
                         .ok_or_else(|| {
                             format!(
                                 "invariant violated: unknown connection {conn_id} for backtrace {}",
-                                record.id.get()
+                                record.id
                             )
                         })?
                 };
                 // r[impl symbolicate.server-store]
-                let backtrace_id = record.id.get();
+                let backtrace_id = record.id;
                 let frames = backtrace_frames_for_store(conn_id, backtrace_id, &manifest, &record)?;
                 let inserted =
                     persist_backtrace_record(state.db_path.clone(), conn_id, backtrace_id, frames)
@@ -1822,7 +1813,7 @@ fn backtrace_frames_for_store(
 ) -> Result<Vec<BacktraceFramePersist>, String> {
     let mut frames = Vec::with_capacity(record.frames.len());
     for (frame_index, frame) in record.frames.iter().enumerate() {
-        let module_id = frame.module_id.get();
+        let module_id = frame.module_id;
         if module_id == 0 {
             return Err(format!(
                 "invariant violated: conn {conn_id} backtrace {backtrace_id} frame {frame_index} has module_id=0"
