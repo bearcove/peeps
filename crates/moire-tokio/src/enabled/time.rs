@@ -54,19 +54,12 @@ pub fn interval(period: Duration) -> Interval {
     }
 }
 
-/// Run a future with a timeout. Returns `None` if the timeout fires first.
+/// Run a future with a timeout.
 ///
-/// Equivalent to `tokio::time::timeout` but wraps the sleep as an instrumented entity.
-pub async fn timeout<F, T>(duration: Duration, future: F) -> Option<T>
+/// Equivalent to `tokio::time::timeout`.
+pub async fn timeout<F, T>(duration: Duration, future: F) -> Result<T, tokio::time::error::Elapsed>
 where
     F: Future<Output = T>,
 {
-    let sleep_fut = sleep(duration);
-    tokio::pin!(sleep_fut);
-    tokio::pin!(future);
-
-    tokio::select! {
-        result = future => Some(result),
-        _ = sleep_fut => None,
-    }
+    tokio::time::timeout(duration, future).await
 }

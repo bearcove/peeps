@@ -152,13 +152,28 @@ pub mod time {
     use std::future::Future;
     use std::time::Duration;
 
+    /// Timeout error, equivalent to `tokio::time::error::Elapsed`.
+    pub mod error {
+        /// Error returned when a timeout has elapsed.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub struct Elapsed;
+
+        impl std::fmt::Display for Elapsed {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("deadline has elapsed")
+            }
+        }
+
+        impl std::error::Error for Elapsed {}
+    }
+
     /// Sleep for a duration, equivalent to `tokio::time::sleep`.
     pub async fn sleep(duration: Duration) {
         gloo_timers::future::sleep(duration).await;
     }
 
-    /// Run a future with a timeout. Returns `None` if the timeout fires first.
-    pub async fn timeout<F, T>(duration: Duration, future: F) -> Option<T>
+    /// Run a future with a timeout.
+    pub async fn timeout<F, T>(duration: Duration, future: F) -> Result<T, error::Elapsed>
     where
         F: Future<Output = T>,
     {
@@ -169,8 +184,8 @@ pub mod time {
         let work_fut = pin!(future);
 
         match select(work_fut, sleep_fut).await {
-            Either::Left((result, _)) => Some(result),
-            Either::Right((_, _)) => None,
+            Either::Left((result, _)) => Ok(result),
+            Either::Right((_, _)) => Err(error::Elapsed),
         }
     }
 }
