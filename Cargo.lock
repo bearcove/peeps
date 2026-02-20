@@ -1399,104 +1399,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "peeps"
-version = "0.1.0"
-source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
-dependencies = [
- "peeps-tokio",
- "peeps-wasm",
-]
-
-[[package]]
-name = "peeps-runtime"
-version = "0.1.0"
-source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
-dependencies = [
- "facet",
- "facet-json",
- "facet-value",
- "parking_lot",
- "peeps-source",
- "peeps-sqlite-facet",
- "peeps-types",
- "peeps-wire",
- "tokio",
-]
-
-[[package]]
-name = "peeps-source"
-version = "0.1.0"
-source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
-dependencies = [
- "camino",
- "facet",
- "rusqlite",
-]
-
-[[package]]
-name = "peeps-sqlite-facet"
-version = "0.1.0"
-source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
-dependencies = [
- "facet-json",
- "facet-value",
- "peeps-source",
- "peeps-types",
- "rusqlite",
-]
-
-[[package]]
-name = "peeps-tokio"
-version = "0.1.0"
-source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
-dependencies = [
- "facet-json",
- "facet-value",
- "parking_lot",
- "peeps-runtime",
- "peeps-source",
- "peeps-types",
- "peeps-wire",
- "tokio",
-]
-
-[[package]]
-name = "peeps-types"
-version = "0.1.0"
-source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
-dependencies = [
- "facet",
- "facet-format",
- "facet-json",
- "facet-value",
- "peeps-source",
- "rusqlite",
-]
-
-[[package]]
-name = "peeps-wasm"
-version = "0.1.0"
-source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
-dependencies = [
- "async-channel",
- "futures-channel",
- "futures-util",
- "gloo-timers",
- "tokio",
- "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "peeps-wire"
-version = "0.1.0"
-source = "git+https://github.com/bearcove/peeps?branch=main#f85f2709fb159e1cdfd4cab041662f01d178f652"
-dependencies = [
- "facet",
- "facet-json",
- "peeps-types",
-]
-
-[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1722,8 +1624,8 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "gloo-timers",
- "peeps",
- "peeps-types",
+ "moire",
+ "moire-types",
  "roam-frame",
  "roam-task-local",
  "roam-wire",
@@ -1739,7 +1641,7 @@ dependencies = [
  "facet",
  "facet-postcard",
  "facet-reflect",
- "peeps",
+ "moire",
  "roam-session",
  "roam-wire",
  "tokio",
