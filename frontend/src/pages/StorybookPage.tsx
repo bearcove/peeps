@@ -1131,8 +1131,6 @@ export function StorybookPage({
                   ageMs: 739,
                   stat: "0/256",
                   statTone: "ok",
-                  portTopId: "sample-channel-pair:rx",
-                  portBottomId: "sample-channel-pair:tx",
                 }}
               />
               <GraphNode
@@ -1145,8 +1143,6 @@ export function StorybookPage({
                   ageMs: 721,
                   stat: "RESP pending",
                   statTone: "warn",
-                  portTopId: "sample-rpc-pair:resp",
-                  portBottomId: "sample-rpc-pair:req",
                 }}
               />
             </div>

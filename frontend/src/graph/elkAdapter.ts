@@ -321,16 +321,18 @@ export async function layoutGraph(
       });
 
       // Collect port face positions from ELK layout output.
-      // ELK places ports `PORT_BORDER_OFFSET` px outside the node face.
-      // We snap back to the face so arrowheads land on the node boundary
-      // while the routing still benefits from the stub before any bend.
+      // With shapeCoords:ROOT, port x/y are already in root/world coordinates.
+      // ELK places ports PORT_BORDER_OFFSET px outside the node face; snap y
+      // back to the face so arrowheads land on the node boundary while the
+      // routing stub before any bend is preserved.
       const nodeHeight = size.height;
       for (const port of child.ports ?? []) {
         const portId = String(port.id);
-        const portRelY = port.y ?? 0;
-        const isNorthPort = portRelY < nodeHeight / 2;
+        const portAbsX = port.x ?? 0;
+        const portAbsY = port.y ?? 0;
+        const isNorthPort = portAbsY < absY + nodeHeight / 2;
         portAnchorMap.set(portId, {
-          x: absX + (port.x ?? 0),
+          x: portAbsX,
           y: isNorthPort ? absY : absY + nodeHeight,
         });
       }

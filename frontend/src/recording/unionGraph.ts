@@ -283,7 +283,7 @@ export function renderFrameFromUnion(
 ): FrameRenderResult {
   const snappedIndex = nearestProcessedFrame(frameIndex, unionLayout.processedFrameIndices);
   const frameData = unionLayout.frameCache.get(snappedIndex);
-  const emptyGeometry: GraphGeometry = { nodes: [], groups: [], edges: [], bounds: { x: 0, y: 0, width: 0, height: 0 } };
+  const emptyGeometry: GraphGeometry = { nodes: [], groups: [], edges: [], bounds: { x: 0, y: 0, width: 0, height: 0 }, portAnchors: new Map() };
   if (!frameData) return { geometry: emptyGeometry, ghostNodeIds: new Set(), ghostEdgeIds: new Set() };
 
   // Apply krate/process filters.
@@ -422,6 +422,7 @@ export function renderFrameFromUnion(
     groups: unionLayout.geometry.groups,
     edges,
     bounds,
+    portAnchors: unionLayout.geometry.portAnchors,
   };
 
   return { geometry, ghostNodeIds, ghostEdgeIds };

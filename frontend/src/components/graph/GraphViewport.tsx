@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, CircleNotch, FileRs, Package, Terminal } from "@phosphor-icons/react";
 import type { EntityDef } from "../../snapshot";
 import { quoteFilterValue } from "../../graphFilter";
