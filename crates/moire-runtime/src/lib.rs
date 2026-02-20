@@ -1,7 +1,7 @@
+use moire_trace_types::BacktraceId;
 use moire_types::{
     EntityBody, EntityId, Event, FutureEntity, ProcessScopeBody, ScopeBody, ScopeId, TaskScopeBody,
 };
-use moire_trace_types::BacktraceId;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -36,7 +36,7 @@ static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
 static BACKTRACE_RECORDS: OnceLock<StdMutex<BTreeMap<u64, moire_wire::BacktraceRecord>>> =
     OnceLock::new();
 
-pub fn init_runtime_from_macro(source: BacktraceId) {
+pub fn init_runtime_from_macro(backtrace: BacktraceId) {
     let process_name = std::env::current_exe().unwrap().display().to_string();
     PROCESS_SCOPE.get_or_init(|| {
         ScopeHandle::new(
@@ -44,7 +44,7 @@ pub fn init_runtime_from_macro(source: BacktraceId) {
             ScopeBody::Process(ProcessScopeBody {
                 pid: std::process::id(),
             }),
-            source,
+            backtrace,
         )
     });
     dashboard::init_dashboard_push_loop(&process_name);
@@ -137,6 +137,11 @@ where
     tokio::spawn(
         FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
             let _task_scope = register_current_task_scope(name.as_str(), source);
+            // [FIXME] I think that spawn tracked should only register the task and not the future inside of it. I'm not sure.
+            // However we should link between tokio's task tracking and moire's task tracking.
+            // The same applies to spawn blocking.
+            // Also, obviously, the handle that's returned has to be instrumented. It cannot simply
+            // be a `tokio::task::JoinHandle`.
             instrument_future(name, fut, source, None, None).await
         }),
     )

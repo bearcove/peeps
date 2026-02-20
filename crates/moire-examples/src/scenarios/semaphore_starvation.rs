@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::scenarios::spawn_tracked;
+use moire::spawn_tracked;
 
 pub async fn run() -> Result<(), String> {
     let gate = Arc::new(moire::Semaphore::new("demo.api_gate", 1));

@@ -64,8 +64,8 @@ pub struct ScopeHandle {
 }
 
 impl ScopeHandle {
-    pub fn new(name: impl Into<String>, body: ScopeBody, source: BacktraceId) -> Self {
-        let scope = Scope::new(source, name, body);
+    pub fn new(name: impl Into<String>, body: ScopeBody, backtrace: BacktraceId) -> Self {
+        let scope = Scope::new(backtrace, name, body);
         let id = ScopeId::new(scope.id.as_str());
 
         if let Ok(mut db) = runtime_db().lock() {

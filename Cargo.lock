@@ -1232,6 +1232,7 @@ dependencies = [
  "facet-json",
  "facet-value",
  "moire-sqlite-facet",
+ "moire-trace-capture",
  "moire-trace-types",
  "moire-types",
  "moire-wire",
@@ -1287,6 +1288,7 @@ name = "moire-trace-types"
 version = "0.1.0"
 dependencies = [
  "facet",
+ "rusqlite",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::scenarios::spawn_tracked;
+use moire::spawn_tracked;
 
 pub async fn run() -> Result<(), String> {
     let (tx, mut rx) = moire::channel("demo.work_queue", 16);

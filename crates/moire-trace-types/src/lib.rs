@@ -54,6 +54,26 @@ impl BacktraceId {
     }
 }
 
+#[cfg(feature = "rusqlite")]
+impl rusqlite::types::ToSql for BacktraceId {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        Ok((self.0 as i64).into())
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl rusqlite::types::FromSql for BacktraceId {
+    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        let v = i64::column_result(value)?;
+        BacktraceId::new(v as u64).map_err(|e| {
+            rusqlite::types::FromSqlError::Other(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                e.to_string(),
+            )))
+        })
+    }
+}
+
 #[derive(Facet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ModulePath(String);
 

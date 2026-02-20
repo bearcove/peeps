@@ -6,7 +6,7 @@ license.workspace = true
 
 [features]
 default = []
-rusqlite = ["dep:rusqlite"]
+rusqlite = ["dep:rusqlite", "moire-trace-types/rusqlite"]
 
 [dependencies]
 facet.workspace = true

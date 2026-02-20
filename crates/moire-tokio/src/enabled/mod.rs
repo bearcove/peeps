@@ -8,29 +8,20 @@ pub use self::channels::*;
 pub use self::process::*;
 pub use self::rpc::*;
 pub use self::sync::*;
-pub use moire_runtime::*;
 
 use core::sync::atomic::{AtomicU64, Ordering};
 use ctor::ctor;
 use moire_trace_capture::{capture_current, trace_capabilities, CaptureOptions};
 use moire_trace_types::BacktraceId;
 use moire_wire::{BacktraceFrameKey, BacktraceRecord};
-use std::sync::Once;
 
 static NEXT_BACKTRACE_ID: AtomicU64 = AtomicU64::new(1);
-static DIAGNOSTICS_INIT_ONCE: Once = Once::new();
 
 // r[impl process.auto-init]
 #[ctor]
 fn init_diagnostics_runtime() {
-    init_diagnostics_runtime_once();
-}
-
-fn init_diagnostics_runtime_once() {
-    DIAGNOSTICS_INIT_ONCE.call_once(|| {
-        moire_trace_capture::validate_frame_pointers_or_panic();
-        init_runtime_from_macro(capture_backtrace_id());
-    });
+    moire_trace_capture::validate_frame_pointers_or_panic();
+    moire_runtime::init_runtime_from_macro(capture_backtrace_id());
 }
 
 pub(crate) fn capture_backtrace_id() -> BacktraceId {
