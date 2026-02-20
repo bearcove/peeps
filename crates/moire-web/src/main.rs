@@ -2115,6 +2115,7 @@ async fn read_messages(
                     .map_err(|e| format!("reject handshake for conn {conn_id}: {e}"))?;
                 let process_name = handshake.process_name.to_string();
                 let pid = handshake.pid;
+                let module_manifest_entries = handshake.module_manifest.len();
                 let stored_manifest = into_stored_module_manifest(handshake.module_manifest);
                 let mut guard = state.inner.lock().await;
                 if let Some(conn) = guard.connections.get_mut(&conn_id) {
@@ -2125,7 +2126,12 @@ async fn read_messages(
                 }
                 drop(guard);
                 if let Err(e) =
-                    persist_connection_upsert(state.db_path.clone(), conn_id, process_name, pid)
+                    persist_connection_upsert(
+                        state.db_path.clone(),
+                        conn_id,
+                        process_name.clone(),
+                        pid,
+                    )
                         .await
                 {
                     warn!(conn_id, %e, "failed to persist handshake");
@@ -2139,6 +2145,13 @@ async fn read_messages(
                 {
                     warn!(conn_id, %e, "failed to persist module manifest");
                 }
+                info!(
+                    conn_id,
+                    process_name,
+                    pid,
+                    module_manifest_entries,
+                    "handshake accepted"
+                );
             }
             ClientMessage::SnapshotReply(reply) => {
                 info!(
@@ -2239,6 +2252,19 @@ async fn read_messages(
                 // r[impl symbolicate.server-store]
                 let backtrace_id = record.id.get();
                 let frames = backtrace_frames_for_store(&manifest, &record)?;
+                let unknown_module_frames = frames
+                    .iter()
+                    .filter(|frame| frame.module_path.starts_with("<unknown-module-id:"))
+                    .count();
+                if unknown_module_frames > 0 {
+                    warn!(
+                        conn_id,
+                        backtrace_id,
+                        total_frames = frames.len(),
+                        unknown_module_frames,
+                        "backtrace stored with unknown module ids from manifest"
+                    );
+                }
                 let inserted =
                     persist_backtrace_record(state.db_path.clone(), conn_id, backtrace_id, frames)
                         .await?;
@@ -2305,7 +2331,8 @@ fn backtrace_frames_for_store(
         let module_idx = (module_id - 1) as usize;
         let Some(module) = module_manifest.get(module_idx) else {
             return Err(format!(
-                "invariant violated: backtrace frame {frame_index} references module_id {module_id}, but manifest has {} entries",
+                "invariant violated: backtrace frame {frame_index} references module_id {module_id} (index {}), but manifest has {} entries",
+                module_idx,
                 module_manifest.len()
             ));
         };
@@ -3108,6 +3135,7 @@ fn symbolicate_pending_frames_for_pairs_blocking(
 
     let mut module_cache: HashMap<String, ModuleSymbolizerState> = HashMap::new();
     let mut processed = 0usize;
+    let mut unknown_module_jobs = 0usize;
     for (conn_id, backtrace_id) in pairs {
         let jobs = pending_stmt
             .query_map(
@@ -3128,6 +3156,9 @@ fn symbolicate_pending_frames_for_pairs_blocking(
             .map_err(|e| format!("read pending frame row: {e}"))?;
 
         for job in &jobs {
+            if job.module_path.starts_with("<unknown-module-id:") {
+                unknown_module_jobs = unknown_module_jobs.saturating_add(1);
+            }
             let cache = if job.module_identity != "unknown" {
                 if let Some(hit) =
                     lookup_symbolication_cache(&tx, job.module_identity.as_str(), job.rel_pc)?
@@ -3192,10 +3223,17 @@ fn symbolicate_pending_frames_for_pairs_blocking(
     if processed > 0 {
         info!(
             processed_frames = processed,
+            unknown_module_jobs,
             module_cache_entries = module_cache.len(),
             elapsed_ms = started.elapsed().as_millis(),
             "symbolication pass completed"
         );
+        if module_cache.is_empty() && unknown_module_jobs > 0 {
+            warn!(
+                unknown_module_jobs,
+                "symbolication did not open any modules because jobs referenced unknown module ids"
+            );
+        }
     }
     Ok(processed)
 }
@@ -3219,6 +3257,11 @@ fn resolve_frame_symbolication(
         unresolved_reason: Some(reason),
     };
     if job.module_path.starts_with("<unknown-module-id:") {
+        debug!(
+            module_path = %job.module_path,
+            rel_pc = format_args!("{:#x}", job.rel_pc),
+            "cannot symbolicate frame: module missing from manifest"
+        );
         return unresolved(format!(
             "module id not found in module manifest: {}",
             job.module_path
