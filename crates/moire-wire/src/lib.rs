@@ -187,6 +187,19 @@ pub struct SnapshotReply {
     pub snapshot: Option<Snapshot>,
 }
 
+#[derive(Facet, Debug, Clone, PartialEq, Eq)]
+pub struct BacktraceFrameKey {
+    pub module_id: u64,
+    pub rel_pc: u64,
+}
+
+#[derive(Facet, Debug, Clone, PartialEq, Eq)]
+// r[impl wire.backtrace-record]
+pub struct BacktraceRecord {
+    pub id: u64,
+    pub frames: Vec<BacktraceFrameKey>,
+}
+
 #[derive(Facet)]
 pub struct ClientError {
     pub process_name: String,
@@ -203,6 +216,8 @@ pub struct ClientError {
 #[facet(rename_all = "snake_case")]
 pub enum ClientMessage {
     Handshake(Handshake),
+    // r[impl wire.backtrace-record]
+    BacktraceRecord(BacktraceRecord),
     SnapshotReply(SnapshotReply),
     DeltaBatch(PullChangesResponse),
     CutAck(CutAck),
@@ -335,6 +350,27 @@ mod tests {
         assert_eq!(
             json,
             r#"{"snapshot_reply":{"snapshot_id":7,"ptime_now_ms":1234,"snapshot":{"sources":[],"entities":[],"scopes":[],"edges":[],"events":[]}}}"#
+        );
+    }
+
+    #[test]
+    fn client_backtrace_record_wire_shape() {
+        let json = client_payload_json(&ClientMessage::BacktraceRecord(BacktraceRecord {
+            id: 42,
+            frames: vec![
+                BacktraceFrameKey {
+                    module_id: 1,
+                    rel_pc: 4096,
+                },
+                BacktraceFrameKey {
+                    module_id: 2,
+                    rel_pc: 8192,
+                },
+            ],
+        }));
+        assert_eq!(
+            json,
+            r#"{"backtrace_record":{"id":42,"frames":[{"module_id":1,"rel_pc":4096},{"module_id":2,"rel_pc":8192}]}}"#
         );
     }
 

@@ -14,6 +14,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use ctor::ctor;
 use moire_trace_capture::{capture_current, trace_capabilities, CaptureOptions};
 use moire_trace_types::BacktraceId;
+use moire_wire::{BacktraceFrameKey, BacktraceRecord};
 use std::sync::Once;
 
 static NEXT_BACKTRACE_ID: AtomicU64 = AtomicU64::new(1);
@@ -43,8 +44,21 @@ pub(crate) fn capture_backtrace_id() -> SourceId {
     let backtrace_id = BacktraceId::new(raw)
         .expect("backtrace id invariant violated: generated id must be non-zero");
 
-    capture_current(backtrace_id, CaptureOptions::default()).unwrap_or_else(|err| {
+    let captured = capture_current(backtrace_id, CaptureOptions::default()).unwrap_or_else(|err| {
         panic!("failed to capture backtrace for enabled API boundary: {err}")
+    });
+    // r[impl wire.backtrace-record]
+    moire_runtime::remember_backtrace_record(BacktraceRecord {
+        id: captured.backtrace.id.get(),
+        frames: captured
+            .backtrace
+            .frames
+            .into_iter()
+            .map(|frame| BacktraceFrameKey {
+                module_id: frame.module_id.get(),
+                rel_pc: frame.rel_pc,
+            })
+            .collect(),
     });
 
     SourceId::new(backtrace_id.get())

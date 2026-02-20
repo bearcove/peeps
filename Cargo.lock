@@ -1326,6 +1326,7 @@ dependencies = [
  "figue",
  "libc",
  "moire-sqlite-facet",
+ "moire-trace-types",
  "moire-types",
  "moire-wire",
  "rusqlite",

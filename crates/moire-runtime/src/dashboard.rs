@@ -88,6 +88,7 @@ async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), S
     write_client_message(&mut writer, &handshake).await?;
 
     let mut cursor = SeqNo::ZERO;
+    let mut last_sent_backtrace_id = 0u64;
     let mut ticker = tokio::time::interval(Duration::from_millis(DASHBOARD_PUSH_INTERVAL_MS));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
@@ -99,6 +100,7 @@ async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), S
                 let cursor_shifted = batch.from_seq_no > requested_from || batch.next_seq_no > requested_from;
                 if !batch.changes.is_empty() || batch.truncated || cursor_shifted {
                     let next = batch.next_seq_no;
+                    flush_backtrace_records(&mut writer, &mut last_sent_backtrace_id).await?;
                     write_client_message(&mut writer, &ClientMessage::DeltaBatch(batch)).await?;
                     cursor = next.max(cursor);
                 } else {
@@ -111,10 +113,12 @@ async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), S
                 };
                 match message {
                     ServerMessage::CutRequest(request) => {
+                        flush_backtrace_records(&mut writer, &mut last_sent_backtrace_id).await?;
                         let ack = ack_cut(request.cut_id.0.clone());
                         write_client_message(&mut writer, &ClientMessage::CutAck(ack)).await?;
                     }
                     ServerMessage::SnapshotRequest(request) => {
+                        flush_backtrace_records(&mut writer, &mut last_sent_backtrace_id).await?;
                         let frame = super::db::encode_snapshot_reply_frame(request.snapshot_id)?;
                         writer
                             .write_all(&frame)
@@ -125,6 +129,20 @@ async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), S
             }
         }
     }
+}
+
+// r[impl wire.backtrace-record]
+async fn flush_backtrace_records(
+    writer: &mut tokio::net::tcp::OwnedWriteHalf,
+    last_sent_backtrace_id: &mut u64,
+) -> Result<(), String> {
+    let records = super::backtrace_records_after(*last_sent_backtrace_id);
+    for record in records {
+        let record_id = record.id;
+        write_client_message(writer, &ClientMessage::BacktraceRecord(record)).await?;
+        *last_sent_backtrace_id = record_id;
+    }
+    Ok(())
 }
 
 async fn write_client_message(

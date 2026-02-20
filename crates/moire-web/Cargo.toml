@@ -13,6 +13,7 @@ facet-value.workspace = true
 figue.workspace = true
 moire-sqlite-facet.workspace = true
 moire-types.workspace = true
+moire-trace-types.workspace = true
 moire-wire.workspace = true
 rusqlite.workspace = true
 tokio.workspace = true

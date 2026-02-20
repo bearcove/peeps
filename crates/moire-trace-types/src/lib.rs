@@ -38,6 +38,7 @@ impl ModuleId {
 }
 
 #[derive(Facet, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+// r[impl model.backtrace]
 pub struct BacktraceId(u64);
 
 impl BacktraceId {

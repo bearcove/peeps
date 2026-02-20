@@ -2,8 +2,9 @@ use moire_types::{
     EntityBody, EntityId, Event, FutureEntity, ProcessScopeBody, ScopeBody, ScopeId, TaskScopeBody,
 };
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::future::Future;
-use std::sync::OnceLock;
+use std::sync::{Mutex as StdMutex, OnceLock};
 
 pub(crate) const MAX_EVENTS: usize = 16_384;
 pub(crate) const MAX_CHANGES_BEFORE_COMPACT: usize = 65_536;
@@ -35,6 +36,8 @@ const RUNTIME_SOURCE_LEFT: SourceLeft =
     SourceLeft::new(env!("CARGO_MANIFEST_DIR"), env!("CARGO_PKG_NAME"));
 
 static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
+static BACKTRACE_RECORDS: OnceLock<StdMutex<BTreeMap<u64, moire_wire::BacktraceRecord>>> =
+    OnceLock::new();
 
 pub fn init_runtime_from_macro() {
     let process_name = std::env::current_exe().unwrap().display().to_string();
@@ -48,6 +51,37 @@ pub fn init_runtime_from_macro() {
         )
     });
     dashboard::init_dashboard_push_loop(&process_name);
+}
+
+fn backtrace_records() -> &'static StdMutex<BTreeMap<u64, moire_wire::BacktraceRecord>> {
+    BACKTRACE_RECORDS.get_or_init(|| StdMutex::new(BTreeMap::new()))
+}
+
+// r[impl wire.backtrace-record]
+pub fn remember_backtrace_record(record: moire_wire::BacktraceRecord) {
+    let Ok(mut records) = backtrace_records().lock() else {
+        panic!("backtrace record mutex poisoned; cannot continue");
+    };
+    match records.get(&record.id) {
+        Some(existing) if existing == &record => {}
+        Some(_) => panic!(
+            "backtrace record invariant violated: conflicting payload for id {}",
+            record.id
+        ),
+        None => {
+            records.insert(record.id, record);
+        }
+    }
+}
+
+pub fn backtrace_records_after(last_sent_backtrace_id: u64) -> Vec<moire_wire::BacktraceRecord> {
+    let Ok(records) = backtrace_records().lock() else {
+        panic!("backtrace record mutex poisoned; cannot continue");
+    };
+    records
+        .range((last_sent_backtrace_id + 1)..)
+        .map(|(_, record)| record.clone())
+        .collect()
 }
 
 pub fn current_process_scope_id() -> Option<ScopeId> {

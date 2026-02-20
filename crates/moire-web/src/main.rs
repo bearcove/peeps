@@ -1,19 +1,20 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::{Path as FsPath, PathBuf};
 use std::process::Stdio;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::body::{self, Body, Bytes};
-use axum::extract::{Path, Request, State};
+use axum::extract::{Path as AxumPath, Request, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{any, get, post};
 use axum::Router;
 use facet::Facet;
 use figue as args;
+use moire_trace_types::BacktraceRecord;
 use moire_types::{
     ApiError, Change, ConnectedProcessInfo, ConnectionsResponse, CutStatusResponse, FrameSummary,
     ProcessSnapshotView, QueryRequest, RecordCurrentResponse, RecordStartRequest,
@@ -21,8 +22,8 @@ use moire_types::{
     SnapshotCutResponse, SqlRequest, SqlResponse, TimedOutProcess, TriggerCutResponse,
 };
 use moire_wire::{
-    decode_client_message_default, encode_server_message_default, ClientMessage, ServerMessage,
-    SnapshotRequest,
+    encode_server_message_default, Handshake, ModuleIdentity, ModuleManifestEntry, ServerMessage,
+    SnapshotReply, SnapshotRequest,
 };
 use rusqlite::{params, Connection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -65,6 +66,7 @@ struct ServerState {
 struct ConnectedProcess {
     process_name: String,
     pid: u32,
+    module_manifest: Vec<StoredModuleManifestEntry>,
     tx: mpsc::Sender<Vec<u8>>,
 }
 
@@ -104,6 +106,34 @@ struct StoredFrame {
     json: String,
 }
 
+#[derive(Facet)]
+#[repr(u8)]
+#[facet(rename_all = "snake_case")]
+enum IngestClientMessage {
+    Handshake(Handshake),
+    SnapshotReply(SnapshotReply),
+    DeltaBatch(moire_types::PullChangesResponse),
+    CutAck(moire_types::CutAck),
+    Error(moire_wire::ClientError),
+    BacktraceRecord(BacktraceRecord),
+}
+
+#[derive(Clone)]
+struct BacktraceFramePersist {
+    frame_index: u32,
+    rel_pc: u64,
+    module_path: String,
+    module_identity: String,
+}
+
+#[derive(Clone)]
+struct StoredModuleManifestEntry {
+    module_path: String,
+    module_identity: String,
+    arch: String,
+    runtime_base: u64,
+}
+
 #[derive(Facet, Debug)]
 struct Cli {
     #[facet(flatten)]
@@ -112,9 +142,23 @@ struct Cli {
     dev: bool,
 }
 
-const DB_SCHEMA_VERSION: i64 = 3;
+const DB_SCHEMA_VERSION: i64 = 4;
 const DEFAULT_VITE_ADDR: &str = "[::]:9131";
 const PROXY_BODY_LIMIT_BYTES: usize = 8 * 1024 * 1024;
+const SYMBOLICATION_UNRESOLVED_SCAFFOLD: &str =
+    "symbolication engine not wired: eager scaffold stored unresolved marker";
+const TOP_FRAME_CRATE_EXCLUSIONS: &[&str] = &[
+    "std",
+    "core",
+    "alloc",
+    "tokio",
+    "tokio_util",
+    "futures",
+    "futures_core",
+    "futures_util",
+    "moire",
+    "moire_trace_capture",
+];
 
 const REAPER_PIPE_FD_ENV: &str = "MOIRE_REAPER_PIPE_FD";
 const REAPER_PGID_ENV: &str = "MOIRE_REAPER_PGID";
@@ -358,7 +402,7 @@ async fn api_trigger_cut(State(state): State<AppState>) -> impl IntoResponse {
 
 async fn api_cut_status(
     State(state): State<AppState>,
-    Path(cut_id): Path<String>,
+    AxumPath(cut_id): AxumPath<String>,
 ) -> impl IntoResponse {
     let guard = state.inner.lock().await;
     let Some(cut) = guard.cuts.get(&cut_id) else {
@@ -614,8 +658,101 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
         processes,
         timed_out_processes,
     };
+    // r[impl symbolicate.cut-drain]
+    wait_for_symbolication_cut_drain(state.db_path.clone(), &response).await;
     remember_snapshot(state, &response).await;
     response
+}
+
+fn collect_snapshot_backtrace_pairs(snapshot: &SnapshotCutResponse) -> Vec<(u64, u64)> {
+    let mut pairs = Vec::new();
+    for process in &snapshot.processes {
+        for source in &process.snapshot.sources {
+            pairs.push((process.process_id, source.id.as_u64()));
+        }
+    }
+    pairs.sort_unstable();
+    pairs.dedup();
+    pairs
+}
+
+async fn wait_for_symbolication_cut_drain(db_path: Arc<PathBuf>, snapshot: &SnapshotCutResponse) {
+    let pairs = collect_snapshot_backtrace_pairs(snapshot);
+    if pairs.is_empty() {
+        return;
+    }
+
+    loop {
+        let db_path = db_path.clone();
+        let pairs_check = pairs.clone();
+        let pending_count = tokio::task::spawn_blocking(move || {
+            pending_symbolication_count_blocking(&db_path, &pairs_check)
+        })
+        .await
+        .unwrap_or_else(|e| Err(format!("join symbolication cut drain: {e}")));
+
+        match pending_count {
+            Ok(0) => return,
+            Ok(_) => {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            Err(e) => {
+                warn!(%e, "symbolication cut-drain check failed; returning snapshot");
+                return;
+            }
+        }
+    }
+}
+
+fn pending_symbolication_count_blocking(
+    db_path: &PathBuf,
+    pairs: &[(u64, u64)],
+) -> Result<usize, String> {
+    let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+    let mut pending = 0usize;
+
+    let mut backtrace_stmt = conn
+        .prepare(
+            "SELECT frame_count
+             FROM backtraces
+             WHERE conn_id = ?1 AND backtrace_id = ?2",
+        )
+        .map_err(|e| format!("prepare backtraces lookup: {e}"))?;
+
+    let mut frames_stmt = conn
+        .prepare(
+            "SELECT COUNT(*)
+             FROM symbolicated_frames
+             WHERE conn_id = ?1 AND backtrace_id = ?2",
+        )
+        .map_err(|e| format!("prepare symbolicated_frames lookup: {e}"))?;
+
+    for (conn_id, backtrace_id) in pairs {
+        let frame_count = match backtrace_stmt.query_row(
+            params![to_i64_u64(*conn_id), to_i64_u64(*backtrace_id)],
+            |row| row.get::<_, i64>(0),
+        ) {
+            Ok(value) => value,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                pending += 1;
+                continue;
+            }
+            Err(e) => return Err(format!("query backtraces: {e}")),
+        };
+
+        let symbolicated_count = frames_stmt
+            .query_row(
+                params![to_i64_u64(*conn_id), to_i64_u64(*backtrace_id)],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|e| format!("query symbolicated_frames: {e}"))?;
+
+        if symbolicated_count < frame_count {
+            pending += 1;
+        }
+    }
+
+    Ok(pending)
 }
 
 async fn api_record_start(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {
@@ -777,7 +914,7 @@ async fn api_record_current(State(state): State<AppState>) -> impl IntoResponse 
 
 async fn api_record_frame(
     State(state): State<AppState>,
-    Path(frame_index): Path<u32>,
+    AxumPath(frame_index): AxumPath<u32>,
 ) -> impl IntoResponse {
     let guard = state.inner.lock().await;
     let Some(recording) = &guard.recording else {
@@ -1398,6 +1535,7 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
             ConnectedProcess {
                 process_name: format!("unknown-{conn_id}"),
                 pid: 0,
+                module_manifest: Vec::new(),
                 tx: msg_tx,
             },
         );
@@ -1481,34 +1619,41 @@ async fn read_messages(
             .await
             .map_err(|e| format!("read frame payload: {e}"))?;
 
-        let mut framed = Vec::with_capacity(4 + payload.len());
-        framed.extend_from_slice(&len_buf);
-        framed.extend_from_slice(&payload);
-        let message = decode_client_message_default(&framed)
+        let message = facet_json::from_slice::<IngestClientMessage>(&payload)
             .map_err(|e| format!("decode client message: {e}"))?;
 
         match message {
-            ClientMessage::Handshake(handshake) => {
+            IngestClientMessage::Handshake(handshake) => {
                 // r[impl wire.handshake.reject]
                 validate_handshake(&handshake)
                     .map_err(|e| format!("reject handshake for conn {conn_id}: {e}"))?;
+                let process_name = handshake.process_name.to_string();
+                let pid = handshake.pid;
+                let stored_manifest = into_stored_module_manifest(handshake.module_manifest);
                 let mut guard = state.inner.lock().await;
                 if let Some(conn) = guard.connections.get_mut(&conn_id) {
-                    conn.process_name = handshake.process_name.to_string();
-                    conn.pid = handshake.pid;
+                    conn.process_name = process_name.clone();
+                    conn.pid = pid;
+                    conn.module_manifest = stored_manifest.clone();
                 }
-                if let Err(e) = persist_connection_upsert(
-                    state.db_path.clone(),
-                    conn_id,
-                    handshake.process_name.to_string(),
-                    handshake.pid,
-                )
-                .await
+                drop(guard);
+                if let Err(e) =
+                    persist_connection_upsert(state.db_path.clone(), conn_id, process_name, pid)
+                        .await
                 {
                     warn!(conn_id, %e, "failed to persist handshake");
                 }
+                if let Err(e) = persist_connection_module_manifest(
+                    state.db_path.clone(),
+                    conn_id,
+                    stored_manifest,
+                )
+                .await
+                {
+                    warn!(conn_id, %e, "failed to persist module manifest");
+                }
             }
-            ClientMessage::SnapshotReply(reply) => {
+            IngestClientMessage::SnapshotReply(reply) => {
                 debug!(
                     conn_id,
                     snapshot_id = reply.snapshot_id,
@@ -1538,12 +1683,12 @@ async fn read_messages(
                     notify.notify_one();
                 }
             }
-            ClientMessage::DeltaBatch(batch) => {
+            IngestClientMessage::DeltaBatch(batch) => {
                 if let Err(e) = persist_delta_batch(state.db_path.clone(), conn_id, batch).await {
                     warn!(conn_id, %e, "failed to persist delta batch");
                 }
             }
-            ClientMessage::CutAck(ack) => {
+            IngestClientMessage::CutAck(ack) => {
                 let cut_id_text = ack.cut_id.0.to_string();
                 let cursor_stream_id = ack.cursor.stream_id.0.to_string();
                 let cursor_next_seq_no = ack.cursor.next_seq_no.0;
@@ -1568,7 +1713,7 @@ async fn read_messages(
                     warn!(conn_id, %e, "failed to persist cut ack");
                 }
             }
-            ClientMessage::Error(msg) => {
+            IngestClientMessage::Error(msg) => {
                 warn!(
                     conn_id,
                     process_name = %msg.process_name,
@@ -1576,6 +1721,32 @@ async fn read_messages(
                     error = %msg.error,
                     "client reported protocol/runtime error"
                 );
+            }
+            IngestClientMessage::BacktraceRecord(record) => {
+                let manifest = {
+                    let guard = state.inner.lock().await;
+                    guard
+                        .connections
+                        .get(&conn_id)
+                        .map(|conn| conn.module_manifest.clone())
+                        .ok_or_else(|| {
+                            format!(
+                                "invariant violated: unknown connection {conn_id} for backtrace {}",
+                                record.id.get()
+                            )
+                        })?
+                };
+                // r[impl symbolicate.server-store]
+                let backtrace_id = record.id.get();
+                let frames = backtrace_frames_for_store(conn_id, backtrace_id, &manifest, &record)?;
+                let inserted =
+                    persist_backtrace_record(state.db_path.clone(), conn_id, backtrace_id, frames)
+                        .await?;
+                if inserted {
+                    // r[impl symbolicate.eager]
+                    // r[impl symbolicate.parallel]
+                    schedule_eager_symbolication(state.db_path.clone(), conn_id, backtrace_id);
+                }
             }
         }
     }
@@ -1592,7 +1763,7 @@ fn validate_handshake(handshake: &moire_wire::Handshake) -> Result<(), String> {
                 "module_manifest[{index}].module_path must be non-empty"
             ));
         }
-        if !Path::new(module.module_path.as_str()).is_absolute() {
+        if !FsPath::new(module.module_path.as_str()).is_absolute() {
             return Err(format!(
                 "module_manifest[{index}].module_path must be absolute"
             ));
@@ -1624,6 +1795,60 @@ fn validate_handshake(handshake: &moire_wire::Handshake) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn backtrace_frames_for_store(
+    conn_id: u64,
+    backtrace_id: u64,
+    module_manifest: &[StoredModuleManifestEntry],
+    record: &BacktraceRecord,
+) -> Result<Vec<BacktraceFramePersist>, String> {
+    let mut frames = Vec::with_capacity(record.frames.len());
+    for (frame_index, frame) in record.frames.iter().enumerate() {
+        let module_id = frame.module_id.get();
+        if module_id == 0 {
+            return Err(format!(
+                "invariant violated: conn {conn_id} backtrace {backtrace_id} frame {frame_index} has module_id=0"
+            ));
+        }
+        let module_idx = (module_id - 1) as usize;
+        let (module_path, module_identity) = if let Some(module) = module_manifest.get(module_idx) {
+            (module.module_path.clone(), module.module_identity.clone())
+        } else {
+            (
+                format!("<unknown-module-id:{module_id}>"),
+                String::from("unknown"),
+            )
+        };
+        frames.push(BacktraceFramePersist {
+            frame_index: frame_index as u32,
+            rel_pc: frame.rel_pc,
+            module_path,
+            module_identity,
+        });
+    }
+    Ok(frames)
+}
+
+fn module_identity_key(identity: &ModuleIdentity) -> String {
+    match identity {
+        ModuleIdentity::BuildId(build_id) => format!("build_id:{build_id}"),
+        ModuleIdentity::DebugId(debug_id) => format!("debug_id:{debug_id}"),
+    }
+}
+
+fn into_stored_module_manifest(
+    module_manifest: Vec<ModuleManifestEntry>,
+) -> Vec<StoredModuleManifestEntry> {
+    module_manifest
+        .into_iter()
+        .map(|module| StoredModuleManifestEntry {
+            module_path: module.module_path,
+            module_identity: module_identity_key(&module.identity),
+            arch: module.arch,
+            runtime_base: module.runtime_base,
+        })
+        .collect()
 }
 
 fn json_ok<T>(value: &T) -> axum::response::Response
@@ -1995,6 +2220,12 @@ fn reset_managed_schema(conn: &Connection) -> Result<(), String> {
         DROP TABLE IF EXISTS stream_cursors;
         DROP TABLE IF EXISTS cut_acks;
         DROP TABLE IF EXISTS cuts;
+        DROP TABLE IF EXISTS top_application_frames;
+        DROP TABLE IF EXISTS symbolicated_frames;
+        DROP TABLE IF EXISTS symbolication_cache;
+        DROP TABLE IF EXISTS backtrace_frames;
+        DROP TABLE IF EXISTS backtraces;
+        DROP TABLE IF EXISTS connection_modules;
         DROP TABLE IF EXISTS connections;
         ",
     )
@@ -2009,6 +2240,85 @@ fn managed_schema_sql() -> &'static str {
         pid INTEGER NOT NULL,
         connected_at_ns INTEGER NOT NULL,
         disconnected_at_ns INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS connection_modules (
+        conn_id INTEGER NOT NULL,
+        module_index INTEGER NOT NULL,
+        module_path TEXT NOT NULL,
+        module_identity TEXT NOT NULL,
+        arch TEXT NOT NULL,
+        runtime_base INTEGER NOT NULL,
+        PRIMARY KEY (conn_id, module_index)
+    );
+
+    CREATE TABLE IF NOT EXISTS backtraces (
+        conn_id INTEGER NOT NULL,
+        backtrace_id INTEGER NOT NULL,
+        frame_count INTEGER NOT NULL,
+        received_at_ns INTEGER NOT NULL,
+        PRIMARY KEY (conn_id, backtrace_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS backtrace_frames (
+        conn_id INTEGER NOT NULL,
+        backtrace_id INTEGER NOT NULL,
+        frame_index INTEGER NOT NULL,
+        module_path TEXT NOT NULL,
+        module_identity TEXT NOT NULL,
+        rel_pc INTEGER NOT NULL,
+        PRIMARY KEY (conn_id, backtrace_id, frame_index)
+    );
+    CREATE INDEX IF NOT EXISTS idx_backtrace_frames_identity_pc
+        ON backtrace_frames (module_identity, rel_pc);
+
+    CREATE TABLE IF NOT EXISTS symbolication_cache (
+        module_identity TEXT NOT NULL,
+        rel_pc INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('resolved', 'unresolved')),
+        function_name TEXT,
+        crate_name TEXT,
+        crate_module_path TEXT,
+        source_file_path TEXT,
+        source_line INTEGER,
+        source_col INTEGER,
+        unresolved_reason TEXT,
+        updated_at_ns INTEGER NOT NULL,
+        PRIMARY KEY (module_identity, rel_pc)
+    );
+
+    CREATE TABLE IF NOT EXISTS symbolicated_frames (
+        conn_id INTEGER NOT NULL,
+        backtrace_id INTEGER NOT NULL,
+        frame_index INTEGER NOT NULL,
+        module_path TEXT NOT NULL,
+        rel_pc INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('resolved', 'unresolved')),
+        function_name TEXT,
+        crate_name TEXT,
+        crate_module_path TEXT,
+        source_file_path TEXT,
+        source_line INTEGER,
+        source_col INTEGER,
+        unresolved_reason TEXT,
+        updated_at_ns INTEGER NOT NULL,
+        PRIMARY KEY (conn_id, backtrace_id, frame_index)
+    );
+    CREATE INDEX IF NOT EXISTS idx_symbolicated_frames_backtrace
+        ON symbolicated_frames (conn_id, backtrace_id, frame_index);
+
+    CREATE TABLE IF NOT EXISTS top_application_frames (
+        conn_id INTEGER NOT NULL,
+        backtrace_id INTEGER NOT NULL,
+        frame_index INTEGER NOT NULL,
+        function_name TEXT,
+        crate_name TEXT NOT NULL,
+        crate_module_path TEXT,
+        source_file_path TEXT,
+        source_line INTEGER,
+        source_col INTEGER,
+        updated_at_ns INTEGER NOT NULL,
+        PRIMARY KEY (conn_id, backtrace_id)
     );
 
     CREATE TABLE IF NOT EXISTS cuts (
@@ -2136,6 +2446,451 @@ async fn persist_connection_closed(db_path: Arc<PathBuf>, conn_id: u64) -> Resul
     })
     .await
     .map_err(|e| format!("join sqlite: {e}"))?
+}
+
+async fn persist_connection_module_manifest(
+    db_path: Arc<PathBuf>,
+    conn_id: u64,
+    module_manifest: Vec<StoredModuleManifestEntry>,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let mut conn = Connection::open(&*db_path).map_err(|e| format!("open sqlite: {e}"))?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("start transaction: {e}"))?;
+        tx.execute(
+            "DELETE FROM connection_modules WHERE conn_id = ?1",
+            params![to_i64_u64(conn_id)],
+        )
+        .map_err(|e| format!("delete connection_modules: {e}"))?;
+
+        for (module_index, module) in module_manifest.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO connection_modules (
+                    conn_id, module_index, module_path, module_identity, arch, runtime_base
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    to_i64_u64(conn_id),
+                    module_index as i64,
+                    module.module_path.as_str(),
+                    module.module_identity.as_str(),
+                    module.arch.as_str(),
+                    to_i64_u64(module.runtime_base),
+                ],
+            )
+            .map_err(|e| format!("insert connection_module[{module_index}]: {e}"))?;
+        }
+        tx.commit()
+            .map_err(|e| format!("commit connection_modules: {e}"))?;
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| format!("join sqlite: {e}"))?
+}
+
+// r[impl symbolicate.server-store]
+async fn persist_backtrace_record(
+    db_path: Arc<PathBuf>,
+    conn_id: u64,
+    backtrace_id: u64,
+    frames: Vec<BacktraceFramePersist>,
+) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut conn = Connection::open(&*db_path).map_err(|e| format!("open sqlite: {e}"))?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("start transaction: {e}"))?;
+        let inserted = tx
+            .execute(
+                "INSERT INTO backtraces (conn_id, backtrace_id, frame_count, received_at_ns)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(conn_id, backtrace_id) DO NOTHING",
+                params![
+                    to_i64_u64(conn_id),
+                    to_i64_u64(backtrace_id),
+                    frames.len() as i64,
+                    now_nanos()
+                ],
+            )
+            .map_err(|e| format!("insert backtrace: {e}"))?
+            > 0;
+        if inserted {
+            for frame in &frames {
+                tx.execute(
+                    "INSERT INTO backtrace_frames (
+                        conn_id, backtrace_id, frame_index, module_path, module_identity, rel_pc
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        to_i64_u64(conn_id),
+                        to_i64_u64(backtrace_id),
+                        i64::from(frame.frame_index),
+                        frame.module_path.as_str(),
+                        frame.module_identity.as_str(),
+                        to_i64_u64(frame.rel_pc),
+                    ],
+                )
+                .map_err(|e| {
+                    format!(
+                        "insert backtrace frame {}/{}: {e}",
+                        frame.frame_index, backtrace_id
+                    )
+                })?;
+            }
+        }
+        tx.commit()
+            .map_err(|e| format!("commit backtrace record: {e}"))?;
+        Ok::<bool, String>(inserted)
+    })
+    .await
+    .map_err(|e| format!("join sqlite: {e}"))?
+}
+
+fn schedule_eager_symbolication(db_path: Arc<PathBuf>, conn_id: u64, backtrace_id: u64) {
+    tokio::spawn(async move {
+        let blocking = tokio::task::spawn_blocking(move || {
+            eager_symbolicate_backtrace_blocking(&db_path, conn_id, backtrace_id)
+        });
+        match blocking.await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                error!(
+                    conn_id,
+                    backtrace_id,
+                    error = %e,
+                    "eager symbolication failed"
+                );
+            }
+            Err(e) => {
+                error!(
+                    conn_id,
+                    backtrace_id,
+                    error = %e,
+                    "eager symbolication worker join failure"
+                );
+            }
+        }
+    });
+}
+
+struct SymbolicationCacheEntry {
+    status: String,
+    function_name: Option<String>,
+    crate_name: Option<String>,
+    crate_module_path: Option<String>,
+    source_file_path: Option<String>,
+    source_line: Option<i64>,
+    source_col: Option<i64>,
+    unresolved_reason: Option<String>,
+}
+
+fn eager_symbolicate_backtrace_blocking(
+    db_path: &PathBuf,
+    conn_id: u64,
+    backtrace_id: u64,
+) -> Result<(), String> {
+    let mut conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("start transaction: {e}"))?;
+
+    let frames: Vec<BacktraceFramePersist> = {
+        let mut frames_stmt = tx
+            .prepare(
+                "SELECT frame_index, module_path, module_identity, rel_pc
+                 FROM backtrace_frames
+                 WHERE conn_id = ?1 AND backtrace_id = ?2
+                 ORDER BY frame_index ASC",
+            )
+            .map_err(|e| format!("prepare backtrace_frames: {e}"))?;
+        let mapped_rows = frames_stmt
+            .query_map(
+                params![to_i64_u64(conn_id), to_i64_u64(backtrace_id)],
+                |row| {
+                    Ok(BacktraceFramePersist {
+                        frame_index: row.get::<_, i64>(0)? as u32,
+                        module_path: row.get::<_, String>(1)?,
+                        module_identity: row.get::<_, String>(2)?,
+                        rel_pc: row.get::<_, i64>(3)? as u64,
+                    })
+                },
+            )
+            .map_err(|e| format!("query backtrace_frames: {e}"))?;
+        let frames = mapped_rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("read backtrace_frames row: {e}"))?;
+        frames
+    };
+    if frames.is_empty() {
+        return Err(format!(
+            "invariant violated: eager symbolication requested for missing backtrace {backtrace_id} on conn {conn_id}"
+        ));
+    }
+
+    for frame in &frames {
+        // r[impl symbolicate.result]
+        let cache = lookup_symbolication_cache(&tx, frame.module_identity.as_str(), frame.rel_pc)?
+            .unwrap_or_else(|| {
+                // r[impl symbolicate.hard-failure]
+                SymbolicationCacheEntry {
+                    status: "unresolved".to_string(),
+                    function_name: None,
+                    crate_name: None,
+                    crate_module_path: None,
+                    source_file_path: None,
+                    source_line: None,
+                    source_col: None,
+                    unresolved_reason: Some(SYMBOLICATION_UNRESOLVED_SCAFFOLD.to_string()),
+                }
+            });
+        upsert_symbolication_cache(&tx, frame.module_identity.as_str(), frame.rel_pc, &cache)?;
+        upsert_symbolicated_frame(
+            &tx,
+            conn_id,
+            backtrace_id,
+            frame.frame_index,
+            frame.module_path.as_str(),
+            frame.rel_pc,
+            &cache,
+        )?;
+    }
+
+    // r[impl symbolicate.top-frame]
+    update_top_application_frame(&tx, conn_id, backtrace_id)?;
+    tx.commit()
+        .map_err(|e| format!("commit eager symbolication: {e}"))?;
+    Ok(())
+}
+
+fn lookup_symbolication_cache(
+    tx: &rusqlite::Transaction<'_>,
+    module_identity: &str,
+    rel_pc: u64,
+) -> Result<Option<SymbolicationCacheEntry>, String> {
+    let mut stmt = tx
+        .prepare(
+            "SELECT status, function_name, crate_name, crate_module_path,
+                    source_file_path, source_line, source_col, unresolved_reason
+             FROM symbolication_cache
+             WHERE module_identity = ?1 AND rel_pc = ?2",
+        )
+        .map_err(|e| format!("prepare symbolication_cache lookup: {e}"))?;
+    match stmt.query_row(params![module_identity, to_i64_u64(rel_pc)], |row| {
+        Ok(SymbolicationCacheEntry {
+            status: row.get::<_, String>(0)?,
+            function_name: row.get(1)?,
+            crate_name: row.get(2)?,
+            crate_module_path: row.get(3)?,
+            source_file_path: row.get(4)?,
+            source_line: row.get(5)?,
+            source_col: row.get(6)?,
+            unresolved_reason: row.get(7)?,
+        })
+    }) {
+        Ok(entry) => Ok(Some(entry)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("query symbolication_cache: {e}")),
+    }
+}
+
+fn upsert_symbolication_cache(
+    tx: &rusqlite::Transaction<'_>,
+    module_identity: &str,
+    rel_pc: u64,
+    cache: &SymbolicationCacheEntry,
+) -> Result<(), String> {
+    tx.execute(
+        "INSERT INTO symbolication_cache (
+            module_identity, rel_pc, status, function_name, crate_name, crate_module_path,
+            source_file_path, source_line, source_col, unresolved_reason, updated_at_ns
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+         ON CONFLICT(module_identity, rel_pc) DO UPDATE SET
+            status = excluded.status,
+            function_name = excluded.function_name,
+            crate_name = excluded.crate_name,
+            crate_module_path = excluded.crate_module_path,
+            source_file_path = excluded.source_file_path,
+            source_line = excluded.source_line,
+            source_col = excluded.source_col,
+            unresolved_reason = excluded.unresolved_reason,
+            updated_at_ns = excluded.updated_at_ns",
+        params![
+            module_identity,
+            to_i64_u64(rel_pc),
+            cache.status.as_str(),
+            cache.function_name.as_ref(),
+            cache.crate_name.as_ref(),
+            cache.crate_module_path.as_ref(),
+            cache.source_file_path.as_ref(),
+            cache.source_line,
+            cache.source_col,
+            cache.unresolved_reason.as_ref(),
+            now_nanos(),
+        ],
+    )
+    .map_err(|e| format!("upsert symbolication_cache: {e}"))?;
+    Ok(())
+}
+
+fn upsert_symbolicated_frame(
+    tx: &rusqlite::Transaction<'_>,
+    conn_id: u64,
+    backtrace_id: u64,
+    frame_index: u32,
+    module_path: &str,
+    rel_pc: u64,
+    cache: &SymbolicationCacheEntry,
+) -> Result<(), String> {
+    tx.execute(
+        "INSERT INTO symbolicated_frames (
+            conn_id, backtrace_id, frame_index, module_path, rel_pc, status, function_name,
+            crate_name, crate_module_path, source_file_path, source_line, source_col,
+            unresolved_reason, updated_at_ns
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+         ON CONFLICT(conn_id, backtrace_id, frame_index) DO UPDATE SET
+            module_path = excluded.module_path,
+            rel_pc = excluded.rel_pc,
+            status = excluded.status,
+            function_name = excluded.function_name,
+            crate_name = excluded.crate_name,
+            crate_module_path = excluded.crate_module_path,
+            source_file_path = excluded.source_file_path,
+            source_line = excluded.source_line,
+            source_col = excluded.source_col,
+            unresolved_reason = excluded.unresolved_reason,
+            updated_at_ns = excluded.updated_at_ns",
+        params![
+            to_i64_u64(conn_id),
+            to_i64_u64(backtrace_id),
+            i64::from(frame_index),
+            module_path,
+            to_i64_u64(rel_pc),
+            cache.status.as_str(),
+            cache.function_name.as_ref(),
+            cache.crate_name.as_ref(),
+            cache.crate_module_path.as_ref(),
+            cache.source_file_path.as_ref(),
+            cache.source_line,
+            cache.source_col,
+            cache.unresolved_reason.as_ref(),
+            now_nanos(),
+        ],
+    )
+    .map_err(|e| format!("upsert symbolicated_frame[{frame_index}]: {e}"))?;
+    Ok(())
+}
+
+fn update_top_application_frame(
+    tx: &rusqlite::Transaction<'_>,
+    conn_id: u64,
+    backtrace_id: u64,
+) -> Result<(), String> {
+    let mut query = String::from(
+        "SELECT frame_index, function_name, crate_name, crate_module_path, source_file_path, source_line, source_col
+         FROM symbolicated_frames
+         WHERE conn_id = ?1 AND backtrace_id = ?2
+           AND status = 'resolved'
+           AND crate_name IS NOT NULL
+           AND crate_name NOT IN (",
+    );
+    for (idx, _) in TOP_FRAME_CRATE_EXCLUSIONS.iter().enumerate() {
+        if idx > 0 {
+            query.push_str(", ");
+        }
+        query.push('?');
+        query.push_str(&(idx + 3).to_string());
+    }
+    query.push_str(") ORDER BY frame_index ASC LIMIT 1");
+
+    let params = rusqlite::params_from_iter(
+        std::iter::once(rusqlite::types::Value::from(to_i64_u64(conn_id)))
+            .chain(std::iter::once(rusqlite::types::Value::from(to_i64_u64(
+                backtrace_id,
+            ))))
+            .chain(
+                TOP_FRAME_CRATE_EXCLUSIONS
+                    .iter()
+                    .map(|name| rusqlite::types::Value::from((*name).to_string())),
+            ),
+    );
+
+    let mut stmt = tx
+        .prepare(query.as_str())
+        .map_err(|e| format!("prepare top frame query: {e}"))?;
+    let selected: Result<
+        Option<(
+            i64,
+            Option<String>,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<i64>,
+            Option<i64>,
+        )>,
+        String,
+    > = match stmt.query_row(params, |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, Option<i64>>(5)?,
+            row.get::<_, Option<i64>>(6)?,
+        ))
+    }) {
+        Ok(value) => Ok(Some(value)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("query top frame: {e}")),
+    };
+
+    match selected? {
+        Some((
+            frame_index,
+            function_name,
+            crate_name,
+            crate_module_path,
+            source_file_path,
+            source_line,
+            source_col,
+        )) => {
+            tx.execute(
+                "INSERT INTO top_application_frames (
+                    conn_id, backtrace_id, frame_index, function_name, crate_name, crate_module_path,
+                    source_file_path, source_line, source_col, updated_at_ns
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                 ON CONFLICT(conn_id, backtrace_id) DO UPDATE SET
+                    frame_index = excluded.frame_index,
+                    function_name = excluded.function_name,
+                    crate_name = excluded.crate_name,
+                    crate_module_path = excluded.crate_module_path,
+                    source_file_path = excluded.source_file_path,
+                    source_line = excluded.source_line,
+                    source_col = excluded.source_col,
+                    updated_at_ns = excluded.updated_at_ns",
+                params![
+                    to_i64_u64(conn_id),
+                    to_i64_u64(backtrace_id),
+                    frame_index,
+                    function_name,
+                    crate_name,
+                    crate_module_path,
+                    source_file_path,
+                    source_line,
+                    source_col,
+                    now_nanos(),
+                ],
+            )
+            .map_err(|e| format!("upsert top_application_frame: {e}"))?;
+        }
+        None => {
+            tx.execute(
+                "DELETE FROM top_application_frames WHERE conn_id = ?1 AND backtrace_id = ?2",
+                params![to_i64_u64(conn_id), to_i64_u64(backtrace_id)],
+            )
+            .map_err(|e| format!("delete top_application_frame: {e}"))?;
+        }
+    }
+    Ok(())
 }
 
 async fn persist_cut_request(
