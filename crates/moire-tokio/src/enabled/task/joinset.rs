@@ -1,11 +1,11 @@
 use std::cell::RefCell;
 use std::future::Future;
 
-use super::capture_backtrace_id;
-use moire_types::EntityBody;
 use moire_runtime::{
-    instrument_future, register_current_task_scope, EntityHandle, FUTURE_CAUSAL_STACK,
+    capture_backtrace_id, instrument_future, register_current_task_scope, EntityHandle,
+    FUTURE_CAUSAL_STACK,
 };
+use moire_types::EntityBody;
 
 /// Instrumented equivalent of [`tokio::task::JoinSet`], used to track joined task sets.
 pub struct JoinSet<T> {

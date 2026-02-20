@@ -2,7 +2,7 @@
 use moire_types::{EntityBody, NotifyEntity};
 use std::sync::Arc;
 
-use super::super::capture_backtrace_id;
+use moire_runtime::capture_backtrace_id;
 use moire_runtime::{instrument_operation_on_with_source, EntityHandle};
 
 /// Instrumented version of [`tokio::sync::Notify`].

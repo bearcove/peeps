@@ -5,7 +5,7 @@ use std::time::Duration;
 use moire_types::EntityBody;
 use moire_runtime::{instrument_future, EntityHandle};
 
-use super::capture_backtrace_id;
+use moire_runtime::capture_backtrace_id;
 
 /// Instrumented equivalent of [`tokio::time::sleep`].
 pub fn sleep(duration: Duration) -> impl Future<Output = ()> {

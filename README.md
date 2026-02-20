@@ -1,18 +1,18 @@
 # moire (mwah-ray)
 
-Low-overhead instrumentation for production Rust systems.
+Runtime graph instrumentation for Tokio-based Rust systems.
 
-## Features
+Moiré replaces Tokio's primitives with named, instrumented wrappers. At every API boundary — every lock acquisition, channel send/receive, spawn, and RPC call — it captures the current call stack via frame-pointer walking. The resulting graph of entities (tasks, locks, channels, RPC calls) connected by typed edges (polls, waiting_on, paired_with, holds) is pushed as a live stream to `moire-web` for investigation.
 
-**Task Tracking**: Wraps `tokio::spawn` to record task names, poll timing, and execution backtraces. Each poll captures stack information when diagnostics are enabled.
+The dashboard shows you which tasks are stuck, what they are waiting on, and exactly where in your code they got there.
 
-**Thread Sampling**: SIGPROF-based periodic sampling identifies threads stuck in blocking operations or tight loops. Samples are aggregated to show dominant stack frames.
+## What is instrumented
 
-**Lock Instrumentation**: Tracks `parking_lot` mutex/rwlock contention when the `locks` feature is enabled.
-
-**Roam + SHM Diagnostics**: Records connection state and shared-memory diagnostics from registered providers.
-
-**Live Dashboard Push**: Instrumented processes push structured JSON snapshots to a `moire` dashboard server over TCP. The web UI and API read from this live stream.
+- **Tasks**: `moire::spawn`, `moire::spawn_blocking`, `moire::JoinSet`
+- **Channels**: mpsc, unbounded, broadcast, oneshot, watch
+- **Synchronization**: `Mutex`, `RwLock`, `Semaphore`, `Notify`, `OnceCell`
+- **Processes**: `moire::Command`
+- **RPC**: request/response tracking (used by [Roam](https://github.com/bearcove/roam))
 
 ## Usage
 

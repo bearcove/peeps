@@ -1,7 +1,7 @@
 // r[impl api.rwlock]
 use moire_types::{EdgeKind, EntityBody, LockEntity, LockKind};
 
-use super::super::capture_backtrace_id;
+use moire_runtime::capture_backtrace_id;
 use moire_runtime::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
 
 /// Instrumented version of [`parking_lot::RwLock`].

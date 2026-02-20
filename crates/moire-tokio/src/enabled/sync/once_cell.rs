@@ -2,7 +2,7 @@
 use moire_types::{EntityBody, OnceCellEntity, OnceCellState};
 use std::future::Future;
 
-use super::super::capture_backtrace_id;
+use moire_runtime::capture_backtrace_id;
 use moire_runtime::{instrument_operation_on_with_source, EntityHandle};
 
 /// Instrumented version of [`tokio::sync::OnceCell`].

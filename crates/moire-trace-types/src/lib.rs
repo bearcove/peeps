@@ -180,10 +180,3 @@ pub struct ModuleRecord {
     pub arch: ModuleArch,
 }
 
-#[derive(Facet, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TraceCapabilities {
-    pub trace_v1: bool,
-    pub requires_frame_pointers: bool,
-    pub sampling_supported: bool,
-    pub alloc_tracking_supported: bool,
-}

@@ -1,6 +1,4 @@
-use moire_trace_types::{
-    BacktraceId, BacktraceRecord, InvariantError, ModuleId, ModulePath, TraceCapabilities,
-};
+use moire_trace_types::{BacktraceId, BacktraceRecord, InvariantError, ModuleId, ModulePath};
 use std::error::Error;
 use std::fmt;
 use std::num::NonZeroUsize;
@@ -104,16 +102,6 @@ impl Error for CaptureError {
             Self::InvariantViolation { source, .. } => Some(source),
             _ => None,
         }
-    }
-}
-
-// r[impl process.frame-pointers]
-pub fn trace_capabilities() -> TraceCapabilities {
-    TraceCapabilities {
-        trace_v1: cfg!(unix) && cfg!(any(target_arch = "x86_64", target_arch = "aarch64")),
-        requires_frame_pointers: true,
-        sampling_supported: false,
-        alloc_tracking_supported: false,
     }
 }
 

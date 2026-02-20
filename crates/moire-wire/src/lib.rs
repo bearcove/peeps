@@ -122,14 +122,6 @@ pub fn decode_frame_default(frame: &[u8]) -> Result<&[u8], FrameCodecError> {
 }
 
 #[derive(Facet)]
-pub struct TraceCapabilities {
-    pub trace_v1: bool,
-    pub requires_frame_pointers: bool,
-    pub sampling_supported: bool,
-    pub alloc_tracking_supported: bool,
-}
-
-#[derive(Facet)]
 #[repr(u8)]
 #[facet(rename_all = "snake_case")]
 pub enum ModuleIdentity {
@@ -152,7 +144,6 @@ pub struct Handshake {
     pub pid: u32,
     pub args: Vec<String>,
     pub env: Vec<String>,
-    pub trace_capabilities: TraceCapabilities,
     pub module_manifest: Vec<ModuleManifestEntry>,
 }
 
@@ -309,12 +300,6 @@ mod tests {
             pid: 42,
             args: vec!["/usr/bin/vixenfs-swift".into(), "--verbose".into()],
             env: vec!["RUST_LOG=debug".into(), "HOME=/Users/dev".into()],
-            trace_capabilities: TraceCapabilities {
-                trace_v1: true,
-                requires_frame_pointers: true,
-                sampling_supported: false,
-                alloc_tracking_supported: false,
-            },
             module_manifest: vec![ModuleManifestEntry {
                 module_path: "/usr/lib/libvixenfs_swift.dylib".into(),
                 runtime_base: 4_294_967_296,
@@ -324,7 +309,7 @@ mod tests {
         }));
         assert_eq!(
             json,
-            r#"{"handshake":{"process_name":"vixenfs-swift","pid":42,"args":["/usr/bin/vixenfs-swift","--verbose"],"env":["RUST_LOG=debug","HOME=/Users/dev"],"trace_capabilities":{"trace_v1":true,"requires_frame_pointers":true,"sampling_supported":false,"alloc_tracking_supported":false},"module_manifest":[{"module_path":"/usr/lib/libvixenfs_swift.dylib","runtime_base":4294967296,"identity":{"debug_id":"debugid:def456"},"arch":"aarch64"}]}}"#
+            r#"{"handshake":{"process_name":"vixenfs-swift","pid":42,"args":["/usr/bin/vixenfs-swift","--verbose"],"env":["RUST_LOG=debug","HOME=/Users/dev"],"module_manifest":[{"module_path":"/usr/lib/libvixenfs_swift.dylib","runtime_base":4294967296,"identity":{"debug_id":"debugid:def456"},"arch":"aarch64"}]}}"#
         );
     }
 
@@ -340,7 +325,6 @@ mod tests {
             snapshot_id: 7,
             ptime_now_ms: 1234,
             snapshot: Some(Snapshot {
-                sources: vec![],
                 entities: vec![],
                 scopes: vec![],
                 edges: vec![],

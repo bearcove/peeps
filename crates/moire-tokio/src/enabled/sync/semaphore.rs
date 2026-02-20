@@ -5,7 +5,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
-use super::super::capture_backtrace_id;
+use moire_runtime::capture_backtrace_id;
 use moire_runtime::{
     current_causal_target, instrument_operation_on_with_source, AsEntityRef, EdgeHandle,
     EntityHandle, EntityRef, WeakEntityHandle,

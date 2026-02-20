@@ -5,7 +5,7 @@ use std::future::Future;
 use std::io;
 use std::process::{ExitStatus, Output, Stdio};
 
-use super::capture_backtrace_id;
+use moire_runtime::capture_backtrace_id;
 use moire_runtime::{instrument_future, EntityHandle};
 
 /// Instrumented version of [`tokio::process::Command`], used to collect task and process diagnostics.

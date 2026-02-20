@@ -1,6 +1,6 @@
 use moire_types::{EdgeKind, EntityBody, EntityId, RequestEntity, ResponseEntity, ResponseStatus};
 
-use super::capture_backtrace_id;
+use moire_runtime::capture_backtrace_id;
 use moire_runtime::{EntityHandle, EntityRef};
 
 /// Instrumented request handle for a wrapped RPC request entity.

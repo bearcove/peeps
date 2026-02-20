@@ -2,7 +2,7 @@
 use moire_types::{EdgeKind, EntityBody, LockEntity, LockKind};
 use std::ops::{Deref, DerefMut};
 
-use super::super::capture_backtrace_id;
+use moire_runtime::capture_backtrace_id;
 use moire_runtime::{
     current_causal_target, AsEntityRef, EdgeHandle, EntityHandle, EntityRef, HELD_MUTEX_STACK,
 };

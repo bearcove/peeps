@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicU64, Ordering};
 use ctor::ctor;
-use moire_trace_capture::{capture_current, trace_capabilities, validate_frame_pointers_or_panic, CaptureOptions};
+use moire_trace_capture::{capture_current, validate_frame_pointers_or_panic, CaptureOptions};
 use moire_trace_types::BacktraceId;
 use moire_types::{
     EntityBody, EntityId, Event, FutureEntity, ProcessScopeBody, ScopeBody, ScopeId, TaskScopeBody,
@@ -62,12 +62,6 @@ pub fn init_runtime_from_macro(backtrace: BacktraceId) {
 }
 
 pub fn capture_backtrace_id() -> BacktraceId {
-    let capabilities = trace_capabilities();
-    assert!(
-        capabilities.trace_v1,
-        "trace capture prerequisites missing: trace_v1 unsupported on this platform"
-    );
-
     let raw = NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed);
     let backtrace_id = BacktraceId::new(raw)
         .expect("backtrace id invariant violated: generated id must be non-zero");
@@ -162,49 +156,6 @@ pub fn register_current_task_scope(
         db.register_task_scope_id(&task_key, scope.id());
     }
     Some(TaskScopeRegistration { task_key, scope })
-}
-
-#[track_caller]
-// r[impl api.spawn]
-pub fn spawn_tracked<F>(
-    name: impl Into<String>,
-    fut: F,
-    source: BacktraceId,
-) -> tokio::task::JoinHandle<F::Output>
-where
-    F: Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    let name: String = name.into();
-    tokio::spawn(
-        FUTURE_CAUSAL_STACK.scope(RefCell::new(Vec::new()), async move {
-            let _task_scope = register_current_task_scope(name.as_str(), source);
-            // [FIXME] I think that spawn tracked should only register the task and not the future inside of it. I'm not sure.
-            // However we should link between tokio's task tracking and moire's task tracking.
-            // The same applies to spawn blocking.
-            // Also, obviously, the handle that's returned has to be instrumented. It cannot simply
-            // be a `tokio::task::JoinHandle`.
-            instrument_future(name, fut, source, None, None).await
-        }),
-    )
-}
-
-#[track_caller]
-// r[impl api.spawn-blocking]
-pub fn spawn_blocking_tracked<F, T>(
-    name: impl Into<String>,
-    f: F,
-    source: BacktraceId,
-) -> tokio::task::JoinHandle<T>
-where
-    F: FnOnce() -> T + Send + 'static,
-    T: Send + 'static,
-{
-    let handle = EntityHandle::new(name, EntityBody::Future(FutureEntity {}), source);
-    tokio::task::spawn_blocking(move || {
-        let _hold = handle;
-        f()
-    })
 }
 
 pub fn record_event_with_source(mut event: Event, source: BacktraceId) {
