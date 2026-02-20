@@ -1242,15 +1242,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "moire-source"
-version = "0.1.0"
-dependencies = [
- "camino",
- "facet",
- "rusqlite",
-]
-
-[[package]]
 name = "moire-sqlite-facet"
 version = "0.1.0"
 dependencies = [
