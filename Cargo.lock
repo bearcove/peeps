@@ -1228,6 +1228,7 @@ dependencies = [
 name = "moire-runtime"
 version = "0.1.0"
 dependencies = [
+ "ctor",
  "facet",
  "facet-json",
  "facet-value",
@@ -1267,7 +1268,6 @@ dependencies = [
  "facet-json",
  "facet-value",
  "moire-runtime",
- "moire-trace-capture",
  "moire-trace-types",
  "moire-types",
  "moire-wire",
