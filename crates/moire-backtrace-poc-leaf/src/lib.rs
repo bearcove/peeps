@@ -36,6 +36,8 @@ pub mod pipeline {
 
 #[inline(never)]
 fn capture_trace(label: &str) -> CapturedTrace {
+    moire_trace_capture::validate_frame_pointers_or_panic();
+
     static NEXT_BACKTRACE_ID: AtomicU64 = AtomicU64::new(1);
     let backtrace_id = BacktraceId::new(NEXT_BACKTRACE_ID.fetch_add(1, Ordering::Relaxed))
         .expect("invariant violated: generated backtrace id must be non-zero");

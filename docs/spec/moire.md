@@ -323,14 +323,20 @@ The instrumented process pushes a stream of messages over a persistent TCP conne
 > r[symbolicate.server-store]
 > The server maintains a mapping from `BacktraceId` to `BacktraceRecord` for every connected process. This mapping persists in SQLite for the lifetime of the session.
 
-> r[symbolicate.on-demand]
-> Symbolication is not performed at ingest time. When the frontend requests the resolved symbols for a `BacktraceId`, the server resolves each `FrameKey` in the corresponding `BacktraceRecord` to a human-readable symbol using the module manifest from the handshake. Resolution uses the module's debug information (DWARF on Linux/macOS, PDB on Windows) located via the `module_path` and `identity` fields.
+> r[symbolicate.eager]
+> Symbolication is performed eagerly: when the server receives a `BacktraceRecord` message, it immediately schedules symbolication of that record in the background. Because the instrumented process deduplicates before sending — emitting each `BacktraceRecord` exactly once — each received record triggers exactly one symbolication job. The ingest loop MUST NOT block on symbolication. Resolution uses the module's debug information (DWARF on Linux/macOS, PDB on Windows) located via the `module_path` and `identity` fields from the handshake.
 
 > r[symbolicate.result]
 > A resolved frame includes: demangled function name, crate name, module path within the crate, source file path, and line/column where available. The server caches resolved frames keyed by `(module_identity, rel_pc)` so that repeated requests for the same frame do not re-read debug info.
+
+> r[symbolicate.top-frame]
+> The **top application frame** of a resolved backtrace is the outermost (lowest index) resolved frame whose `crate_name` is not in the infrastructure exclusion set `{std, core, alloc, tokio, tokio_util, futures, futures_core, futures_util, moire, moire_trace_capture}`. If no such frame exists, the backtrace has no top application frame.
+
+> r[symbolicate.cut-drain]
+> When assembling a cut or snapshot response, the server MUST wait for symbolication to complete for every `BacktraceId` referenced in that cut before returning the response. This ensures top application frame data is always available when the frontend receives a cut.
 
 > r[symbolicate.parallel]
 > The server MAY resolve multiple `BacktraceId` requests concurrently. Symbolication of one backtrace MUST NOT block symbolication of another.
 
 > r[symbolicate.hard-failure]
-> If a frame cannot be resolved — because debug info is missing, corrupt, or does not cover the given `rel_pc` — the server MUST return an explicit unresolved marker for that frame. It MUST NOT silently drop the frame or substitute a placeholder. The unresolved marker MUST include the raw `(module_path, rel_pc)` so the caller can diagnose the gap.
+> If a frame cannot be resolved — because debug info is missing, corrupt, or does not cover the given `rel_pc` — the server MUST store an explicit unresolved marker for that frame. It MUST NOT silently drop the frame or substitute a placeholder. The unresolved marker MUST include the raw `(module_path, rel_pc)` so the caller can diagnose the gap.

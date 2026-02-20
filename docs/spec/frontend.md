@@ -42,6 +42,9 @@ The `ApiClient` interface is the authoritative contract between the dashboard an
 > r[api.cuts.status]
 > `GET /api/cuts/{cut_id}` returns a `CutStatusResponse` showing how many connections have acknowledged (`acked_connections`) vs. are still pending (`pending_connections`). The client MUST poll this endpoint until all connections are acked or a timeout elapses.
 
+> r[api.cuts.top-frames]
+> Every `SnapshotCutResponse` MUST include a `top_frames` map from `BacktraceId` to resolved top application frame for every `BacktraceId` referenced in that cut. Backtraces with no top application frame are absent from the map. This map is populated after the server waits for symbolication to complete (see `r[symbolicate.cut-drain]`).
+
 ### Recording
 
 > r[api.record.start]
@@ -256,10 +259,13 @@ Signed tokens form an allowlist (`+`) or denylist (`-`). Multiple tokens of the 
 > `+node:<id>` / `-node:<id>` — include or exclude the entity with the given raw `EntityId`. The key may also be spelled `id`.
 
 > r[filter.axis.location+2]
-> `+location:<src>` / `-location:<src>` — include or exclude entities whose backtrace has been resolved and whose top application frame's `"source_file:line"` matches the given string. The key may also be spelled `source`. Entities whose backtraces have not yet been resolved are treated as non-matching for this axis.
+> `+location:<src>` / `-location:<src>` — include or exclude entities whose top application frame's `"source_file:line"` matches the given string. The key may also be spelled `source`. Entities with no top application frame are treated as non-matching for this axis.
 
 > r[filter.axis.crate+2]
-> `+crate:<name>` / `-crate:<name>` — include or exclude entities whose backtrace has been resolved and whose top application frame's `crate_name` matches the given name. Entities whose backtraces have not yet been resolved are treated as non-matching for this axis.
+> `+crate:<name>` / `-crate:<name>` — include or exclude entities whose top application frame's `crate_name` matches the given name. Entities with no top application frame are treated as non-matching for this axis.
+
+> r[filter.axis.module.bt]
+> `+module:<path>` / `-module:<path>` — include or exclude entities whose top application frame's `module_path` (the Rust module path within the crate, e.g. `server::handler`) matches the given string. Entities with no top application frame are treated as non-matching for this axis.
 
 > r[filter.axis.process]
 > `+process:<id>` / `-process:<id>` — include or exclude entities belonging to the process with the given `processId` string.
@@ -276,19 +282,19 @@ Signed tokens form an allowlist (`+`) or denylist (`-`). Multiple tokens of the 
 > `loners:on` / `loners:off` — when `off`, entities that have no edges to any other visible entity MUST be hidden from the graph. The default behavior (no token) is equivalent to `loners:on`.
 
 > r[filter.control.colorby+2]
-> `colorBy:process` — color entity nodes by their process membership. `colorBy:crate` — color entity nodes by the `crate_name` of their resolved backtrace top frame; entities whose backtraces have not been resolved receive the default color. When absent, all nodes use the default color.
+> `colorBy:process` — color entity nodes by their process membership. `colorBy:crate` — color entity nodes by the `crate_name` of their top application frame; entities with no top application frame receive the default color. When absent, all nodes use the default color.
 
 > r[filter.control.groupby+2]
-> `groupBy:process` / `groupBy:crate` — render entities inside labeled subgraph boxes grouped by process or by the `crate_name` of their resolved backtrace top frame. `groupBy:none` removes grouping. Entities with unresolved backtraces are placed in an implicit ungrouped region when grouping by crate. Grouping also affects RPC pair merging: request and response entities in different groups are not merged.
+> `groupBy:process` / `groupBy:crate` — render entities inside labeled subgraph boxes grouped by process or by the `crate_name` of their top application frame. `groupBy:none` removes grouping. Entities with no top application frame are placed in an implicit ungrouped region when grouping by crate. Grouping also affects RPC pair merging: request and response entities in different groups are not merged.
 
 > r[filter.control.labelby+2]
-> `labelBy:process` / `labelBy:crate` / `labelBy:location` — display a secondary label on each entity card showing the process name, the `crate_name` of the resolved backtrace top frame, or the `source_file:line` of the resolved backtrace top frame respectively. When the relevant backtrace is not yet resolved, the secondary label is omitted.
+> `labelBy:process` / `labelBy:crate` / `labelBy:location` — display a secondary label on each entity card showing the process name, the `crate_name` of the top application frame, or the `source_file:line` of the top application frame respectively. Entities with no top application frame show no secondary label.
 
 ### Filter application order
 
 > r[filter.order]
 > Filters MUST be applied in the following order:
-> 1. Apply signed axis filters (include/exclude by node, location, crate, process, kind).
+> 1. Apply signed axis filters (include/exclude by node, location, crate, module, process, kind).
 > 2. Collapse edges through any newly-hidden nodes (see `f[graph.collapse]`).
 > 3. If `loners:off`, remove entities with no remaining edges.
 > 4. If a `focus` token is present, restrict to the connected subgraph of the focus node.
@@ -310,7 +316,7 @@ Signed tokens form an allowlist (`+`) or denylist (`-`). Multiple tokens of the 
 > The filter input MUST provide autocomplete suggestions based on the current draft token. Suggestions are ranked by prefix match, substring match, and fuzzy subsequence match (in that order). Suggestions that are already present as committed tokens MUST be omitted.
 
 > r[filter.suggest.fragment+2]
-> Suggestions are generated against the in-progress fragment (the token currently being typed). When the fragment is empty or has no `:`, top-level operator and control tokens are suggested. When the fragment begins with `+` or `-` and no `:`, signed axis key suggestions are offered. When a `:` is present, value completions for the given key are offered using available entity IDs, process IDs, kinds, and — for `crate` and `location` axes — the crate names and source locations from all already-resolved backtraces.
+> Suggestions are generated against the in-progress fragment (the token currently being typed). When the fragment is empty or has no `:`, top-level operator and control tokens are suggested. When the fragment begins with `+` or `-` and no `:`, signed axis key suggestions are offered. When a `:` is present, value completions for the given key are offered using available entity IDs, process IDs, kinds, and — for `crate`, `module`, and `location` axes — the crate names, module paths, and source locations from the top application frames in the current cut's `top_frames` map.
 
 ---
 

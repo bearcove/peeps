@@ -53,25 +53,16 @@ fn run() -> Result<(), String> {
             ));
         }
 
-        println!(
-            "\n{}{}trace{}={} {}{}frame_count{}={}",
-            BOLD,
-            BLUE,
-            RESET,
-            trace.label,
-            BOLD,
-            CYAN,
-            RESET,
-            trace.frames.len()
-        );
+        println!("\n{}{}Trace:{} {}", BOLD, BLUE, RESET, trace.label);
+        println!("{}frames:{} {}", DIM, RESET, trace.frames.len());
 
         for (idx, frame) in trace.frames.iter().enumerate() {
             let module_path = match &frame.module_path {
                 Some(path) => path,
                 None => {
                     println!(
-                        "  {}#{idx:02}{} {}ip{}=0x{:016x} {}unresolved{}=no_module_path",
-                        YELLOW, RESET, DIM, RESET, frame.ip, RED, RESET
+                        "{}#{idx:02}{} {}<unresolved>{} ip=0x{:016x} reason=no_module_path",
+                        YELLOW, RESET, RED, RESET, frame.ip
                     );
                     continue;
                 }
@@ -81,8 +72,8 @@ fn run() -> Result<(), String> {
                 Some(base) => base,
                 None => {
                     println!(
-                        "  {}#{idx:02}{} {}ip{}=0x{:016x} {}module{}={} {}unresolved{}=no_module_base",
-                        YELLOW, RESET, DIM, RESET, frame.ip, CYAN, RESET, module_path, RED, RESET
+                        "{}#{idx:02}{} {}<unresolved>{} ip=0x{:016x} module={} reason=no_module_base",
+                        YELLOW, RESET, RED, RESET, frame.ip, module_path
                     );
                     continue;
                 }
@@ -93,18 +84,8 @@ fn run() -> Result<(), String> {
                     Ok(resolver) => resolver,
                     Err(err) => {
                         println!(
-                            "  {}#{idx:02}{} {}ip{}=0x{:016x} {}module{}={} {}unresolved{}={}",
-                            YELLOW,
-                            RESET,
-                            DIM,
-                            RESET,
-                            frame.ip,
-                            CYAN,
-                            RESET,
-                            module_path,
-                            RED,
-                            RESET,
-                            err
+                            "{}#{idx:02}{} {}<unresolved>{} ip=0x{:016x} module={} reason={}",
+                            YELLOW, RESET, RED, RESET, frame.ip, module_path, err
                         );
                         continue;
                     }
@@ -142,39 +123,32 @@ fn run() -> Result<(), String> {
             let source_link = format_source_link(&source_path, line, column, absolute_flag);
 
             println!(
-                "  {}#{idx:02}{} {}ip{}=0x{:016x} {}runtime_base{}=0x{:016x} {}module{}={} {}module_offset{}=0x{:016x} {}probe{}=0x{:016x} {}crate{}={} {}module_path{}={} {}fn{}={} {}src{}={} {}abs{}={}",
-                YELLOW,
-                RESET,
+                "{}#{idx:02}{} {}{}{}",
+                YELLOW, RESET, GREEN, function_name, RESET
+            );
+            println!("  {}at{} {}", BLUE, RESET, source_link);
+            println!(
+                "  {}crate{} {}  {}module{} {}",
+                CYAN, RESET, crate_name, CYAN, RESET, module_name
+            );
+            println!(
+                "  {}ip{} 0x{:016x}  {}base{} 0x{:016x}  {}offset{} 0x{:016x}  {}probe{} 0x{:016x}",
                 DIM,
                 RESET,
                 frame.ip,
-                CYAN,
-                RESET,
-                runtime_base,
-                CYAN,
-                RESET,
-                module_path,
-                CYAN,
-                RESET,
-                module_offset,
-                CYAN,
-                RESET,
-                probe,
-                GREEN,
-                RESET,
-                crate_name,
-                GREEN,
-                RESET,
-                module_name,
-                GREEN,
-                RESET,
-                function_name,
-                BLUE,
-                RESET,
-                source_link,
                 DIM,
                 RESET,
-                absolute_flag,
+                runtime_base,
+                DIM,
+                RESET,
+                module_offset,
+                DIM,
+                RESET,
+                probe
+            );
+            println!(
+                "  {}binary{} {}  {}abs{} {}",
+                DIM, RESET, module_path, DIM, RESET, absolute_flag
             );
         }
     }
