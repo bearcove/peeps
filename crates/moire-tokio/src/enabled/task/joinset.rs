@@ -5,12 +5,12 @@ use moire_runtime::{
     instrument_future, register_current_task_scope, EntityHandle,
     FUTURE_CAUSAL_STACK,
 };
-use moire_types::EntityBody;
+use moire_types::FutureEntity;
 
 /// Instrumented equivalent of [`tokio::task::JoinSet`], used to track joined task sets.
 pub struct JoinSet<T> {
     pub(super) inner: tokio::task::JoinSet<T>,
-    pub(super) handle: EntityHandle,
+    pub(super) handle: EntityHandle<FutureEntity>,
 }
 
 // r[impl api.joinset]
@@ -22,20 +22,14 @@ where
     pub fn new() -> Self {
                 Self {
             inner: tokio::task::JoinSet::new(),
-            handle: EntityHandle::new_untyped(
-                "joinset",
-                EntityBody::Future(moire_types::FutureEntity {}), 
-            ),
+            handle: EntityHandle::new("joinset", FutureEntity {}),
         }
     }
 
     /// Creates an instrumented join set equivalent to [`tokio::task::JoinSet::new`].
     pub fn named(name: impl Into<String>) -> Self {
-                let name = name.into();
-        let handle = EntityHandle::new_untyped(
-            format!("joinset.{name}"),
-            EntityBody::Future(moire_types::FutureEntity {}), 
-        );
+        let name = name.into();
+        let handle = EntityHandle::new(format!("joinset.{name}"), FutureEntity {});
         Self {
             inner: tokio::task::JoinSet::new(),
             handle,

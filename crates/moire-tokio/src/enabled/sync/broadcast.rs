@@ -4,7 +4,7 @@ use moire_runtime::{
     new_event, record_event, AsEntityRef, EntityHandle, EntityRef, WeakEntityHandle,
 };
 use moire_types::{
-    BroadcastRxEntity, BroadcastTxEntity, EdgeKind, EntityBody, EventKind, EventTarget,
+    BroadcastRxEntity, BroadcastTxEntity, EdgeKind, EventKind, EventTarget,
 };
 use tokio::sync::broadcast;
 
@@ -51,11 +51,7 @@ impl<T: Clone> BroadcastSender<T> {
     }
     /// Subscribes a receiver, equivalent to [`tokio::sync::broadcast::Sender::subscribe`].
     pub fn subscribe(&self) -> BroadcastReceiver<T> {
-                let handle = EntityHandle::new_untyped(
-            "broadcast:rx.subscribe",
-            EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }), 
-        )
-        .into_typed::<moire_types::BroadcastRx>();
+        let handle = EntityHandle::new("broadcast:rx.subscribe", BroadcastRxEntity { lag: 0 });
         self.handle
             .link_to_handle(&handle, EdgeKind::PairedWith);
         BroadcastReceiver {
@@ -119,19 +115,17 @@ pub fn broadcast<T: Clone>(
     let (tx, rx) = broadcast::channel(capacity);
     let capacity_u32 = capacity.min(u32::MAX as usize) as u32;
 
-    let tx_handle = EntityHandle::new_untyped(
+    let tx_handle = EntityHandle::new(
         format!("{name}:tx"),
-        EntityBody::BroadcastTx(BroadcastTxEntity {
+        BroadcastTxEntity {
             capacity: capacity_u32,
-        }), 
-    )
-    .into_typed::<moire_types::BroadcastTx>();
+        },
+    );
 
-    let rx_handle = EntityHandle::new_untyped(
+    let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
-        EntityBody::BroadcastRx(BroadcastRxEntity { lag: 0 }), 
-    )
-    .into_typed::<moire_types::BroadcastRx>();
+        BroadcastRxEntity { lag: 0 },
+    );
 
     tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
 

@@ -1,5 +1,5 @@
 // r[impl api.mutex]
-use moire_types::{EdgeKind, EntityBody, LockEntity, LockKind};
+use moire_types::{EdgeKind, LockEntity, LockKind};
 use std::ops::{Deref, DerefMut};
 
 use moire_runtime::{
@@ -36,13 +36,12 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
 impl<T> Mutex<T> {
     /// Creates a new instrumented mutex, equivalent to [`parking_lot::Mutex::new`].
     pub fn new(name: &'static str, value: T) -> Self {
-                let handle = EntityHandle::new_untyped(
+        let handle = EntityHandle::new(
             name,
-            EntityBody::Lock(LockEntity {
+            LockEntity {
                 kind: LockKind::Mutex,
-            }), 
-        )
-        .into_typed::<moire_types::Lock>();
+            },
+        );
         Self {
             inner: parking_lot::Mutex::new(value),
             handle,

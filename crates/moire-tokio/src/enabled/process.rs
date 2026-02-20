@@ -1,5 +1,5 @@
 // r[impl api.command]
-use moire_types::{CommandEntity, EntityBody};
+use moire_types::CommandEntity;
 use std::ffi::{OsStr, OsString};
 use std::future::Future;
 use std::io;
@@ -26,7 +26,7 @@ pub struct CommandDiagnostics {
 /// Instrumented equivalent of [`tokio::process::Child`] for diagnostics metadata.
 pub struct Child {
     inner: Option<tokio::process::Child>,
-    handle: EntityHandle,
+    handle: EntityHandle<CommandEntity>,
 }
 
 impl Command {
@@ -130,7 +130,7 @@ impl Command {
     /// Spawns the configured process, equivalent to [`tokio::process::Command::spawn`].
     pub fn spawn(&mut self) -> io::Result<Child> {
                 let child = self.inner.spawn()?;
-        let handle = EntityHandle::new_untyped(self.entity_name(), self.entity_body());
+        let handle = EntityHandle::new(self.entity_name(), self.entity_body());
         Ok(Child {
             inner: Some(child),
             handle,
@@ -138,7 +138,7 @@ impl Command {
     }
     /// Gets process status asynchronously, matching [`tokio::process::Command::status`].
     pub fn status(&mut self) -> impl Future<Output = io::Result<ExitStatus>> + '_ {
-                let handle = EntityHandle::new_untyped(self.entity_name(), self.entity_body());
+                let handle = EntityHandle::new(self.entity_name(), self.entity_body());
         instrument_future(
             "command.status",
             self.inner.status(), 
@@ -148,7 +148,7 @@ impl Command {
     }
     /// Captures process output asynchronously, matching [`tokio::process::Command::output`].
     pub fn output(&mut self) -> impl Future<Output = io::Result<Output>> + '_ {
-                let handle = EntityHandle::new_untyped(self.entity_name(), self.entity_body());
+                let handle = EntityHandle::new(self.entity_name(), self.entity_body());
         instrument_future(
             "command.output",
             self.inner.output(), 
@@ -188,12 +188,12 @@ impl Command {
         String::from(format!("command.{}", self.program))
     }
 
-    fn entity_body(&self) -> EntityBody {
-        EntityBody::Command(CommandEntity {
+    fn entity_body(&self) -> CommandEntity {
+        CommandEntity {
             program: self.program.clone(),
             args: self.args.clone(),
             env: self.env.clone(),
-        })
+        }
     }
 }
 
@@ -203,13 +203,13 @@ impl Child {
         child: tokio::process::Child,
         diag: CommandDiagnostics,
     ) -> Self {
-                let body = EntityBody::Command(CommandEntity {
+        let body = CommandEntity {
             program: diag.program.clone(),
             args: diag.args.clone(),
             env: diag.env.clone(),
-        });
+        };
         let name = String::from(format!("command.{}", diag.program));
-        let handle = EntityHandle::new_untyped(name, body);
+        let handle = EntityHandle::new(name, body);
         Self {
             inner: Some(child),
             handle,

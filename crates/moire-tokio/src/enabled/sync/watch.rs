@@ -5,7 +5,7 @@ use moire_runtime::{
     EntityRef, WeakEntityHandle,
 };
 use moire_types::{
-    EdgeKind, EntityBody, EventKind, EventTarget, WatchRxEntity, WatchTxEntity,
+    EdgeKind, EventKind, EventTarget, WatchRxEntity, WatchTxEntity,
 };
 use tokio::sync::watch;
 
@@ -86,11 +86,7 @@ impl<T: Clone> WatchSender<T> {
     ///
     /// Returns a linked sender/receiver pair with diagnostic metadata.
     pub fn subscribe(&self) -> WatchReceiver<T> {
-                let handle = EntityHandle::new_untyped(
-            "watch:rx.subscribe",
-            EntityBody::WatchRx(WatchRxEntity {}), 
-        )
-        .into_typed::<moire_types::WatchRx>();
+        let handle = EntityHandle::new("watch:rx.subscribe", WatchRxEntity {});
         self.handle
             .link_to_handle(&handle, EdgeKind::PairedWith);
         WatchReceiver {
@@ -147,19 +143,17 @@ pub fn watch<T: Clone>(name: impl Into<String>, initial: T) -> (WatchSender<T>, 
         let name = name.into();
     let (tx, rx) = watch::channel(initial);
 
-    let tx_handle = EntityHandle::new_untyped(
+    let tx_handle = EntityHandle::new(
         format!("{name}:tx"),
-        EntityBody::WatchTx(WatchTxEntity {
+        WatchTxEntity {
             last_update_at: None,
-        }), 
-    )
-    .into_typed::<moire_types::WatchTx>();
+        },
+    );
 
-    let rx_handle = EntityHandle::new_untyped(
+    let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
-        EntityBody::WatchRx(WatchRxEntity {}), 
-    )
-    .into_typed::<moire_types::WatchRx>();
+        WatchRxEntity {},
+    );
 
     tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
 

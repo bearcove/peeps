@@ -4,7 +4,7 @@ use moire_runtime::{
     instrument_operation_on, new_event, record_event, EntityHandle, WeakEntityHandle,
 };
 use moire_types::{
-    EdgeKind, EntityBody, EventKind, EventTarget, OneshotRxEntity, OneshotTxEntity,
+    EdgeKind, EventKind, EventTarget, OneshotRxEntity, OneshotTxEntity,
 };
 use tokio::sync::oneshot;
 
@@ -82,17 +82,15 @@ pub fn oneshot<T>(name: impl Into<String>) -> (OneshotSender<T>, OneshotReceiver
         let name: String = name.into();
     let (tx, rx) = oneshot::channel();
 
-    let tx_handle = EntityHandle::new_untyped(
+    let tx_handle = EntityHandle::new(
         format!("{name}:tx"),
-        EntityBody::OneshotTx(OneshotTxEntity { sent: false }), 
-    )
-    .into_typed::<moire_types::OneshotTx>();
+        OneshotTxEntity { sent: false },
+    );
 
-    let rx_handle = EntityHandle::new_untyped(
+    let rx_handle = EntityHandle::new(
         format!("{name}:rx"),
-        EntityBody::OneshotRx(OneshotRxEntity {}), 
-    )
-    .into_typed::<moire_types::OneshotRx>();
+        OneshotRxEntity {},
+    );
 
     tx_handle.link_to_handle(&rx_handle, EdgeKind::PairedWith);
 

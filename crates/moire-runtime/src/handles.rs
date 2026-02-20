@@ -100,7 +100,7 @@ impl Drop for HandleInner {
     }
 }
 
-pub struct EntityHandle<S = ()> {
+pub struct EntityHandle<S> {
     inner: Arc<HandleInner>,
     _slot: PhantomData<S>,
 }
@@ -114,17 +114,8 @@ impl<S> Clone for EntityHandle<S> {
     }
 }
 
-impl EntityHandle<()> {
-    pub fn new_untyped(name: impl Into<String>, body: impl Into<EntityBody>) -> Self {
-        let entity = Entity::new(super::capture_backtrace_id(), name, body.into());
-        let untyped = Self::from_entity(entity);
-        Self {
-            inner: untyped.inner,
-            _slot: PhantomData,
-        }
-    }
-
-    pub fn from_entity(entity: Entity) -> Self {
+impl<S> EntityHandle<S> {
+    fn from_entity(entity: Entity) -> Self {
         let kind_name = entity.body.kind_name();
         let id = EntityId::new(entity.id.as_str());
 
@@ -137,13 +128,6 @@ impl EntityHandle<()> {
             _slot: PhantomData,
         }
     }
-
-    pub fn into_typed<S>(self) -> EntityHandle<S> {
-        EntityHandle {
-            inner: self.inner,
-            _slot: PhantomData,
-        }
-    }
 }
 
 impl<S> EntityHandle<S>
@@ -152,11 +136,7 @@ where
 {
     pub fn new(name: impl Into<String>, body: S) -> Self {
         let entity = Entity::new(super::capture_backtrace_id(), name, body.into());
-        let untyped = EntityHandle::from_entity(entity);
-        Self {
-            inner: untyped.inner,
-            _slot: PhantomData,
-        }
+        Self::from_entity(entity)
     }
 }
 
@@ -229,7 +209,7 @@ impl<S> EntityHandle<S> {
 /// When the last `EntityHandle` for the entity drops, the entity is removed
 /// from the graph and subsequent `mutate` calls on any `WeakEntityHandle`
 /// pointing to it become no-ops.
-pub struct WeakEntityHandle<S = ()> {
+pub struct WeakEntityHandle<S> {
     inner: Weak<HandleInner>,
     _slot: PhantomData<S>,
 }

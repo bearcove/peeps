@@ -1,5 +1,5 @@
 // r[impl api.once-cell]
-use moire_types::{EntityBody, OnceCellEntity, OnceCellState};
+use moire_types::{OnceCellEntity, OnceCellState};
 use std::future::Future;
 
 use moire_runtime::{instrument_operation_on, EntityHandle};
@@ -13,14 +13,13 @@ pub struct OnceCell<T> {
 impl<T> OnceCell<T> {
     /// Creates a new instrumented once-cell, matching [`tokio::sync::OnceCell::new`].
     pub fn new(name: impl Into<String>) -> Self {
-                let handle = EntityHandle::new_untyped(
+        let handle = EntityHandle::new(
             name.into(),
-            EntityBody::OnceCell(OnceCellEntity {
+            OnceCellEntity {
                 waiter_count: 0,
                 state: OnceCellState::Empty,
-            }), 
-        )
-        .into_typed::<moire_types::OnceCell>();
+            },
+        );
         Self {
             inner: tokio::sync::OnceCell::new(),
             handle,

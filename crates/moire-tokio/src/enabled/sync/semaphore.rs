@@ -1,5 +1,5 @@
 // r[impl api.semaphore]
-use moire_types::{EdgeKind, EntityBody, SemaphoreEntity};
+use moire_types::{EdgeKind, SemaphoreEntity};
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -47,15 +47,14 @@ pub struct OwnedSemaphorePermit {
 impl Semaphore {
     /// Creates a new semaphore, matching [`tokio::sync::Semaphore::new`].
     pub fn new(name: impl Into<String>, permits: usize) -> Self {
-                let max_permits = permits.min(u32::MAX as usize) as u32;
-        let handle = EntityHandle::new_untyped(
+        let max_permits = permits.min(u32::MAX as usize) as u32;
+        let handle = EntityHandle::new(
             name.into(),
-            EntityBody::Semaphore(SemaphoreEntity {
+            SemaphoreEntity {
                 max_permits,
                 handed_out_permits: 0,
-            }), 
-        )
-        .into_typed::<moire_types::Semaphore>();
+            },
+        );
         Self {
             inner: Arc::new(tokio::sync::Semaphore::new(permits)),
             handle,

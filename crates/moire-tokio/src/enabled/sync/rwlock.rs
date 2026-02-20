@@ -1,5 +1,5 @@
 // r[impl api.rwlock]
-use moire_types::{EdgeKind, EntityBody, LockEntity, LockKind};
+use moire_types::{EdgeKind, LockEntity, LockKind};
 
 use moire_runtime::{current_causal_target, AsEntityRef, EntityHandle, EntityRef};
 
@@ -12,13 +12,12 @@ pub struct RwLock<T> {
 impl<T> RwLock<T> {
     /// Creates a new instrumented read-write lock, matching [`parking_lot::RwLock::new`].
     pub fn new(name: &'static str, value: T) -> Self {
-                let handle = EntityHandle::new_untyped(
+        let handle = EntityHandle::new(
             name,
-            EntityBody::Lock(LockEntity {
+            LockEntity {
                 kind: LockKind::RwLock,
-            }), 
-        )
-        .into_typed::<moire_types::Lock>();
+            },
+        );
         Self {
             inner: parking_lot::RwLock::new(value),
             handle,

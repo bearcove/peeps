@@ -2,16 +2,13 @@
 use std::future::Future;
 use std::time::Duration;
 
-use moire_types::EntityBody;
 use moire_runtime::{instrument_future, EntityHandle};
+use moire_types::FutureEntity;
 
 
 /// Instrumented equivalent of [`tokio::time::sleep`].
 pub fn sleep(duration: Duration) -> impl Future<Output = ()> {
-        let handle = EntityHandle::new_untyped(
-        "time.sleep",
-        EntityBody::Future(moire_types::FutureEntity {}), 
-    );
+    let handle = EntityHandle::new("time.sleep", FutureEntity {});
 
     instrument_future(
         "time.sleep",
@@ -24,18 +21,15 @@ pub fn sleep(duration: Duration) -> impl Future<Output = ()> {
 /// Instrumented equivalent of [`tokio::time::Interval`].
 pub struct Interval {
     inner: tokio::time::Interval,
-    handle: EntityHandle,
+    handle: EntityHandle<FutureEntity>,
 }
 
 impl Interval {
     /// Creates an instrumented interval, equivalent to [`tokio::time::Interval::new`].
     pub fn new(period: Duration) -> Self {
-                Self {
+        Self {
             inner: tokio::time::interval(period),
-            handle: EntityHandle::new_untyped(
-                "time.interval",
-                EntityBody::Future(moire_types::FutureEntity {}), 
-            ),
+            handle: EntityHandle::new("time.interval", FutureEntity {}),
         }
     }
 

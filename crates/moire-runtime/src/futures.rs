@@ -1,5 +1,5 @@
 use moire_trace_types::BacktraceId;
-use moire_types::{EdgeKind, EntityBody, EntityId, FutureEntity};
+use moire_types::{EdgeKind, EntityId, FutureEntity};
 use std::future::{Future, IntoFuture};
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -87,7 +87,7 @@ where
 
 pub struct InstrumentedFuture<F> {
     inner: F,
-    pub(super) future_handle: EntityHandle,
+    pub(super) future_handle: EntityHandle<FutureEntity>,
     source: BacktraceId,
     awaited_by: Option<FutureEdgeRelation>,
     waits_on: Option<FutureEdgeRelation>,
@@ -116,7 +116,7 @@ impl FutureEdgeRelation {
 }
 
 impl<F> InstrumentedFuture<F> {
-    fn new(inner: F, future_handle: EntityHandle, target: Option<EntityRef>) -> Self {
+    fn new(inner: F, future_handle: EntityHandle<FutureEntity>, target: Option<EntityRef>) -> Self {
         let awaited_by = current_causal_target().and_then(|parent| {
             if parent.id().as_str() == future_handle.id().as_str() {
                 None
@@ -253,6 +253,6 @@ pub fn instrument_future<F>(
 where
     F: IntoFuture,
 {
-    let handle = EntityHandle::new_untyped(name, EntityBody::Future(FutureEntity {}));
+    let handle = EntityHandle::new(name, FutureEntity {});
     InstrumentedFuture::new(fut.into_future(), handle, on)
 }

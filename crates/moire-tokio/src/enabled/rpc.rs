@@ -1,4 +1,4 @@
-use moire_types::{EdgeKind, EntityBody, EntityId, RequestEntity, ResponseEntity, ResponseStatus};
+use moire_types::{EdgeKind, EntityId, RequestEntity, ResponseEntity, ResponseStatus};
 
 use moire_runtime::{EntityHandle, EntityRef};
 
@@ -49,10 +49,9 @@ pub fn rpc_request(method: impl Into<String>, args_json: impl Into<String>) -> R
 
 #[doc(hidden)]
 pub fn rpc_request_with_body(name: impl Into<String>, body: RequestEntity) -> RpcRequestHandle {
-        let name = name.into();
-    let body = EntityBody::Request(body);
+    let name = name.into();
     RpcRequestHandle {
-        handle: EntityHandle::new_untyped(name, body).into_typed::<moire_types::Request>(),
+        handle: EntityHandle::new(name, body),
     }
 }
 
@@ -77,9 +76,8 @@ pub fn rpc_response_with_body(
     name: impl Into<String>,
     body: ResponseEntity,
 ) -> EntityHandle<moire_types::Response> {
-        let name = name.into();
-    let body = EntityBody::Response(body);
-    EntityHandle::new_untyped(name, body).into_typed::<moire_types::Response>()
+    let name = name.into();
+    EntityHandle::new(name, body)
 }
 
 // r[impl api.rpc-response]
@@ -109,9 +107,8 @@ pub fn rpc_response_for_with_body(
     request: &EntityRef,
     body: ResponseEntity,
 ) -> EntityHandle<moire_types::Response> {
-        let name = name.into();
-    let body = EntityBody::Response(body);
-    let response = EntityHandle::new_untyped(name, body).into_typed::<moire_types::Response>();
+    let name = name.into();
+    let response = EntityHandle::new(name, body);
     response.link_to(request, EdgeKind::PairedWith);
     response
 }
