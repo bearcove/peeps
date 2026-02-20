@@ -1,8 +1,9 @@
-import type { SnapshotBacktrace } from "../api/types.generated";
+import type { ResolvedSnapshotBacktrace } from "../snapshot";
 
-export const STORYBOOK_BACKTRACE_FIXTURES: SnapshotBacktrace[] = [
+export const STORYBOOK_BACKTRACE_FIXTURES: ResolvedSnapshotBacktrace[] = [
   {
     backtrace_id: 9001,
+    frame_ids: [1, 2, 3, 4, 5],
     frames: [
       {
         resolved: {
@@ -47,6 +48,7 @@ export const STORYBOOK_BACKTRACE_FIXTURES: SnapshotBacktrace[] = [
   },
   {
     backtrace_id: 9002,
+    frame_ids: [6, 7, 8],
     frames: [
       {
         resolved: {

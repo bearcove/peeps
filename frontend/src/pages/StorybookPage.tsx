@@ -1053,6 +1053,7 @@ export function StorybookPage({
               onLeftPaneTabChange={setLeftPaneTab}
               snap={demoSnap}
               snapshotProcessCount={0}
+              symbolicationProgress={null}
               recording={demoRecording}
               connCount={0}
               isBusy={false}

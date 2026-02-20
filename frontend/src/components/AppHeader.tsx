@@ -25,6 +25,7 @@ export function AppHeader({
   onLeftPaneTabChange,
   snap,
   snapshotProcessCount,
+  symbolicationProgress,
   recording,
   connCount,
   isBusy,
@@ -43,6 +44,7 @@ export function AppHeader({
   onLeftPaneTabChange: (tab: "graph" | "scopes" | "entities") => void;
   snap: SnapshotState;
   snapshotProcessCount: number;
+  symbolicationProgress: { completed: number; total: number } | null;
   recording: RecordingState;
   connCount: number;
   isBusy: boolean;
@@ -97,6 +99,11 @@ export function AppHeader({
       {apiMode === "lab" ? <span className="app-header-badge">mock data</span> : null}
       {snap.phase === "ready" && (
         <span className="app-header-badge">Snapshot: {snapshotProcessCount} processes</span>
+      )}
+      {snap.phase === "ready" && symbolicationProgress && (
+        <span className="app-header-badge app-header-badge--warn">
+          Symbolicating {symbolicationProgress.completed}/{symbolicationProgress.total} frames
+        </span>
       )}
       {snap.phase === "error" && <span className="app-header-error">{snap.message}</span>}
       <span className="app-header-spacer" />

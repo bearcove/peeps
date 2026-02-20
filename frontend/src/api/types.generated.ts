@@ -48,31 +48,17 @@ export interface RecordStartRequest {
   max_memory_bytes?: number;
 }
 
-/**
- * Top-level response for `/api/snapshot`.
- */
-export interface SnapshotCutResponse {
-  /**
-   * Wall-clock milliseconds (Unix epoch) when this cut was assembled server-side.
-   */
-  captured_at_unix_ms: number;
-  /**
-   * Processes that replied within the timeout window.
-   */
-  processes: ProcessSnapshotView[];
-  /**
-   * Processes connected at request time but timed out before response.
-   */
-  timed_out_processes: TimedOutProcess[];
-  /**
-   * Expanded backtraces referenced by entities/scopes/edges/events in this snapshot.
-   */
-  backtraces: SnapshotBacktrace[];
+export interface SnapshotSymbolicationUpdate {
+  snapshot_id: number;
+  total_frames: number;
+  completed_frames: number;
+  done: boolean;
+  updated_frames: SnapshotFrameRecord[];
 }
 
-export interface SnapshotBacktrace {
-  backtrace_id: BacktraceId;
-  frames: SnapshotBacktraceFrame[];
+export interface SnapshotFrameRecord {
+  frame_id: number;
+  frame: SnapshotBacktraceFrame;
 }
 
 export type SnapshotBacktraceFrame =
@@ -90,6 +76,41 @@ export interface BacktraceFrameResolved {
   function_name: string;
   source_file: string;
   line?: number;
+}
+
+/**
+ * Top-level response for `/api/snapshot`.
+ */
+export interface SnapshotCutResponse {
+  /**
+   * Monotonic server-side snapshot id for correlating stream updates.
+   */
+  snapshot_id: number;
+  /**
+   * Wall-clock milliseconds (Unix epoch) when this cut was assembled server-side.
+   */
+  captured_at_unix_ms: number;
+  /**
+   * Processes that replied within the timeout window.
+   */
+  processes: ProcessSnapshotView[];
+  /**
+   * Processes connected at request time but timed out before response.
+   */
+  timed_out_processes: TimedOutProcess[];
+  /**
+   * Backtraces referenced by entities/scopes/edges/events in this snapshot.
+   */
+  backtraces: SnapshotBacktrace[];
+  /**
+   * Deduplicated frame catalog keyed by frame_id.
+   */
+  frames: SnapshotFrameRecord[];
+}
+
+export interface SnapshotBacktrace {
+  backtrace_id: BacktraceId;
+  frame_ids: number[];
 }
 
 export type BacktraceId = number;

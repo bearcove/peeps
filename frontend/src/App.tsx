@@ -2,16 +2,18 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import "./App.css";
 import type { FilterMenuItem } from "./ui/primitives/FilterMenu";
 import { apiClient } from "./api";
-import type { ConnectionsResponse, FrameSummary } from "./api/types.generated";
+import type { ConnectionsResponse, FrameSummary, SnapshotCutResponse } from "./api/types.generated";
 import { appLog, snapshotLog } from "./debug";
 import { RecordingTimeline } from "./components/timeline/RecordingTimeline";
 import {
   buildBacktraceIndex,
+  applySymbolicationUpdateToSnapshot,
   collapseEdgesThroughHiddenNodes,
   convertSnapshot,
   extractScopes,
   filterLoners,
   getConnectedSubgraph,
+  isPendingFrame,
   type BacktraceIndex,
   type EntityDef,
   type EdgeDef,
@@ -133,12 +135,15 @@ export function App() {
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:process loners:off");
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
+  const [symbolicationProgress, setSymbolicationProgress] = useState<{ completed: number; total: number } | null>(null);
   const [isLive, setIsLive] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
   const [unionFrameLayout, setUnionFrameLayout] = useState<FrameRenderResult | undefined>(undefined);
   const [downsampleInterval, setDownsampleInterval] = useState(1);
   const [builtDownsampleInterval, setBuiltDownsampleInterval] = useState(1);
   const pollingRef = useRef<number | null>(null);
+  const symbolicationStreamStopRef = useRef<(() => void) | null>(null);
+  const snapshotWireRef = useRef<SnapshotCutResponse | null>(null);
   const isLiveRef = useRef(isLive);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mainPaneRef = useRef<HTMLDivElement>(null);
@@ -414,6 +419,12 @@ export function App() {
 
   const takeSnapshot = useCallback(async () => {
     snapshotLog("takeSnapshot start");
+    if (symbolicationStreamStopRef.current) {
+      symbolicationStreamStopRef.current();
+      symbolicationStreamStopRef.current = null;
+    }
+    snapshotWireRef.current = null;
+    setSymbolicationProgress(null);
     setSnap({ phase: "cutting" });
     setSelection(null);
     setInspectedSelection(null);
@@ -432,6 +443,7 @@ export function App() {
       setSnap({ phase: "loading" });
       snapshotLog("snapshot request start");
       const snapshot = await apiClient.fetchSnapshot();
+      snapshotWireRef.current = snapshot;
       snapshotLog(
         "snapshot response captured_at=%d processes=%d timed_out=%d",
         snapshot.captured_at_unix_ms,
@@ -446,6 +458,42 @@ export function App() {
         scopes: extractScopes(snapshot),
         backtracesById: buildBacktraceIndex(snapshot),
       });
+      const totalFrames = snapshot.frames.length;
+      const completedFrames = snapshot.frames.filter((record) => !isPendingFrame(record.frame)).length;
+      if (completedFrames < totalFrames) {
+        setSymbolicationProgress({ completed: completedFrames, total: totalFrames });
+        symbolicationStreamStopRef.current = apiClient.streamSnapshotSymbolication(
+          snapshot.snapshot_id,
+          (update) => {
+            const current = snapshotWireRef.current;
+            if (!current || current.snapshot_id !== update.snapshot_id) return;
+            const next = applySymbolicationUpdateToSnapshot(current, update);
+            snapshotWireRef.current = next;
+            const nextConverted = convertSnapshot(next, effectiveSubgraphScopeMode);
+            setSnap({
+              phase: "ready",
+              ...nextConverted,
+              scopes: extractScopes(next),
+              backtracesById: buildBacktraceIndex(next),
+            });
+            const doneFrames = next.frames.filter((record) => !isPendingFrame(record.frame)).length;
+            if (doneFrames >= next.frames.length) {
+              setSymbolicationProgress(null);
+              if (symbolicationStreamStopRef.current) {
+                symbolicationStreamStopRef.current();
+                symbolicationStreamStopRef.current = null;
+              }
+            } else {
+              setSymbolicationProgress({ completed: doneFrames, total: next.frames.length });
+            }
+          },
+          (error) => {
+            snapshotLog("symbolication stream failed %O", error);
+          },
+        );
+      } else {
+        setSymbolicationProgress(null);
+      }
       snapshotLog("takeSnapshot complete");
     } catch (err) {
       console.error("[snapshot] takeSnapshot failed", err);
@@ -455,6 +503,12 @@ export function App() {
   }, [effectiveSubgraphScopeMode, setFocusedEntityFilter]);
 
   const handleStartRecording = useCallback(async () => {
+    if (symbolicationStreamStopRef.current) {
+      symbolicationStreamStopRef.current();
+      symbolicationStreamStopRef.current = null;
+    }
+    snapshotWireRef.current = null;
+    setSymbolicationProgress(null);
     try {
       const session = await apiClient.startRecording();
       const startedAt = Date.now();
@@ -504,6 +558,12 @@ export function App() {
   }, [effectiveSubgraphScopeMode]);
 
   const handleStopRecording = useCallback(async () => {
+    if (symbolicationStreamStopRef.current) {
+      symbolicationStreamStopRef.current();
+      symbolicationStreamStopRef.current = null;
+    }
+    snapshotWireRef.current = null;
+    setSymbolicationProgress(null);
     if (pollingRef.current !== null) {
       window.clearInterval(pollingRef.current);
       pollingRef.current = null;
@@ -852,6 +912,15 @@ export function App() {
   }, [recording.phase]);
 
   useEffect(() => {
+    return () => {
+      if (symbolicationStreamStopRef.current) {
+        symbolicationStreamStopRef.current();
+        symbolicationStreamStopRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     async function poll() {
       appLog("startup poll loop begin");
@@ -865,6 +934,7 @@ export function App() {
           appLog("existing snapshot %s", existingSnapshot ? "hit" : "miss");
           if (cancelled) break;
           if (existingSnapshot) {
+            snapshotWireRef.current = existingSnapshot;
             const converted = convertSnapshot(existingSnapshot, effectiveSubgraphScopeMode);
             setSnap({
               phase: "ready",
@@ -872,6 +942,9 @@ export function App() {
               scopes: extractScopes(existingSnapshot),
               backtracesById: buildBacktraceIndex(existingSnapshot),
             });
+            const totalFrames = existingSnapshot.frames.length;
+            const completedFrames = existingSnapshot.frames.filter((record) => !isPendingFrame(record.frame)).length;
+            setSymbolicationProgress(completedFrames < totalFrames ? { completed: completedFrames, total: totalFrames } : null);
             appLog("startup poll done using existing snapshot");
             break;
           }
@@ -1011,6 +1084,7 @@ export function App() {
         onLeftPaneTabChange={setLeftPaneTab}
         snap={snap}
         snapshotProcessCount={snapshotProcessCount}
+        symbolicationProgress={symbolicationProgress}
         recording={recording}
         connCount={connCount}
         isBusy={isBusy}

@@ -5,6 +5,7 @@ import type {
   RecordCurrentResponse,
   RecordingSessionInfo,
   RecordStartRequest,
+  SnapshotSymbolicationUpdate,
   SqlResponse,
   SnapshotCutResponse,
   TriggerCutResponse,
@@ -101,6 +102,33 @@ export function createLiveApiClient(): ApiClient {
       getJson<CutStatusResponse>(`/api/cuts/${encodeURIComponent(cutId)}`),
     fetchExistingSnapshot: () => getJsonOrNullOn404<SnapshotCutResponse>("/api/snapshot/current"),
     fetchSnapshot: () => postJson<SnapshotCutResponse>("/api/snapshot", {}),
+    streamSnapshotSymbolication: (snapshotId, onUpdate, onError) => {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const url = `${protocol}//${window.location.host}/api/snapshot/${encodeURIComponent(String(snapshotId))}/symbolication/ws`;
+      apiLog("WS %s open", url);
+      const socket = new WebSocket(url);
+      socket.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data) as SnapshotSymbolicationUpdate;
+          onUpdate(parsed);
+        } catch (e) {
+          const error = new Error(
+            `[symbolication] failed to parse websocket payload: ${e instanceof Error ? e.message : String(e)}`,
+          );
+          apiLog("WS %s parse error %s", url, error.message);
+          if (onError) onError(error);
+        }
+      };
+      socket.onerror = () => {
+        const error = new Error("[symbolication] websocket error");
+        apiLog("WS %s error", url);
+        if (onError) onError(error);
+      };
+      socket.onclose = () => {
+        apiLog("WS %s closed", url);
+      };
+      return () => socket.close();
+    },
     startRecording: async (req?: RecordStartRequest) =>
       expectRecordingSession(
         await postJson<RecordCurrentResponse>("/api/record/start", req ?? {}),

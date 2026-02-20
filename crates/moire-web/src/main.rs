@@ -7,6 +7,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::body::{self, Body, Bytes};
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path as AxumPath, Request, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::IntoResponse;
@@ -20,7 +21,8 @@ use moire_types::{
     ConnectionsResponse, CutStatusResponse, FrameSummary, ProcessSnapshotView, QueryRequest,
     RecordCurrentResponse, RecordStartRequest, RecordingImportBody, RecordingSessionInfo,
     RecordingSessionStatus, ScopeEntityLink, SnapshotBacktrace, SnapshotBacktraceFrame,
-    SnapshotCutResponse, SqlRequest, SqlResponse, TimedOutProcess, TriggerCutResponse,
+    SnapshotCutResponse, SnapshotFrameRecord, SnapshotSymbolicationUpdate, SqlRequest, SqlResponse,
+    TimedOutProcess, TriggerCutResponse,
 };
 use moire_wire::{
     decode_client_message_default, decode_protocol_magic, encode_server_message_default,
@@ -61,6 +63,7 @@ struct ServerState {
     connections: HashMap<u64, ConnectedProcess>,
     cuts: BTreeMap<String, CutState>,
     pending_snapshots: HashMap<i64, SnapshotPending>,
+    snapshot_streams: HashMap<i64, SnapshotStreamState>,
     last_snapshot_json: Option<String>,
     recording: Option<RecordingState>,
 }
@@ -82,6 +85,10 @@ struct SnapshotPending {
     pending_conn_ids: BTreeSet<u64>,
     replies: HashMap<u64, moire_wire::SnapshotReply>,
     notify: Arc<Notify>,
+}
+
+struct SnapshotStreamState {
+    pairs: Vec<(u64, u64)>,
 }
 
 struct RecordingState {
@@ -137,7 +144,6 @@ const DEFAULT_VITE_ADDR: &str = "[::]:9131";
 const PROXY_BODY_LIMIT_BYTES: usize = 8 * 1024 * 1024;
 const SQLITE_BUSY_TIMEOUT_MS: u64 = 5_000;
 const EAGER_SYMBOLICATION_CONCURRENCY: usize = 1;
-const SYMBOLICATION_CUT_DRAIN_TIMEOUT_MS: u64 = 2_000;
 const SYMBOLICATION_UNRESOLVED_SCAFFOLD: &str =
     "symbolication engine not wired: eager scaffold stored unresolved marker";
 const TOP_FRAME_CRATE_EXCLUSIONS: &[&str] = &[
@@ -248,6 +254,7 @@ async fn run() -> Result<(), String> {
             connections: HashMap::new(),
             cuts: BTreeMap::new(),
             pending_snapshots: HashMap::new(),
+            snapshot_streams: HashMap::new(),
             last_snapshot_json: None,
             recording: None,
         })),
@@ -283,6 +290,10 @@ async fn run() -> Result<(), String> {
         .route("/api/query", post(api_query))
         .route("/api/snapshot", post(api_snapshot))
         .route("/api/snapshot/current", get(api_snapshot_current))
+        .route(
+            "/api/snapshot/{snapshot_id}/symbolication/ws",
+            get(api_snapshot_symbolication_ws),
+        )
         .route("/api/record/start", post(api_record_start))
         .route("/api/record/stop", post(api_record_stop))
         .route("/api/record/current", get(api_record_current))
@@ -475,6 +486,14 @@ async fn api_snapshot(State(state): State<AppState>) -> impl IntoResponse {
     json_ok(&take_snapshot_internal(&state).await)
 }
 
+async fn api_snapshot_symbolication_ws(
+    State(state): State<AppState>,
+    AxumPath(snapshot_id): AxumPath<i64>,
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| snapshot_symbolication_ws_task(state, snapshot_id, socket))
+}
+
 async fn api_snapshot_current(State(state): State<AppState>) -> impl IntoResponse {
     let snapshot_json = {
         let guard = state.inner.lock().await;
@@ -494,6 +513,82 @@ async fn api_snapshot_current(State(state): State<AppState>) -> impl IntoRespons
             info!("snapshot current requested: cache miss");
             json_error(StatusCode::NOT_FOUND, "no snapshot available")
         }
+    }
+}
+
+async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut socket: WebSocket) {
+    let pairs = {
+        let guard = state.inner.lock().await;
+        guard
+            .snapshot_streams
+            .get(&snapshot_id)
+            .map(|entry| entry.pairs.clone())
+    };
+    let Some(pairs) = pairs else {
+        let update = SnapshotSymbolicationUpdate {
+            snapshot_id,
+            total_frames: 0,
+            completed_frames: 0,
+            done: true,
+            updated_frames: vec![],
+        };
+        if let Ok(payload) = facet_json::to_string(&update) {
+            let _ = socket.send(Message::Text(payload.into())).await;
+        }
+        return;
+    };
+
+    let mut previous_frames: BTreeMap<u64, SnapshotBacktraceFrame> = BTreeMap::new();
+    let mut previous_completed = 0usize;
+
+    loop {
+        let table = load_snapshot_backtrace_table(state.db_path.clone(), &pairs).await;
+        let completed = table
+            .frames
+            .iter()
+            .filter(|record| !is_pending_frame(&record.frame))
+            .count();
+        let total = table.frames.len();
+
+        let mut updated_frames = Vec::new();
+        for record in &table.frames {
+            match previous_frames.get(&record.frame_id) {
+                Some(previous) if previous == &record.frame => {}
+                _ => updated_frames.push(record.clone()),
+            }
+        }
+
+        if !updated_frames.is_empty() || completed != previous_completed {
+            let update = SnapshotSymbolicationUpdate {
+                snapshot_id,
+                total_frames: total as u32,
+                completed_frames: completed as u32,
+                done: completed == total,
+                updated_frames,
+            };
+            let payload = match facet_json::to_string(&update) {
+                Ok(payload) => payload,
+                Err(e) => {
+                    warn!(snapshot_id, %e, "failed to encode symbolication update");
+                    break;
+                }
+            };
+            if socket.send(Message::Text(payload.into())).await.is_err() {
+                break;
+            }
+        }
+
+        previous_frames = table
+            .frames
+            .into_iter()
+            .map(|record| (record.frame_id, record.frame))
+            .collect();
+        previous_completed = completed;
+
+        if completed == total {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
 }
 
@@ -546,11 +641,18 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
 
     if txs.is_empty() {
         let response = SnapshotCutResponse {
+            snapshot_id,
             captured_at_unix_ms: now_ms(),
             processes: vec![],
             timed_out_processes: vec![],
             backtraces: vec![],
+            frames: vec![],
         };
+        let mut guard = state.inner.lock().await;
+        guard
+            .snapshot_streams
+            .insert(snapshot_id, SnapshotStreamState { pairs: vec![] });
+        drop(guard);
         remember_snapshot(state, &response).await;
         return response;
     }
@@ -570,11 +672,18 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
                     .pending_snapshots
                     .remove(&snapshot_id);
                 let response = SnapshotCutResponse {
+                    snapshot_id,
                     captured_at_unix_ms: now_ms(),
                     processes: vec![],
                     timed_out_processes: vec![],
                     backtraces: vec![],
+                    frames: vec![],
                 };
+                let mut guard = state.inner.lock().await;
+                guard
+                    .snapshot_streams
+                    .insert(snapshot_id, SnapshotStreamState { pairs: vec![] });
+                drop(guard);
                 remember_snapshot(state, &response).await;
                 return response;
             }
@@ -672,10 +781,12 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
     };
 
     let mut response = SnapshotCutResponse {
+        snapshot_id,
         captured_at_unix_ms,
         processes,
         timed_out_processes,
         backtraces: vec![],
+        frames: vec![],
     };
     info!(
         snapshot_id,
@@ -683,9 +794,19 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
         timed_out_count = response.timed_out_processes.len(),
         "snapshot request completed"
     );
-    // r[impl symbolicate.cut-drain]
-    wait_for_symbolication_cut_drain(state.db_path.clone(), &response).await;
-    response.backtraces = load_snapshot_backtraces(state.db_path.clone(), &response).await;
+    let pairs = collect_snapshot_backtrace_pairs(&response);
+    {
+        let mut guard = state.inner.lock().await;
+        guard.snapshot_streams.insert(
+            snapshot_id,
+            SnapshotStreamState {
+                pairs: pairs.clone(),
+            },
+        );
+    }
+    let table = load_snapshot_backtrace_table(state.db_path.clone(), &pairs).await;
+    response.backtraces = table.backtraces;
+    response.frames = table.frames;
     remember_snapshot(state, &response).await;
     response
 }
@@ -711,98 +832,11 @@ fn collect_snapshot_backtrace_pairs(snapshot: &SnapshotCutResponse) -> Vec<(u64,
     pairs
 }
 
-async fn wait_for_symbolication_cut_drain(db_path: Arc<PathBuf>, snapshot: &SnapshotCutResponse) {
-    let pairs = collect_snapshot_backtrace_pairs(snapshot);
-    if pairs.is_empty() {
-        return;
-    }
-
-    let start = Instant::now();
-    loop {
-        let db_path = db_path.clone();
-        let pairs_check = pairs.clone();
-        let pending_count = tokio::task::spawn_blocking(move || {
-            pending_symbolication_count_blocking(&db_path, &pairs_check)
-        })
-        .await
-        .unwrap_or_else(|e| Err(format!("join symbolication cut drain: {e}")));
-
-        match pending_count {
-            Ok(0) => return,
-            Ok(pending) => {
-                if start.elapsed() >= Duration::from_millis(SYMBOLICATION_CUT_DRAIN_TIMEOUT_MS) {
-                    warn!(
-                        pending,
-                        timeout_ms = SYMBOLICATION_CUT_DRAIN_TIMEOUT_MS,
-                        "symbolication cut-drain timed out; returning snapshot early"
-                    );
-                    return;
-                }
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
-            Err(e) => {
-                warn!(%e, "symbolication cut-drain check failed; returning snapshot");
-                return;
-            }
-        }
-    }
-}
-
-fn pending_symbolication_count_blocking(
-    db_path: &PathBuf,
-    pairs: &[(u64, u64)],
-) -> Result<usize, String> {
-    let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
-    let mut pending = 0usize;
-
-    let mut backtrace_stmt = conn
-        .prepare(
-            "SELECT frame_count
-             FROM backtraces
-             WHERE conn_id = ?1 AND backtrace_id = ?2",
-        )
-        .map_err(|e| format!("prepare backtraces lookup: {e}"))?;
-
-    let mut frames_stmt = conn
-        .prepare(
-            "SELECT COUNT(*)
-             FROM symbolicated_frames
-             WHERE conn_id = ?1 AND backtrace_id = ?2",
-        )
-        .map_err(|e| format!("prepare symbolicated_frames lookup: {e}"))?;
-
-    for (conn_id, backtrace_id) in pairs {
-        let frame_count = match backtrace_stmt.query_row(
-            params![to_i64_u64(*conn_id), to_i64_u64(*backtrace_id)],
-            |row| row.get::<_, i64>(0),
-        ) {
-            Ok(value) => value,
-            Err(rusqlite::Error::QueryReturnedNoRows) => {
-                pending += 1;
-                continue;
-            }
-            Err(e) => return Err(format!("query backtraces: {e}")),
-        };
-
-        let symbolicated_count = frames_stmt
-            .query_row(
-                params![to_i64_u64(*conn_id), to_i64_u64(*backtrace_id)],
-                |row| row.get::<_, i64>(0),
-            )
-            .map_err(|e| format!("query symbolicated_frames: {e}"))?;
-
-        if symbolicated_count < frame_count {
-            pending += 1;
-        }
-    }
-
-    Ok(pending)
-}
-
 #[derive(Clone)]
 struct StoredBacktraceFrameRow {
     frame_index: u32,
     module_path: String,
+    module_identity: String,
     rel_pc: u64,
 }
 
@@ -817,25 +851,89 @@ struct SymbolicatedFrameRow {
     unresolved_reason: Option<String>,
 }
 
-async fn load_snapshot_backtraces(
-    db_path: Arc<PathBuf>,
-    snapshot: &SnapshotCutResponse,
-) -> Vec<SnapshotBacktrace> {
-    let pairs = collect_snapshot_backtrace_pairs(snapshot);
-    if pairs.is_empty() {
-        return vec![];
-    }
-
-    tokio::task::spawn_blocking(move || load_snapshot_backtraces_blocking(&db_path, &pairs))
-        .await
-        .unwrap_or_else(|e| panic!("join snapshot backtrace loader: {e}"))
-        .unwrap_or_else(|e| panic!("load snapshot backtraces: {e}"))
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
+struct FrameDedupKey {
+    module_identity: String,
+    module_path: String,
+    rel_pc: u64,
 }
 
-fn load_snapshot_backtraces_blocking(
+struct SnapshotBacktraceTable {
+    backtraces: Vec<SnapshotBacktrace>,
+    frames: Vec<SnapshotFrameRecord>,
+}
+
+fn is_pending_frame(frame: &SnapshotBacktraceFrame) -> bool {
+    matches!(
+        frame,
+        SnapshotBacktraceFrame::Unresolved(BacktraceFrameUnresolved { reason, .. })
+        if reason == "symbolication pending"
+    )
+}
+
+fn frame_resolution_rank(frame: &SnapshotBacktraceFrame) -> u8 {
+    match frame {
+        SnapshotBacktraceFrame::Resolved(_) => 2,
+        unresolved @ SnapshotBacktraceFrame::Unresolved(_) => {
+            if is_pending_frame(unresolved) {
+                0
+            } else {
+                1
+            }
+        }
+    }
+}
+
+fn merge_frame_state(
+    existing: &SnapshotBacktraceFrame,
+    incoming: &SnapshotBacktraceFrame,
+    key: &FrameDedupKey,
+) -> Result<SnapshotBacktraceFrame, String> {
+    if existing == incoming {
+        return Ok(existing.clone());
+    }
+
+    match (existing, incoming) {
+        (SnapshotBacktraceFrame::Resolved(a), SnapshotBacktraceFrame::Resolved(b)) if a != b => {
+            return Err(format!(
+                "invariant violated: conflicting resolved symbolication for frame key ({}, {}, {:#x})",
+                key.module_identity, key.module_path, key.rel_pc
+            ))
+        }
+        _ => {}
+    }
+
+    let existing_rank = frame_resolution_rank(existing);
+    let incoming_rank = frame_resolution_rank(incoming);
+    if incoming_rank >= existing_rank {
+        Ok(incoming.clone())
+    } else {
+        Ok(existing.clone())
+    }
+}
+
+async fn load_snapshot_backtrace_table(
+    db_path: Arc<PathBuf>,
+    pairs: &[(u64, u64)],
+) -> SnapshotBacktraceTable {
+    if pairs.is_empty() {
+        return SnapshotBacktraceTable {
+            backtraces: vec![],
+            frames: vec![],
+        };
+    }
+
+    let pairs = pairs.to_vec();
+    tokio::task::spawn_blocking(move || load_snapshot_backtrace_table_blocking(&db_path, &pairs))
+        .await
+        .unwrap_or_else(|e| panic!("join snapshot backtrace loader: {e}"))
+        .unwrap_or_else(|e| panic!("load snapshot backtrace table: {e}"))
+}
+
+fn load_snapshot_backtrace_table_blocking(
     db_path: &PathBuf,
     pairs: &[(u64, u64)],
-) -> Result<Vec<SnapshotBacktrace>, String> {
+) -> Result<SnapshotBacktraceTable, String> {
     let conn = Connection::open(db_path).map_err(|e| format!("open sqlite: {e}"))?;
 
     let mut backtrace_owner: BTreeMap<u64, u64> = BTreeMap::new();
@@ -853,7 +951,7 @@ fn load_snapshot_backtraces_blocking(
 
     let mut raw_stmt = conn
         .prepare(
-            "SELECT frame_index, module_path, rel_pc
+            "SELECT frame_index, module_path, module_identity, rel_pc
              FROM backtrace_frames
              WHERE conn_id = ?1 AND backtrace_id = ?2
              ORDER BY frame_index ASC",
@@ -867,7 +965,11 @@ fn load_snapshot_backtraces_blocking(
         )
         .map_err(|e| format!("prepare symbolicated_frames read: {e}"))?;
 
-    let mut out = Vec::with_capacity(backtrace_owner.len());
+    let mut backtraces = Vec::with_capacity(backtrace_owner.len());
+    let mut frame_id_by_key: BTreeMap<FrameDedupKey, u64> = BTreeMap::new();
+    let mut frame_by_id: BTreeMap<u64, SnapshotBacktraceFrame> = BTreeMap::new();
+    let mut next_frame_id = 1u64;
+
     for (backtrace_id, conn_id) in backtrace_owner {
         let raw_rows = raw_stmt
             .query_map(
@@ -876,7 +978,8 @@ fn load_snapshot_backtraces_blocking(
                     Ok(StoredBacktraceFrameRow {
                         frame_index: row.get::<_, i64>(0)? as u32,
                         module_path: row.get(1)?,
-                        rel_pc: row.get::<_, i64>(2)? as u64,
+                        module_identity: row.get(2)?,
+                        rel_pc: row.get::<_, i64>(3)? as u64,
                     })
                 },
             )
@@ -911,7 +1014,7 @@ fn load_snapshot_backtraces_blocking(
             .collect::<Result<BTreeMap<_, _>, _>>()
             .map_err(|e| format!("read symbolicated_frames row: {e}"))?;
 
-        let mut frames = Vec::with_capacity(raw_rows.len());
+        let mut frame_ids = Vec::with_capacity(raw_rows.len());
         for raw in raw_rows {
             let frame = match symbolicated.get(&raw.frame_index) {
                 Some(sym) if sym.status == "resolved" => {
@@ -942,20 +1045,52 @@ fn load_snapshot_backtraces_blocking(
                         .unwrap_or_else(|| String::from("symbolication unresolved")),
                 }),
                 None => SnapshotBacktraceFrame::Unresolved(BacktraceFrameUnresolved {
-                    module_path: raw.module_path,
+                    module_path: raw.module_path.clone(),
                     rel_pc: raw.rel_pc,
                     reason: String::from("symbolication pending"),
                 }),
             };
-            frames.push(frame);
+            let key = FrameDedupKey {
+                module_identity: raw.module_identity,
+                module_path: raw.module_path.clone(),
+                rel_pc: raw.rel_pc,
+            };
+            let frame_id = match frame_id_by_key.get(&key) {
+                Some(existing) => {
+                    let existing_frame = frame_by_id.get(existing).cloned().ok_or_else(|| {
+                        format!(
+                            "invariant violated: frame id {existing} missing from frame map for backtrace {backtrace_id}"
+                        )
+                    })?;
+                    let merged = merge_frame_state(&existing_frame, &frame, &key)?;
+                    frame_by_id.insert(*existing, merged);
+                    *existing
+                }
+                None => {
+                    let assigned = next_frame_id;
+                    next_frame_id = next_frame_id
+                        .checked_add(1)
+                        .ok_or_else(|| String::from("invariant violated: frame id overflow"))?;
+                    frame_id_by_key.insert(key, assigned);
+                    frame_by_id.insert(assigned, frame.clone());
+                    assigned
+                }
+            };
+            frame_ids.push(frame_id);
         }
 
-        out.push(SnapshotBacktrace {
+        backtraces.push(SnapshotBacktrace {
             backtrace_id: BacktraceId::new(backtrace_id).map_err(|e| e.to_string())?,
-            frames,
+            frame_ids,
         });
     }
-    Ok(out)
+
+    let frames = frame_by_id
+        .into_iter()
+        .map(|(frame_id, frame)| SnapshotFrameRecord { frame_id, frame })
+        .collect();
+
+    Ok(SnapshotBacktraceTable { backtraces, frames })
 }
 
 async fn api_record_start(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {

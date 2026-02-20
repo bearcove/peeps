@@ -63,7 +63,7 @@ impl<T> Mutex<T> {
 
         let waiting_edge = owner_ref
             .as_ref()
-            .map(|owner| self.handle.link_to_owned(owner, EdgeKind::WaitingOn));
+            .map(|owner| owner.link_to_owned(&self.handle, EdgeKind::WaitingOn));
         let inner = self.inner.lock();
         drop(waiting_edge);
 

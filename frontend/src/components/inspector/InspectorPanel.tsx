@@ -1,8 +1,7 @@
 import React from "react";
 import { LinkSimple, X } from "@phosphor-icons/react";
 import { ActionButton } from "../../ui/primitives/ActionButton";
-import type { SnapshotBacktrace } from "../../api/types.generated";
-import type { EntityDef, EdgeDef, ScopeDef } from "../../snapshot";
+import type { EntityDef, EdgeDef, ScopeDef, ResolvedSnapshotBacktrace } from "../../snapshot";
 import type { UnionLayout } from "../../recording/unionGraph";
 import { diffEntityBetweenFrames } from "../../recording/unionGraph";
 import { canonicalNodeKind, kindIcon } from "../../nodeKindSpec";
@@ -34,7 +33,7 @@ export function InspectorPanel({
   selection: GraphSelection;
   entityDefs: EntityDef[];
   edgeDefs: EdgeDef[];
-  backtracesById?: Map<number, SnapshotBacktrace>;
+  backtracesById?: Map<number, ResolvedSnapshotBacktrace>;
   focusedEntityId: string | null;
   onToggleFocusEntity: (id: string) => void;
   onOpenScopeKind: (kind: string) => void;

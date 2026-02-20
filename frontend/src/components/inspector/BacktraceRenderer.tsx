@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import type { SnapshotBacktrace, SnapshotBacktraceFrame } from "../../api/types.generated";
+import type { SnapshotBacktraceFrame } from "../../api/types.generated";
+import type { ResolvedSnapshotBacktrace } from "../../snapshot";
 import "./BacktraceRenderer.css";
 
 const SYSTEM_PREFIXES = [
@@ -78,7 +79,7 @@ export function BacktraceRenderer({
   backtrace,
   title = "Backtrace",
 }: {
-  backtrace: SnapshotBacktrace;
+  backtrace: ResolvedSnapshotBacktrace;
   title?: string;
 }) {
   const [showUserFrames, setShowUserFrames] = useState(false);

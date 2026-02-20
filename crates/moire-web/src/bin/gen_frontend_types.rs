@@ -14,6 +14,7 @@ fn main() -> Result<(), String> {
     gen.add_type::<moire_types::QueryRequest>();
     gen.add_type::<moire_types::SqlResponse>();
     gen.add_type::<moire_types::SnapshotCutResponse>();
+    gen.add_type::<moire_types::SnapshotSymbolicationUpdate>();
     gen.add_type::<moire_types::RecordStartRequest>();
     gen.add_type::<moire_types::RecordCurrentResponse>();
     gen.add_type::<moire_types::RecordingImportBody>();

@@ -3,8 +3,10 @@ import type {
   EdgeKind,
   EntityBody,
   SnapshotBacktrace,
+  SnapshotFrameRecord,
   SnapshotBacktraceFrame,
   SnapshotCutResponse,
+  SnapshotSymbolicationUpdate,
 } from "./api/types.generated";
 import { canonicalScopeKind } from "./scopeKindSpec";
 
@@ -102,7 +104,14 @@ export type ScopeDef = {
   memberEntityIds: string[];
 };
 
-export type BacktraceIndex = Map<number, SnapshotBacktrace>;
+export type ResolvedSnapshotBacktrace = {
+  backtrace_id: number;
+  frame_ids: number[];
+  frames: SnapshotBacktraceFrame[];
+};
+
+export type BacktraceIndex = Map<number, ResolvedSnapshotBacktrace>;
+export type FrameCatalog = Map<number, SnapshotBacktraceFrame>;
 
 function backtraceSource(backtraceId: number): RenderSource {
   return { path: `backtrace:${backtraceId}`, line: 0, krate: "~no-crate" };
@@ -118,7 +127,19 @@ function requireBacktraceId(owner: unknown, context: string, processId: number):
 }
 
 export function buildBacktraceIndex(snapshot: SnapshotCutResponse): BacktraceIndex {
-  const index: BacktraceIndex = new Map<number, SnapshotBacktrace>();
+  const frameCatalog: FrameCatalog = new Map<number, SnapshotBacktraceFrame>();
+  for (const frame of snapshot.frames) {
+    const id = frame.frame_id;
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new Error(`[snapshot] invalid frame id ${String(id)} in snapshot frames`);
+    }
+    if (frameCatalog.has(id)) {
+      throw new Error(`[snapshot] duplicate frame id ${id} in snapshot frames`);
+    }
+    frameCatalog.set(id, frame.frame);
+  }
+
+  const index: BacktraceIndex = new Map<number, ResolvedSnapshotBacktrace>();
   for (const record of snapshot.backtraces) {
     const id = record.backtrace_id;
     if (!Number.isInteger(id) || id <= 0) {
@@ -127,7 +148,18 @@ export function buildBacktraceIndex(snapshot: SnapshotCutResponse): BacktraceInd
     if (index.has(id)) {
       throw new Error(`[snapshot] duplicate backtrace ${id} in snapshot backtraces`);
     }
-    index.set(id, record);
+    const frames = record.frame_ids.map((frameId) => {
+      const frame = frameCatalog.get(frameId);
+      if (!frame) {
+        throw new Error(`[snapshot] backtrace ${id} references missing frame id ${frameId}`);
+      }
+      return frame;
+    });
+    index.set(id, {
+      backtrace_id: id,
+      frame_ids: record.frame_ids,
+      frames,
+    });
   }
   return index;
 }
@@ -136,13 +168,17 @@ function isResolvedFrame(frame: SnapshotBacktraceFrame): frame is { resolved: Ba
   return "resolved" in frame;
 }
 
+export function isPendingFrame(frame: SnapshotBacktraceFrame): boolean {
+  return "unresolved" in frame && frame.unresolved.reason === "symbolication pending";
+}
+
 function crateFromModulePath(modulePath: string): string {
   const crate = modulePath.split("::")[0]?.trim();
   return crate && crate.length > 0 ? crate : "~no-crate";
 }
 
 function resolveBacktraceDisplay(
-  backtraces: Map<number, SnapshotBacktrace>,
+  backtraces: Map<number, ResolvedSnapshotBacktrace>,
   backtraceId: number,
   context: string,
 ): { source: RenderSource; topFrame?: RenderTopFrame } {
@@ -184,6 +220,39 @@ function resolveBacktraceDisplay(
   return {
     source: backtraceSource(backtraceId),
     topFrame: undefined,
+  };
+}
+
+export function applySymbolicationUpdateToSnapshot(
+  snapshot: SnapshotCutResponse,
+  update: SnapshotSymbolicationUpdate,
+): SnapshotCutResponse {
+  if (update.snapshot_id !== snapshot.snapshot_id) {
+    throw new Error(
+      `[snapshot] symbolication update for snapshot ${update.snapshot_id} cannot apply to snapshot ${snapshot.snapshot_id}`,
+    );
+  }
+  if (!Number.isInteger(update.total_frames) || update.total_frames < 0) {
+    throw new Error(`[snapshot] invalid symbolication total_frames ${String(update.total_frames)}`);
+  }
+  if (!Number.isInteger(update.completed_frames) || update.completed_frames < 0) {
+    throw new Error(`[snapshot] invalid symbolication completed_frames ${String(update.completed_frames)}`);
+  }
+
+  const frameMap = new Map<number, SnapshotFrameRecord>();
+  for (const record of snapshot.frames) {
+    frameMap.set(record.frame_id, record);
+  }
+  for (const record of update.updated_frames) {
+    if (!frameMap.has(record.frame_id)) {
+      throw new Error(`[snapshot] symbolication update references unknown frame_id ${record.frame_id}`);
+    }
+    frameMap.set(record.frame_id, record);
+  }
+
+  return {
+    ...snapshot,
+    frames: Array.from(frameMap.values()).sort((a, b) => a.frame_id - b.frame_id),
   };
 }
 

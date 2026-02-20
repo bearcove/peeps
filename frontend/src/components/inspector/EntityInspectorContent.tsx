@@ -7,7 +7,7 @@ import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import type { EntityDef } from "../../snapshot";
 import type { EntityDiff } from "../../recording/unionGraph";
-import type { SnapshotBacktrace } from "../../api/types.generated";
+import type { ResolvedSnapshotBacktrace } from "../../snapshot";
 import { EntityBodySection } from "./EntityBodySection";
 import { EntityScopeLinksSection } from "./EntityScopeLinksSection";
 import { MetaSection } from "./MetaTree";
@@ -20,7 +20,13 @@ type MergedSection = {
   entity: EntityDef;
 };
 
-function EntityDetailsSection({ entity, backtrace }: { entity: EntityDef; backtrace?: SnapshotBacktrace }) {
+function EntityDetailsSection({
+  entity,
+  backtrace,
+}: {
+  entity: EntityDef;
+  backtrace?: ResolvedSnapshotBacktrace;
+}) {
   const birthAbsolute =
     isFinite(entity.birthApproxUnixMs) && entity.birthApproxUnixMs > 0
       ? new Date(entity.birthApproxUnixMs).toLocaleString(undefined, {
@@ -158,7 +164,7 @@ export function EntityInspectorContent({
   entityDiff,
 }: {
   entity: EntityDef;
-  backtrace?: SnapshotBacktrace;
+  backtrace?: ResolvedSnapshotBacktrace;
   focusedEntityId: string | null;
   onToggleFocus: (id: string) => void;
   onOpenScopeKind?: (kind: string) => void;
@@ -220,7 +226,7 @@ function EntityInspectorBody({
   showMeta = true,
 }: {
   entity: EntityDef;
-  backtrace?: SnapshotBacktrace;
+  backtrace?: ResolvedSnapshotBacktrace;
   focusedEntityId: string | null;
   onToggleFocus: (id: string) => void;
   onOpenScopeKind?: (kind: string) => void;

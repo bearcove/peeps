@@ -1,8 +1,7 @@
 import React from "react";
-import type { SnapshotBacktrace } from "../../api/types.generated";
 import { KeyValueRow } from "../../ui/primitives/KeyValueRow";
 import { formatProcessLabel } from "../../processLabel";
-import type { ScopeDef } from "../../snapshot";
+import type { ResolvedSnapshotBacktrace, ScopeDef } from "../../snapshot";
 import { BacktraceRenderer } from "./BacktraceRenderer";
 import "./InspectorPanel.css";
 
@@ -11,7 +10,7 @@ export function ScopeInspectorContent({
   backtrace,
 }: {
   scope: ScopeDef;
-  backtrace?: SnapshotBacktrace;
+  backtrace?: ResolvedSnapshotBacktrace;
 }) {
   return (
     <div className="inspector-kv-table">

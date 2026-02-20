@@ -342,6 +342,18 @@ export function createMockApiClient(): ApiClient {
     },
     fetchExistingSnapshot: () => delay(MOCK_SNAPSHOT, 150),
     fetchSnapshot: () => delay(MOCK_SNAPSHOT, 300),
+    streamSnapshotSymbolication: (_snapshotId, onUpdate) => {
+      const timer = window.setTimeout(() => {
+        onUpdate({
+          snapshot_id: MOCK_SNAPSHOT.snapshot_id,
+          total_frames: MOCK_SNAPSHOT.frames.length,
+          completed_frames: MOCK_SNAPSHOT.frames.length,
+          done: true,
+          updated_frames: [],
+        });
+      }, 300);
+      return () => window.clearTimeout(timer);
+    },
     startRecording: (req) => {
       const session: RecordingSessionInfo = {
         session_id: "mock-session-001",
