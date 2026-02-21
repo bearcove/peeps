@@ -116,7 +116,7 @@ function backtraceSource(backtraceId: number): RenderSource {
 }
 
 // f[impl display.backtrace.required]
-function requireBacktraceId(owner: unknown, context: string, processId: number): number {
+function requireBacktraceId(owner: unknown, context: string, processId: string): number {
   const value = (owner as { backtrace?: unknown }).backtrace;
   if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
     throw new Error(`[snapshot] ${context} missing/invalid backtrace in process ${processId}`);
@@ -183,7 +183,10 @@ function resolveBacktraceDisplay(
 ): { source: RenderSource; topFrame?: RenderTopFrame } {
   const record = backtraces.get(backtraceId);
   if (!record) {
-    throw new Error(`[snapshot] ${context} references missing backtrace ${backtraceId}`);
+    return {
+      source: backtraceSource(backtraceId),
+      topFrame: undefined,
+    };
   }
   const firstResolved = record.frames.find(isResolvedFrame)?.resolved;
   if (firstResolved) {
@@ -243,9 +246,6 @@ export function applySymbolicationUpdateToSnapshot(
     frameMap.set(record.frame_id, record);
   }
   for (const record of update.updated_frames) {
-    if (!frameMap.has(record.frame_id)) {
-      throw new Error(`[snapshot] symbolication update references unknown frame_id ${record.frame_id}`);
-    }
     frameMap.set(record.frame_id, record);
   }
 

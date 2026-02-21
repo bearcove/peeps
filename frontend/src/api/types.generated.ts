@@ -13,7 +13,7 @@ export interface RecordingImportFrame {
 }
 
 export interface RecordingSessionInfo {
-  session_id: string;
+  session_id: SessionId;
   status: RecordingSessionStatus;
   interval_ms: number;
   started_at_unix_ms: number;
@@ -38,6 +38,10 @@ export interface FrameSummary {
 
 export type RecordingSessionStatus = "recording" | "stopped";
 
+export type SessionId = string;
+
+export type String = string;
+
 export interface RecordCurrentResponse {
   session?: RecordingSessionInfo;
 }
@@ -57,7 +61,7 @@ export interface SnapshotSymbolicationUpdate {
 }
 
 export interface SnapshotFrameRecord {
-  frame_id: number;
+  frame_id: FrameId;
   frame: SnapshotBacktraceFrame;
 }
 
@@ -67,9 +71,13 @@ export type SnapshotBacktraceFrame =
 
 export interface BacktraceFrameUnresolved {
   module_path: string;
-  rel_pc: number;
+  rel_pc: RelPc;
   reason: string;
 }
+
+export type RelPc = number;
+
+export type u64 = number;
 
 export interface BacktraceFrameResolved {
   module_path: string;
@@ -77,6 +85,8 @@ export interface BacktraceFrameResolved {
   source_file: string;
   line?: number;
 }
+
+export type FrameId = number;
 
 /**
  * Top-level response for `/api/snapshot`.
@@ -110,24 +120,24 @@ export interface SnapshotCutResponse {
 
 export interface SnapshotBacktrace {
   backtrace_id: BacktraceId;
-  frame_ids: number[];
+  frame_ids: FrameId[];
 }
 
 export type BacktraceId = number;
 
-export type u64 = number;
-
 export interface TimedOutProcess {
-  process_id: number;
+  process_id: ProcessId;
   process_name: string;
   pid: number;
 }
+
+export type ProcessId = string;
 
 /**
  * Per-process envelope inside a snapshot cut.
  */
 export interface ProcessSnapshotView {
-  process_id: number;
+  process_id: ProcessId;
   process_name: string;
   pid: number;
   ptime_now_ms: number;
@@ -192,8 +202,6 @@ export type EventTarget =
   | { scope: ScopeId };
 
 export type ScopeId = string;
-
-export type String = string;
 
 export type EntityId = string;
 
@@ -526,21 +534,26 @@ export interface ApiError {
 }
 
 export interface CutStatusResponse {
-  cut_id: string;
+  cut_id: CutId;
   requested_at_ns: number;
   pending_connections: number;
   acked_connections: number;
-  pending_conn_ids: number[];
+  pending_conn_ids: ConnectionId[];
 }
 
+export type ConnectionId = number;
+
+export type CutId = string;
+
 export interface TriggerCutResponse {
-  cut_id: string;
+  cut_id: CutId;
   requested_at_ns: number;
   requested_connections: number;
 }
 
 export interface ConnectedProcessInfo {
-  conn_id: number;
+  conn_id: ConnectionId;
+  process_id: ProcessId;
   process_name: string;
   pid: number;
 }

@@ -4,14 +4,15 @@ use std::sync::{Mutex, OnceLock};
 
 use moire_trace_types::{BacktraceId, FrameId, RelPc};
 use moire_types::{
-    BacktraceFrameResolved, BacktraceFrameUnresolved, SnapshotBacktraceFrame, SnapshotCutResponse,
-    SnapshotFrameRecord,
+    BacktraceFrameResolved, BacktraceFrameUnresolved, SnapshotBacktrace, SnapshotBacktraceFrame,
+    SnapshotCutResponse, SnapshotFrameRecord,
 };
 
 use crate::db::Db;
 use crate::snapshot::repository::load_backtrace_frame_batches;
 
 pub struct SnapshotBacktraceTable {
+    pub backtraces: Vec<SnapshotBacktrace>,
     pub frames: Vec<SnapshotFrameRecord>,
 }
 
@@ -56,7 +57,10 @@ pub async fn load_snapshot_backtrace_table(
     backtrace_ids: &[BacktraceId],
 ) -> SnapshotBacktraceTable {
     if backtrace_ids.is_empty() {
-        return SnapshotBacktraceTable { frames: vec![] };
+        return SnapshotBacktraceTable {
+            backtraces: vec![],
+            frames: vec![],
+        };
     }
 
     let backtrace_ids = backtrace_ids.to_vec();
@@ -75,8 +79,10 @@ fn load_snapshot_backtrace_table_blocking(
 
     let mut frame_id_by_key: BTreeMap<FrameDedupKey, FrameId> = BTreeMap::new();
     let mut frame_by_id: BTreeMap<FrameId, SnapshotBacktraceFrame> = BTreeMap::new();
+    let mut backtrace_entries: Vec<SnapshotBacktrace> = Vec::with_capacity(batches.len());
 
     for batch in batches {
+        let mut this_frame_ids: Vec<FrameId> = Vec::with_capacity(batch.raw_rows.len());
         for raw in batch.raw_rows {
             let frame = match batch.symbolicated_by_index.get(&raw.frame_index) {
                 Some(sym) if sym.status == "resolved" => {
@@ -117,7 +123,7 @@ fn load_snapshot_backtrace_table_blocking(
                 module_path: raw.module_path.clone(),
                 rel_pc: raw.rel_pc,
             };
-            match frame_id_by_key.get(&key) {
+            let frame_id = match frame_id_by_key.get(&key) {
                 Some(existing) => {
                     let existing_frame = frame_by_id.get(existing).cloned().ok_or_else(|| {
                         format!(
@@ -128,6 +134,7 @@ fn load_snapshot_backtrace_table_blocking(
                     })?;
                     let merged = merge_frame_state(&existing_frame, &frame, &key)?;
                     frame_by_id.insert(*existing, merged);
+                    *existing
                 }
                 None => {
                     let assigned = stable_frame_id(&key)?;
@@ -156,9 +163,15 @@ fn load_snapshot_backtrace_table_blocking(
                     }
                     frame_id_by_key.insert(key, assigned);
                     frame_by_id.insert(assigned, frame.clone());
+                    assigned
                 }
             };
+            this_frame_ids.push(frame_id);
         }
+        backtrace_entries.push(SnapshotBacktrace {
+            backtrace_id: batch.backtrace_id,
+            frame_ids: this_frame_ids,
+        });
     }
 
     let frames = frame_by_id
@@ -166,7 +179,10 @@ fn load_snapshot_backtrace_table_blocking(
         .map(|(frame_id, frame)| SnapshotFrameRecord { frame_id, frame })
         .collect();
 
-    Ok(SnapshotBacktraceTable { frames })
+    Ok(SnapshotBacktraceTable {
+        backtraces: backtrace_entries,
+        frames,
+    })
 }
 
 fn frame_resolution_rank(frame: &SnapshotBacktraceFrame) -> u8 {

@@ -434,7 +434,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
         }
     };
 
-    let response = SnapshotCutResponse {
+    let mut response = SnapshotCutResponse {
         snapshot_id,
         captured_at_unix_ms,
         processes,
@@ -449,6 +449,9 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
         "snapshot request completed"
     );
     let backtrace_ids = collect_snapshot_backtrace_ids(&response);
+    let backtrace_table = load_snapshot_backtrace_table(state.db.clone(), &backtrace_ids).await;
+    response.backtraces = backtrace_table.backtraces;
+    response.frames = backtrace_table.frames;
     {
         let mut guard = state.inner.lock().await;
         guard.snapshot_streams.insert(
@@ -461,6 +464,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
     info!(
         snapshot_id,
         backtrace_count = backtrace_ids.len(),
+        frame_count = response.frames.len(),
         "snapshot queued for symbolication stream"
     );
     remember_snapshot(state, &response).await;
