@@ -42,7 +42,6 @@ static MODULE_STATE: OnceLock<StdMutex<ModuleState>> = OnceLock::new();
 
 #[derive(Default)]
 struct ModuleState {
-    next_module_id: u64,
     revision: u64,
     by_key: BTreeMap<(u64, String), ModuleId>,
     by_id: BTreeMap<u64, moire_wire::ModuleManifestEntry>,
@@ -69,7 +68,7 @@ pub fn init_runtime_from_macro() {
 }
 
 pub(crate) fn capture_backtrace_id() -> BacktraceId {
-    let backtrace_id = BacktraceId::next_process_local()
+    let backtrace_id = BacktraceId::next()
         .expect("backtrace id invariant violated: generated id must be valid and JS-safe");
 
     let captured = capture_current(backtrace_id, CaptureOptions::default()).unwrap_or_else(|err| {
@@ -83,12 +82,7 @@ pub(crate) fn capture_backtrace_id() -> BacktraceId {
 }
 
 fn module_state() -> &'static StdMutex<ModuleState> {
-    MODULE_STATE.get_or_init(|| {
-        StdMutex::new(ModuleState {
-            next_module_id: 1,
-            ..ModuleState::default()
-        })
-    })
+    MODULE_STATE.get_or_init(|| StdMutex::new(ModuleState::default()))
 }
 
 fn module_identity_for(path: &str, runtime_base: u64) -> moire_wire::ModuleIdentity {
@@ -107,12 +101,7 @@ fn remap_and_register_backtrace(captured: CapturedBacktrace) -> moire_wire::Back
         let global = if let Some(existing) = modules.by_key.get(&key).copied() {
             existing
         } else {
-            let raw_id = modules.next_module_id;
-            modules.next_module_id = modules
-                .next_module_id
-                .checked_add(1)
-                .expect("module id overflow");
-            let global = ModuleId::from_process_local_counter(raw_id)
+            let global = ModuleId::next()
                 .expect("invariant violated: generated module id must be valid and JS-safe");
             modules.by_key.insert(key.clone(), global);
             modules.by_id.insert(
@@ -267,8 +256,8 @@ mod tests {
     #[test]
     fn backtrace_id_layout_is_js_safe_and_prefixed() {
         const JS_SAFE_MAX: u64 = (1u64 << 53) - 1;
-        let first = BacktraceId::next_process_local().expect("first backtrace id");
-        let second = BacktraceId::next_process_local().expect("second backtrace id");
+        let first = BacktraceId::next().expect("first backtrace id");
+        let second = BacktraceId::next().expect("second backtrace id");
         let expected_prefix = u64::from(first.process_prefix());
 
         assert!(first.get() > 0, "backtrace id must be non-zero");

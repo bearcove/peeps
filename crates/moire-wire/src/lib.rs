@@ -325,22 +325,30 @@ mod tests {
 
     #[test]
     fn client_backtrace_record_wire_shape() {
+        let backtrace_id = BacktraceId::next().expect("valid backtrace id");
+        let module_a = ModuleId::next().expect("valid module id");
+        let module_b = ModuleId::next().expect("valid module id");
         let json = client_payload_json(&ClientMessage::BacktraceRecord(BacktraceRecord {
-            id: BacktraceId::from_prefixed_counter(0, 42).expect("valid backtrace id"),
+            id: backtrace_id,
             frames: vec![
                 BacktraceFrameKey {
-                    module_id: ModuleId::from_prefixed_counter(0, 1).expect("valid module id"),
+                    module_id: module_a,
                     rel_pc: 4096,
                 },
                 BacktraceFrameKey {
-                    module_id: ModuleId::from_prefixed_counter(0, 2).expect("valid module id"),
+                    module_id: module_b,
                     rel_pc: 8192,
                 },
             ],
         }));
         assert_eq!(
             json,
-            r#"{"backtrace_record":{"id":42,"frames":[{"module_id":1,"rel_pc":4096},{"module_id":2,"rel_pc":8192}]}}"#
+            format!(
+                r#"{{"backtrace_record":{{"id":{},"frames":[{{"module_id":{},"rel_pc":4096}},{{"module_id":{},"rel_pc":8192}}]}}}}"#,
+                backtrace_id.get(),
+                module_a.get(),
+                module_b.get()
+            )
         );
     }
 

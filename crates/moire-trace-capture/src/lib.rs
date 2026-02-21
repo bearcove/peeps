@@ -52,7 +52,6 @@ pub enum CaptureError {
         ip: u64,
         module_base: u64,
     },
-    ModuleIdOverflow,
     InvariantViolation {
         context: &'static str,
         source: InvariantError,
@@ -99,10 +98,6 @@ impl fmt::Display for CaptureError {
             Self::IpBeforeModuleBase { ip, module_base } => write!(
                 f,
                 "invariant violated: instruction pointer 0x{ip:x} is below module base 0x{module_base:x}"
-            ),
-            Self::ModuleIdOverflow => write!(
-                f,
-                "invariant violated: module id overflow while capturing backtrace"
             ),
             Self::InvariantViolation { context, source } => {
                 write!(f, "invariant violated in {context}: {source}")
@@ -267,8 +262,6 @@ mod platform {
         let mut modules_by_key: BTreeMap<(u64, String), ModuleId> = BTreeMap::new();
         let mut modules = Vec::new();
         let mut frames = Vec::with_capacity(raw_ips.len());
-        let mut next_module_id = 1u64;
-
         for ip in raw_ips {
             let module = module_info_for_ip(ip)?;
 
@@ -276,13 +269,8 @@ mod platform {
             let module_id = if let Some(module_id) = modules_by_key.get(&key).copied() {
                 module_id
             } else {
-                let id_value = next_module_id;
-                next_module_id = next_module_id
-                    .checked_add(1)
-                    .ok_or(CaptureError::ModuleIdOverflow)?;
-
-                let module_id = ModuleId::from_process_local_counter(id_value)
-                    .map_err(|err| CaptureError::invariant("module_id", err))?;
+                let module_id =
+                    ModuleId::next().map_err(|err| CaptureError::invariant("module_id", err))?;
                 let module_path = ModulePath::new(module.path)
                     .map_err(|err| CaptureError::invariant("module_path", err))?;
 

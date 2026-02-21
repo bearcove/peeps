@@ -76,7 +76,8 @@ macro_rules! define_u64_id {
                 Ok(Self(value))
             }
 
-            pub fn from_prefixed_counter(prefix: u16, counter: u64) -> Result<Self, InvariantError> {
+            #[cfg(test)]
+            fn from_prefixed_counter(prefix: u16, counter: u64) -> Result<Self, InvariantError> {
                 if counter > ID_COUNTER_MAX_U64 {
                     return Err(InvariantError::IdOutOfRange {
                         field: $field,
@@ -88,14 +89,19 @@ macro_rules! define_u64_id {
                 Self::from_raw(raw)
             }
 
-            pub fn from_process_local_counter(counter: u64) -> Result<Self, InvariantError> {
-                Self::from_prefixed_counter(process_prefix_u16(), counter)
-            }
-
-            pub fn next_process_local() -> Result<Self, InvariantError> {
+            pub fn next() -> Result<Self, InvariantError> {
                 static NEXT_COUNTER: AtomicU64 = AtomicU64::new(1);
                 let counter = NEXT_COUNTER.fetch_add(1, Ordering::Relaxed);
-                Self::from_process_local_counter(counter)
+                if counter > ID_COUNTER_MAX_U64 {
+                    return Err(InvariantError::IdOutOfRange {
+                        field: $field,
+                        max: ID_COUNTER_MAX_U64,
+                        got: counter,
+                    });
+                }
+                let prefix = process_prefix_u16();
+                let raw = ((u64::from(prefix)) << ID_COUNTER_BITS) | counter;
+                Self::from_raw(raw)
             }
 
             pub fn get(self) -> u64 {
@@ -161,32 +167,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn backtrace_id_rejects_zero() {
-        let err = BacktraceId::from_prefixed_counter(1, 0).expect_err("zero id must fail");
-        assert!(matches!(err, InvariantError::ZeroId("backtrace_id")));
-    }
+    fn backtrace_id_next_is_prefixed_and_js_safe() {
+        let first = BacktraceId::next().expect("first id must be valid");
+        let second = BacktraceId::next().expect("second id must be valid");
 
-    #[test]
-    fn backtrace_id_rejects_values_above_js_safe_max() {
-        let err = BacktraceId::from_prefixed_counter(u16::MAX, ID_COUNTER_MAX_U64)
-            .expect_err("id must be JS-safe");
-        assert!(matches!(
-            err,
-            InvariantError::IdOutOfRange {
-                field: "backtrace_id",
-                max: JS_SAFE_INT_MAX_U64,
-                got
-            } if got > JS_SAFE_INT_MAX_U64
-        ));
-    }
-
-    #[test]
-    fn backtrace_id_accepts_js_safe_max() {
-        let id = BacktraceId::from_prefixed_counter(u16::MAX, ID_COUNTER_MAX_U64)
-            .expect("max JS-safe id must work");
-        assert_eq!(id.get(), JS_SAFE_INT_MAX_U64);
-        assert_eq!(id.process_prefix(), u16::MAX);
-        assert_eq!(id.counter(), ID_COUNTER_MAX_U64);
+        assert!(first.get() > 0, "id must be non-zero");
+        assert!(
+            second.get() > first.get(),
+            "ids must be monotonic within a process"
+        );
+        assert!(
+            first.get() <= JS_SAFE_INT_MAX_U64 && second.get() <= JS_SAFE_INT_MAX_U64,
+            "ids must be JS-safe"
+        );
+        assert_eq!(
+            first.process_prefix(),
+            second.process_prefix(),
+            "ids from same process must share prefix"
+        );
     }
 }
 

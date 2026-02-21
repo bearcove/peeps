@@ -37,8 +37,8 @@ pub mod pipeline {
 fn capture_trace(label: &str) -> CapturedTrace {
     moire_trace_capture::validate_frame_pointers_or_panic();
 
-    let backtrace_id = BacktraceId::next_process_local()
-        .expect("invariant violated: generated backtrace id must be valid");
+    let backtrace_id =
+        BacktraceId::next().expect("invariant violated: generated backtrace id must be valid");
 
     let captured = capture_current(
         backtrace_id,

@@ -1,12 +1,11 @@
 use std::collections::BTreeMap;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use std::sync::{Mutex, OnceLock};
 
-use moire_trace_types::{BacktraceId, FrameId, ID_COUNTER_BITS, ID_COUNTER_MAX_U64};
+use moire_trace_types::FrameId;
 use moire_types::{
-    BacktraceFrameResolved, BacktraceFrameUnresolved, SnapshotBacktrace, SnapshotBacktraceFrame,
-    SnapshotCutResponse, SnapshotFrameRecord,
+    BacktraceFrameResolved, BacktraceFrameUnresolved, SnapshotBacktraceFrame, SnapshotCutResponse,
+    SnapshotFrameRecord,
 };
 use rusqlite::params;
 
@@ -14,7 +13,6 @@ use crate::db::Db;
 use crate::util::time::to_i64_u64;
 
 pub struct SnapshotBacktraceTable {
-    pub backtraces: Vec<SnapshotBacktrace>,
     pub frames: Vec<SnapshotFrameRecord>,
 }
 
@@ -82,10 +80,7 @@ pub async fn load_snapshot_backtrace_table(
     pairs: &[(u64, u64)],
 ) -> SnapshotBacktraceTable {
     if pairs.is_empty() {
-        return SnapshotBacktraceTable {
-            backtraces: vec![],
-            frames: vec![],
-        };
+        return SnapshotBacktraceTable { frames: vec![] };
     }
 
     let pairs = pairs.to_vec();
@@ -131,7 +126,6 @@ fn load_snapshot_backtrace_table_blocking(
         )
         .map_err(|error| format!("prepare symbolicated_frames read: {error}"))?;
 
-    let mut backtraces = Vec::with_capacity(backtrace_owner.len());
     let mut frame_id_by_key: BTreeMap<FrameDedupKey, FrameId> = BTreeMap::new();
     let mut frame_by_id: BTreeMap<FrameId, SnapshotBacktraceFrame> = BTreeMap::new();
 
@@ -179,7 +173,6 @@ fn load_snapshot_backtrace_table_blocking(
             .collect::<Result<BTreeMap<_, _>, _>>()
             .map_err(|error| format!("read symbolicated_frames row: {error}"))?;
 
-        let mut frame_ids = Vec::with_capacity(raw_rows.len());
         for raw in raw_rows {
             let frame = match symbolicated.get(&raw.frame_index) {
                 Some(sym) if sym.status == "resolved" => {
@@ -220,7 +213,7 @@ fn load_snapshot_backtrace_table_blocking(
                 module_path: raw.module_path.clone(),
                 rel_pc: raw.rel_pc,
             };
-            let frame_id = match frame_id_by_key.get(&key) {
+            match frame_id_by_key.get(&key) {
                 Some(existing) => {
                     let existing_frame = frame_by_id.get(existing).cloned().ok_or_else(|| {
                         format!(
@@ -230,7 +223,6 @@ fn load_snapshot_backtrace_table_blocking(
                     })?;
                     let merged = merge_frame_state(&existing_frame, &frame, &key)?;
                     frame_by_id.insert(*existing, merged);
-                    *existing
                 }
                 None => {
                     let assigned = stable_frame_id(&key)?;
@@ -259,20 +251,9 @@ fn load_snapshot_backtrace_table_blocking(
                     }
                     frame_id_by_key.insert(key, assigned);
                     frame_by_id.insert(assigned, frame.clone());
-                    assigned
                 }
             };
-            frame_ids.push(frame_id);
         }
-
-        backtraces.push(SnapshotBacktrace {
-            backtrace_id: BacktraceId::from_prefixed_counter(
-                (backtrace_id >> ID_COUNTER_BITS) as u16,
-                backtrace_id & ID_COUNTER_MAX_U64,
-            )
-            .map_err(|error| error.to_string())?,
-            frame_ids,
-        });
     }
 
     let frames = frame_by_id
@@ -280,7 +261,7 @@ fn load_snapshot_backtrace_table_blocking(
         .map(|(frame_id, frame)| SnapshotFrameRecord { frame_id, frame })
         .collect();
 
-    Ok(SnapshotBacktraceTable { backtraces, frames })
+    Ok(SnapshotBacktraceTable { frames })
 }
 
 fn frame_resolution_rank(frame: &SnapshotBacktraceFrame) -> u8 {
@@ -325,15 +306,17 @@ fn merge_frame_state(
 }
 
 fn stable_frame_id(key: &FrameDedupKey) -> Result<FrameId, String> {
-    // r[impl api.snapshot.frame-id-stable]
-    let mut hasher = DefaultHasher::new();
-    key.hash(&mut hasher);
-    let mut counter = hasher.finish() & ID_COUNTER_MAX_U64;
-    if counter == 0 {
-        counter = 1;
+    static FRAME_ID_REGISTRY: OnceLock<Mutex<BTreeMap<FrameDedupKey, FrameId>>> = OnceLock::new();
+    let registry = FRAME_ID_REGISTRY.get_or_init(|| Mutex::new(BTreeMap::new()));
+    let mut guard = registry
+        .lock()
+        .map_err(|_| String::from("invariant violated: frame id registry mutex poisoned"))?;
+    if let Some(existing) = guard.get(key).copied() {
+        return Ok(existing);
     }
-    FrameId::from_process_local_counter(counter)
-        .map_err(|error| format!("invariant violated: {error}"))
+    let frame_id = FrameId::next().map_err(|error| format!("invariant violated: {error}"))?;
+    guard.insert(key.clone(), frame_id);
+    Ok(frame_id)
 }
 
 #[cfg(test)]
