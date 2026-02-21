@@ -1273,7 +1273,6 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "gloo-timers",
- "tokio",
  "wasm-bindgen-futures",
 ]
 

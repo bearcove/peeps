@@ -14,7 +14,6 @@ default = []
 diagnostics = []
 
 [dependencies]
-tokio = { version = "1.49", default-features = false, features = ["rt", "sync", "time"] }
 async-channel = "2"
 futures-channel = "0.3"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }

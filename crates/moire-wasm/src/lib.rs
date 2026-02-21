@@ -4,9 +4,6 @@
 
 use std::future::Future;
 
-#[doc(hidden)]
-pub use tokio;
-
 /// Wrapper around `std::sync::Mutex` with the same constructor shape as native moire.
 pub struct Mutex<T>(std::sync::Mutex<T>);
 
@@ -177,7 +174,7 @@ pub mod time {
     where
         F: Future<Output = T>,
     {
-        use futures_util::future::{select, Either};
+        use futures_util::future::{Either, select};
         use std::pin::pin;
 
         let sleep_fut = pin!(gloo_timers::future::sleep(duration));
