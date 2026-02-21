@@ -67,7 +67,7 @@ pub struct SnapshotPending {
 }
 
 pub struct SnapshotStreamState {
-    pub pairs: Vec<(u64, u64)>,
+    pub pairs: Vec<(ConnectionId, u64)>,
 }
 
 impl ServerState {

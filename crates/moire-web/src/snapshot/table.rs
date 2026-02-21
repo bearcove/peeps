@@ -4,8 +4,8 @@ use std::sync::{Mutex, OnceLock};
 
 use moire_trace_types::{FrameId, RelPc};
 use moire_types::{
-    BacktraceFrameResolved, BacktraceFrameUnresolved, SnapshotBacktraceFrame, SnapshotCutResponse,
-    SnapshotFrameRecord,
+    BacktraceFrameResolved, BacktraceFrameUnresolved, ConnectionId, SnapshotBacktraceFrame,
+    SnapshotCutResponse, SnapshotFrameRecord,
 };
 
 use crate::db::Db;
@@ -15,20 +15,22 @@ pub struct SnapshotBacktraceTable {
     pub frames: Vec<SnapshotFrameRecord>,
 }
 
-pub fn collect_snapshot_backtrace_pairs(snapshot: &SnapshotCutResponse) -> Vec<(u64, u64)> {
+pub fn collect_snapshot_backtrace_pairs(
+    snapshot: &SnapshotCutResponse,
+) -> Vec<(ConnectionId, u64)> {
     let mut pairs = Vec::new();
     for process in &snapshot.processes {
         for entity in &process.snapshot.entities {
-            pairs.push((process.process_id.get(), entity.backtrace.get()));
+            pairs.push((process.process_id, entity.backtrace.get()));
         }
         for scope in &process.snapshot.scopes {
-            pairs.push((process.process_id.get(), scope.backtrace.get()));
+            pairs.push((process.process_id, scope.backtrace.get()));
         }
         for edge in &process.snapshot.edges {
-            pairs.push((process.process_id.get(), edge.backtrace.get()));
+            pairs.push((process.process_id, edge.backtrace.get()));
         }
         for event in &process.snapshot.events {
-            pairs.push((process.process_id.get(), event.backtrace.get()));
+            pairs.push((process.process_id, event.backtrace.get()));
         }
     }
     pairs.sort_unstable();
@@ -53,7 +55,7 @@ struct FrameDedupKey {
 
 pub async fn load_snapshot_backtrace_table(
     db: Arc<Db>,
-    pairs: &[(u64, u64)],
+    pairs: &[(ConnectionId, u64)],
 ) -> SnapshotBacktraceTable {
     if pairs.is_empty() {
         return SnapshotBacktraceTable { frames: vec![] };
@@ -68,7 +70,7 @@ pub async fn load_snapshot_backtrace_table(
 
 fn load_snapshot_backtrace_table_blocking(
     db: &Db,
-    pairs: &[(u64, u64)],
+    pairs: &[(ConnectionId, u64)],
 ) -> Result<SnapshotBacktraceTable, String> {
     // r[impl api.snapshot.frame-catalog]
     let batches = load_backtrace_frame_batches(db, pairs)?;

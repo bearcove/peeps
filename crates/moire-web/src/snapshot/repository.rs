@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use facet::Facet;
 use moire_trace_types::RelPc;
+use moire_types::ConnectionId;
 use rusqlite_facet::StatementFacetExt;
 
 use crate::db::Db;
@@ -34,17 +35,17 @@ pub(crate) struct BacktraceFrameBatch {
 
 #[derive(Facet)]
 struct BacktraceFrameParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     backtrace_id: u64,
 }
 
 pub(crate) fn load_backtrace_frame_batches(
     db: &Db,
-    pairs: &[(u64, u64)],
+    pairs: &[(ConnectionId, u64)],
 ) -> Result<Vec<BacktraceFrameBatch>, String> {
     let conn = db.open()?;
 
-    let mut backtrace_owner: BTreeMap<u64, u64> = BTreeMap::new();
+    let mut backtrace_owner: BTreeMap<u64, ConnectionId> = BTreeMap::new();
     for (conn_id, backtrace_id) in pairs {
         match backtrace_owner.insert(*backtrace_id, *conn_id) {
             None => {}

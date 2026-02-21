@@ -51,13 +51,8 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
         );
         conn_id
     };
-    if let Err(e) = persist_connection_upsert(
-        state.db.clone(),
-        conn_id.get(),
-        format!("unknown-{conn_id}"),
-        0,
-    )
-    .await
+    if let Err(e) =
+        persist_connection_upsert(state.db.clone(), conn_id, format!("unknown-{conn_id}"), 0).await
     {
         warn!(conn_id = conn_id.get(), %e, "failed to persist connection row");
     }
@@ -95,7 +90,7 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
     for notify in to_notify {
         notify.notify_one();
     }
-    if let Err(e) = persist_connection_closed(state.db.clone(), conn_id.get()).await {
+    if let Err(e) = persist_connection_closed(state.db.clone(), conn_id).await {
         warn!(conn_id = conn_id.get(), %e, "failed to persist connection close");
     }
 
@@ -158,22 +153,15 @@ async fn read_messages(
                     conn.module_manifest = stored_manifest.clone();
                 }
                 drop(guard);
-                if let Err(e) = persist_connection_upsert(
-                    state.db.clone(),
-                    conn_id.get(),
-                    process_name.clone(),
-                    pid,
-                )
-                .await
+                if let Err(e) =
+                    persist_connection_upsert(state.db.clone(), conn_id, process_name.clone(), pid)
+                        .await
                 {
                     warn!(conn_id = conn_id.get(), %e, "failed to persist handshake");
                 }
-                if let Err(e) = persist_connection_module_manifest(
-                    state.db.clone(),
-                    conn_id.get(),
-                    stored_manifest,
-                )
-                .await
+                if let Err(e) =
+                    persist_connection_module_manifest(state.db.clone(), conn_id, stored_manifest)
+                        .await
                 {
                     warn!(conn_id = conn_id.get(), %e, "failed to persist module manifest");
                 }
@@ -213,7 +201,7 @@ async fn read_messages(
                 }
             }
             ClientMessage::DeltaBatch(batch) => {
-                if let Err(e) = persist_delta_batch(state.db.clone(), conn_id.get(), batch).await {
+                if let Err(e) = persist_delta_batch(state.db.clone(), conn_id, batch).await {
                     warn!(conn_id = conn_id.get(), %e, "failed to persist delta batch");
                 }
             }
@@ -244,7 +232,7 @@ async fn read_messages(
                 if let Err(e) = persist_cut_ack(
                     state.db.clone(),
                     cut_id_text,
-                    conn_id.get(),
+                    conn_id,
                     cursor_stream_id,
                     cursor_next_seq_no,
                 )
@@ -287,7 +275,7 @@ async fn read_messages(
                 let backtrace_id = record.id.get();
                 let frames = backtrace_frames_for_store(&manifest, &record)?;
                 let inserted =
-                    persist_backtrace_record(state.db.clone(), conn_id.get(), backtrace_id, frames)
+                    persist_backtrace_record(state.db.clone(), conn_id, backtrace_id, frames)
                         .await?;
                 if !inserted {
                     debug!(

@@ -1,18 +1,18 @@
 use facet::Facet;
 use facet_value::Value;
-use moire_types::{ScopeEntityLink, SqlResponse};
+use moire_types::{ConnectionId, ScopeEntityLink, SqlResponse};
 use rusqlite_facet::ConnectionFacetExt;
 
 use crate::db::Db;
 
 #[derive(Facet)]
 struct ScopeEntityLinkParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
 }
 
 pub fn fetch_scope_entity_links_blocking(
     db: &Db,
-    conn_id: u64,
+    conn_id: ConnectionId,
 ) -> Result<Vec<ScopeEntityLink>, String> {
     let conn = db.open()?;
     conn.facet_query_ref::<ScopeEntityLink, _>(

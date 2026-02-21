@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use facet::Facet;
 use moire_trace_types::{ModuleId, RelPc, RuntimeBase};
+use moire_types::ConnectionId;
 use moire_wire::{BacktraceRecord, ModuleIdentity, ModuleManifestEntry};
 use rusqlite_facet::{ConnectionFacetExt, StatementFacetExt};
 
@@ -27,7 +28,7 @@ pub struct StoredModuleManifestEntry {
 
 #[derive(Facet)]
 struct ConnectionUpsertParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     process_name: String,
     pid: u32,
     connected_at_ns: i64,
@@ -35,18 +36,18 @@ struct ConnectionUpsertParams {
 
 #[derive(Facet)]
 struct ConnectionClosedParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     disconnected_at_ns: i64,
 }
 
 #[derive(Facet)]
 struct ConnectionIdParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
 }
 
 #[derive(Facet)]
 struct ConnectionModuleInsertParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     module_id: i64,
     module_index: i64,
     module_path: String,
@@ -57,7 +58,7 @@ struct ConnectionModuleInsertParams {
 
 #[derive(Facet)]
 struct BacktraceInsertParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     backtrace_id: u64,
     frame_count: i64,
     received_at_ns: i64,
@@ -65,7 +66,7 @@ struct BacktraceInsertParams {
 
 #[derive(Facet)]
 struct BacktraceFrameInsertParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     backtrace_id: u64,
     frame_index: u32,
     module_path: String,
@@ -82,7 +83,7 @@ struct CutRequestParams {
 #[derive(Facet)]
 struct CutAckParams {
     cut_id: String,
-    conn_id: u64,
+    conn_id: ConnectionId,
     stream_id: String,
     next_seq_no: u64,
     received_at_ns: i64,
@@ -90,7 +91,7 @@ struct CutAckParams {
 
 #[derive(Facet)]
 struct DeltaBatchInsertParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     stream_id: String,
     from_seq_no: u64,
     next_seq_no: u64,
@@ -103,7 +104,7 @@ struct DeltaBatchInsertParams {
 
 #[derive(Facet)]
 struct UpsertEntityParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     stream_id: String,
     entity_id: String,
     entity_json: String,
@@ -112,7 +113,7 @@ struct UpsertEntityParams {
 
 #[derive(Facet)]
 struct UpsertScopeParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     stream_id: String,
     scope_id: String,
     scope_json: String,
@@ -121,7 +122,7 @@ struct UpsertScopeParams {
 
 #[derive(Facet)]
 struct UpsertEntityScopeLinkParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     stream_id: String,
     entity_id: String,
     scope_id: String,
@@ -130,21 +131,21 @@ struct UpsertEntityScopeLinkParams {
 
 #[derive(Facet)]
 struct RemoveEntityParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     stream_id: String,
     entity_id: String,
 }
 
 #[derive(Facet)]
 struct RemoveScopeParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     stream_id: String,
     scope_id: String,
 }
 
 #[derive(Facet)]
 struct RemoveEntityScopeLinkParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     stream_id: String,
     entity_id: String,
     scope_id: String,
@@ -152,7 +153,7 @@ struct RemoveEntityScopeLinkParams {
 
 #[derive(Facet)]
 struct UpsertEdgeParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     stream_id: String,
     src_id: String,
     dst_id: String,
@@ -163,7 +164,7 @@ struct UpsertEdgeParams {
 
 #[derive(Facet)]
 struct RemoveEdgeParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     stream_id: String,
     src_id: String,
     dst_id: String,
@@ -172,7 +173,7 @@ struct RemoveEdgeParams {
 
 #[derive(Facet)]
 struct AppendEventParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     stream_id: String,
     seq_no: u64,
     event_id: String,
@@ -182,7 +183,7 @@ struct AppendEventParams {
 
 #[derive(Facet)]
 struct StreamCursorUpsertParams {
-    conn_id: u64,
+    conn_id: ConnectionId,
     stream_id: String,
     next_seq_no: u64,
     updated_at_ns: i64,
@@ -240,7 +241,7 @@ fn module_identity_key(identity: &ModuleIdentity) -> String {
 
 pub async fn persist_connection_upsert(
     db: Arc<Db>,
-    conn_id: u64,
+    conn_id: ConnectionId,
     process_name: String,
     pid: u32,
 ) -> Result<(), String> {
@@ -266,7 +267,7 @@ pub async fn persist_connection_upsert(
     .map_err(|error| format!("join sqlite: {error}"))?
 }
 
-pub async fn persist_connection_closed(db: Arc<Db>, conn_id: u64) -> Result<(), String> {
+pub async fn persist_connection_closed(db: Arc<Db>, conn_id: ConnectionId) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let conn = db.open()?;
         conn.facet_execute_ref(
@@ -287,7 +288,7 @@ pub async fn persist_connection_closed(db: Arc<Db>, conn_id: u64) -> Result<(), 
 
 pub async fn persist_connection_module_manifest(
     db: Arc<Db>,
-    conn_id: u64,
+    conn_id: ConnectionId,
     module_manifest: Vec<StoredModuleManifestEntry>,
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
@@ -339,7 +340,7 @@ pub async fn persist_connection_module_manifest(
 // r[impl symbolicate.server-store]
 pub async fn persist_backtrace_record(
     db: Arc<Db>,
-    conn_id: u64,
+    conn_id: ConnectionId,
     backtrace_id: u64,
     frames: Vec<BacktraceFramePersist>,
 ) -> Result<bool, String> {
@@ -429,7 +430,7 @@ pub async fn persist_cut_request(
 pub async fn persist_cut_ack(
     db: Arc<Db>,
     cut_id: String,
-    conn_id: u64,
+    conn_id: ConnectionId,
     stream_id: String,
     next_seq_no: u64,
 ) -> Result<(), String> {
@@ -459,7 +460,7 @@ pub async fn persist_cut_ack(
 
 pub async fn persist_delta_batch(
     db: Arc<Db>,
-    conn_id: u64,
+    conn_id: ConnectionId,
     batch: moire_types::PullChangesResponse,
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || persist_delta_batch_blocking(&db, conn_id, &batch))
@@ -469,7 +470,7 @@ pub async fn persist_delta_batch(
 
 fn persist_delta_batch_blocking(
     db: &Db,
-    conn_id: u64,
+    conn_id: ConnectionId,
     batch: &moire_types::PullChangesResponse,
 ) -> Result<(), String> {
     use moire_types::Change;

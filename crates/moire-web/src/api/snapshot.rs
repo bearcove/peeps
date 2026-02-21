@@ -357,7 +357,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
             for (conn_id, process_name, pid, ptime_now_ms, snapshot) in partial {
                 let db = state.db.clone();
                 let scope_entity_links = tokio::task::spawn_blocking(move || {
-                    fetch_scope_entity_links_blocking(&db, conn_id.get())
+                    fetch_scope_entity_links_blocking(&db, conn_id)
                 })
                 .await
                 .unwrap_or_else(|e| {
