@@ -1,6 +1,6 @@
 import React from "react";
 import { FileRs } from "@phosphor-icons/react";
-import { NodeChip } from "../../ui/primitives/NodeChip";
+import "./Source.css";
 
 function shortSource(source: string): string {
   const match = source.match(/^(.*):(\d+)$/);
@@ -15,11 +15,13 @@ function shortSource(source: string): string {
 
 export function Source({ source }: { source: string }) {
   return (
-    <NodeChip
-      icon={<FileRs size={12} weight="bold" />}
-      label={shortSource(source)}
+    <a
+      className="inspector-source"
       href={`zed://file${source}`}
       title={`Open ${source} in Zed`}
-    />
+    >
+      <FileRs size={11} weight="bold" />
+      {shortSource(source)}
+    </a>
   );
 }

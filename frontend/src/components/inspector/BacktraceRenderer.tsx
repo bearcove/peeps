@@ -8,22 +8,15 @@ import { Source } from "./Source";
 import { CratePill } from "../../ui/primitives/CratePill";
 import { ClosurePill } from "../../ui/primitives/ClosurePill";
 import { tokenizeRustName, parseSlim, RustTokens } from "../../ui/primitives/RustName";
+import { FrameCard } from "../../ui/primitives/FrameCard";
 import "./BacktraceRenderer.css";
 
-const SYSTEM_PREFIXES = [
-  "std::",
-  "core::",
-  "alloc::",
-  "tokio::",
-  "tokio_util::",
-  "futures::",
-  "futures_core::",
-  "futures_util::",
-  "moire::",
-  "moire_trace_capture::",
-  "moire_runtime::",
-  "moire_tokio::",
-];
+const SYSTEM_CRATES = new Set([
+  "std", "core", "alloc",
+  "tokio", "tokio_util",
+  "futures", "futures_core", "futures_util",
+  "moire", "moire_trace_capture", "moire_runtime", "moire_tokio",
+]);
 
 function isResolved(frame: SnapshotBacktraceFrame): frame is { resolved: { module_path: string; function_name: string; source_file: string; line?: number } } {
   return "resolved" in frame;
@@ -31,7 +24,8 @@ function isResolved(frame: SnapshotBacktraceFrame): frame is { resolved: { modul
 
 function isSystemFrame(frame: SnapshotBacktraceFrame): boolean {
   if (!isResolved(frame)) return false;
-  return SYSTEM_PREFIXES.some((prefix) => frame.resolved.function_name.startsWith(prefix));
+  const crate = extractCrate(frame.resolved.function_name);
+  return crate !== null && SYSTEM_CRATES.has(crate);
 }
 
 function detectAppCrate(frames: SnapshotBacktraceFrame[]): string | null {
@@ -44,7 +38,6 @@ function detectAppCrate(frames: SnapshotBacktraceFrame[]): string | null {
   return null;
 }
 
-// Index is intentional: a backtrace can contain the same frame multiple times (recursion).
 function frameKey(frame: SnapshotBacktraceFrame, index: number): string {
   if (isResolved(frame)) {
     return `r:${index}:${frame.resolved.module_path}:${frame.resolved.function_name}:${frame.resolved.source_file}:${frame.resolved.line ?? ""}`;
@@ -52,7 +45,6 @@ function frameKey(frame: SnapshotBacktraceFrame, index: number): string {
   return `u:${index}:${frame.unresolved.module_path}:${frame.unresolved.rel_pc}`;
 }
 
-/** Fast crate extraction without tokenizing — handles trait impls too. */
 function extractCrate(functionName: string): string | null {
   if (functionName.startsWith("<")) {
     const m = functionName.match(/^<([a-zA-Z_][a-zA-Z0-9_]*)::/);
@@ -140,6 +132,15 @@ export function BacktracePanel({
     [backtrace.frames],
   );
 
+  // Annotate each frame with whether its crate repeats the previous visible frame's crate.
+  const annotatedFrames = useMemo(() => {
+    const visible = backtrace.frames
+      .map((frame, origIndex) => ({ frame, origIndex }))
+      .filter(({ frame }) => isResolved(frame) ? (showSystem || !isSystemFrame(frame)) : true);
+
+    return visible.map(({ frame, origIndex }) => ({ frame, origIndex }));
+  }, [backtrace.frames, showSystem]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -171,26 +172,14 @@ export function BacktracePanel({
         </div>
 
         <div className="bt-frame-list">
-          {backtrace.frames.map((frame, index) => {
-            if (!isResolved(frame)) {
-              return (
-                // eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames
-                <div className="bt-frame-row bt-frame-row--unresolved" key={frameKey(frame, index)}>
-                  <span className="bt-fn bt-fn--unresolved">
-                    {frame.unresolved.module_path}+0x{frame.unresolved.rel_pc.toString(16)}
-                  </span>
-                  <span className="bt-reason">—</span>
-                </div>
-              );
-            }
-            if (isSystemFrame(frame)) {
-              if (!showSystem) return null;
-              // eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames
-              return <FrameRow key={frameKey(frame, index)} frame={frame} crateColors={crateColors} appCrate={null} isSystem />;
-            }
-            // eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames
-            return <FrameRow key={frameKey(frame, index)} frame={frame} crateColors={crateColors} appCrate={appCrate} />;
-          })}
+          {annotatedFrames.map(({ frame, origIndex }) => (
+            <FrameRow
+              key={frameKey(frame, origIndex)}
+              frame={frame}
+              crateColors={crateColors}
+              appCrate={appCrate}
+            />
+          ))}
         </div>
       </div>
     </div>
@@ -203,53 +192,65 @@ function FrameRow({
   frame,
   crateColors,
   appCrate,
-  isSystem = false,
 }: {
   frame: SnapshotBacktraceFrame;
   crateColors: Map<string, ScopeColorPair>;
   appCrate: string | null;
-  isSystem?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-  if (!isResolved(frame)) return null;
+
+  if (!isResolved(frame)) {
+    return (
+      <FrameCard>
+        <div className="bt-frame-row bt-frame-row--unresolved">
+          <span className="bt-fn bt-fn--unresolved">
+            {frame.unresolved.module_path}+0x{frame.unresolved.rel_pc.toString(16)}
+          </span>
+          <span className="bt-reason">—</span>
+        </div>
+      </FrameCard>
+    );
+  }
 
   const { function_name, source_file, line } = frame.resolved;
+  const crate = extractCrate(function_name);
+  const crateColor = crate ? crateColors.get(crate) ?? null : null;
+  const isApp = appCrate != null && crate === appCrate;
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const allTokens = useMemo(() => tokenizeRustName(function_name), [function_name]);
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const { crate, slim, closureCount, wasStripped } = useMemo(() => parseSlim(allTokens), [allTokens]);
+  const { slim, closureCount, wasStripped } = useMemo(() => parseSlim(allTokens), [allTokens]);
 
-  const crateColor = crate ? crateColors.get(crate) : null;
-  const isApp = appCrate != null && crate === appCrate;
   const sourceStr = source_file.length > 0
     ? (line != null ? `${source_file}:${line}` : source_file)
     : null;
 
   const rowClass = [
     "bt-frame-row",
-    isSystem && "bt-frame-row--system",
     isApp && "bt-frame-row--app",
   ].filter(Boolean).join(" ");
 
   return (
-    <div className={rowClass}>
-      <div className="bt-fn-line">
-        {crate && (
-          <CratePill name={crate} color={crateColor ?? undefined} />
-        )}
-        <span
-          className={`bt-fn${wasStripped ? " bt-fn--expandable" : ""}`}
-          title={function_name}
-          onClick={wasStripped ? () => setExpanded(v => !v) : undefined}
-          role={wasStripped ? "button" : undefined}
-        >
-          <RustTokens tokens={expanded ? allTokens : slim} />
-        </span>
-        {closureCount > 0 && <ClosurePill />}
+    <FrameCard>
+      <div className={rowClass}>
+        <div className="bt-fn-line">
+          {crate && (
+            <CratePill name={crate} color={crateColor ?? undefined} />
+          )}
+          <span
+            className={`bt-fn${wasStripped ? " bt-fn--expandable" : ""}`}
+            title={function_name}
+            onClick={wasStripped ? () => setExpanded(v => !v) : undefined}
+            role={wasStripped ? "button" : undefined}
+          >
+            <RustTokens tokens={expanded ? allTokens : slim} />
+          </span>
+          {closureCount > 0 && <ClosurePill />}
+        </div>
+        {sourceStr && <Source source={sourceStr} />}
       </div>
-      {sourceStr && <Source source={sourceStr} />}
-    </div>
+    </FrameCard>
   );
 }
 

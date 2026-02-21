@@ -154,33 +154,19 @@ a.bt-badge-location:hover .bt-badge-file-icon {
 .bt-frame-list {
   display: flex;
   flex-direction: column;
+  gap: 3px;
 }
 
 .bt-frame-row {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 4px 0 4px 6px;
+  gap: 2px;
   font-size: var(--font-size-sm);
   font-family: var(--font-mono);
-  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 40%, transparent);
-  border-left: 2px solid transparent;
-}
-
-.bt-frame-row:last-child {
-  border-bottom: none;
-}
-
-.bt-frame-row--system {
-  opacity: 0.55;
 }
 
 .bt-frame-row--unresolved {
   opacity: 0.65;
-}
-
-.bt-frame-row--app {
-  border-left-color: var(--accent);
 }
 
 .bt-frame-row--app .bt-fn {
@@ -225,10 +211,5 @@ a.bt-badge-location:hover .bt-badge-file-icon {
   .bt-dialog {
     width: 98vw;
     padding: 12px;
-  }
-
-  .bt-frame-row {
-    flex-direction: column;
-    gap: 2px;
   }
 }
