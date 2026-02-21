@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Stack, ArrowSquareOut } from "@phosphor-icons/react";
 import type { SnapshotBacktraceFrame } from "../../api/types.generated";
 import type { ResolvedSnapshotBacktrace } from "../../snapshot";
@@ -23,12 +24,10 @@ function isResolved(frame: SnapshotBacktraceFrame): frame is { resolved: { modul
 
 function isSystemFrame(frame: SnapshotBacktraceFrame): boolean {
   if (!isResolved(frame)) return false;
-  const modulePath = frame.resolved.module_path;
-  return SYSTEM_PREFIXES.some((prefix) => modulePath.startsWith(prefix));
+  return SYSTEM_PREFIXES.some((prefix) => frame.resolved.module_path.startsWith(prefix));
 }
 
 // Index is intentional: a backtrace can contain the same frame multiple times (recursion).
-// eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames
 function frameKey(frame: SnapshotBacktraceFrame, index: number): string {
   if (isResolved(frame)) {
     return `r:${index}:${frame.resolved.module_path}:${frame.resolved.function_name}:${frame.resolved.source_file}:${frame.resolved.line ?? ""}`;
@@ -36,21 +35,23 @@ function frameKey(frame: SnapshotBacktraceFrame, index: number): string {
   return `u:${index}:${frame.unresolved.module_path}:${frame.unresolved.rel_pc}`;
 }
 
-function shortFileName(path: string): string {
-  return path.split("/").pop() ?? path;
+/** Split "some::module::func_name" into { prefix: "some::module::", fn: "func_name" },
+ *  stripping generics but preserving the full path. */
+function splitFunctionName(name: string): { prefix: string; fn: string } {
+  const stripped = name.replace(/<[^>]*>/g, "");
+  const lastSep = stripped.lastIndexOf("::");
+  if (lastSep === -1) return { prefix: "", fn: stripped };
+  return { prefix: stripped.slice(0, lastSep + 2), fn: stripped.slice(lastSep + 2) };
+}
+
+/** Show last 3 path components, e.g. "moire-trace-capture/src/lib.rs". */
+function relativePath(path: string): string {
+  const parts = path.split("/");
+  return parts.slice(-3).join("/");
 }
 
 function zedUrl(path: string, line?: number): string {
   return line != null ? `zed://file${path}:${line}` : `zed://file${path}`;
-}
-
-function shortFunctionName(name: string): string {
-  // Strip generic parameters: foo::bar::<T>::baz -> foo::bar::baz
-  const stripped = name.replace(/<[^>]*>/g, "");
-  // Take last two segments: some::long::path::func -> path::func
-  const parts = stripped.split("::");
-  if (parts.length <= 2) return stripped;
-  return parts.slice(-2).join("::");
 }
 
 /** Compact badge for inline use in the inspector KV table. */
@@ -61,14 +62,12 @@ export function BacktraceBadge({
   backtrace: ResolvedSnapshotBacktrace;
   onClick: () => void;
 }) {
-  const topFrame = useMemo(() => {
-    return backtrace.frames.find((f) => isResolved(f) && !isSystemFrame(f))
-      ?? backtrace.frames.find((f) => isResolved(f))
-      ?? backtrace.frames[0];
-  }, [backtrace.frames]);
+  const topFrame = backtrace.frames.find((f) => isResolved(f) && !isSystemFrame(f))
+    ?? backtrace.frames.find((f) => isResolved(f))
+    ?? backtrace.frames[0];
 
   const location = topFrame && isResolved(topFrame)
-    ? `${shortFileName(topFrame.resolved.source_file)}${topFrame.resolved.line != null ? `:${topFrame.resolved.line}` : ""}`
+    ? `${topFrame.resolved.source_file.split("/").pop() ?? topFrame.resolved.source_file}${topFrame.resolved.line != null ? `:${topFrame.resolved.line}` : ""}`
     : null;
 
   return (
@@ -94,18 +93,8 @@ export function BacktracePanel({
 }) {
   const [showSystem, setShowSystem] = useState(false);
 
-  const userFrames = useMemo(
-    () => backtrace.frames.filter((f) => isResolved(f) && !isSystemFrame(f)),
-    [backtrace.frames],
-  );
-  const systemFrames = useMemo(
-    () => backtrace.frames.filter((f) => isResolved(f) && isSystemFrame(f)),
-    [backtrace.frames],
-  );
-  const unresolvedFrames = useMemo(
-    () => backtrace.frames.filter((f) => !isResolved(f)),
-    [backtrace.frames],
-  );
+  const systemCount = backtrace.frames.filter((f) => isResolved(f) && isSystemFrame(f)).length;
+  const unresolvedCount = backtrace.frames.filter((f) => !isResolved(f)).length;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -119,89 +108,66 @@ export function BacktracePanel({
     <div className="bt-overlay" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="bt-dialog" onClick={(event) => event.stopPropagation()}>
         <div className="bt-dialog-header">
-          <span className="bt-dialog-title">
-            Backtrace <span className="bt-dialog-id">#{backtrace.backtrace_id}</span>
-          </span>
+          <span className="bt-dialog-title">Backtrace</span>
           <span className="bt-dialog-meta">
             {backtrace.frames.length} frames
-            {unresolvedFrames.length > 0 && (
-              <> · {unresolvedFrames.length} unresolved</>
-            )}
+            {unresolvedCount > 0 && <> · {unresolvedCount} unresolved</>}
           </span>
-          <button type="button" className="bt-dialog-close" onClick={onClose}>
-            Esc
-          </button>
-        </div>
-
-        {userFrames.length > 0 && (
-          <div className="bt-section">
-            <div className="bt-section-label">User frames ({userFrames.length})</div>
-            <div className="bt-frame-list">
-              {userFrames.map((frame, index) => (
-                // eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames
-                <FrameRow key={frameKey(frame, index)} frame={frame} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="bt-section-controls">
           <button
             type="button"
             className="bt-section-toggle"
             onClick={() => setShowSystem((v) => !v)}
           >
-            {showSystem ? "Hide" : "Show"} system frames ({systemFrames.length})
+            {showSystem ? "Hide" : "Show"} system ({systemCount})
+          </button>
+          <button type="button" className="bt-dialog-close" onClick={onClose}>
+            Esc
           </button>
         </div>
 
-        {showSystem && systemFrames.length > 0 && (
-          <div className="bt-section bt-section--system">
-            <div className="bt-section-label">System frames ({systemFrames.length})</div>
-            <div className="bt-frame-list">
-              {systemFrames.map((frame, index) => (
-                // eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames
-                <FrameRow key={frameKey(frame, index)} frame={frame} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {unresolvedFrames.length > 0 && (
-          <div className="bt-section bt-section--unresolved">
-            <div className="bt-section-label">Unresolved ({unresolvedFrames.length})</div>
-            <div className="bt-frame-list">
-              {unresolvedFrames.map((frame, index) => {
-                if (!("unresolved" in frame)) return null;
-                return (
-                  // eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames
-                  <div className="bt-frame-row" key={frameKey(frame, index)}>
-                    <span className="bt-fn bt-fn--unresolved">
-                      {frame.unresolved.module_path}+0x{frame.unresolved.rel_pc.toString(16)}
-                    </span>
-                    <span className="bt-reason">{frame.unresolved.reason}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        <div className="bt-frame-list">
+          {/* eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames */}
+          {backtrace.frames.map((frame, index) => {
+            if (!isResolved(frame)) {
+              return (
+                // eslint-disable-next-line react/no-array-index-key
+                <div className="bt-frame-row bt-frame-row--unresolved" key={frameKey(frame, index)}>
+                  <span className="bt-fn bt-fn--unresolved">
+                    {frame.unresolved.module_path}+0x{frame.unresolved.rel_pc.toString(16)}
+                  </span>
+                  <span className="bt-reason">{frame.unresolved.reason}</span>
+                </div>
+              );
+            }
+            if (isSystemFrame(frame)) {
+              if (!showSystem) return null;
+              // eslint-disable-next-line react/no-array-index-key
+              return <FrameRow key={frameKey(frame, index)} frame={frame} isSystem />;
+            }
+            // eslint-disable-next-line react/no-array-index-key
+            return <FrameRow key={frameKey(frame, index)} frame={frame} />;
+          })}
+        </div>
       </div>
     </div>
   );
 }
 
-function FrameRow({ frame }: { frame: SnapshotBacktraceFrame }) {
+function FrameRow({ frame, isSystem = false }: { frame: SnapshotBacktraceFrame; isSystem?: boolean }) {
   if (!isResolved(frame)) return null;
   const { function_name, source_file, line } = frame.resolved;
+  const { prefix, fn } = splitFunctionName(function_name);
   const hasSource = source_file.length > 0;
-  const fileName = hasSource ? shortFileName(source_file) : null;
-  const location = fileName != null ? (line != null ? `${fileName}:${line}` : fileName) : null;
+  const relPath = hasSource ? relativePath(source_file) : null;
+  const location = relPath != null ? (line != null ? `${relPath}:${line}` : relPath) : null;
   const href = hasSource ? zedUrl(source_file, line) : null;
 
   return (
-    <div className="bt-frame-row">
-      <span className="bt-fn" title={function_name}>{shortFunctionName(function_name)}</span>
+    <div className={`bt-frame-row${isSystem ? " bt-frame-row--system" : ""}`}>
+      <span className="bt-fn" title={function_name}>
+        {prefix && <span className="bt-fn-prefix">{prefix}</span>}
+        {fn}
+      </span>
       {location && href ? (
         <a className="bt-src" href={href} title={`Open ${source_file}${line != null ? `:${line}` : ""} in Zed`}>
           {location}
@@ -228,8 +194,9 @@ export function BacktraceRenderer({
   return (
     <>
       <BacktraceBadge backtrace={backtrace} onClick={() => setOpen(true)} />
-      {open && (
-        <BacktracePanel backtrace={backtrace} onClose={() => setOpen(false)} />
+      {open && createPortal(
+        <BacktracePanel backtrace={backtrace} onClose={() => setOpen(false)} />,
+        document.body,
       )}
     </>
   );

@@ -41,6 +41,12 @@
   font-size: var(--font-size-sm);
 }
 
+/* ── Function name coloring ──────────────────────────────── */
+
+.bt-fn-prefix {
+  color: var(--text-muted);
+}
+
 /* ── Dialog overlay ──────────────────────────────────────── */
 
 .bt-overlay {
@@ -114,34 +120,6 @@
 
 /* ── Frame sections ──────────────────────────────────────── */
 
-.bt-section {
-  display: flex;
-  flex-direction: column;
-}
-
-.bt-section--system {
-  opacity: 0.75;
-}
-
-.bt-section--unresolved {
-  opacity: 0.6;
-}
-
-.bt-section-label {
-  font-size: var(--font-size-sm);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-secondary);
-  padding: 8px 0 4px;
-}
-
-.bt-section-controls {
-  display: flex;
-  gap: 6px;
-  padding: 4px 0;
-}
-
 .bt-section-toggle {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-control);
@@ -178,6 +156,14 @@
 
 .bt-frame-row:last-child {
   border-bottom: none;
+}
+
+.bt-frame-row--system {
+  opacity: 0.55;
+}
+
+.bt-frame-row--unresolved {
+  opacity: 0.65;
 }
 
 .bt-fn {
