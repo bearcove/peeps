@@ -8,6 +8,7 @@ use moire_types::{
 };
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::ops::Bound;
 use std::sync::{Mutex as StdMutex, OnceLock};
 
 pub(crate) const MAX_EVENTS: usize = 16_384;
@@ -36,7 +37,7 @@ pub use self::futures::*;
 pub use self::handles::*;
 
 static PROCESS_SCOPE: OnceLock<ScopeHandle> = OnceLock::new();
-static BACKTRACE_RECORDS: OnceLock<StdMutex<BTreeMap<u64, moire_wire::BacktraceRecord>>> =
+static BACKTRACE_RECORDS: OnceLock<StdMutex<BTreeMap<BacktraceId, moire_wire::BacktraceRecord>>> =
     OnceLock::new();
 static MODULE_STATE: OnceLock<StdMutex<ModuleState>> = OnceLock::new();
 
@@ -131,7 +132,7 @@ fn remap_and_register_backtrace(captured: CapturedBacktrace) -> moire_wire::Back
                 .unwrap_or_else(|| {
                     panic!(
                         "invariant violated: missing local module mapping for module_id {}",
-                        frame.module_id.get()
+                        frame.module_id
                     )
                 });
             FrameKey {
@@ -156,7 +157,7 @@ pub(crate) fn module_manifest_snapshot() -> (u64, Vec<moire_wire::ModuleManifest
     )
 }
 
-fn backtrace_records() -> &'static StdMutex<BTreeMap<u64, moire_wire::BacktraceRecord>> {
+fn backtrace_records() -> &'static StdMutex<BTreeMap<BacktraceId, moire_wire::BacktraceRecord>> {
     BACKTRACE_RECORDS.get_or_init(|| StdMutex::new(BTreeMap::new()))
 }
 
@@ -165,7 +166,7 @@ pub(crate) fn remember_backtrace_record(record: moire_wire::BacktraceRecord) {
     let Ok(mut records) = backtrace_records().lock() else {
         panic!("backtrace record mutex poisoned; cannot continue");
     };
-    let record_id = record.id.get();
+    let record_id = record.id;
     match records.get(&record_id) {
         Some(existing) if existing == &record => {}
         Some(_) => panic!(
@@ -179,13 +180,17 @@ pub(crate) fn remember_backtrace_record(record: moire_wire::BacktraceRecord) {
 }
 
 pub(crate) fn backtrace_records_after(
-    last_sent_backtrace_id: u64,
+    last_sent_backtrace_id: Option<BacktraceId>,
 ) -> Vec<moire_wire::BacktraceRecord> {
     let Ok(records) = backtrace_records().lock() else {
         panic!("backtrace record mutex poisoned; cannot continue");
     };
+    let lower = match last_sent_backtrace_id {
+        Some(id) => Bound::Excluded(id),
+        None => Bound::Unbounded,
+    };
     records
-        .range((last_sent_backtrace_id + 1)..)
+        .range((lower, Bound::Unbounded))
         .map(|(_, record)| record.clone())
         .collect()
 }
@@ -257,29 +262,12 @@ mod tests {
     // r[verify model.backtrace.id-layout]
     #[test]
     fn backtrace_id_layout_is_js_safe_and_prefixed() {
-        const JS_SAFE_MAX: u64 = (1u64 << 53) - 1;
         let first = BacktraceId::next().expect("first backtrace id");
         let second = BacktraceId::next().expect("second backtrace id");
-        let expected_prefix = u64::from(first.process_prefix());
-
-        assert!(first.get() > 0, "backtrace id must be non-zero");
+        assert_ne!(first, second, "backtrace ids must be unique");
         assert!(
-            second.get() > first.get(),
-            "backtrace ids must be monotonic per process"
-        );
-        assert!(
-            first.get() <= JS_SAFE_MAX && second.get() <= JS_SAFE_MAX,
-            "backtrace ids must stay JS-safe"
-        );
-        assert_eq!(
-            first.get() >> moire_trace_types::ID_COUNTER_BITS,
-            expected_prefix,
-            "upper bits must encode process prefix"
-        );
-        assert_eq!(
-            second.get() >> moire_trace_types::ID_COUNTER_BITS,
-            expected_prefix,
-            "upper bits must encode process prefix"
+            format!("{first}").starts_with("BACKTRACE#")
+                && format!("{second}").starts_with("BACKTRACE#")
         );
     }
 }

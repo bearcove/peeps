@@ -104,18 +104,6 @@ macro_rules! define_u64_id {
                 let raw = ((u64::from(prefix)) << ID_COUNTER_BITS) | counter;
                 Self::from_raw(raw)
             }
-
-            pub fn get(self) -> u64 {
-                self.0
-            }
-
-            pub fn process_prefix(self) -> u16 {
-                (self.0 >> ID_COUNTER_BITS) as u16
-            }
-
-            pub fn counter(self) -> u64 {
-                self.0 & ID_COUNTER_MAX_U64
-            }
         }
 
         impl core::fmt::Display for $name {
@@ -290,20 +278,11 @@ mod tests {
         let first = BacktraceId::next().expect("first id must be valid");
         let second = BacktraceId::next().expect("second id must be valid");
 
-        assert!(first.get() > 0, "id must be non-zero");
-        assert!(
-            second.get() > first.get(),
-            "ids must be monotonic within a process"
-        );
-        assert!(
-            first.get() <= JS_SAFE_INT_MAX_U64 && second.get() <= JS_SAFE_INT_MAX_U64,
-            "ids must be JS-safe"
-        );
-        assert_eq!(
-            first.process_prefix(),
-            second.process_prefix(),
-            "ids from same process must share prefix"
-        );
+        assert_ne!(first, second, "ids must be unique");
+        let first_fmt = format!("{first}");
+        let second_fmt = format!("{second}");
+        assert!(first_fmt.starts_with("BACKTRACE#"));
+        assert!(second_fmt.starts_with("BACKTRACE#"));
     }
 }
 

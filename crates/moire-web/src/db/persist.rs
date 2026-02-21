@@ -7,7 +7,7 @@ use moire_wire::{BacktraceRecord, ModuleIdentity, ModuleManifestEntry};
 use rusqlite_facet::{ConnectionFacetExt, StatementFacetExt};
 
 use crate::db::Db;
-use crate::util::time::{now_nanos, to_i64_u64};
+use crate::util::time::now_nanos;
 
 #[derive(Clone)]
 pub struct BacktraceFramePersist {
@@ -48,7 +48,7 @@ struct ConnectionIdParams {
 #[derive(Facet)]
 struct ConnectionModuleInsertParams {
     conn_id: ConnectionId,
-    module_id: i64,
+    module_id: ModuleId,
     module_index: i64,
     module_path: String,
     module_identity: String,
@@ -203,7 +203,7 @@ pub fn backtrace_frames_for_store(
         let Some(module) = modules_by_id.get(&module_id) else {
             return Err(format!(
                 "invariant violated: backtrace frame {frame_index} references module_id {} but handshake manifest for this connection has no matching module id ({} entries)",
-                module_id.get(),
+                module_id,
                 modules_by_id.len()
             ));
         };
@@ -319,7 +319,7 @@ pub async fn persist_connection_module_manifest(
                 insert_stmt
                     .facet_execute_ref(&ConnectionModuleInsertParams {
                         conn_id,
-                        module_id: to_i64_u64(module.module_id.get()),
+                        module_id: module.module_id,
                         module_index: module_index as i64,
                         module_path: module.module_path.clone(),
                         module_identity: module.module_identity.clone(),
@@ -392,7 +392,7 @@ pub async fn persist_backtrace_record(
                             format!(
                                 "insert backtrace frame {}/{}: {error}",
                                 frame.frame_index,
-                                backtrace_id.get()
+                                backtrace_id
                             )
                         })?;
                 }

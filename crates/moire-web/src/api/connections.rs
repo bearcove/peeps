@@ -89,7 +89,7 @@ pub async fn api_trigger_cut(State(state): State<AppState>) -> impl IntoResponse
 
     for (conn_id, tx) in outbound {
         if let Err(e) = tx.try_send(payload.clone()) {
-            warn!(conn_id = conn_id.get(), %e, "failed to enqueue cut request");
+            warn!(conn_id = %conn_id, %e, "failed to enqueue cut request");
         }
     }
 

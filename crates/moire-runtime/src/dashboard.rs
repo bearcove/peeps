@@ -6,7 +6,7 @@ use tokio::net::TcpStream;
 use tokio::time::MissedTickBehavior;
 
 use moire_wire::{
-    decode_server_message_default, encode_client_message_default, ClientMessage, ServerMessage,
+    ClientMessage, ServerMessage, decode_server_message_default, encode_client_message_default,
 };
 
 use super::api::{ack_cut, pull_changes_since};
@@ -78,7 +78,7 @@ async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), S
     .await?;
 
     let mut cursor = SeqNo::ZERO;
-    let mut last_sent_backtrace_id = 0u64;
+    let mut last_sent_backtrace_id = None;
     let mut ticker = tokio::time::interval(Duration::from_millis(DASHBOARD_PUSH_INTERVAL_MS));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
@@ -144,14 +144,14 @@ async fn flush_backtrace_records(
     writer: &mut tokio::net::tcp::OwnedWriteHalf,
     process_name: &str,
     last_sent_manifest_revision: &mut u64,
-    last_sent_backtrace_id: &mut u64,
+    last_sent_backtrace_id: &mut Option<moire_trace_types::BacktraceId>,
 ) -> Result<(), String> {
     let records = super::backtrace_records_after(*last_sent_backtrace_id);
     send_handshake_if_manifest_changed(writer, process_name, last_sent_manifest_revision).await?;
     for record in records {
-        let record_id = record.id.get();
+        let record_id = record.id;
         write_client_message(writer, &ClientMessage::BacktraceRecord(record)).await?;
-        *last_sent_backtrace_id = record_id;
+        *last_sent_backtrace_id = Some(record_id);
     }
     Ok(())
 }

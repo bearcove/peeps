@@ -348,7 +348,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
                     let (process_name, pid) = conn_info
                         .get(&conn_id)
                         .map(|(name, pid)| (name.clone(), *pid))
-                        .unwrap_or_else(|| (format!("unknown-{}", conn_id.get()), 0));
+                        .unwrap_or_else(|| (format!("unknown-{conn_id}"), 0));
                     Some((conn_id, process_name, pid, reply.ptime_now_ms, snapshot))
                 })
                 .collect();
@@ -386,7 +386,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
                     let (process_name, pid) = conn_info
                         .get(&conn_id)
                         .map(|(name, pid)| (name.clone(), *pid))
-                        .unwrap_or_else(|| (format!("unknown-{}", conn_id.get()), 0));
+                        .unwrap_or_else(|| (format!("unknown-{conn_id}"), 0));
                     TimedOutProcess {
                         process_id: conn_id,
                         process_name,

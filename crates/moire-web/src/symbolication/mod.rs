@@ -220,7 +220,7 @@ fn symbolicate_pending_frames_for_pairs_blocking(
                             .is_some_and(should_retry_unresolved_reason)
                     {
                         debug!(
-                            conn_id = job.conn_id.get(),
+                            conn_id = %job.conn_id,
                             backtrace_id = %job.backtrace_id,
                             frame_index = job.frame_index,
                             "retrying previously scaffolded unresolved cache entry"

@@ -38,7 +38,7 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
     let conn_id = {
         let mut guard = state.inner.lock().await;
         let conn_id = guard.next_conn_id;
-        guard.next_conn_id = ConnectionId::new(conn_id.get().saturating_add(1));
+        guard.next_conn_id = conn_id.next();
         guard.connections.insert(
             conn_id,
             ConnectedProcess {
@@ -54,7 +54,7 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
     if let Err(e) =
         persist_connection_upsert(state.db.clone(), conn_id, format!("unknown-{conn_id}"), 0).await
     {
-        warn!(conn_id = conn_id.get(), %e, "failed to persist connection row");
+        warn!(conn_id = %conn_id, %e, "failed to persist connection row");
     }
 
     let writer_handle = tokio::spawn(async move {
@@ -91,7 +91,7 @@ async fn handle_conn(stream: TcpStream, state: AppState) -> Result<(), String> {
         notify.notify_one();
     }
     if let Err(e) = persist_connection_closed(state.db.clone(), conn_id).await {
-        warn!(conn_id = conn_id.get(), %e, "failed to persist connection close");
+        warn!(conn_id = %conn_id, %e, "failed to persist connection close");
     }
 
     writer_handle.abort();
@@ -114,7 +114,7 @@ async fn read_messages(
         let mut len_buf = [0u8; 4];
         if let Err(e) = reader.read_exact(&mut len_buf).await {
             if e.kind() == std::io::ErrorKind::UnexpectedEof {
-                debug!(conn_id = conn_id.get(), "connection closed (EOF)");
+                debug!(conn_id = %conn_id, "connection closed (EOF)");
                 return Ok(());
             }
             return Err(format!("read frame len: {e}"));
@@ -157,22 +157,22 @@ async fn read_messages(
                     persist_connection_upsert(state.db.clone(), conn_id, process_name.clone(), pid)
                         .await
                 {
-                    warn!(conn_id = conn_id.get(), %e, "failed to persist handshake");
+                    warn!(conn_id = %conn_id, %e, "failed to persist handshake");
                 }
                 if let Err(e) =
                     persist_connection_module_manifest(state.db.clone(), conn_id, stored_manifest)
                         .await
                 {
-                    warn!(conn_id = conn_id.get(), %e, "failed to persist module manifest");
+                    warn!(conn_id = %conn_id, %e, "failed to persist module manifest");
                 }
                 info!(
-                    conn_id = conn_id.get(),
+                    conn_id = %conn_id,
                     process_name, pid, module_manifest_entries, "handshake accepted"
                 );
             }
             ClientMessage::SnapshotReply(reply) => {
                 info!(
-                    conn_id = conn_id.get(),
+                    conn_id = %conn_id,
                     snapshot_id = reply.snapshot_id,
                     has_snapshot = reply.snapshot.is_some(),
                     "received snapshot reply"
@@ -189,7 +189,7 @@ async fn read_messages(
                         }
                     } else {
                         debug!(
-                            conn_id = conn_id.get(),
+                            conn_id = %conn_id,
                             snapshot_id = reply.snapshot_id,
                             "snapshot reply for unknown id"
                         );
@@ -202,7 +202,7 @@ async fn read_messages(
             }
             ClientMessage::DeltaBatch(batch) => {
                 if let Err(e) = persist_delta_batch(state.db.clone(), conn_id, batch).await {
-                    warn!(conn_id = conn_id.get(), %e, "failed to persist delta batch");
+                    warn!(conn_id = %conn_id, %e, "failed to persist delta batch");
                 }
             }
             ClientMessage::CutAck(ack) => {
@@ -215,7 +215,7 @@ async fn read_messages(
                     cut.pending_conn_ids.remove(&conn_id);
                     cut.acks.insert(conn_id, ack);
                     info!(
-                        conn_id = conn_id.get(),
+                        conn_id = %conn_id,
                         cut_id = %cut_id.0,
                         pending_connections = cut.pending_conn_ids.len(),
                         acked_connections = cut.acks.len(),
@@ -223,7 +223,7 @@ async fn read_messages(
                     );
                 } else {
                     warn!(
-                        conn_id = conn_id.get(),
+                        conn_id = %conn_id,
                         cut_id = %cut_id.0,
                         "received cut ack for unknown cut"
                     );
@@ -238,12 +238,12 @@ async fn read_messages(
                 )
                 .await
                 {
-                    warn!(conn_id = conn_id.get(), %e, "failed to persist cut ack");
+                    warn!(conn_id = %conn_id, %e, "failed to persist cut ack");
                 }
             }
             ClientMessage::Error(msg) => {
                 warn!(
-                    conn_id = conn_id.get(),
+                    conn_id = %conn_id,
                     process_name = %msg.process_name,
                     stage = %msg.stage,
                     error = %msg.error,
@@ -260,16 +260,14 @@ async fn read_messages(
                         .ok_or_else(|| {
                             format!(
                                 "invariant violated: unknown connection {} for backtrace {}",
-                                conn_id.get(),
-                                record.id.get()
+                                conn_id, record.id
                             )
                         })?
                 };
                 if !handshake_received {
                     return Err(format!(
                         "protocol violation: received backtrace {} before handshake on conn {}",
-                        record.id.get(),
-                        conn_id.get()
+                        record.id, conn_id
                     ));
                 }
                 let backtrace_id = record.id;
@@ -279,8 +277,8 @@ async fn read_messages(
                         .await?;
                 if !inserted {
                     debug!(
-                        conn_id = conn_id.get(),
-                        backtrace_id = backtrace_id.get(),
+                        conn_id = %conn_id,
+                        backtrace_id = %backtrace_id,
                         "backtrace already existed in storage"
                     );
                 }

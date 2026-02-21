@@ -53,7 +53,7 @@ pub(crate) fn load_backtrace_frame_batches(
             Some(existing_conn_id) => {
                 return Err(format!(
                     "invariant violated: backtrace_id {} appears on multiple connections ({existing_conn_id}, {conn_id})",
-                    backtrace_id.get()
+                    backtrace_id
                 ));
             }
         }
@@ -87,7 +87,7 @@ pub(crate) fn load_backtrace_frame_batches(
         if raw_rows.is_empty() {
             return Err(format!(
                 "invariant violated: referenced backtrace {} missing in storage",
-                backtrace_id.get()
+                backtrace_id
             ));
         }
 

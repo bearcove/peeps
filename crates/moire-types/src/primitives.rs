@@ -167,8 +167,8 @@ impl ConnectionId {
         Self(id)
     }
 
-    pub fn get(self) -> u64 {
-        self.0
+    pub fn next(self) -> Self {
+        Self::new(self.0.saturating_add(1))
     }
 }
 
