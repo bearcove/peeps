@@ -756,6 +756,8 @@ export function filterLoners(
   };
 }
 
+const pairKey = (a: string, b: string): string => (a < b ? `${a}<->${b}` : `${b}<->${a}`);
+
 // f[impl graph.collapse] f[impl graph.collapse.id] f[impl graph.collapse.no-dup]
 export function collapseEdgesThroughHiddenNodes(
   edges: EdgeDef[],
@@ -774,7 +776,6 @@ export function collapseEdgesThroughHiddenNodes(
     (edge) => visibleEntityIds.has(edge.source) && visibleEntityIds.has(edge.target),
   );
   const resultById = new Map<string, EdgeDef>(visibleDirectEdges.map((edge) => [edge.id, edge]));
-  const pairKey = (a: string, b: string): string => (a < b ? `${a}<->${b}` : `${b}<->${a}`);
   const visibleDirectPairs = new Set(visibleDirectEdges.map((edge) => pairKey(edge.source, edge.target)));
 
   for (const sourceId of visibleEntityIds) {

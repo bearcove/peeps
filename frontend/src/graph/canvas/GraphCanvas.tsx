@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { GraphGeometry } from "../geometry";
 import { type Camera, cameraTransform } from "./camera";
 import { useCameraController } from "./useCameraController";
@@ -133,18 +133,21 @@ export function GraphCanvas({
 
   const markerUrl = useCallback((size: number) => `url(#arrowhead-${size}-${instanceId})`, [instanceId]);
 
+  const cameraContextValue = useMemo(
+    () => ({
+      camera,
+      setCamera,
+      fitView,
+      clientToGraph,
+      viewportWidth: viewportSize.width,
+      viewportHeight: viewportSize.height,
+      markerUrl,
+    }),
+    [camera, setCamera, fitView, clientToGraph, viewportSize.width, viewportSize.height, markerUrl],
+  );
+
   return (
-    <CameraContext.Provider
-      value={{
-        camera,
-        setCamera,
-        fitView,
-        clientToGraph,
-        viewportWidth: viewportSize.width,
-        viewportHeight: viewportSize.height,
-        markerUrl,
-      }}
-    >
+    <CameraContext.Provider value={cameraContextValue}>
       <div className={`graph-canvas${className ? ` ${className}` : ""}`}>
         <svg
           ref={svgRef}

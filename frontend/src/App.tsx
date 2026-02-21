@@ -1069,6 +1069,7 @@ export function App() {
     let cancelled = false;
     async function poll() {
       appLog("startup poll loop begin");
+      // eslint-disable-next-line no-unmodified-loop-condition -- cancelled is set by cleanup closure
       while (!cancelled) {
         try {
           const conns = await apiClient.fetchConnections();
@@ -1276,7 +1277,7 @@ export function App() {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (e.key === "[" && changeFrames) {
-        const prev = changeFrames.filter((f) => f < currentFrameIndex).at(-1);
+        const prev = changeFrames.findLast((f) => f < currentFrameIndex);
         if (prev !== undefined) handleScrub(prev);
       } else if (e.key === "]" && changeFrames) {
         const next = changeFrames.find((f) => f > currentFrameIndex);

@@ -137,8 +137,8 @@ export function BacktracePanel({
           <div className="bt-section">
             <div className="bt-section-label">User frames ({userFrames.length})</div>
             <div className="bt-frame-list">
-              {/* eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames */}
               {userFrames.map((frame, index) => (
+                // eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames
                 <FrameRow key={frameKey(frame, index)} frame={frame} />
               ))}
             </div>
@@ -159,8 +159,8 @@ export function BacktracePanel({
           <div className="bt-section bt-section--system">
             <div className="bt-section-label">System frames ({systemFrames.length})</div>
             <div className="bt-frame-list">
-              {/* eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames */}
               {systemFrames.map((frame, index) => (
+                // eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames
                 <FrameRow key={frameKey(frame, index)} frame={frame} />
               ))}
             </div>
@@ -171,10 +171,10 @@ export function BacktracePanel({
           <div className="bt-section bt-section--unresolved">
             <div className="bt-section-label">Unresolved ({unresolvedFrames.length})</div>
             <div className="bt-frame-list">
-              {/* eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames */}
               {unresolvedFrames.map((frame, index) => {
                 if (!("unresolved" in frame)) return null;
                 return (
+                  // eslint-disable-next-line react/no-array-index-key -- index disambiguates recursive frames
                   <div className="bt-frame-row" key={frameKey(frame, index)}>
                     <span className="bt-fn bt-fn--unresolved">
                       {frame.unresolved.module_path}+0x{frame.unresolved.rel_pc.toString(16)}

@@ -108,10 +108,10 @@ export function createLiveApiClient(): ApiClient {
       apiLog("WS %s open", url);
       console.info(`[moire:symbolication] opening stream snapshot_id=${snapshotId} url=${url}`);
       const socket = new WebSocket(url);
-      socket.onopen = () => {
+      socket.addEventListener("open", () => {
         console.info(`[moire:symbolication] stream open snapshot_id=${snapshotId}`);
-      };
-      socket.onmessage = (event) => {
+      });
+      socket.addEventListener("message", (event) => {
         try {
           const parsed = JSON.parse(event.data) as SnapshotSymbolicationUpdate;
           console.info(
@@ -126,17 +126,17 @@ export function createLiveApiClient(): ApiClient {
           console.warn(`[moire:symbolication] parse error snapshot_id=${snapshotId}: ${error.message}`);
           if (onError) onError(error);
         }
-      };
-      socket.onerror = () => {
+      });
+      socket.addEventListener("error", () => {
         const error = new Error("[symbolication] websocket error");
         apiLog("WS %s error", url);
         console.warn(`[moire:symbolication] websocket error snapshot_id=${snapshotId}`);
         if (onError) onError(error);
-      };
-      socket.onclose = () => {
+      });
+      socket.addEventListener("close", () => {
         apiLog("WS %s closed", url);
         console.info(`[moire:symbolication] stream closed snapshot_id=${snapshotId}`);
-      };
+      });
       return () => socket.close();
     },
     startRecording: async (req?: RecordStartRequest) =>

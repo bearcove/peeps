@@ -96,7 +96,7 @@ export function RecordingTimeline({
     totalCaptureMs !== undefined;
 
   const prevChangeFrame = changeFrames
-    ? changeFrames.filter((f) => f < currentFrameIndex).at(-1)
+    ? changeFrames.findLast((f) => f < currentFrameIndex)
     : undefined;
   const nextChangeFrame = changeFrames
     ? changeFrames.find((f) => f > currentFrameIndex)

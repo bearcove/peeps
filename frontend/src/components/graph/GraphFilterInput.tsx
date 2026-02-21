@@ -246,8 +246,8 @@ export function GraphFilterInput({
               : raw;
             const chipTitle = parsed ? renderFilterChipTitle(parsed) : "remove filter token";
             return (
-              <div
-                key={`${raw}:${index}`}
+              // eslint-disable-next-line react/no-array-index-key -- index needed for duplicate tokens
+              <div key={`${raw}:${index}`}
                 className={[
                   "graph-filter-chip",
                   valid ? "graph-filter-chip--valid" : "graph-filter-chip--invalid",

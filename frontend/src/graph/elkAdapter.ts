@@ -25,6 +25,11 @@ const subgraphPaddingBase = {
   right: 20,
 };
 
+const defaultInPortId = (entityId: string, edgeId: string) => `${entityId}:in:${edgeId}`;
+const defaultOutPortId = (entityId: string, edgeId: string) => `${entityId}:out:${edgeId}`;
+const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
+const isNear = (a: Point, b: Point): boolean => distance(a, b) < 1;
+
 // ── Edge styling ──────────────────────────────────────────────
 
 export type EdgeStyle = {
@@ -99,8 +104,6 @@ export async function layoutGraph(
   const measuredHeaderHeight = Math.max(0, Math.ceil(options.subgraphHeaderHeight ?? 0));
   const subgraphElkPadding = `[top=${measuredHeaderHeight + subgraphPaddingBase.top},left=${subgraphPaddingBase.left},bottom=${subgraphPaddingBase.bottom},right=${subgraphPaddingBase.right}]`;
 
-  const defaultInPortId = (entityId: string, edgeId: string) => `${entityId}:in:${edgeId}`;
-  const defaultOutPortId = (entityId: string, edgeId: string) => `${entityId}:out:${edgeId}`;
   const edgeSourceRef = (edge: EdgeDef) => edge.sourcePort ?? defaultOutPortId(edge.source, edge.id);
   const edgeTargetRef = (edge: EdgeDef) => edge.targetPort ?? defaultInPortId(edge.target, edge.id);
 
@@ -347,9 +350,6 @@ export async function layoutGraph(
     outgoing: string[];
     points: Point[];
   };
-
-  const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
-  const isNear = (a: Point, b: Point): boolean => distance(a, b) < 1;
 
   const appendSectionStrict = (
     edgeId: string,

@@ -1188,8 +1188,8 @@ export function StorybookPage({
               <div className="ui-color-group">
                 <div className="ui-typo-kicker">Scope Palette (Light)</div>
                 <div className="ui-color-grid">
-                  {scopeLightPalette.map((color, index) => (
-                    <div key={`light-${index}`} className="ui-color-chip">
+                  {scopeLightPalette.map((color) => (
+                    <div key={color} className="ui-color-chip">
                       <span className="ui-color-chip__swatch" style={{ backgroundColor: color }} />
                       <span className="ui-color-chip__label">{color}</span>
                     </div>
@@ -1199,8 +1199,8 @@ export function StorybookPage({
               <div className="ui-color-group">
                 <div className="ui-typo-kicker">Scope Palette (Dark)</div>
                 <div className="ui-color-grid">
-                  {scopeDarkPalette.map((color, index) => (
-                    <div key={`dark-${index}`} className="ui-color-chip">
+                  {scopeDarkPalette.map((color) => (
+                    <div key={color} className="ui-color-chip">
                       <span className="ui-color-chip__swatch" style={{ backgroundColor: color }} />
                       <span className="ui-color-chip__label">{color}</span>
                     </div>
