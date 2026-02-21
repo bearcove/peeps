@@ -102,7 +102,6 @@ export function BacktraceBadge({
       )}
       <button type="button" className="bt-badge-expand" onClick={onExpand} title="View full backtrace">
         <Stack size={11} weight="bold" />
-        View backtrace
       </button>
     </span>
   );
