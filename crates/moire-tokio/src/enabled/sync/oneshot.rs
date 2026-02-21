@@ -1,7 +1,9 @@
 // r[impl api.oneshot]
 
+pub use tokio::sync::oneshot::error;
+
 use moire_runtime::{
-    instrument_operation_on, new_event, record_event, EntityHandle, WeakEntityHandle,
+    EntityHandle, WeakEntityHandle, instrument_operation_on, new_event, record_event,
 };
 use moire_types::{EdgeKind, EventKind, EventTarget, OneshotRxEntity, OneshotTxEntity};
 use std::future::{Future, IntoFuture};
