@@ -92,6 +92,7 @@ Exact filenames can shift, but concerns should not.
 - Move pending frame jobs, cache operations, and resolver logic into `symbolication/`.
 - Progress:
   - Snapshot backtrace/frame catalog loading and frame-id tests moved to `snapshot/table.rs`.
+  - Symbolication pass logic (pending jobs, cache lookup/upsert, top-frame update) moved to `symbolication/mod.rs`.
 
 ### 5) Extract recording flow
 
