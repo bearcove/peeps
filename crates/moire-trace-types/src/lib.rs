@@ -77,6 +77,7 @@ macro_rules! define_u64_id {
             }
 
             #[cfg(test)]
+            #[allow(dead_code)]
             fn from_prefixed_counter(prefix: u16, counter: u64) -> Result<Self, InvariantError> {
                 if counter > ID_COUNTER_MAX_U64 {
                     return Err(InvariantError::IdOutOfRange {
