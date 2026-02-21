@@ -801,7 +801,7 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
         }
     };
 
-    let mut response = SnapshotCutResponse {
+    let response = SnapshotCutResponse {
         snapshot_id,
         captured_at_unix_ms,
         processes,
@@ -825,34 +825,10 @@ async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
             },
         );
     }
-    let table = load_snapshot_backtrace_table(state.db.clone(), &pairs).await;
-    response.backtraces = table.backtraces;
-    response.frames = table.frames;
-    let completed_frames = response
-        .frames
-        .iter()
-        .filter(|record| !is_pending_frame(&record.frame))
-        .count();
-    let resolved_frames = response
-        .frames
-        .iter()
-        .filter(|record| is_resolved_frame(&record.frame))
-        .count();
-    let pending_frames = response.frames.len().saturating_sub(completed_frames);
-    let unresolved_frames = response
-        .frames
-        .len()
-        .saturating_sub(resolved_frames)
-        .saturating_sub(pending_frames);
     info!(
         snapshot_id,
-        backtrace_count = response.backtraces.len(),
-        frame_count = response.frames.len(),
-        completed_frames,
-        resolved_frames,
-        unresolved_frames,
-        pending_frames,
-        "snapshot backtrace/frame table assembled"
+        backtrace_pairs = pairs.len(),
+        "snapshot queued for symbolication stream"
     );
     remember_snapshot(state, &response).await;
     response
