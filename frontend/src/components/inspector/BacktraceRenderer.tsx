@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Stack, ArrowSquareOut } from "@phosphor-icons/react";
+import { Stack, ArrowSquareOut, FileRs } from "@phosphor-icons/react";
 import type { SnapshotBacktraceFrame } from "../../api/types.generated";
 import type { ResolvedSnapshotBacktrace } from "../../snapshot";
 import "./BacktraceRenderer.css";
@@ -94,14 +94,15 @@ export function BacktraceBadge({
           href={href}
           title={`Open ${resolvedTop!.source_file}${resolvedTop!.line != null ? `:${resolvedTop!.line}` : ""} in Zed`}
         >
+          <FileRs size={12} weight="bold" className="bt-badge-file-icon" />
           {location}
         </a>
       ) : (
         <span className="bt-badge-location bt-badge-location--pending">pending…</span>
       )}
       <button type="button" className="bt-badge-expand" onClick={onExpand} title="View full backtrace">
-        <Stack size={10} weight="bold" />
-        {backtrace.frames.length}f
+        <Stack size={11} weight="bold" />
+        View backtrace
       </button>
     </span>
   );

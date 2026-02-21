@@ -2,53 +2,64 @@
 
 .bt-badge {
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 4px 2px 8px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--bg-elevated) 50%, transparent);
+  align-items: stretch;
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   white-space: nowrap;
+}
+
+a.bt-badge-location,
+.bt-badge-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
   line-height: 1.4;
+  white-space: nowrap;
 }
 
 a.bt-badge-location {
-  color: var(--text-primary);
-  font-weight: 500;
+  border-radius: var(--radius-control) 0 0 var(--radius-control);
   text-decoration: none;
+  font-weight: 500;
 }
 
 a.bt-badge-location:hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-surface));
   color: var(--accent);
-  text-decoration: underline;
+}
+
+.bt-badge-file-icon {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+a.bt-badge-location:hover .bt-badge-file-icon {
+  color: var(--accent);
 }
 
 .bt-badge-location--pending {
+  border-radius: var(--radius-control);
   color: var(--text-muted);
   font-style: italic;
 }
 
 .bt-badge-expand {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 1px 5px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  border-left: none;
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  color: var(--text-secondary);
   cursor: pointer;
-  line-height: 1.4;
+  appearance: none;
 }
 
 .bt-badge-expand:hover {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  border-color: var(--border-default);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-surface));
+  color: var(--accent);
 }
 
 /* ── Function name coloring ──────────────────────────────── */
