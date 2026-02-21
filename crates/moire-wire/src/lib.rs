@@ -1,5 +1,7 @@
 use facet::Facet;
-pub use moire_trace_types::{BacktraceRecord, FrameKey as BacktraceFrameKey, ModuleId};
+pub use moire_trace_types::{
+    BacktraceRecord, FrameKey as BacktraceFrameKey, ModuleId, RelPc, RuntimeBase,
+};
 use moire_types::{CutAck, CutRequest, PullChangesResponse, Snapshot};
 use std::fmt;
 
@@ -132,7 +134,7 @@ pub enum ModuleIdentity {
 pub struct ModuleManifestEntry {
     pub module_id: ModuleId,
     pub module_path: String,
-    pub runtime_base: u64,
+    pub runtime_base: RuntimeBase,
     pub identity: ModuleIdentity,
     pub arch: String,
 }
@@ -291,7 +293,7 @@ mod tests {
             module_manifest: vec![ModuleManifestEntry {
                 module_id,
                 module_path: "/usr/lib/libvixenfs_swift.dylib".into(),
-                runtime_base: 4_294_967_296,
+                runtime_base: RuntimeBase::new(4_294_967_296).expect("valid runtime_base"),
                 identity: ModuleIdentity::DebugId("debugid:def456".into()),
                 arch: "aarch64".into(),
             }],
@@ -339,11 +341,11 @@ mod tests {
             frames: vec![
                 BacktraceFrameKey {
                     module_id: module_a,
-                    rel_pc: 4096,
+                    rel_pc: RelPc::new(4096).expect("valid rel_pc"),
                 },
                 BacktraceFrameKey {
                     module_id: module_b,
-                    rel_pc: 8192,
+                    rel_pc: RelPc::new(8192).expect("valid rel_pc"),
                 },
             ],
         }));

@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use facet::Facet;
+use moire_trace_types::RelPc;
 use object::{Object, ObjectSegment};
 use rusqlite::Transaction;
 use rusqlite_facet::StatementFacetExt;
@@ -48,7 +49,7 @@ struct PendingFrameJob {
     frame_index: u32,
     module_path: String,
     module_identity: String,
-    rel_pc: u64,
+    rel_pc: RelPc,
 }
 
 #[derive(Facet)]
@@ -60,13 +61,13 @@ struct PendingFrameLookupParams {
 #[derive(Facet)]
 struct CacheLookupParams<'a> {
     module_identity: &'a str,
-    rel_pc: u64,
+    rel_pc: RelPc,
 }
 
 #[derive(Facet)]
 struct UpsertSymbolicationCacheParams {
     module_identity: String,
-    rel_pc: u64,
+    rel_pc: RelPc,
     status: String,
     function_name: Option<String>,
     crate_name: Option<String>,
@@ -84,7 +85,7 @@ struct UpsertSymbolicatedFrameParams {
     backtrace_id: u64,
     frame_index: u32,
     module_path: String,
-    rel_pc: u64,
+    rel_pc: RelPc,
     status: String,
     function_name: Option<String>,
     crate_name: Option<String>,
@@ -349,12 +350,14 @@ fn resolve_frame_symbolication(
     };
 
     // r[impl symbolicate.addr-space]
-    let lookup_pc = match linked_image_base.checked_add(job.rel_pc) {
+    let lookup_pc = match linked_image_base.checked_add(job.rel_pc.get()) {
         Some(pc) => pc,
         None => {
             return unresolved(format!(
                 "address overflow combining linked image base 0x{:x} with rel_pc 0x{:x} for '{}'",
-                linked_image_base, job.rel_pc, job.module_path
+                linked_image_base,
+                job.rel_pc.get(),
+                job.module_path
             ));
         }
     };
@@ -368,7 +371,8 @@ fn resolve_frame_symbolication(
         Err(error) => {
             return unresolved(format!(
                 "lookup frames for '{}' +0x{:x}: {error}",
-                job.module_path, job.rel_pc
+                job.module_path,
+                job.rel_pc.get()
             ));
         }
     };
@@ -391,7 +395,8 @@ fn resolve_frame_symbolication(
                             Err(error) => {
                                 return unresolved(format!(
                                     "decode function name for '{}' +0x{:x}: {error}",
-                                    job.module_path, job.rel_pc
+                                    job.module_path,
+                                    job.rel_pc.get()
                                 ));
                             }
                         },
@@ -413,7 +418,8 @@ fn resolve_frame_symbolication(
             Err(error) => {
                 return unresolved(format!(
                     "iterate frames for '{}' +0x{:x}: {error}",
-                    job.module_path, job.rel_pc
+                    job.module_path,
+                    job.rel_pc.get()
                 ));
             }
         }
@@ -427,7 +433,8 @@ fn resolve_frame_symbolication(
     let Some(source_file_path) = source_file else {
         return unresolved(format!(
             "no source location in debug info for '{}' +0x{:x}",
-            job.module_path, job.rel_pc
+            job.module_path,
+            job.rel_pc.get()
         ));
     };
     let function_name = function_name.unwrap_or_else(|| {
@@ -437,7 +444,7 @@ fn resolve_frame_symbolication(
                 .rsplit('/')
                 .next()
                 .unwrap_or(job.module_path.as_str()),
-            job.rel_pc
+            job.rel_pc.get()
         )
     });
     let crate_name = function_name
@@ -502,7 +509,7 @@ fn linked_image_base_for_file(path: &FsPath) -> Result<u64, String> {
 fn lookup_symbolication_cache(
     tx: &Transaction<'_>,
     module_identity: &str,
-    rel_pc: u64,
+    rel_pc: RelPc,
 ) -> Result<Option<SymbolicationCacheEntry>, String> {
     let mut stmt = tx
         .prepare(
@@ -522,7 +529,7 @@ fn lookup_symbolication_cache(
 fn upsert_symbolication_cache(
     tx: &Transaction<'_>,
     module_identity: &str,
-    rel_pc: u64,
+    rel_pc: RelPc,
     cache: &SymbolicationCacheEntry,
 ) -> Result<(), String> {
     let mut stmt = tx
@@ -569,7 +576,7 @@ fn upsert_symbolicated_frame(
     backtrace_id: u64,
     frame_index: u32,
     module_path: &str,
-    rel_pc: u64,
+    rel_pc: RelPc,
     cache: &SymbolicationCacheEntry,
 ) -> Result<(), String> {
     let mut stmt = tx

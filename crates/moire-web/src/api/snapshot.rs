@@ -15,7 +15,7 @@ use moire_wire::{ServerMessage, SnapshotRequest, encode_server_message_default};
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
-use crate::app::{AppState, SnapshotPending, SnapshotStreamState, remember_snapshot};
+use crate::app::{AppState, ConnectionId, SnapshotPending, SnapshotStreamState, remember_snapshot};
 use crate::db::fetch_scope_entity_links_blocking;
 use crate::snapshot::table::{
     collect_snapshot_backtrace_pairs, is_pending_frame, load_snapshot_backtrace_table,
@@ -232,7 +232,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
 
     let snapshot_id;
     let notify;
-    let txs: Vec<(u64, mpsc::Sender<Vec<u8>>)>;
+    let txs: Vec<(ConnectionId, mpsc::Sender<Vec<u8>>)>;
     {
         let mut guard = state.inner.lock().await;
         snapshot_id = guard.next_snapshot_id;
@@ -246,7 +246,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
 
         notify = Arc::new(tokio::sync::Notify::new());
         if !txs.is_empty() {
-            let pending_conn_ids: BTreeSet<u64> = txs.iter().map(|(id, _)| *id).collect();
+            let pending_conn_ids: BTreeSet<ConnectionId> = txs.iter().map(|(id, _)| *id).collect();
             guard.pending_snapshots.insert(
                 snapshot_id,
                 SnapshotPending {
@@ -329,7 +329,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
     let (pending, conn_info) = {
         let mut guard = state.inner.lock().await;
         let pending = guard.pending_snapshots.remove(&snapshot_id);
-        let conn_info: HashMap<u64, (String, u32)> = guard
+        let conn_info: HashMap<ConnectionId, (String, u32)> = guard
             .connections
             .iter()
             .map(|(id, conn)| (*id, (conn.process_name.clone(), conn.pid)))
@@ -340,7 +340,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
     let (processes, timed_out_processes) = match pending {
         None => (vec![], vec![]),
         Some(p) => {
-            let partial: Vec<(u64, String, u32, u64, moire_types::Snapshot)> = p
+            let partial: Vec<(ConnectionId, String, u32, u64, moire_types::Snapshot)> = p
                 .replies
                 .into_iter()
                 .filter_map(|(conn_id, reply)| {
@@ -348,7 +348,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
                     let (process_name, pid) = conn_info
                         .get(&conn_id)
                         .map(|(name, pid)| (name.clone(), *pid))
-                        .unwrap_or_else(|| (format!("unknown-{conn_id}"), 0));
+                        .unwrap_or_else(|| (format!("unknown-{}", conn_id.get()), 0));
                     Some((conn_id, process_name, pid, reply.ptime_now_ms, snapshot))
                 })
                 .collect();
@@ -357,7 +357,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
             for (conn_id, process_name, pid, ptime_now_ms, snapshot) in partial {
                 let db = state.db.clone();
                 let scope_entity_links = tokio::task::spawn_blocking(move || {
-                    fetch_scope_entity_links_blocking(&db, conn_id)
+                    fetch_scope_entity_links_blocking(&db, conn_id.get())
                 })
                 .await
                 .unwrap_or_else(|e| {
@@ -369,7 +369,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
                     vec![]
                 });
                 processes.push(ProcessSnapshotView {
-                    process_id: conn_id,
+                    process_id: conn_id.get(),
                     process_name,
                     pid,
                     ptime_now_ms,
@@ -386,9 +386,9 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
                     let (process_name, pid) = conn_info
                         .get(&conn_id)
                         .map(|(name, pid)| (name.clone(), *pid))
-                        .unwrap_or_else(|| (format!("unknown-{conn_id}"), 0));
+                        .unwrap_or_else(|| (format!("unknown-{}", conn_id.get()), 0));
                     TimedOutProcess {
-                        process_id: conn_id,
+                        process_id: conn_id.get(),
                         process_name,
                         pid,
                     }

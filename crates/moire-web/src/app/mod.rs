@@ -18,6 +18,9 @@ use moire_types::SnapshotCutResponse;
 use moire_wire::SnapshotReply;
 use tokio::sync::{Mutex, Notify, mpsc};
 
+pub mod ids;
+pub use ids::{ConnectionId, CutOrdinal, SessionOrdinal};
+
 #[derive(Clone)]
 pub struct AppState {
     pub inner: Arc<Mutex<ServerState>>,
@@ -31,12 +34,12 @@ pub struct DevProxyState {
 }
 
 pub struct ServerState {
-    pub next_conn_id: u64,
-    pub next_cut_id: u64,
+    pub next_conn_id: ConnectionId,
+    pub next_cut_id: CutOrdinal,
     pub next_snapshot_id: i64,
-    pub next_session_id: u64,
-    pub connections: HashMap<u64, ConnectedProcess>,
-    pub cuts: BTreeMap<String, CutState>,
+    pub next_session_id: SessionOrdinal,
+    pub connections: HashMap<ConnectionId, ConnectedProcess>,
+    pub cuts: BTreeMap<moire_types::CutId, CutState>,
     pub pending_snapshots: HashMap<i64, SnapshotPending>,
     pub snapshot_streams: HashMap<i64, SnapshotStreamState>,
     pub last_snapshot_json: Option<String>,
@@ -53,13 +56,13 @@ pub struct ConnectedProcess {
 
 pub struct CutState {
     pub requested_at_ns: i64,
-    pub pending_conn_ids: BTreeSet<u64>,
-    pub acks: BTreeMap<u64, moire_types::CutAck>,
+    pub pending_conn_ids: BTreeSet<ConnectionId>,
+    pub acks: BTreeMap<ConnectionId, moire_types::CutAck>,
 }
 
 pub struct SnapshotPending {
-    pub pending_conn_ids: BTreeSet<u64>,
-    pub replies: HashMap<u64, SnapshotReply>,
+    pub pending_conn_ids: BTreeSet<ConnectionId>,
+    pub replies: HashMap<ConnectionId, SnapshotReply>,
     pub notify: Arc<Notify>,
 }
 
@@ -70,10 +73,10 @@ pub struct SnapshotStreamState {
 impl ServerState {
     pub fn new(next_conn_id: u64) -> Self {
         Self {
-            next_conn_id,
-            next_cut_id: 1,
+            next_conn_id: ConnectionId::new(next_conn_id),
+            next_cut_id: CutOrdinal::ONE,
             next_snapshot_id: 1,
-            next_session_id: 1,
+            next_session_id: SessionOrdinal::ONE,
             connections: HashMap::new(),
             cuts: BTreeMap::new(),
             pending_snapshots: HashMap::new(),

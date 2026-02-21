@@ -2,7 +2,7 @@ use ctor::ctor;
 use moire_trace_capture::{
     CaptureOptions, CapturedBacktrace, capture_current, validate_frame_pointers_or_panic,
 };
-use moire_trace_types::{BacktraceId, FrameKey, ModuleId};
+use moire_trace_types::{BacktraceId, FrameKey, ModuleId, RelPc, RuntimeBase};
 use moire_types::{
     EntityId, Event, EventKind, EventTarget, ProcessScopeBody, ScopeBody, ScopeId, TaskScopeBody,
 };
@@ -43,7 +43,7 @@ static MODULE_STATE: OnceLock<StdMutex<ModuleState>> = OnceLock::new();
 #[derive(Default)]
 struct ModuleState {
     revision: u64,
-    by_key: BTreeMap<(u64, String), ModuleId>,
+    by_key: BTreeMap<(RuntimeBase, String), ModuleId>,
     by_id: BTreeMap<ModuleId, moire_wire::ModuleManifestEntry>,
 }
 
@@ -85,9 +85,9 @@ fn module_state() -> &'static StdMutex<ModuleState> {
     MODULE_STATE.get_or_init(|| StdMutex::new(ModuleState::default()))
 }
 
-fn module_identity_for(path: &str, runtime_base: u64) -> moire_wire::ModuleIdentity {
+fn module_identity_for(path: &str, runtime_base: RuntimeBase) -> moire_wire::ModuleIdentity {
     // Deterministic runtime identity until build-id/debug-id extraction is wired.
-    moire_wire::ModuleIdentity::DebugId(format!("runtime:{runtime_base:x}:{path}"))
+    moire_wire::ModuleIdentity::DebugId(format!("runtime:{:x}:{path}", runtime_base.get()))
 }
 
 fn remap_and_register_backtrace(captured: CapturedBacktrace) -> moire_wire::BacktraceRecord {
@@ -136,7 +136,8 @@ fn remap_and_register_backtrace(captured: CapturedBacktrace) -> moire_wire::Back
                 });
             FrameKey {
                 module_id,
-                rel_pc: frame.rel_pc,
+                rel_pc: RelPc::new(frame.rel_pc.get())
+                    .expect("invariant violated: rel_pc must be JS-safe"),
             }
         })
         .collect();

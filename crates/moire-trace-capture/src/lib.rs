@@ -1,4 +1,6 @@
-use moire_trace_types::{BacktraceId, BacktraceRecord, InvariantError, ModuleId, ModulePath};
+use moire_trace_types::{
+    BacktraceId, BacktraceRecord, InvariantError, ModuleId, ModulePath, RuntimeBase,
+};
 use std::error::Error;
 use std::fmt;
 use std::num::NonZeroUsize;
@@ -24,7 +26,7 @@ impl Default for CaptureOptions {
 pub struct CapturedModule {
     pub id: ModuleId,
     pub path: ModulePath,
-    pub runtime_base: u64,
+    pub runtime_base: RuntimeBase,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,7 +52,7 @@ pub enum CaptureError {
     },
     IpBeforeModuleBase {
         ip: u64,
-        module_base: u64,
+        module_base: RuntimeBase,
     },
     InvariantViolation {
         context: &'static str,
@@ -95,10 +97,13 @@ impl fmt::Display for CaptureError {
                     "invariant violated: module base must be non-zero for ip=0x{ip:x}"
                 )
             }
-            Self::IpBeforeModuleBase { ip, module_base } => write!(
-                f,
-                "invariant violated: instruction pointer 0x{ip:x} is below module base 0x{module_base:x}"
-            ),
+            Self::IpBeforeModuleBase { ip, module_base } => {
+                write!(
+                    f,
+                    "invariant violated: instruction pointer 0x{ip:x} is below module base 0x{:x}",
+                    module_base.get()
+                )
+            }
             Self::InvariantViolation { context, source } => {
                 write!(f, "invariant violated in {context}: {source}")
             }
@@ -140,7 +145,9 @@ pub fn capture_current(
 #[cfg(unix)]
 mod platform {
     use super::{CaptureError, CaptureOptions, CapturedBacktrace, CapturedModule};
-    use moire_trace_types::{BacktraceId, BacktraceRecord, FrameKey, ModuleId, ModulePath};
+    use moire_trace_types::{
+        BacktraceId, BacktraceRecord, FrameKey, ModuleId, ModulePath, RelPc, RuntimeBase,
+    };
     use std::collections::BTreeMap;
     use std::ffi::{CStr, c_void};
     use std::sync::{Mutex as StdMutex, OnceLock};
@@ -259,7 +266,7 @@ mod platform {
             return Err(CaptureError::EmptyBacktrace);
         }
 
-        let mut modules_by_key: BTreeMap<(u64, String), ModuleId> = BTreeMap::new();
+        let mut modules_by_key: BTreeMap<(RuntimeBase, String), ModuleId> = BTreeMap::new();
         let mut modules = Vec::new();
         let mut frames = Vec::with_capacity(raw_ips.len());
         for ip in raw_ips {
@@ -284,17 +291,16 @@ mod platform {
                 module_id
             };
 
-            if ip < module.runtime_base {
+            if ip < module.runtime_base.get() {
                 return Err(CaptureError::IpBeforeModuleBase {
                     ip,
                     module_base: module.runtime_base,
                 });
             }
+            let rel_pc = RelPc::new(ip - module.runtime_base.get())
+                .map_err(|err| CaptureError::invariant("rel_pc", err))?;
 
-            frames.push(FrameKey {
-                module_id,
-                rel_pc: ip - module.runtime_base,
-            });
+            frames.push(FrameKey { module_id, rel_pc });
         }
 
         let backtrace = BacktraceRecord::new(backtrace_id, frames)
@@ -339,7 +345,7 @@ mod platform {
 
     #[derive(Debug, Clone)]
     struct RawModuleInfo {
-        runtime_base: u64,
+        runtime_base: RuntimeBase,
         path: String,
     }
 
@@ -380,10 +386,8 @@ mod platform {
             return Err(CaptureError::ZeroModuleBase { ip });
         }
 
-        let runtime_base = info.dli_fbase as usize as u64;
-        if runtime_base == 0 {
-            return Err(CaptureError::ZeroModuleBase { ip });
-        }
+        let runtime_base = RuntimeBase::new(info.dli_fbase as usize as u64)
+            .map_err(|err| CaptureError::invariant("runtime_base", err))?;
 
         if info.dli_fname.is_null() {
             return Err(CaptureError::MissingModulePath { ip });

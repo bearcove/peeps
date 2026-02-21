@@ -1,5 +1,6 @@
+use crate::{CutId, SessionId};
 use facet::Facet;
-use moire_trace_types::{BacktraceId, FrameId};
+use moire_trace_types::{BacktraceId, FrameId, RelPc};
 
 /// API response for connected processes.
 #[derive(Facet)]
@@ -17,14 +18,14 @@ pub struct ConnectedProcessInfo {
 
 #[derive(Facet)]
 pub struct TriggerCutResponse {
-    pub cut_id: String,
+    pub cut_id: CutId,
     pub requested_at_ns: i64,
     pub requested_connections: usize,
 }
 
 #[derive(Facet)]
 pub struct CutStatusResponse {
-    pub cut_id: String,
+    pub cut_id: CutId,
     pub requested_at_ns: i64,
     pub pending_connections: usize,
     pub acked_connections: usize,
@@ -103,7 +104,7 @@ pub struct BacktraceFrameResolved {
 #[derive(Facet, Clone, Debug, PartialEq, Eq)]
 pub struct BacktraceFrameUnresolved {
     pub module_path: String,
-    pub rel_pc: u64,
+    pub rel_pc: RelPc,
     pub reason: String,
 }
 
@@ -155,7 +156,7 @@ pub struct RecordCurrentResponse {
 
 #[derive(Facet)]
 pub struct RecordingSessionInfo {
-    pub session_id: String,
+    pub session_id: SessionId,
     pub status: RecordingSessionStatus,
     pub interval_ms: u32,
     pub started_at_unix_ms: i64,

@@ -2,8 +2,8 @@ use facet::Facet;
 #[cfg(feature = "rusqlite")]
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use std::fmt;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[derive(Facet, Clone, Copy, Debug, PartialEq, Eq)]
@@ -119,6 +119,10 @@ pub struct ScopeId(pub(crate) String);
 #[facet(transparent)]
 pub struct EventId(pub(crate) String);
 
+#[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[facet(transparent)]
+pub struct SessionId(pub(crate) String);
+
 impl EntityId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
@@ -142,6 +146,20 @@ impl ScopeId {
 impl EventId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl SessionId {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    pub fn from_ordinal(value: u64) -> Self {
+        Self(format!("session:{value}"))
     }
 
     pub fn as_str(&self) -> &str {

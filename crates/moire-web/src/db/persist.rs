@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use facet::Facet;
-use moire_trace_types::ModuleId;
+use moire_trace_types::{ModuleId, RelPc, RuntimeBase};
 use moire_wire::{BacktraceRecord, ModuleIdentity, ModuleManifestEntry};
 use rusqlite_facet::{ConnectionFacetExt, StatementFacetExt};
 
@@ -11,7 +11,7 @@ use crate::util::time::{now_nanos, to_i64_u64};
 #[derive(Clone)]
 pub struct BacktraceFramePersist {
     pub frame_index: u32,
-    pub rel_pc: u64,
+    pub rel_pc: RelPc,
     pub module_path: String,
     pub module_identity: String,
 }
@@ -22,7 +22,7 @@ pub struct StoredModuleManifestEntry {
     pub module_path: String,
     pub module_identity: String,
     pub arch: String,
-    pub runtime_base: u64,
+    pub runtime_base: RuntimeBase,
 }
 
 #[derive(Facet)]
@@ -52,7 +52,7 @@ struct ConnectionModuleInsertParams {
     module_path: String,
     module_identity: String,
     arch: String,
-    runtime_base: u64,
+    runtime_base: RuntimeBase,
 }
 
 #[derive(Facet)]
@@ -70,7 +70,7 @@ struct BacktraceFrameInsertParams {
     frame_index: u32,
     module_path: String,
     module_identity: String,
-    rel_pc: u64,
+    rel_pc: RelPc,
 }
 
 #[derive(Facet)]

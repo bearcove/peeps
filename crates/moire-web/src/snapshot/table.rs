@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 
-use moire_trace_types::FrameId;
+use moire_trace_types::{FrameId, RelPc};
 use moire_types::{
     BacktraceFrameResolved, BacktraceFrameUnresolved, SnapshotBacktraceFrame, SnapshotCutResponse,
     SnapshotFrameRecord,
@@ -48,7 +48,7 @@ pub fn is_pending_frame(frame: &SnapshotBacktraceFrame) -> bool {
 struct FrameDedupKey {
     module_identity: String,
     module_path: String,
-    rel_pc: u64,
+    rel_pc: RelPc,
 }
 
 pub async fn load_snapshot_backtrace_table(
@@ -148,10 +148,10 @@ fn load_snapshot_backtrace_table_blocking(
                             assigned.get(),
                             existing_key.module_identity,
                             existing_key.module_path,
-                            existing_key.rel_pc,
+                            existing_key.rel_pc.get(),
                             key.module_identity,
                             key.module_path,
-                            key.rel_pc
+                            key.rel_pc.get()
                         ));
                     }
                     frame_id_by_key.insert(key, assigned);
@@ -195,7 +195,9 @@ fn merge_frame_state(
         (SnapshotBacktraceFrame::Resolved(a), SnapshotBacktraceFrame::Resolved(b)) if a != b => {
             return Err(format!(
                 "invariant violated: conflicting resolved symbolication for frame key ({}, {}, {:#x})",
-                key.module_identity, key.module_path, key.rel_pc
+                key.module_identity,
+                key.module_path,
+                key.rel_pc.get()
             ));
         }
         _ => {}
@@ -235,12 +237,12 @@ mod tests {
         let key_a = FrameDedupKey {
             module_identity: String::from("debug_id:abc"),
             module_path: String::from("/tmp/a"),
-            rel_pc: 0x1234,
+            rel_pc: RelPc::new(0x1234).expect("valid rel_pc"),
         };
         let key_b = FrameDedupKey {
             module_identity: String::from("debug_id:abc"),
             module_path: String::from("/tmp/a"),
-            rel_pc: 0x5678,
+            rel_pc: RelPc::new(0x5678).expect("valid rel_pc"),
         };
 
         let a1 = stable_frame_id(&key_a).expect("frame id for key_a");

@@ -163,6 +163,115 @@ define_u64_id!(
 );
 define_u64_id!(FrameId, field = "frame_id", max = JS_SAFE_INT_MAX_U64);
 
+#[derive(Facet, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[facet(transparent)]
+pub struct RuntimeBase(u64);
+
+impl RuntimeBase {
+    pub fn new(value: u64) -> Result<Self, InvariantError> {
+        if value == 0 {
+            return Err(InvariantError::ZeroId("runtime_base"));
+        }
+        if value > JS_SAFE_INT_MAX_U64 {
+            return Err(InvariantError::IdOutOfRange {
+                field: "runtime_base",
+                max: JS_SAFE_INT_MAX_U64,
+                got: value,
+            });
+        }
+        Ok(Self(value))
+    }
+
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Facet, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[facet(transparent)]
+pub struct RelPc(u64);
+
+impl RelPc {
+    pub fn new(value: u64) -> Result<Self, InvariantError> {
+        if value > JS_SAFE_INT_MAX_U64 {
+            return Err(InvariantError::IdOutOfRange {
+                field: "rel_pc",
+                max: JS_SAFE_INT_MAX_U64,
+                got: value,
+            });
+        }
+        Ok(Self(value))
+    }
+
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl rusqlite::types::ToSql for RuntimeBase {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        let value = i64::try_from(self.0).map_err(|error| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("runtime_base does not fit i64: {error}"),
+            )))
+        })?;
+        Ok(value.into())
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl rusqlite::types::FromSql for RuntimeBase {
+    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        let value = i64::column_result(value)?;
+        let value = u64::try_from(value).map_err(|error| {
+            rusqlite::types::FromSqlError::Other(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("runtime_base must be non-negative i64: {error}"),
+            )))
+        })?;
+        RuntimeBase::new(value).map_err(|error| {
+            rusqlite::types::FromSqlError::Other(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                error.to_string(),
+            )))
+        })
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl rusqlite::types::ToSql for RelPc {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        let value = i64::try_from(self.0).map_err(|error| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("rel_pc does not fit i64: {error}"),
+            )))
+        })?;
+        Ok(value.into())
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl rusqlite::types::FromSql for RelPc {
+    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        let value = i64::column_result(value)?;
+        let value = u64::try_from(value).map_err(|error| {
+            rusqlite::types::FromSqlError::Other(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("rel_pc must be non-negative i64: {error}"),
+            )))
+        })?;
+        RelPc::new(value).map_err(|error| {
+            rusqlite::types::FromSqlError::Other(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                error.to_string(),
+            )))
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,7 +377,7 @@ pub enum ModuleIdentity {
 #[derive(Facet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FrameKey {
     pub module_id: ModuleId,
-    pub rel_pc: u64,
+    pub rel_pc: RelPc,
 }
 
 #[derive(Facet, Debug, Clone, PartialEq, Eq)]
@@ -290,7 +399,7 @@ impl BacktraceRecord {
 pub struct ModuleRecord {
     pub id: ModuleId,
     pub path: ModulePath,
-    pub runtime_base: u64,
+    pub runtime_base: RuntimeBase,
     pub identity: ModuleIdentity,
     pub arch: ModuleArch,
 }

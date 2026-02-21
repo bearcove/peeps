@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use moire_types::{
-    FrameSummary, RecordingImportBody, RecordingSessionInfo, RecordingSessionStatus,
+    FrameSummary, RecordingImportBody, RecordingSessionInfo, RecordingSessionStatus, SessionId,
 };
 use tokio::sync::Notify;
 
@@ -15,7 +15,7 @@ pub struct StoredFrame {
 }
 
 pub struct RecordingState {
-    pub session_id: String,
+    pub session_id: SessionId,
     pub interval_ms: u32,
     pub started_at_unix_ms: i64,
     pub stopped_at_unix_ms: Option<i64>,

@@ -1,3 +1,4 @@
+use crate::SessionId;
 use facet::Facet;
 
 /// Status of a recording session.
@@ -11,7 +12,7 @@ pub enum RecordingStatus {
 /// Metadata for a recording session.
 #[derive(Facet)]
 pub struct RecordingSession {
-    pub session_id: String,
+    pub session_id: SessionId,
     pub status: RecordingStatus,
     pub interval_ms: u32,
     pub started_at_unix_ms: i64,

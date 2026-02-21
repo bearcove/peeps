@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use axum::extract::{Path as AxumPath, State};
 use axum::response::IntoResponse;
 use moire_types::{
-    ConnectedProcessInfo, ConnectionsResponse, CutStatusResponse, TriggerCutResponse,
+    ConnectedProcessInfo, ConnectionsResponse, CutId, CutStatusResponse, TriggerCutResponse,
 };
 use moire_wire::{ServerMessage, encode_server_message_default};
 use tracing::{error, info, warn};
@@ -19,7 +19,7 @@ pub async fn api_connections(State(state): State<AppState>) -> impl IntoResponse
         .connections
         .iter()
         .map(|(conn_id, conn)| ConnectedProcessInfo {
-            conn_id: *conn_id,
+            conn_id: conn_id.get(),
             process_name: conn.process_name.clone(),
             pid: conn.pid,
         })
@@ -41,9 +41,9 @@ pub async fn api_trigger_cut(State(state): State<AppState>) -> impl IntoResponse
     let (cut_id, cut_id_string, now_ns, requested_connections, outbound) = {
         let mut guard = state.inner.lock().await;
         let cut_num = guard.next_cut_id;
-        guard.next_cut_id += 1;
-        let cut_id_string = format!("cut:{cut_num}");
-        let cut_id = moire_types::CutId(String::from(cut_id_string.as_str()));
+        guard.next_cut_id = guard.next_cut_id.next();
+        let cut_id = cut_num.to_cut_id();
+        let cut_id_string = cut_id.0.clone();
         let now_ns = now_nanos();
         let mut pending_conn_ids = BTreeSet::new();
         let mut outbound = Vec::new();
@@ -53,7 +53,7 @@ pub async fn api_trigger_cut(State(state): State<AppState>) -> impl IntoResponse
         }
 
         guard.cuts.insert(
-            cut_id_string.clone(),
+            cut_id.clone(),
             CutState {
                 requested_at_ns: now_ns,
                 pending_conn_ids,
@@ -64,7 +64,9 @@ pub async fn api_trigger_cut(State(state): State<AppState>) -> impl IntoResponse
         (cut_id, cut_id_string, now_ns, outbound.len(), outbound)
     };
 
-    let request = ServerMessage::CutRequest(moire_types::CutRequest { cut_id });
+    let request = ServerMessage::CutRequest(moire_types::CutRequest {
+        cut_id: cut_id.clone(),
+    });
     info!(
         cut_id = %cut_id_string,
         requested_connections,
@@ -86,12 +88,12 @@ pub async fn api_trigger_cut(State(state): State<AppState>) -> impl IntoResponse
 
     for (conn_id, tx) in outbound {
         if let Err(e) = tx.try_send(payload.clone()) {
-            warn!(conn_id, %e, "failed to enqueue cut request");
+            warn!(conn_id = conn_id.get(), %e, "failed to enqueue cut request");
         }
     }
 
     json_ok(&TriggerCutResponse {
-        cut_id: cut_id_string,
+        cut_id,
         requested_at_ns: now_ns,
         requested_connections,
     })
@@ -102,23 +104,24 @@ pub async fn api_cut_status(
     AxumPath(cut_id): AxumPath<String>,
 ) -> impl IntoResponse {
     let guard = state.inner.lock().await;
+    let cut_id = CutId(cut_id);
     let Some(cut) = guard.cuts.get(&cut_id) else {
         return (
             axum::http::StatusCode::NOT_FOUND,
-            format!("unknown cut id: {cut_id}"),
+            format!("unknown cut id: {}", cut_id.0),
         )
             .into_response();
     };
 
-    let pending_conn_ids: Vec<u64> = cut.pending_conn_ids.iter().copied().collect();
+    let pending_conn_ids: Vec<u64> = cut.pending_conn_ids.iter().map(|id| id.get()).collect();
     info!(
-        cut_id = %cut_id,
+        cut_id = %cut_id.0,
         pending_connections = cut.pending_conn_ids.len(),
         acked_connections = cut.acks.len(),
         "cut status requested"
     );
     json_ok(&CutStatusResponse {
-        cut_id,
+        cut_id: cut_id.clone(),
         requested_at_ns: cut.requested_at_ns,
         pending_connections: cut.pending_conn_ids.len(),
         acked_connections: cut.acks.len(),

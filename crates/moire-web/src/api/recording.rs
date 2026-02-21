@@ -5,7 +5,7 @@ use axum::body::Bytes;
 use axum::extract::{Path as AxumPath, State};
 use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
-use moire_types::{RecordCurrentResponse, RecordStartRequest, RecordingImportBody};
+use moire_types::{RecordCurrentResponse, RecordStartRequest, RecordingImportBody, SessionId};
 use tokio::sync::Notify;
 use tracing::warn;
 
@@ -48,8 +48,8 @@ pub async fn api_record_start(State(state): State<AppState>, body: Bytes) -> imp
         }
 
         let session_num = guard.next_session_id;
-        guard.next_session_id += 1;
-        let session_id = format!("session:{session_num}");
+        guard.next_session_id = guard.next_session_id.next();
+        let session_id = SessionId::from_ordinal(session_num.get());
         let interval_ms = req.interval_ms.unwrap_or(500);
         let max_frames = req.max_frames.unwrap_or(1000);
         let max_memory_bytes = req.max_memory_bytes.unwrap_or(256 * 1024 * 1024);
@@ -202,7 +202,7 @@ pub async fn api_record_export(State(state): State<AppState>) -> impl IntoRespon
 
     let filename = format!(
         "recording-{}.json",
-        session_info.session_id.replace(':', "_")
+        session_info.session_id.as_str().replace(':', "_")
     );
     let mut response = (
         StatusCode::OK,

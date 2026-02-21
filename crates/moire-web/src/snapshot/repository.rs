@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use facet::Facet;
+use moire_trace_types::RelPc;
 use rusqlite_facet::StatementFacetExt;
 
 use crate::db::Db;
@@ -10,14 +11,14 @@ pub(crate) struct StoredBacktraceFrameRow {
     pub(crate) frame_index: u32,
     pub(crate) module_path: String,
     pub(crate) module_identity: String,
-    pub(crate) rel_pc: u64,
+    pub(crate) rel_pc: RelPc,
 }
 
 #[derive(Facet, Clone)]
 pub(crate) struct SymbolicatedFrameRow {
     pub(crate) frame_index: u32,
     pub(crate) module_path: String,
-    pub(crate) rel_pc: u64,
+    pub(crate) rel_pc: RelPc,
     pub(crate) status: String,
     pub(crate) function_name: Option<String>,
     pub(crate) source_file_path: Option<String>,
