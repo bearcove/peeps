@@ -1,0 +1,15 @@
+/* prefix tokens (before last ::) */
+.bt-tok            { color: light-dark(#808080, #909090); }
+.bt-tok--sep       { color: light-dark(#b0b0b0, #555555); }
+.bt-tok--angle     { color: light-dark(#7a9abf, #6a9abf); }
+.bt-tok--kw        { color: light-dark(#5a7fbf, #7eb7f7); }
+.bt-tok--lifetime  { color: light-dark(#5a8a5a, #8ec07c); }
+.bt-tok--primitive { color: light-dark(#a0623a, #d08770); }
+.bt-tok--closure   { color: light-dark(#909090, #787878); }
+
+/* fn part (after last ::) — brighter */
+.bt-tok--fn                  { color: light-dark(#111111, #efefef); font-weight: 500; }
+.bt-tok--sep.bt-tok--fn      { color: light-dark(#808080, #909090); }
+.bt-tok--angle.bt-tok--fn    { color: light-dark(#7a9abf, #6a9abf); }
+.bt-tok--kw.bt-tok--fn       { color: light-dark(#5a7fbf, #7eb7f7); }
+.bt-tok--closure.bt-tok--fn  { color: light-dark(#909090, #787878); font-weight: 400; }

@@ -61,36 +61,6 @@ a.bt-badge-location:hover .bt-badge-file-icon {
   color: var(--accent);
 }
 
-/* ── Rust name token coloring ────────────────────────────── */
-
-/* Local contrast ladder — independent of the (currently flat) global text vars */
-.bt-frame-list {
-  --bt-fn:      light-dark(#111111, #efefef);  /* function name — nearly primary */
-  --bt-prefix:  light-dark(#808080, #909090);  /* module path prefix — clearly dim */
-  --bt-sep:     light-dark(#b0b0b0, #555555);  /* :: separators — dimmest */
-  --bt-kw:      light-dark(#5a7fbf, #7eb7f7);  /* keywords: as dyn impl */
-  --bt-angle:   light-dark(#7a9abf, #6a9abf);  /* < > brackets */
-  --bt-life:    light-dark(#5a8a5a, #8ec07c);  /* 'lifetime */
-  --bt-prim:    light-dark(#a0623a, #d08770);  /* u8 bool str … */
-  --bt-close:   light-dark(#909090, #787878);  /* {{closure}} */
-}
-
-/* prefix (before last ::) */
-.bt-tok            { color: var(--bt-prefix); }
-.bt-tok--sep       { color: var(--bt-sep); }
-.bt-tok--angle     { color: var(--bt-angle); }
-.bt-tok--kw        { color: var(--bt-kw); }
-.bt-tok--lifetime  { color: var(--bt-life); }
-.bt-tok--primitive { color: var(--bt-prim); }
-.bt-tok--closure   { color: var(--bt-close); }
-
-/* fn part (after last ::) — brighter */
-.bt-tok--fn                  { color: var(--bt-fn); font-weight: 500; }
-.bt-tok--sep.bt-tok--fn      { color: var(--bt-prefix); }
-.bt-tok--angle.bt-tok--fn    { color: var(--bt-angle); }
-.bt-tok--kw.bt-tok--fn       { color: var(--bt-kw); }
-.bt-tok--closure.bt-tok--fn  { color: var(--bt-close); font-weight: 400; }
-
 .bt-dialog-app-crate {
   font-family: var(--font-mono);
   color: var(--accent);
@@ -135,12 +105,6 @@ a.bt-badge-location:hover .bt-badge-file-icon {
   font-size: 14px;
   font-weight: 700;
   color: var(--text-primary);
-}
-
-.bt-dialog-id {
-  font-family: var(--font-mono);
-  color: var(--text-muted);
-  font-weight: 600;
 }
 
 .bt-dialog-meta {
@@ -223,48 +187,33 @@ a.bt-badge-location:hover .bt-badge-file-icon {
   font-weight: 600;
 }
 
+/* ── Function name line ──────────────────────────────────── */
+
+.bt-fn-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .bt-fn {
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+}
+
+.bt-fn--expandable {
+  cursor: pointer;
+}
+
+.bt-fn--expandable:hover {
+  text-decoration: underline dotted;
 }
 
 .bt-fn--unresolved {
   color: var(--status-warning);
-}
-
-.bt-src {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--bt-prefix);
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.bt-src:hover {
-  color: var(--accent);
-  text-decoration: underline;
-}
-
-.bt-src--none {
-  color: var(--text-muted);
-  cursor: default;
-}
-
-.bt-src--none:hover {
-  color: var(--text-muted);
-  text-decoration: none;
-}
-
-.bt-src-icon {
-  opacity: 0;
-  transition: opacity 0.1s;
-}
-
-.bt-frame-row:hover .bt-src-icon {
-  opacity: 1;
 }
 
 .bt-reason {
