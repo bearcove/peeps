@@ -1,29 +1,25 @@
+use facet::Facet;
 use facet_value::Value;
 use moire_types::{ScopeEntityLink, SqlResponse};
-use rusqlite::params;
+use rusqlite_facet::ConnectionFacetExt;
 
 use crate::db::Db;
-use crate::util::time::to_i64_u64;
+
+#[derive(Facet)]
+struct ScopeEntityLinkParams {
+    conn_id: u64,
+}
 
 pub fn fetch_scope_entity_links_blocking(
     db: &Db,
     conn_id: u64,
 ) -> Result<Vec<ScopeEntityLink>, String> {
     let conn = db.open()?;
-    let mut stmt = conn
-        .prepare("SELECT scope_id, entity_id FROM entity_scope_links WHERE conn_id = ?1")
-        .map_err(|error| format!("prepare scope_entity_links: {error}"))?;
-    let links = stmt
-        .query_map(params![to_i64_u64(conn_id)], |row| {
-            Ok(ScopeEntityLink {
-                scope_id: row.get::<_, String>(0)?,
-                entity_id: row.get::<_, String>(1)?,
-            })
-        })
-        .map_err(|error| format!("query scope_entity_links: {error}"))?
-        .filter_map(|row| row.ok())
-        .collect();
-    Ok(links)
+    conn.facet_query_ref::<ScopeEntityLink, _>(
+        "SELECT scope_id, entity_id FROM entity_scope_links WHERE conn_id = :conn_id",
+        &ScopeEntityLinkParams { conn_id },
+    )
+    .map_err(|error| format!("query scope_entity_links: {error}"))
 }
 
 pub fn sql_query_blocking(db: &Db, sql: &str) -> Result<SqlResponse, String> {
