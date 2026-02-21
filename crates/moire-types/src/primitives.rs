@@ -119,6 +119,10 @@ pub struct ScopeId(pub(crate) String);
 #[facet(transparent)]
 pub struct EventId(pub(crate) String);
 
+#[derive(Facet, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[facet(transparent)]
+pub struct ConnectionId(pub(crate) u64);
+
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[facet(transparent)]
 pub struct SessionId(pub(crate) String);
@@ -153,6 +157,27 @@ impl EventId {
     }
 }
 
+impl ConnectionId {
+    pub fn new(id: u64) -> Self {
+        assert!(
+            id > 0 && id <= moire_trace_types::JS_SAFE_INT_MAX_U64,
+            "invariant violated: connection_id must be in 1..={}, got {id}",
+            moire_trace_types::JS_SAFE_INT_MAX_U64
+        );
+        Self(id)
+    }
+
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
+
+impl fmt::Display for ConnectionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl SessionId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
@@ -164,6 +189,28 @@ impl SessionId {
 
     pub fn as_str(&self) -> &str {
         self.0.as_str()
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl ToSql for ConnectionId {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        let value = i64::try_from(self.0).map_err(|_| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("ConnectionId out of SQLite i64 range: {}", self.0),
+            )))
+        })?;
+        Ok(value.into())
+    }
+}
+
+#[cfg(feature = "rusqlite")]
+impl FromSql for ConnectionId {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        let raw_i64 = i64::column_result(value)?;
+        let raw_u64 = u64::try_from(raw_i64).map_err(|_| FromSqlError::OutOfRange(raw_i64))?;
+        Ok(ConnectionId::new(raw_u64))
     }
 }
 

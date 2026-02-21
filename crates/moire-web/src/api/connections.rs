@@ -3,7 +3,8 @@ use std::collections::BTreeSet;
 use axum::extract::{Path as AxumPath, State};
 use axum::response::IntoResponse;
 use moire_types::{
-    ConnectedProcessInfo, ConnectionsResponse, CutId, CutStatusResponse, TriggerCutResponse,
+    ConnectedProcessInfo, ConnectionId, ConnectionsResponse, CutId, CutStatusResponse,
+    TriggerCutResponse,
 };
 use moire_wire::{ServerMessage, encode_server_message_default};
 use tracing::{error, info, warn};
@@ -19,7 +20,7 @@ pub async fn api_connections(State(state): State<AppState>) -> impl IntoResponse
         .connections
         .iter()
         .map(|(conn_id, conn)| ConnectedProcessInfo {
-            conn_id: conn_id.get(),
+            conn_id: *conn_id,
             process_name: conn.process_name.clone(),
             pid: conn.pid,
         })
@@ -113,7 +114,7 @@ pub async fn api_cut_status(
             .into_response();
     };
 
-    let pending_conn_ids: Vec<u64> = cut.pending_conn_ids.iter().map(|id| id.get()).collect();
+    let pending_conn_ids: Vec<ConnectionId> = cut.pending_conn_ids.iter().copied().collect();
     info!(
         cut_id = %cut_id.0,
         pending_connections = cut.pending_conn_ids.len(),

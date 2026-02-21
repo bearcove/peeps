@@ -369,7 +369,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
                     vec![]
                 });
                 processes.push(ProcessSnapshotView {
-                    process_id: conn_id.get(),
+                    process_id: conn_id,
                     process_name,
                     pid,
                     ptime_now_ms,
@@ -388,7 +388,7 @@ pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {
                         .map(|(name, pid)| (name.clone(), *pid))
                         .unwrap_or_else(|| (format!("unknown-{}", conn_id.get()), 0));
                     TimedOutProcess {
-                        process_id: conn_id.get(),
+                        process_id: conn_id,
                         process_name,
                         pid,
                     }

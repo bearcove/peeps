@@ -19,16 +19,16 @@ pub fn collect_snapshot_backtrace_pairs(snapshot: &SnapshotCutResponse) -> Vec<(
     let mut pairs = Vec::new();
     for process in &snapshot.processes {
         for entity in &process.snapshot.entities {
-            pairs.push((process.process_id, entity.backtrace.get()));
+            pairs.push((process.process_id.get(), entity.backtrace.get()));
         }
         for scope in &process.snapshot.scopes {
-            pairs.push((process.process_id, scope.backtrace.get()));
+            pairs.push((process.process_id.get(), scope.backtrace.get()));
         }
         for edge in &process.snapshot.edges {
-            pairs.push((process.process_id, edge.backtrace.get()));
+            pairs.push((process.process_id.get(), edge.backtrace.get()));
         }
         for event in &process.snapshot.events {
-            pairs.push((process.process_id, event.backtrace.get()));
+            pairs.push((process.process_id.get(), event.backtrace.get()));
         }
     }
     pairs.sort_unstable();
