@@ -1,4 +1,5 @@
 use facet::Facet;
+use std::fmt;
 
 use crate::{Edge, EdgeKind, Entity, EntityId, Event, Scope, ScopeId, Snapshot};
 
@@ -29,6 +30,12 @@ pub struct StreamId(pub String);
 #[derive(Facet, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[facet(transparent)]
 pub struct CutId(pub String);
+
+impl fmt::Display for CutId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
 
 /// One canonical graph mutation in the append-only stream.
 #[derive(Facet)]

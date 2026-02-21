@@ -1160,33 +1160,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "moire-backtrace-poc"
-version = "0.1.0"
-dependencies = [
- "addr2line",
- "moire-backtrace-poc-leaf",
- "moire-backtrace-poc-router",
- "object",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "moire-backtrace-poc-leaf"
-version = "0.1.0"
-dependencies = [
- "moire-trace-capture",
- "moire-trace-types",
-]
-
-[[package]]
-name = "moire-backtrace-poc-router"
-version = "0.1.0"
-dependencies = [
- "moire-backtrace-poc-leaf",
-]
-
-[[package]]
 name = "moire-cli"
 version = "0.1.0"
 dependencies = [
@@ -1759,7 +1732,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
- "serde_derive",
 ]
 
 [[package]]

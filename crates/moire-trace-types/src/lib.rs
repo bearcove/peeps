@@ -182,6 +182,10 @@ impl RuntimeBase {
     pub fn get(self) -> u64 {
         self.0
     }
+
+    pub fn checked_add_rel_pc(self, rel_pc: RelPc) -> Option<u64> {
+        self.0.checked_add(rel_pc.0)
+    }
 }
 
 #[derive(Facet, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
