@@ -1,5 +1,5 @@
 use facet::Facet;
-pub use moire_trace_types::{BacktraceRecord, FrameKey as BacktraceFrameKey};
+pub use moire_trace_types::{BacktraceRecord, FrameKey as BacktraceFrameKey, ModuleId};
 use moire_types::{CutAck, CutRequest, PullChangesResponse, Snapshot};
 use std::fmt;
 
@@ -130,6 +130,7 @@ pub enum ModuleIdentity {
 #[derive(Facet, Clone)]
 // r[impl wire.handshake.module-manifest]
 pub struct ModuleManifestEntry {
+    pub module_id: ModuleId,
     pub module_path: String,
     pub runtime_base: u64,
     pub identity: ModuleIdentity,
@@ -281,12 +282,14 @@ mod tests {
 
     #[test]
     fn client_handshake_wire_shape() {
+        let module_id = ModuleId::next().expect("valid module id");
         let json = client_payload_json(&ClientMessage::Handshake(Handshake {
             process_name: "vixenfs-swift".into(),
             pid: 42,
             args: vec!["/usr/bin/vixenfs-swift".into(), "--verbose".into()],
             env: vec!["RUST_LOG=debug".into(), "HOME=/Users/dev".into()],
             module_manifest: vec![ModuleManifestEntry {
+                module_id,
                 module_path: "/usr/lib/libvixenfs_swift.dylib".into(),
                 runtime_base: 4_294_967_296,
                 identity: ModuleIdentity::DebugId("debugid:def456".into()),
@@ -295,7 +298,10 @@ mod tests {
         }));
         assert_eq!(
             json,
-            r#"{"handshake":{"process_name":"vixenfs-swift","pid":42,"args":["/usr/bin/vixenfs-swift","--verbose"],"env":["RUST_LOG=debug","HOME=/Users/dev"],"module_manifest":[{"module_path":"/usr/lib/libvixenfs_swift.dylib","runtime_base":4294967296,"identity":{"debug_id":"debugid:def456"},"arch":"aarch64"}]}}"#
+            format!(
+                r#"{{"handshake":{{"process_name":"vixenfs-swift","pid":42,"args":["/usr/bin/vixenfs-swift","--verbose"],"env":["RUST_LOG=debug","HOME=/Users/dev"],"module_manifest":[{{"module_id":{},"module_path":"/usr/lib/libvixenfs_swift.dylib","runtime_base":4294967296,"identity":{{"debug_id":"debugid:def456"}},"arch":"aarch64"}}]}}}}"#,
+                module_id.get()
+            )
         );
     }
 

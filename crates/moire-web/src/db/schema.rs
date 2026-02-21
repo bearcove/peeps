@@ -4,7 +4,7 @@ use rusqlite_facet::ConnectionFacetExt;
 
 use crate::db::Db;
 
-const DB_SCHEMA_VERSION: i64 = 4;
+const DB_SCHEMA_VERSION: i64 = 5;
 
 #[derive(Facet)]
 struct NoParams;
@@ -107,12 +107,14 @@ fn managed_schema_sql() -> &'static str {
 
     CREATE TABLE IF NOT EXISTS connection_modules (
         conn_id INTEGER NOT NULL,
+        module_id INTEGER NOT NULL,
         module_index INTEGER NOT NULL,
         module_path TEXT NOT NULL,
         module_identity TEXT NOT NULL,
         arch TEXT NOT NULL,
         runtime_base INTEGER NOT NULL,
-        PRIMARY KEY (conn_id, module_index)
+        PRIMARY KEY (conn_id, module_index),
+        UNIQUE (conn_id, module_id)
     );
 
     CREATE TABLE IF NOT EXISTS backtraces (

@@ -44,7 +44,7 @@ static MODULE_STATE: OnceLock<StdMutex<ModuleState>> = OnceLock::new();
 struct ModuleState {
     revision: u64,
     by_key: BTreeMap<(u64, String), ModuleId>,
-    by_id: BTreeMap<u64, moire_wire::ModuleManifestEntry>,
+    by_id: BTreeMap<ModuleId, moire_wire::ModuleManifestEntry>,
 }
 
 // r[impl process.auto-init]
@@ -95,7 +95,7 @@ fn remap_and_register_backtrace(captured: CapturedBacktrace) -> moire_wire::Back
         panic!("module state mutex poisoned; cannot continue");
     };
 
-    let mut local_to_global: BTreeMap<u64, ModuleId> = BTreeMap::new();
+    let mut local_to_global: BTreeMap<ModuleId, ModuleId> = BTreeMap::new();
     for module in &captured.modules {
         let key = (module.runtime_base, module.path.as_str().to_string());
         let global = if let Some(existing) = modules.by_key.get(&key).copied() {
@@ -105,8 +105,9 @@ fn remap_and_register_backtrace(captured: CapturedBacktrace) -> moire_wire::Back
                 .expect("invariant violated: generated module id must be valid and JS-safe");
             modules.by_key.insert(key.clone(), global);
             modules.by_id.insert(
-                global.get(),
+                global,
                 moire_wire::ModuleManifestEntry {
+                    module_id: global,
                     module_path: key.1.clone(),
                     runtime_base: key.0,
                     identity: module_identity_for(&key.1, key.0),
@@ -116,7 +117,7 @@ fn remap_and_register_backtrace(captured: CapturedBacktrace) -> moire_wire::Back
             modules.revision = modules.revision.saturating_add(1);
             global
         };
-        local_to_global.insert(module.id.get(), global);
+        local_to_global.insert(module.id, global);
     }
 
     let remapped_frames = captured
@@ -125,7 +126,7 @@ fn remap_and_register_backtrace(captured: CapturedBacktrace) -> moire_wire::Back
         .iter()
         .map(|frame| {
             let module_id = local_to_global
-                .get(&frame.module_id.get())
+                .get(&frame.module_id)
                 .copied()
                 .unwrap_or_else(|| {
                     panic!(

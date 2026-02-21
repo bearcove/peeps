@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-default = []
+default = ["roam"]
 diagnostics = []
 roam = ["dep:roam", "dep:roam-stream"]
 

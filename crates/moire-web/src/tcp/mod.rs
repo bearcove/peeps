@@ -268,19 +268,6 @@ async fn read_messages(
                 }
                 let backtrace_id = record.id.get();
                 let frames = backtrace_frames_for_store(&manifest, &record)?;
-                let unknown_module_frames = frames
-                    .iter()
-                    .filter(|frame| frame.module_path.starts_with("<unknown-module-id:"))
-                    .count();
-                if unknown_module_frames > 0 {
-                    warn!(
-                        conn_id,
-                        backtrace_id,
-                        total_frames = frames.len(),
-                        unknown_module_frames,
-                        "backtrace stored with unknown module ids from manifest"
-                    );
-                }
                 let inserted =
                     persist_backtrace_record(state.db.clone(), conn_id, backtrace_id, frames)
                         .await?;

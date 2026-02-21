@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
 use facet::Facet;
+use moire_trace_types::ModuleId;
 use moire_wire::{BacktraceRecord, ModuleIdentity, ModuleManifestEntry};
 use rusqlite_facet::{ConnectionFacetExt, StatementFacetExt};
 
 use crate::db::Db;
-use crate::util::time::now_nanos;
+use crate::util::time::{now_nanos, to_i64_u64};
 
 #[derive(Clone)]
 pub struct BacktraceFramePersist {
@@ -17,6 +18,7 @@ pub struct BacktraceFramePersist {
 
 #[derive(Clone)]
 pub struct StoredModuleManifestEntry {
+    pub module_id: ModuleId,
     pub module_path: String,
     pub module_identity: String,
     pub arch: String,
@@ -45,6 +47,7 @@ struct ConnectionIdParams {
 #[derive(Facet)]
 struct ConnectionModuleInsertParams {
     conn_id: u64,
+    module_id: i64,
     module_index: i64,
     module_path: String,
     module_identity: String,
@@ -189,15 +192,18 @@ pub fn backtrace_frames_for_store(
     module_manifest: &[StoredModuleManifestEntry],
     record: &BacktraceRecord,
 ) -> Result<Vec<BacktraceFramePersist>, String> {
+    let modules_by_id = module_manifest
+        .iter()
+        .map(|module| (module.module_id, module))
+        .collect::<std::collections::BTreeMap<_, _>>();
     let mut frames = Vec::with_capacity(record.frames.len());
     for (frame_index, frame) in record.frames.iter().enumerate() {
-        let module_id = frame.module_id.get();
-        let module_idx = (module_id - 1) as usize;
-        let Some(module) = module_manifest.get(module_idx) else {
+        let module_id = frame.module_id;
+        let Some(module) = modules_by_id.get(&module_id) else {
             return Err(format!(
-                "invariant violated: backtrace frame {frame_index} references module_id {module_id} (index {}), but manifest has {} entries",
-                module_idx,
-                module_manifest.len()
+                "invariant violated: backtrace frame {frame_index} references module_id {} but handshake manifest for this connection has no matching module id ({} entries)",
+                module_id.get(),
+                modules_by_id.len()
             ));
         };
         frames.push(BacktraceFramePersist {
@@ -216,6 +222,7 @@ pub fn into_stored_module_manifest(
     module_manifest
         .into_iter()
         .map(|module| StoredModuleManifestEntry {
+            module_id: module.module_id,
             module_path: module.module_path,
             module_identity: module_identity_key(&module.identity),
             arch: module.arch,
@@ -301,9 +308,9 @@ pub async fn persist_connection_module_manifest(
             let mut insert_stmt = tx
                 .prepare(
                     "INSERT INTO connection_modules (
-                        conn_id, module_index, module_path, module_identity, arch, runtime_base
+                        conn_id, module_id, module_index, module_path, module_identity, arch, runtime_base
                      ) VALUES (
-                        :conn_id, :module_index, :module_path, :module_identity, :arch, :runtime_base
+                        :conn_id, :module_id, :module_index, :module_path, :module_identity, :arch, :runtime_base
                      )",
                 )
                 .map_err(|error| format!("prepare insert connection_modules: {error}"))?;
@@ -311,6 +318,7 @@ pub async fn persist_connection_module_manifest(
                 insert_stmt
                     .facet_execute_ref(&ConnectionModuleInsertParams {
                         conn_id,
+                        module_id: to_i64_u64(module.module_id.get()),
                         module_index: module_index as i64,
                         module_path: module.module_path.clone(),
                         module_identity: module.module_identity.clone(),
