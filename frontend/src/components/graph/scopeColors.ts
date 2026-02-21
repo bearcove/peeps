@@ -27,7 +27,7 @@ export const SCOPE_LIGHT_RGB = [
   [255, 159, 28],
 ] as const;
 
-function rgbTripletToCss([r, g, b]: readonly [number, number, number]): string {
+export function rgbTripletToCss([r, g, b]: readonly [number, number, number]): string {
   return `${r} ${g} ${b}`;
 }
 

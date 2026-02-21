@@ -2,9 +2,12 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    /*padding: 0.8em 0.8em;*/
-    margin: 0.8em 0;
-    background: var(--bg-elevated);
-    border: 2px solid var(--border-subtle);
-    border-radius: var(--radius-control);
+    margin: .2em 0;
+    background: var(--bg-surface);
+
+    border: 1px solid var(--border-default);
+    border-left: 4px solid black;
+
+    outline: 1px solid var(--hairline);
+    outline-offset: 0;
 }

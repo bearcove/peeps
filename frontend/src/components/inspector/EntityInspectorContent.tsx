@@ -25,10 +25,12 @@ function EntityDetailsSection({
   entity,
   backtrace,
   onAppendFilterToken,
+  openBacktraceTrigger,
 }: {
   entity: EntityDef;
   backtrace?: ResolvedSnapshotBacktrace;
   onAppendFilterToken?: (token: string) => void;
+  openBacktraceTrigger?: number;
 }) {
   const [crateMenu, setCrateMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -50,7 +52,7 @@ function EntityDetailsSection({
     <>
       <KeyValueRow label="Created at">
         {backtrace
-          ? <BacktraceRenderer backtrace={backtrace} />
+          ? <BacktraceRenderer backtrace={backtrace} openTrigger={openBacktraceTrigger} />
           : <NodeChip label={`${entity.source.path.split("/").pop() ?? entity.source.path}:${entity.source.line}`} href={`zed://file${entity.source.path}:${entity.source.line}`} />
         }
       </KeyValueRow>
@@ -189,6 +191,7 @@ export function EntityInspectorContent({
   onOpenScopeKind,
   onAppendFilterToken,
   entityDiff,
+  openBacktraceTrigger,
 }: {
   entity: EntityDef;
   backtrace?: ResolvedSnapshotBacktrace;
@@ -197,6 +200,7 @@ export function EntityInspectorContent({
   onOpenScopeKind?: (kind: string) => void;
   onAppendFilterToken?: (token: string) => void;
   entityDiff?: EntityDiff | null;
+  openBacktraceTrigger?: number;
 }) {
   if (entity.channelPair) {
     return (
@@ -241,6 +245,7 @@ export function EntityInspectorContent({
       onOpenScopeKind={onOpenScopeKind}
       onAppendFilterToken={onAppendFilterToken}
       entityDiff={entityDiff}
+      openBacktraceTrigger={openBacktraceTrigger}
     />
   );
 }
@@ -256,6 +261,7 @@ function EntityInspectorBody({
   showActions = true,
   showScopeLinks = true,
   showMeta = true,
+  openBacktraceTrigger,
 }: {
   entity: EntityDef;
   backtrace?: ResolvedSnapshotBacktrace;
@@ -267,6 +273,7 @@ function EntityInspectorBody({
   showActions?: boolean;
   showScopeLinks?: boolean;
   showMeta?: boolean;
+  openBacktraceTrigger?: number;
 }) {
   return (
     <>
@@ -314,7 +321,7 @@ function EntityInspectorBody({
       )}
 
       <div className="inspector-kv-table">
-        <EntityDetailsSection entity={entity} backtrace={backtrace} onAppendFilterToken={onAppendFilterToken} />
+        <EntityDetailsSection entity={entity} backtrace={backtrace} onAppendFilterToken={onAppendFilterToken} openBacktraceTrigger={openBacktraceTrigger} />
         <EntityBodySection entity={entity} />
       </div>
       {showScopeLinks && <EntityScopeLinksSection entity={entity} onOpenScopeKind={onOpenScopeKind} />}

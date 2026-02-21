@@ -1,14 +1,8 @@
-import React from "react";
 import "./CratePill.css";
 
-export type RgbPair = { light: string; dark: string };
-
-export function CratePill({ name, color }: { name: string; color?: RgbPair }) {
-  const style = color
-    ? { "--scope-rgb-light": color.light, "--scope-rgb-dark": color.dark } as React.CSSProperties
-    : {};
+export function CratePill({ name }: { name: string }) {
   return (
-    <span className="ui-crate-pill" style={style}>
+    <span className="ui-crate-pill">
       {name}
     </span>
   );

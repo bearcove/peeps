@@ -28,6 +28,7 @@ export function InspectorPanel({
   currentFrameIndex,
   selectedScopeKind,
   selectedScope,
+  openBacktraceTrigger,
 }: {
   onClose: () => void;
   onHeaderPointerDown?: (event: React.PointerEvent<HTMLDivElement>) => void;
@@ -43,6 +44,7 @@ export function InspectorPanel({
   currentFrameIndex?: number;
   selectedScopeKind?: string | null;
   selectedScope?: ScopeDef | null;
+  openBacktraceTrigger?: number;
 }) {
   let content: React.ReactNode;
   let titleIcon: React.ReactNode = null;
@@ -66,6 +68,7 @@ export function InspectorPanel({
         onOpenScopeKind={onOpenScopeKind}
         onAppendFilterToken={onAppendFilterToken}
         entityDiff={entityDiff}
+        openBacktraceTrigger={openBacktraceTrigger}
       />
     ) : null;
   } else if (selection?.kind === "edge") {
@@ -82,6 +85,7 @@ export function InspectorPanel({
       <ScopeInspectorContent
         scope={selectedScope}
         backtrace={backtracesById?.get(selectedScope.backtraceId)}
+        openBacktraceTrigger={openBacktraceTrigger}
       />
     );
   } else if (selectedScopeKind) {

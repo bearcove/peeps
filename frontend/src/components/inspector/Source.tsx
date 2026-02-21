@@ -2,7 +2,7 @@ import React from "react";
 import { FileRsIcon } from "@phosphor-icons/react";
 import "./Source.css";
 
-function shortSource(source: string): string {
+export function shortSource(source: string): string {
   const match = source.match(/^(.*):(\d+)$/);
   if (!match) {
     return source.split("/").pop() ?? source;

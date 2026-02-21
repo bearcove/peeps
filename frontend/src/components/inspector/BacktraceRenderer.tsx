@@ -6,7 +6,6 @@ import type { ResolvedSnapshotBacktrace } from "../../snapshot";
 import { assignScopeColorRgbByKey, type ScopeColorPair } from "../graph/scopeColors";
 import { apiClient } from "../../api";
 import { Source } from "./Source";
-import { CratePill } from "../../ui/primitives/CratePill";
 import { ClosurePill } from "../../ui/primitives/ClosurePill";
 import { tokenizeRustName, parseSlim, RustTokens } from "../../ui/primitives/RustName";
 import { FrameCard } from "../../ui/primitives/FrameCard";
@@ -162,7 +161,7 @@ export function BacktracePanel({
         }
         setPreviews(map);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [backtrace]);
 
   const systemCount = useMemo(
@@ -217,13 +216,15 @@ export function BacktracePanel({
 
         <div className="bt-frame-list">
           {annotatedFrames.map(({ frame, origIndex, frameId }) => (
-            <FrameRow
-              key={frameKey(frame, origIndex)}
-              frame={frame}
-              crateColors={crateColors}
-              appCrate={appCrate}
-              preview={previews.get(frameId)}
-            />
+            <>
+              <FrameRow
+                key={frameKey(frame, origIndex)}
+                frame={frame}
+                crateColors={crateColors}
+                appCrate={appCrate}
+                preview={previews.get(frameId)}
+              />
+            </>
           ))}
         </div>
       </div>
@@ -266,7 +267,7 @@ function FrameRow({
 
   // App frames start with source preview open; others start closed.
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const [previewOpen, setPreviewOpen] = useState(isApp);
+  const [previewOpen, _setPreviewOpen] = useState(isApp);
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const allTokens = useMemo(() => tokenizeRustName(function_name), [function_name]);
@@ -279,10 +280,9 @@ function FrameRow({
   const rowClass = ["bt-frame-row", isApp && "bt-frame-row--app"].filter(Boolean).join(" ");
 
   return (
-    <FrameCard>
+    <FrameCard color={crateColor ?? undefined}>
       <div className={rowClass}>
         <div className="bt-fn-line">
-          {crate && <CratePill name={crate} color={crateColor ?? undefined} />}
           <span
             className={`bt-fn${wasStripped ? " bt-fn--expandable" : ""}`}
             title={function_name}
@@ -292,19 +292,10 @@ function FrameRow({
             <RustTokens tokens={nameExpanded ? allTokens : slim} />
           </span>
           {closureCount > 0 && <ClosurePill />}
+          <span className="bt-filler" />
           {sourceStr && (
             <span className="bt-source-row">
               <Source source={sourceStr} />
-              {preview && (
-                <button
-                  type="button"
-                  className="bt-preview-toggle"
-                  onClick={() => setPreviewOpen((v) => !v)}
-                  title={previewOpen ? "Hide source" : "Show source"}
-                >
-                  {previewOpen ? "▲" : "▼"}
-                </button>
-              )}
             </span>
           )}
         </div>
@@ -316,8 +307,12 @@ function FrameRow({
 
 // ── Widget ───────────────────────────────────────────────────────────────────
 
-export function BacktraceRenderer({ backtrace }: { backtrace: ResolvedSnapshotBacktrace }) {
+export function BacktraceRenderer({ backtrace, openTrigger }: { backtrace: ResolvedSnapshotBacktrace; openTrigger?: number }) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (openTrigger) setOpen(true);
+  }, [openTrigger]);
 
   return (
     <>

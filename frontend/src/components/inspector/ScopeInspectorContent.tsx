@@ -8,9 +8,11 @@ import "./InspectorPanel.css";
 export function ScopeInspectorContent({
   scope,
   backtrace,
+  openBacktraceTrigger,
 }: {
   scope: ScopeDef;
   backtrace?: ResolvedSnapshotBacktrace;
+  openBacktraceTrigger?: number;
 }) {
   return (
     <div className="inspector-kv-table">
@@ -28,7 +30,7 @@ export function ScopeInspectorContent({
       {(backtrace ?? scope.source) && (
         <KeyValueRow label="Created at">
           {backtrace
-            ? <BacktraceRenderer backtrace={backtrace} />
+            ? <BacktraceRenderer backtrace={backtrace} openTrigger={openBacktraceTrigger} />
             : <span className="inspector-mono">{scope.source!.path.split("/").pop() ?? scope.source!.path}:{scope.source!.line}</span>
           }
         </KeyValueRow>

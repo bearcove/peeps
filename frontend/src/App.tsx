@@ -148,6 +148,7 @@ export function App() {
   const [snap, setSnap] = useState<SnapshotState>({ phase: "idle" });
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorPosition, setInspectorPosition] = useState<{ x: number; y: number } | null>(null);
+  const [openBacktraceTrigger, setOpenBacktraceTrigger] = useState(0);
   const [selection, setSelection] = useState<GraphSelection>(null);
   const [inspectedSelection, setInspectedSelection] = useState<GraphSelection>(null);
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
@@ -1242,6 +1243,10 @@ export function App() {
         if (selection?.kind === "entity") {
           setFocusedEntityFilter(selection.id);
         }
+      } else if (e.key === "s" || e.key === "S") {
+        if (inspectorOpen) {
+          setOpenBacktraceTrigger((t) => t + 1);
+        }
       }
     }
     document.addEventListener("keydown", onKey);
@@ -1488,6 +1493,7 @@ export function App() {
               }
               selectedScopeKind={selectedScopeKind}
               selectedScope={selectedScope}
+              openBacktraceTrigger={openBacktraceTrigger}
             />
           </div>
         )}
