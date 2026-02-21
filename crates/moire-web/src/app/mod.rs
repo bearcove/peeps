@@ -1,7 +1,18 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
+use axum::Router;
+use axum::routing::{any, get, post};
+
+use crate::api::connections::{api_connections, api_cut_status, api_trigger_cut};
+use crate::api::recording::{
+    api_record_current, api_record_export, api_record_frame, api_record_import, api_record_start,
+    api_record_stop,
+};
+use crate::api::snapshot::{api_snapshot, api_snapshot_current, api_snapshot_symbolication_ws};
+use crate::api::sql::{api_query, api_sql};
 use crate::db::{Db, StoredModuleManifestEntry};
+use crate::proxy::proxy_vite;
 use crate::recording::session::RecordingState;
 use moire_types::SnapshotCutResponse;
 use moire_wire::SnapshotReply;
@@ -54,6 +65,66 @@ pub struct SnapshotPending {
 
 pub struct SnapshotStreamState {
     pub pairs: Vec<(u64, u64)>,
+}
+
+impl ServerState {
+    pub fn new(next_conn_id: u64) -> Self {
+        Self {
+            next_conn_id,
+            next_cut_id: 1,
+            next_snapshot_id: 1,
+            next_session_id: 1,
+            connections: HashMap::new(),
+            cuts: BTreeMap::new(),
+            pending_snapshots: HashMap::new(),
+            snapshot_streams: HashMap::new(),
+            last_snapshot_json: None,
+            recording: None,
+        }
+    }
+}
+
+impl AppState {
+    pub fn new(db: Db, next_conn_id: u64, dev_proxy: Option<DevProxyState>) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(ServerState::new(next_conn_id))),
+            db: Arc::new(db),
+            dev_proxy,
+        }
+    }
+}
+
+pub fn build_router(state: AppState) -> Router {
+    let mut app = Router::new()
+        .route("/health", get(health))
+        .route("/api/connections", get(api_connections))
+        .route("/api/cuts", post(api_trigger_cut))
+        .route("/api/cuts/{cut_id}", get(api_cut_status))
+        .route("/api/sql", post(api_sql))
+        .route("/api/query", post(api_query))
+        .route("/api/snapshot", post(api_snapshot))
+        .route("/api/snapshot/current", get(api_snapshot_current))
+        .route(
+            "/api/snapshot/{snapshot_id}/symbolication/ws",
+            get(api_snapshot_symbolication_ws),
+        )
+        .route("/api/record/start", post(api_record_start))
+        .route("/api/record/stop", post(api_record_stop))
+        .route("/api/record/current", get(api_record_current))
+        .route(
+            "/api/record/current/frame/{frame_index}",
+            get(api_record_frame),
+        )
+        .route("/api/record/current/export", get(api_record_export))
+        .route("/api/record/import", post(api_record_import));
+    if state.dev_proxy.is_some() {
+        app = app.fallback(any(proxy_vite));
+    }
+    app.with_state(state)
+}
+
+pub async fn health() -> &'static str {
+    "ok"
 }
 
 pub async fn remember_snapshot(state: &AppState, snapshot: &SnapshotCutResponse) {

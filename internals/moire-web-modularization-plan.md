@@ -120,6 +120,8 @@ Exact filenames can shift, but concerns should not.
 ### 7) Shrink `main.rs` to bootstrap
 
 - `main.rs` should only parse CLI, call startup, and run the app.
+- Progress:
+  - `main.rs` now delegates app state initialization to `app::AppState::new(...)` and route wiring to `app::build_router(...)`.
 
 ## Acceptance checks
 
