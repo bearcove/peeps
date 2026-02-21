@@ -1,0 +1,8 @@
+#!/bin/bash
+set -e
+
+captain
+
+if git diff --cached --name-only | grep -q '^frontend/'; then
+    pnpm exec oxlint --tsconfig frontend/tsconfig.json frontend/src
+fi

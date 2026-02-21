@@ -22,9 +22,9 @@ mod tests {
 
     #[test]
     fn transparent_newtype_is_scalar_alias() {
-        let mut gen = TypeScriptGenerator::new();
-        gen.add_type::<EnvelopeTransparent>();
-        let out = gen.finish();
+        let mut tsgen = TypeScriptGenerator::new();
+        tsgen.add_type::<EnvelopeTransparent>();
+        let out = tsgen.finish();
         assert!(
             out.contains("export type BacktraceIdTransparent = number;"),
             "expected transparent newtype to generate scalar alias, got:\n{out}"
@@ -33,9 +33,9 @@ mod tests {
 
     #[test]
     fn non_transparent_newtype_is_not_scalar_alias() {
-        let mut gen = TypeScriptGenerator::new();
-        gen.add_type::<EnvelopeNonTransparent>();
-        let out = gen.finish();
+        let mut tsgen = TypeScriptGenerator::new();
+        tsgen.add_type::<EnvelopeNonTransparent>();
+        let out = tsgen.finish();
         assert!(
             !out.contains("export type BacktraceIdNonTransparent = number;"),
             "bug: non-transparent tuple newtype generated scalar alias:\n{out}"

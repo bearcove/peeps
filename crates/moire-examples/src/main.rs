@@ -83,7 +83,8 @@ async fn run() -> AnyResult<()> {
         if !cfg.no_open {
             open_browser(&format!("http://{}", cfg.moire_http));
         }
-        std::env::set_var("MOIRE_DASHBOARD", &cfg.moire_listen);
+        // SAFETY: single-threaded at this point, before spawning scenario subprocess
+        unsafe { std::env::set_var("MOIRE_DASHBOARD", &cfg.moire_listen) };
         Some(child)
     };
 

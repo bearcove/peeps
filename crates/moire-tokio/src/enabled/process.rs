@@ -22,7 +22,7 @@ use std::future::Future;
 use std::io;
 use std::process::{ExitStatus, Output, Stdio};
 
-use moire_runtime::{instrument_future, EntityHandle};
+use moire_runtime::{EntityHandle, instrument_future};
 
 /// Instrumented version of [`tokio::process::Command`], used to collect task and process diagnostics.
 pub struct Command {
@@ -184,7 +184,8 @@ impl Command {
     where
         F: FnMut() -> io::Result<()> + Send + Sync + 'static,
     {
-        self.inner.pre_exec(f);
+        // SAFETY: caller guarantees the pre-exec closure is safe to run
+        unsafe { self.inner.pre_exec(f) };
         self
     }
     /// Extracts the inner Tokio command.
