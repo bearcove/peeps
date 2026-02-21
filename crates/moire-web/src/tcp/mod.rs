@@ -206,7 +206,7 @@ async fn read_messages(
                 }
             }
             ClientMessage::CutAck(ack) => {
-                let cut_id_text = ack.cut_id.0.to_string();
+                let cut_id_text = ack.cut_id.as_str().to_owned();
                 let cursor_stream_id = ack.cursor.stream_id.0.to_string();
                 let cursor_next_seq_no = ack.cursor.next_seq_no.0;
                 let cut_id = ack.cut_id.clone();
@@ -216,7 +216,7 @@ async fn read_messages(
                     cut.acks.insert(conn_id, ack);
                     info!(
                         conn_id = %conn_id,
-                        cut_id = %cut_id.0,
+                        cut_id = %cut_id,
                         pending_connections = cut.pending_conn_ids.len(),
                         acked_connections = cut.acks.len(),
                         "received cut ack"
@@ -224,7 +224,7 @@ async fn read_messages(
                 } else {
                     warn!(
                         conn_id = %conn_id,
-                        cut_id = %cut_id.0,
+                        cut_id = %cut_id,
                         "received cut ack for unknown cut"
                     );
                 }

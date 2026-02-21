@@ -116,7 +116,7 @@ async fn run_dashboard_session(addr: &str, process_name: String) -> Result<(), S
                             &mut last_sent_backtrace_id,
                         )
                         .await?;
-                        let ack = ack_cut(request.cut_id.0.clone());
+                        let ack = ack_cut(request.cut_id.clone());
                         write_client_message(&mut writer, &ClientMessage::CutAck(ack)).await?;
                     }
                     ServerMessage::SnapshotRequest(request) => {

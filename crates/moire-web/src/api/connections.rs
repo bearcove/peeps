@@ -44,7 +44,7 @@ pub async fn api_trigger_cut(State(state): State<AppState>) -> impl IntoResponse
         let cut_num = guard.next_cut_id;
         guard.next_cut_id = guard.next_cut_id.next();
         let cut_id = cut_num.to_cut_id();
-        let cut_id_string = cut_id.0.clone();
+        let cut_id_string = cut_id.as_str().to_owned();
         let now_ns = now_nanos();
         let mut pending_conn_ids = BTreeSet::new();
         let mut outbound = Vec::new();
@@ -105,18 +105,18 @@ pub async fn api_cut_status(
     AxumPath(cut_id): AxumPath<String>,
 ) -> impl IntoResponse {
     let guard = state.inner.lock().await;
-    let cut_id = CutId(cut_id);
+    let cut_id = CutId::new(cut_id);
     let Some(cut) = guard.cuts.get(&cut_id) else {
         return (
             axum::http::StatusCode::NOT_FOUND,
-            format!("unknown cut id: {}", cut_id.0),
+            format!("unknown cut id: {}", cut_id.as_str()),
         )
             .into_response();
     };
 
     let pending_conn_ids: Vec<ConnectionId> = cut.pending_conn_ids.iter().copied().collect();
     info!(
-        cut_id = %cut_id.0,
+        cut_id = %cut_id,
         pending_connections = cut.pending_conn_ids.len(),
         acked_connections = cut.acks.len(),
         "cut status requested"

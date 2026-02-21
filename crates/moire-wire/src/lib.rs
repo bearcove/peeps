@@ -354,7 +354,7 @@ mod tests {
     #[test]
     fn client_cut_ack_wire_shape() {
         let json = client_payload_json(&ClientMessage::CutAck(moire_types::CutAck {
-            cut_id: CutId("cut-1".into()),
+            cut_id: CutId::new("cut-1"),
             cursor: StreamCursor {
                 stream_id: StreamId("vixenfs-swift-42".into()),
                 next_seq_no: SeqNo(0),
@@ -381,7 +381,7 @@ mod tests {
     #[test]
     fn server_cut_request_wire_shape() {
         let json = server_payload_json(&ServerMessage::CutRequest(moire_types::CutRequest {
-            cut_id: CutId("cut-1".into()),
+            cut_id: CutId::new("cut-1"),
         }));
         assert_eq!(json, r#"{"cut_request":{"cut_id":"cut-1"}}"#);
     }

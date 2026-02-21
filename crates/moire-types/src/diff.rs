@@ -31,6 +31,20 @@ pub struct StreamId(pub String);
 #[facet(transparent)]
 pub struct CutId(pub String);
 
+impl CutId {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    pub fn from_ordinal(value: u64) -> Self {
+        Self(format!("cut:{value}"))
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
 impl fmt::Display for CutId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)

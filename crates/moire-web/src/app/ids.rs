@@ -8,8 +8,8 @@ pub struct SessionOrdinal(u64);
 impl SessionOrdinal {
     pub const ONE: Self = Self(1);
 
-    pub fn get(self) -> u64 {
-        self.0
+    pub fn to_session_id(self) -> moire_types::SessionId {
+        moire_types::SessionId::from_ordinal(self.0)
     }
 
     pub fn next(self) -> Self {
@@ -29,7 +29,7 @@ impl CutOrdinal {
     pub const ONE: Self = Self(1);
 
     pub fn to_cut_id(self) -> CutId {
-        CutId(format!("cut:{}", self.0))
+        CutId::from_ordinal(self.0)
     }
 
     pub fn next(self) -> Self {

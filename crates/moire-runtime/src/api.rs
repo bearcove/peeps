@@ -11,7 +11,6 @@ pub trait SnapshotSink {
     fn event(&mut self, event: &Event);
 }
 
-#[track_caller]
 pub fn write_snapshot_to<S>(sink: &mut S)
 where
     S: SnapshotSink,
@@ -33,7 +32,6 @@ where
     }
 }
 
-#[track_caller]
 pub fn pull_changes_since(from_seq_no: SeqNo, max_changes: u32) -> PullChangesResponse {
     let stream_id = runtime_stream_id();
     let Ok(db) = runtime_db().lock() else {
@@ -49,7 +47,6 @@ pub fn pull_changes_since(from_seq_no: SeqNo, max_changes: u32) -> PullChangesRe
     db.pull_changes_since(from_seq_no, max_changes)
 }
 
-#[track_caller]
 pub fn current_cursor() -> StreamCursor {
     let stream_id = runtime_stream_id();
     let Ok(db) = runtime_db().lock() else {
@@ -61,10 +58,9 @@ pub fn current_cursor() -> StreamCursor {
     db.current_cursor()
 }
 
-#[track_caller]
-pub fn ack_cut(cut_id: impl Into<String>) -> CutAck {
+pub fn ack_cut(cut_id: CutId) -> CutAck {
     CutAck {
-        cut_id: CutId(cut_id.into()),
+        cut_id,
         cursor: current_cursor(),
     }
 }
