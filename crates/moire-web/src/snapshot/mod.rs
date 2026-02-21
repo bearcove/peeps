@@ -1,1 +1,1 @@
-// Stepwise extraction target for snapshot assembly logic.
+pub mod table;

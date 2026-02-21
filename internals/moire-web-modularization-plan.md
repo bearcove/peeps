@@ -90,6 +90,8 @@ Exact filenames can shift, but concerns should not.
 
 - Move snapshot table loading/merge logic into `snapshot/`.
 - Move pending frame jobs, cache operations, and resolver logic into `symbolication/`.
+- Progress:
+  - Snapshot backtrace/frame catalog loading and frame-id tests moved to `snapshot/table.rs`.
 
 ### 5) Extract recording flow
 
