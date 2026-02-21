@@ -1,26 +1,27 @@
 @schema {id crate:tracey-config@1, cli tracey}
 
-specs ({
-    name moire
-    prefix r
-    source_url "https://github.com/bearcove/moire"
-    include (docs/spec/moire.md)
+specs (
+    {
+        name moire
+        prefix r
+        source_url "https://github.com/bearcove/moire"
+        include (docs/spec/moire.md)
 
-    impls ({
-        name rust
-        include ("crates/**/*.rs")
-        exclude ("target/**")
-    })
-})
+        impls ({
+            name rust
+            include ("crates/**/*.rs")
+            exclude ("target/**")
+        })
+    }
+    {
+        name frontend
+        prefix f
+        source_url "https://github.com/bearcove/moire"
+        include (docs/spec/frontend.md)
 
-specs ({
-    name frontend
-    prefix f
-    source_url "https://github.com/bearcove/moire"
-    include (docs/spec/frontend.md)
-
-    impls ({
-        name typescript
-        include ("frontend/src/**/*.ts" "frontend/src/**/*.tsx")
-    })
-})
+        impls ({
+            name typescript
+            include ("frontend/src/**/*.ts" "frontend/src/**/*.tsx")
+        })
+    }
+)
