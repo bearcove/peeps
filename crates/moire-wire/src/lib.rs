@@ -89,10 +89,7 @@ pub fn encode_frame_default(payload: &[u8]) -> Result<Vec<u8>, FrameCodecError> 
     encode_frame(payload, DEFAULT_MAX_FRAME_BYTES)
 }
 
-pub fn decode_frame<'a>(
-    frame: &'a [u8],
-    max_payload_bytes: usize,
-) -> Result<&'a [u8], FrameCodecError> {
+pub fn decode_frame(frame: &[u8], max_payload_bytes: usize) -> Result<&[u8], FrameCodecError> {
     if frame.len() < 4 {
         return Err(FrameCodecError::FrameTooShort { len: frame.len() });
     }

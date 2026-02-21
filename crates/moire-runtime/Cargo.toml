@@ -18,8 +18,6 @@ moire-trace-capture.workspace = true
 moire-trace-types.workspace = true
 moire-types.workspace = true
 moire-wire.workspace = true
-moire-sqlite-facet.workspace = true
-parking_lot.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio.workspace = true

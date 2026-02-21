@@ -15,11 +15,7 @@ diagnostics = []
 
 [dependencies]
 ctor.workspace = true
-facet-json.workspace = true
-facet-value.workspace = true
 moire-types.workspace = true
 moire-runtime.workspace = true
-moire-trace-types.workspace = true
-moire-wire.workspace = true
 parking_lot.workspace = true
 tokio.workspace = true

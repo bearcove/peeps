@@ -10,21 +10,12 @@ checksum = "dfbe277e56a376000877090da837660b4427aad530e3028d44e0bffe4f89a1c1"
 dependencies = [
  "cpp_demangle",
  "fallible-iterator",
- "gimli 0.31.1",
+ "gimli",
  "memmap2",
- "object 0.36.7",
+ "object",
  "rustc-demangle",
  "smallvec 1.15.1",
  "typed-arena",
-]
-
-[[package]]
-name = "addr2line"
-version = "0.25.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b5d307320b3181d6d7954e663bd7c774a838b8220fe0593c86d9fb09f498b4b"
-dependencies = [
- "gimli 0.32.3",
 ]
 
 [[package]]
@@ -159,21 +150,6 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
-]
-
-[[package]]
-name = "backtrace"
-version = "0.3.76"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb531853791a215d7c62a30daf0dde835f381ab5de4589cfe7c649d2cbe92bd6"
-dependencies = [
- "addr2line 0.25.1",
- "cfg-if",
- "libc",
- "miniz_oxide",
- "object 0.37.3",
- "rustc-demangle",
- "windows-link",
 ]
 
 [[package]]
@@ -766,12 +742,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gimli"
-version = "0.32.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
-
-[[package]]
 name = "gloo-timers"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1182,11 +1152,10 @@ dependencies = [
 name = "moire-backtrace-poc"
 version = "0.1.0"
 dependencies = [
- "addr2line 0.24.2",
- "backtrace",
+ "addr2line",
  "moire-backtrace-poc-leaf",
  "moire-backtrace-poc-router",
- "object 0.36.7",
+ "object",
  "serde",
  "serde_json",
 ]
@@ -1241,12 +1210,10 @@ dependencies = [
  "facet",
  "facet-json",
  "facet-value",
- "moire-sqlite-facet",
  "moire-trace-capture",
  "moire-trace-types",
  "moire-types",
  "moire-wire",
- "parking_lot",
  "tokio",
 ]
 
@@ -1265,12 +1232,8 @@ name = "moire-tokio"
 version = "0.1.0"
 dependencies = [
  "ctor",
- "facet-json",
- "facet-value",
  "moire-runtime",
- "moire-trace-types",
  "moire-types",
- "moire-wire",
  "parking_lot",
  "tokio",
 ]
@@ -1296,7 +1259,6 @@ name = "moire-types"
 version = "0.1.0"
 dependencies = [
  "facet",
- "facet-format",
  "facet-json",
  "facet-value",
  "moire-trace-types",
@@ -1319,7 +1281,7 @@ dependencies = [
 name = "moire-web"
 version = "0.1.0"
 dependencies = [
- "addr2line 0.24.2",
+ "addr2line",
  "axum",
  "facet",
  "facet-json",
@@ -1331,7 +1293,7 @@ dependencies = [
  "moire-trace-types",
  "moire-types",
  "moire-wire",
- "object 0.36.7",
+ "object",
  "rusqlite",
  "tokio",
  "tracing",
@@ -1374,15 +1336,6 @@ dependencies = [
  "flate2",
  "memchr",
  "ruzstd",
-]
-
-[[package]]
-name = "object"
-version = "0.37.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff76201f031d8863c38aa7f905eca4f53abbfa15f609db4277d44cd8938f33fe"
-dependencies = [
- "memchr",
 ]
 
 [[package]]

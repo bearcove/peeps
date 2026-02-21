@@ -12,7 +12,6 @@ rustdoc-args = ["--html-in-header", "arborium-header.html"]
 
 [dependencies]
 addr2line = "0.24"
-backtrace.workspace = true
 object = "0.36"
 moire-backtrace-poc-leaf = { path = "../moire-backtrace-poc-leaf" }
 moire-backtrace-poc-router = { path = "../moire-backtrace-poc-router" }

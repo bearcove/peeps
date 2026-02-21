@@ -32,7 +32,6 @@ moire = { path = "crates/moire" }
 moire-tokio = { path = "crates/moire-tokio" }
 moire-wasm = { path = "crates/moire-wasm" }
 moire-runtime = { path = "crates/moire-runtime" }
-moire-web = { path = "crates/moire-web" }
 moire-types = { path = "crates/moire-types" }
 moire-trace-types = { path = "crates/moire-trace-types" }
 moire-trace-capture = { path = "crates/moire-trace-capture" }
@@ -40,21 +39,16 @@ moire-wire = { path = "crates/moire-wire" }
 moire-sqlite-facet = { path = "crates/moire-sqlite-facet" }
 
 # External
-backtrace = "0.3"
 ctor = "0.2"
-inventory = "0.3"
 facet = { git = "https://github.com/facet-rs/facet", branch = "main" }
 facet-core = { git = "https://github.com/facet-rs/facet", branch = "main" }
 facet-reflect = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-format = { git = "https://github.com/facet-rs/facet", branch = "main" }
 facet-value = { git = "https://github.com/facet-rs/facet", branch = "main" }
 facet-json = { git = "https://github.com/facet-rs/facet", branch = "main" }
 facet-typescript = { git = "https://github.com/facet-rs/facet", branch = "main" }
 figue = { git = "https://github.com/bearcove/figue", branch = "main" }
 libc = "0.2"
 parking_lot = "0.12"
-roam-session = { path = "../roam/rust/roam-session" }
-roam-shm = { path = "../roam/rust/roam-shm" }
 ur-taking-me-with-you = { path = "../roam/rust/ur-taking-me-with-you", features = ["tokio"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -64,9 +58,7 @@ rusqlite = { version = "0.32", features = ["bundled", "hooks"] }
 ureq = "2.12"
 addr2line = "0.24"
 rust-embed = "8"
-mime_guess = "2"
 ulid = "1"
-camino = "1.1"
 
 [patch."https://github.com/bearcove/moire"]
 moire = { path = "crates/moire" }
