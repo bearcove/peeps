@@ -156,7 +156,6 @@ export function GraphViewport({
       >
         <GraphAutoFit
           geometryKey={geometryKey}
-          hasFitted={hasFitted}
           onFitted={() => setHasFitted(true)}
           suppressAutoFit={unionModeSuppressAutoFit && hasFitted}
         />
@@ -232,12 +231,10 @@ const GRAPH_EMPTY_MESSAGES: Record<"idle" | "cutting" | "loading" | "ready" | "e
 
 function GraphAutoFit({
   geometryKey,
-  hasFitted,
   onFitted,
   suppressAutoFit,
 }: {
   geometryKey: string;
-  hasFitted: boolean;
   onFitted: () => void;
   suppressAutoFit: boolean;
 }) {

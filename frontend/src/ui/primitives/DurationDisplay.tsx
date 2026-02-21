@@ -1,4 +1,3 @@
-import type React from "react";
 import "./DurationDisplay.css";
 
 export type DurationTone = "neutral" | "ok" | "warn" | "crit";

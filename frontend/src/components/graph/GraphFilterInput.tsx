@@ -169,7 +169,7 @@ export function GraphFilterInput({
         kinds: kindItems.map((item) => ({ id: item.id, label: String(item.label ?? item.id) })),
         modules: moduleItems.map((item) => ({ id: item.id, label: String(item.label ?? item.id) })),
       }),
-    [currentFragment, nodeIds, entitySuggestions, locations, crateItems, processItems, kindItems, moduleItems],
+    [currentFragment, editorState.ast, nodeIds, entitySuggestions, locations, crateItems, processItems, kindItems, moduleItems],
   );
   const activeSuggestionIndex =
     graphFilterSuggestionsList.length === 0

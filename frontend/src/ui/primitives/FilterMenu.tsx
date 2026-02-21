@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import "./FilterMenu.css";
 import {
   Button,
@@ -58,13 +58,13 @@ export function FilterMenu({
   const suppressTriggerCloseRef = useRef(false);
   const hiddenCount = items.filter((item) => hiddenIds.has(item.id)).length;
 
-  const announceOpen = () => {
+  const announceOpen = useCallback(() => {
     window.dispatchEvent(
       new CustomEvent("ui-control-menu-open", {
         detail: { id: instanceId },
       }),
     );
-  };
+  }, [instanceId]);
 
   useEffect(() => {
     if (!dragSelectActive) return;
@@ -93,7 +93,7 @@ export function FilterMenu({
   useEffect(() => {
     if (!open) return;
     announceOpen();
-  }, [open]);
+  }, [open, announceOpen]);
 
   useEffect(() => {
     if (!open) return;

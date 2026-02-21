@@ -29,7 +29,7 @@ export function AppHeader({
   recording,
   connCount,
   isBusy,
-  isLive,
+  isLive: _isLive,
   onSetIsLive,
   onShowProcessModal,
   onTakeSnapshot,

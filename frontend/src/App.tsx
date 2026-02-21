@@ -31,7 +31,11 @@ import {
   type FrameRenderResult,
   type UnionLayout,
 } from "./recording/unionGraph";
-import { GraphPanel, type GraphSelection, type ScopeColorMode, type SnapPhase } from "./components/graph/GraphPanel";
+import {
+  GraphPanel,
+  type GraphSelection,
+  type ScopeColorMode,
+} from "./components/graph/GraphPanel";
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
 import { ScopeTablePanel } from "./components/scopes/ScopeTablePanel";
 import { EntityTablePanel } from "./components/entities/EntityTablePanel";
@@ -106,11 +110,12 @@ type ScopeEntityFilter = {
   entityIds: Set<string>;
 };
 
-
 function entityMatchesScopeFilter(entity: EntityDef, scopeEntityIds: ReadonlySet<string>): boolean {
   if (scopeEntityIds.has(entity.id)) return true;
   if (entity.channelPair) {
-    return scopeEntityIds.has(entity.channelPair.tx.id) || scopeEntityIds.has(entity.channelPair.rx.id);
+    return (
+      scopeEntityIds.has(entity.channelPair.tx.id) || scopeEntityIds.has(entity.channelPair.rx.id)
+    );
   }
   if (entity.rpcPair) {
     return scopeEntityIds.has(entity.rpcPair.req.id) || scopeEntityIds.has(entity.rpcPair.resp.id);
@@ -134,7 +139,9 @@ export function App() {
   const [inspectedSelection, setInspectedSelection] = useState<GraphSelection>(null);
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
-  const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:process loners:off");
+  const [graphFilterText, setGraphFilterText] = useState(
+    "colorBy:crate groupBy:process loners:off",
+  );
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [symbolicationProgress, setSymbolicationProgress] = useState<{
     resolved: number;
@@ -143,7 +150,9 @@ export function App() {
   } | null>(null);
   const [isLive, setIsLive] = useState(true);
   const [ghostMode, setGhostMode] = useState(false);
-  const [unionFrameLayout, setUnionFrameLayout] = useState<FrameRenderResult | undefined>(undefined);
+  const [unionFrameLayout, setUnionFrameLayout] = useState<FrameRenderResult | undefined>(
+    undefined,
+  );
   const [downsampleInterval, setDownsampleInterval] = useState(1);
   const [builtDownsampleInterval, setBuiltDownsampleInterval] = useState(1);
   const pollingRef = useRef<number | null>(null);
@@ -158,8 +167,14 @@ export function App() {
     const main = mainPaneRef.current;
     const overlay = inspectorOverlayRef.current;
     if (!main || !overlay) return { x, y };
-    const maxX = Math.max(INSPECTOR_MARGIN, main.clientWidth - overlay.offsetWidth - INSPECTOR_MARGIN);
-    const maxY = Math.max(INSPECTOR_MARGIN, main.clientHeight - overlay.offsetHeight - INSPECTOR_MARGIN);
+    const maxX = Math.max(
+      INSPECTOR_MARGIN,
+      main.clientWidth - overlay.offsetWidth - INSPECTOR_MARGIN,
+    );
+    const maxY = Math.max(
+      INSPECTOR_MARGIN,
+      main.clientHeight - overlay.offsetHeight - INSPECTOR_MARGIN,
+    );
     return {
       x: Math.min(Math.max(x, INSPECTOR_MARGIN), maxX),
       y: Math.min(Math.max(y, INSPECTOR_MARGIN), maxY),
@@ -230,9 +245,18 @@ export function App() {
     [clampInspectorPosition],
   );
 
-  const allEntities = snap.phase === "ready" ? snap.entities : [];
-  const allEdges = snap.phase === "ready" ? snap.edges : [];
-  const backtracesById = snap.phase === "ready" ? snap.backtracesById : new Map();
+  const allEntities = useMemo(
+    () => (snap.phase === "ready" ? snap.entities : []),
+    [snap],
+  );
+  const allEdges = useMemo(
+    () => (snap.phase === "ready" ? snap.edges : []),
+    [snap],
+  );
+  const backtracesById = useMemo(
+    () => (snap.phase === "ready" ? snap.backtracesById : new Map()),
+    [snap],
+  );
   const graphTextFilters = useMemo(() => parseGraphFilterQuery(graphFilterText), [graphFilterText]);
   const effectiveHiddenKrates = graphTextFilters.excludeCrates;
   const effectiveHiddenProcesses = graphTextFilters.excludeProcesses;
@@ -257,18 +281,44 @@ export function App() {
     (ignore: "crate" | "process" | "kind" | "module" | null) => {
       let entities = allEntities.filter(
         (e) =>
-          (graphTextFilters.includeCrates.size === 0 || graphTextFilters.includeCrates.has(e.topFrame?.crate_name ?? "~no-crate")) &&
-          (graphTextFilters.includeProcesses.size === 0 || graphTextFilters.includeProcesses.has(e.processId)) &&
-          (graphTextFilters.includeKinds.size === 0 || graphTextFilters.includeKinds.has(canonicalNodeKind(e.kind))) &&
-          (graphTextFilters.includeNodeIds.size === 0 || graphTextFilters.includeNodeIds.has(e.id)) &&
-          (graphTextFilters.includeLocations.size === 0 || graphTextFilters.includeLocations.has(e.topFrame ? (e.topFrame.line != null ? `${e.topFrame.source_file}:${e.topFrame.line}` : e.topFrame.source_file) : "")) &&
-          (ignore === "module" || graphTextFilters.includeModules.size === 0 || graphTextFilters.includeModules.has(e.topFrame?.module_path ?? "")) &&
-          (ignore === "crate" || effectiveHiddenKrates.size === 0 || !effectiveHiddenKrates.has(e.topFrame?.crate_name ?? "~no-crate")) &&
-          (ignore === "process" || effectiveHiddenProcesses.size === 0 || !effectiveHiddenProcesses.has(e.processId)) &&
-          (ignore === "kind" || effectiveHiddenKinds.size === 0 || !effectiveHiddenKinds.has(canonicalNodeKind(e.kind))) &&
+          (graphTextFilters.includeCrates.size === 0 ||
+            graphTextFilters.includeCrates.has(e.topFrame?.crate_name ?? "~no-crate")) &&
+          (graphTextFilters.includeProcesses.size === 0 ||
+            graphTextFilters.includeProcesses.has(e.processId)) &&
+          (graphTextFilters.includeKinds.size === 0 ||
+            graphTextFilters.includeKinds.has(canonicalNodeKind(e.kind))) &&
+          (graphTextFilters.includeNodeIds.size === 0 ||
+            graphTextFilters.includeNodeIds.has(e.id)) &&
+          (graphTextFilters.includeLocations.size === 0 ||
+            graphTextFilters.includeLocations.has(
+              e.topFrame
+                ? e.topFrame.line != null
+                  ? `${e.topFrame.source_file}:${e.topFrame.line}`
+                  : e.topFrame.source_file
+                : "",
+            )) &&
+          (ignore === "module" ||
+            graphTextFilters.includeModules.size === 0 ||
+            graphTextFilters.includeModules.has(e.topFrame?.module_path ?? "")) &&
+          (ignore === "crate" ||
+            effectiveHiddenKrates.size === 0 ||
+            !effectiveHiddenKrates.has(e.topFrame?.crate_name ?? "~no-crate")) &&
+          (ignore === "process" ||
+            effectiveHiddenProcesses.size === 0 ||
+            !effectiveHiddenProcesses.has(e.processId)) &&
+          (ignore === "kind" ||
+            effectiveHiddenKinds.size === 0 ||
+            !effectiveHiddenKinds.has(canonicalNodeKind(e.kind))) &&
           !graphTextFilters.excludeNodeIds.has(e.id) &&
-          !graphTextFilters.excludeLocations.has(e.topFrame ? (e.topFrame.line != null ? `${e.topFrame.source_file}:${e.topFrame.line}` : e.topFrame.source_file) : "") &&
-          (ignore === "module" || !graphTextFilters.excludeModules.has(e.topFrame?.module_path ?? "")),
+          !graphTextFilters.excludeLocations.has(
+            e.topFrame
+              ? e.topFrame.line != null
+                ? `${e.topFrame.source_file}:${e.topFrame.line}`
+                : e.topFrame.source_file
+              : "",
+          ) &&
+          (ignore === "module" ||
+            !graphTextFilters.excludeModules.has(e.topFrame?.module_path ?? "")),
       );
       const entityIds = new Set(entities.map((entity) => entity.id));
       let edges = collapseEdgesThroughHiddenNodes(allEdges, entityIds);
@@ -278,9 +328,11 @@ export function App() {
         edges = withoutLoners.edges;
       }
       if (scopeEntityFilter) {
-        entities = entities.filter((entity) => entityMatchesScopeFilter(entity, scopeEntityFilter.entityIds));
-        const entityIds = new Set(entities.map((entity) => entity.id));
-        edges = collapseEdgesThroughHiddenNodes(allEdges, entityIds);
+        entities = entities.filter((entity) =>
+          entityMatchesScopeFilter(entity, scopeEntityFilter.entityIds),
+        );
+        const scopeFilteredIds = new Set(entities.map((entity) => entity.id));
+        edges = collapseEdgesThroughHiddenNodes(allEdges, scopeFilteredIds);
       }
       return { entities, edges };
     },
@@ -301,7 +353,9 @@ export function App() {
   }, []);
 
   const hideLocationViaTextFilter = useCallback((location: string) => {
-    setGraphFilterText((prev) => appendFilterToken(prev, `-location:${quoteFilterValue(location)}`));
+    setGraphFilterText((prev) =>
+      appendFilterToken(prev, `-location:${quoteFilterValue(location)}`),
+    );
   }, []);
 
   const appendFilterTokenCallback = useCallback((token: string) => {
@@ -370,7 +424,6 @@ export function App() {
           a.id.localeCompare(b.id),
       )
       .map((row) => {
-        const suffix = row.pid == null ? "?" : String(row.pid);
         return {
           id: row.id,
           label: formatProcessLabel(row.name, row.pid),
@@ -404,7 +457,9 @@ export function App() {
 
   const queryEntities = useMemo(() => {
     if (!scopeEntityFilter) return allEntities;
-    return allEntities.filter((entity) => entityMatchesScopeFilter(entity, scopeEntityFilter.entityIds));
+    return allEntities.filter((entity) =>
+      entityMatchesScopeFilter(entity, scopeEntityFilter.entityIds),
+    );
   }, [allEntities, scopeEntityFilter]);
 
   const snapshotProcessCount = useMemo(() => {
@@ -417,7 +472,7 @@ export function App() {
       scopeLabel:
         scope.scopeKind === "process"
           ? formatProcessLabel(scope.processName, scope.processPid)
-          : (scope.scopeName || scope.scopeId),
+          : scope.scopeName || scope.scopeId,
       entityIds: new Set(scope.memberEntityIds),
     });
   }, []);
@@ -437,13 +492,27 @@ export function App() {
     setFocusedEntityFilter(null);
     try {
       const triggered = await apiClient.triggerCut();
-      snapshotLog("cut triggered id=%s requested=%d", triggered.cut_id, triggered.requested_connections);
+      snapshotLog(
+        "cut triggered id=%s requested=%d",
+        triggered.cut_id,
+        triggered.requested_connections,
+      );
       let status = await apiClient.fetchCutStatus(triggered.cut_id);
-      snapshotLog("cut status id=%s pending=%d acked=%d", status.cut_id, status.pending_connections, status.acked_connections);
+      snapshotLog(
+        "cut status id=%s pending=%d acked=%d",
+        status.cut_id,
+        status.pending_connections,
+        status.acked_connections,
+      );
       while (status.pending_connections > 0) {
         await new Promise<void>((resolve) => window.setTimeout(resolve, 600));
         status = await apiClient.fetchCutStatus(triggered.cut_id);
-        snapshotLog("cut status id=%s pending=%d acked=%d", status.cut_id, status.pending_connections, status.acked_connections);
+        snapshotLog(
+          "cut status id=%s pending=%d acked=%d",
+          status.cut_id,
+          status.pending_connections,
+          status.acked_connections,
+        );
       }
       setSnap({ phase: "loading" });
       snapshotLog("snapshot request start");
@@ -456,7 +525,11 @@ export function App() {
         snapshot.timed_out_processes.length,
       );
       const converted = convertSnapshot(snapshot, effectiveSubgraphScopeMode);
-      snapshotLog("snapshot converted entities=%d edges=%d", converted.entities.length, converted.edges.length);
+      snapshotLog(
+        "snapshot converted entities=%d edges=%d",
+        converted.entities.length,
+        converted.edges.length,
+      );
       setSnap({
         phase: "ready",
         ...converted,
@@ -464,13 +537,19 @@ export function App() {
         backtracesById: buildBacktraceIndex(snapshot),
       });
       const totalFrames = snapshot.frames.length;
-      const resolvedFrames = snapshot.frames.filter((record) => isResolvedFrame(record.frame)).length;
+      const resolvedFrames = snapshot.frames.filter((record) =>
+        isResolvedFrame(record.frame),
+      ).length;
       const pendingFrames = snapshot.frames.filter((record) => isPendingFrame(record.frame)).length;
       console.info(
         `[moire:symbolication] snapshot ${snapshot.snapshot_id} initial resolved=${resolvedFrames} pending=${pendingFrames} total=${totalFrames}`,
       );
       if (pendingFrames > 0) {
-        setSymbolicationProgress({ resolved: resolvedFrames, pending: pendingFrames, total: totalFrames });
+        setSymbolicationProgress({
+          resolved: resolvedFrames,
+          pending: pendingFrames,
+          total: totalFrames,
+        });
         symbolicationStreamStopRef.current = apiClient.streamSnapshotSymbolication(
           snapshot.snapshot_id,
           (update) => {
@@ -485,7 +564,9 @@ export function App() {
               scopes: extractScopes(next),
               backtracesById: buildBacktraceIndex(next),
             });
-            const nextResolved = next.frames.filter((record) => isResolvedFrame(record.frame)).length;
+            const nextResolved = next.frames.filter((record) =>
+              isResolvedFrame(record.frame),
+            ).length;
             const nextPending = next.frames.filter((record) => isPendingFrame(record.frame)).length;
             if (update.done || nextPending === 0) {
               setSymbolicationProgress(null);
@@ -592,8 +673,7 @@ export function App() {
     }
     try {
       const session = await apiClient.stopRecording();
-      const autoInterval =
-        session.frame_count > 500 ? 5 : session.frame_count >= 100 ? 2 : 1;
+      const autoInterval = session.frame_count > 500 ? 5 : session.frame_count >= 100 ? 2 : 1;
       setDownsampleInterval(autoInterval);
       setBuiltDownsampleInterval(autoInterval);
       setRecording({
@@ -659,7 +739,16 @@ export function App() {
     } catch (err) {
       console.error(err);
     }
-  }, [effectiveHiddenKrates, effectiveHiddenProcesses, effectiveHiddenKinds, graphTextFilters, focusedEntityId, ghostMode, effectiveShowLoners, effectiveSubgraphScopeMode]);
+  }, [
+    effectiveHiddenKrates,
+    effectiveHiddenProcesses,
+    effectiveHiddenKinds,
+    graphTextFilters,
+    focusedEntityId,
+    ghostMode,
+    effectiveShowLoners,
+    effectiveSubgraphScopeMode,
+  ]);
 
   const handleExport = useCallback(async () => {
     try {
@@ -686,8 +775,7 @@ export function App() {
       e.target.value = "";
       try {
         const session = await apiClient.importRecording(file);
-        const autoInterval =
-          session.frame_count > 500 ? 5 : session.frame_count >= 100 ? 2 : 1;
+        const autoInterval = session.frame_count > 500 ? 5 : session.frame_count >= 100 ? 2 : 1;
         setDownsampleInterval(autoInterval);
         setBuiltDownsampleInterval(autoInterval);
         setRecording({
@@ -754,7 +842,16 @@ export function App() {
         console.error(err);
       }
     },
-    [effectiveHiddenKrates, effectiveHiddenProcesses, effectiveHiddenKinds, graphTextFilters, focusedEntityId, ghostMode, effectiveShowLoners, effectiveSubgraphScopeMode],
+    [
+      effectiveHiddenKrates,
+      effectiveHiddenProcesses,
+      effectiveHiddenKinds,
+      graphTextFilters,
+      focusedEntityId,
+      ghostMode,
+      effectiveShowLoners,
+      effectiveSubgraphScopeMode,
+    ],
   );
 
   const handleScrub = useCallback(
@@ -762,8 +859,7 @@ export function App() {
       setRecording((prev) => {
         if (prev.phase !== "stopped" && prev.phase !== "scrubbing") return prev;
         const { frames, frameCount, sessionId, avgCaptureMs, maxCaptureMs, totalCaptureMs } = prev;
-        const unionLayout =
-          prev.phase === "stopped" ? prev.unionLayout : prev.unionLayout;
+        const unionLayout = prev.phase === "stopped" ? prev.unionLayout : prev.unionLayout;
         if (!unionLayout) return prev;
 
         const result = renderFrameFromUnion(
@@ -810,13 +906,20 @@ export function App() {
         };
       });
     },
-    [effectiveHiddenKrates, effectiveHiddenProcesses, effectiveHiddenKinds, graphTextFilters, focusedEntityId, ghostMode, effectiveShowLoners],
+    [
+      effectiveHiddenKrates,
+      effectiveHiddenProcesses,
+      effectiveHiddenKinds,
+      graphTextFilters,
+      focusedEntityId,
+      ghostMode,
+      effectiveShowLoners,
+    ],
   );
 
   const handleRebuildUnion = useCallback(async () => {
     if (recording.phase !== "stopped" && recording.phase !== "scrubbing") return;
-    const { frames, sessionId, frameCount, avgCaptureMs, maxCaptureMs, totalCaptureMs } =
-      recording;
+    const { frames, sessionId, frameCount, avgCaptureMs, maxCaptureMs, totalCaptureMs } = recording;
     setRecording({
       phase: "stopped",
       sessionId,
@@ -880,7 +983,18 @@ export function App() {
     } catch (err) {
       console.error(err);
     }
-  }, [recording, downsampleInterval, effectiveHiddenKrates, effectiveHiddenProcesses, effectiveHiddenKinds, graphTextFilters, focusedEntityId, ghostMode, effectiveShowLoners, effectiveSubgraphScopeMode]);
+  }, [
+    recording,
+    downsampleInterval,
+    effectiveHiddenKrates,
+    effectiveHiddenProcesses,
+    effectiveHiddenKinds,
+    graphTextFilters,
+    focusedEntityId,
+    ghostMode,
+    effectiveShowLoners,
+    effectiveSubgraphScopeMode,
+  ]);
 
   // Re-render union frame when filters change during playback.
   useEffect(() => {
@@ -924,7 +1038,16 @@ export function App() {
       );
       setUnionFrameLayout(result);
     }
-  }, [effectiveHiddenKrates, effectiveHiddenProcesses, effectiveHiddenKinds, graphTextFilters, focusedEntityId, ghostMode, effectiveShowLoners, recording]);
+  }, [
+    effectiveHiddenKrates,
+    effectiveHiddenProcesses,
+    effectiveHiddenKinds,
+    graphTextFilters,
+    focusedEntityId,
+    ghostMode,
+    effectiveShowLoners,
+    recording,
+  ]);
 
   // Clear union frame layout when going back to idle or starting a new recording.
   useEffect(() => {
@@ -965,10 +1088,16 @@ export function App() {
               backtracesById: buildBacktraceIndex(existingSnapshot),
             });
             const totalFrames = existingSnapshot.frames.length;
-            const resolvedFrames = existingSnapshot.frames.filter((record) => isResolvedFrame(record.frame)).length;
-            const pendingFrames = existingSnapshot.frames.filter((record) => isPendingFrame(record.frame)).length;
+            const resolvedFrames = existingSnapshot.frames.filter((record) =>
+              isResolvedFrame(record.frame),
+            ).length;
+            const pendingFrames = existingSnapshot.frames.filter((record) =>
+              isPendingFrame(record.frame),
+            ).length;
             setSymbolicationProgress(
-              pendingFrames > 0 ? { resolved: resolvedFrames, pending: pendingFrames, total: totalFrames } : null,
+              pendingFrames > 0
+                ? { resolved: resolvedFrames, pending: pendingFrames, total: totalFrames }
+                : null,
             );
             appLog("startup poll done using existing snapshot");
             break;
@@ -1006,7 +1135,13 @@ export function App() {
     const start = computeDefaultInspectorPosition();
     if (!start) return;
     setInspectorPosition(start);
-  }, [inspectorOpen, inspectorPosition, computeDefaultInspectorPosition, leftPaneTab, entities.length]);
+  }, [
+    inspectorOpen,
+    inspectorPosition,
+    computeDefaultInspectorPosition,
+    leftPaneTab,
+    entities.length,
+  ]);
 
   useEffect(() => {
     if (!inspectorOpen) return;
@@ -1274,8 +1409,12 @@ export function App() {
                 setSelectedScope(null);
                 setSelectedScopeKind(canonicalScopeKind(kind));
               }}
-              scrubbingUnionLayout={recording.phase === "scrubbing" ? recording.unionLayout : undefined}
-              currentFrameIndex={recording.phase === "scrubbing" ? recording.currentFrameIndex : undefined}
+              scrubbingUnionLayout={
+                recording.phase === "scrubbing" ? recording.unionLayout : undefined
+              }
+              currentFrameIndex={
+                recording.phase === "scrubbing" ? recording.currentFrameIndex : undefined
+              }
               selectedScopeKind={selectedScopeKind}
               selectedScope={selectedScope}
             />

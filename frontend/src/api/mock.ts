@@ -32,7 +32,7 @@ const LAB_SERVER_CAPTURED_AT = 1_739_794_800_000; // fixed unix ms anchor
 
 // Process 2: "lab-loader" — 30 minutes old, I/O and sync primitives
 const LAB_LOADER_PTIME_NOW = 1_800_000; // 30min in ms
-const LAB_LOADER_CAPTURED_AT = 1_739_794_800_000;
+const _LAB_LOADER_CAPTURED_AT = 1_739_794_800_000;
 
 // Helper: convert intended age-in-ms to a PTime birth value
 function birth(ptimeNow: number, ageMs: number): number {

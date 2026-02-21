@@ -19,5 +19,8 @@ ex *args: ex-prep
 exr *args: ex-prep
     RUST_LOG=debug cargo run --features roam --bin moire-examples -- {{ args }}
 
+lint:
+    pnpm lint
+
 kill-port port="9132":
     lsof -ti:{{ port }} -sTCP:LISTEN | xargs kill -9

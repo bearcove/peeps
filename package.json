@@ -9,6 +9,11 @@
     "types:gen": "cargo run -p moire-web --bin gen_frontend_types",
     "types:check": "pnpm types:gen && git diff --exit-code -- frontend/src/api/types.generated.ts",
     "build": "pnpm --filter moire-frontend build",
-    "test": "pnpm --filter moire-frontend test"
+    "test": "pnpm --filter moire-frontend test",
+    "lint": "pnpm exec oxlint --tsconfig frontend/tsconfig.json frontend/src",
+    "lint:fix": "pnpm exec oxlint --tsconfig frontend/tsconfig.json --fix frontend/src"
+  },
+  "devDependencies": {
+    "oxlint": "^1.49.0"
   }
 }

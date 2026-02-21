@@ -2,7 +2,6 @@ import type {
   BacktraceFrameResolved,
   EdgeKind,
   EntityBody,
-  SnapshotBacktrace,
   SnapshotFrameRecord,
   SnapshotBacktraceFrame,
   SnapshotCutResponse,
@@ -14,7 +13,6 @@ import { canonicalScopeKind } from "./scopeKindSpec";
 
 // TypeScript's `in` narrowing on complex union types produces `unknown` for
 // nested property types. Use `Extract` to safely reference specific variants.
-type RequestBody = Extract<EntityBody, { request: unknown }>;
 type ResponseBody = Extract<EntityBody, { response: unknown }>;
 
 // ── Display types ──────────────────────────────────────────────

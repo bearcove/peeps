@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   Button,
   Menu as AriaMenu,
@@ -34,13 +34,13 @@ export function Menu({
   // so that releasing over a menu item triggers the action without a separate click.
   const isDragOpenRef = useRef(false);
 
-  const announceOpen = () => {
+  const announceOpen = useCallback(() => {
     window.dispatchEvent(
       new CustomEvent("ui-control-menu-open", {
         detail: { id: instanceId },
       }),
     );
-  };
+  }, [instanceId]);
 
   useEffect(() => {
     const onOtherMenuOpened = (event: Event) => {
@@ -57,7 +57,7 @@ export function Menu({
   useEffect(() => {
     if (!open) return;
     announceOpen();
-  }, [open]);
+  }, [open, announceOpen]);
 
   useEffect(() => {
     if (!open) return;

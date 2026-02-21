@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "unicorn", "import"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "import/no-unassigned-import": "off",
+    "no-await-in-loop": "off",
+    "unicorn/no-array-sort": "off",
+    "unicorn/no-array-reverse": "off"
+  },
+  "settings": {
+    "react": {
+      "formComponents": [],
+      "linkComponents": [],
+      "version": "19",
+      "componentWrapperFunctions": []
+    }
+  },
+  "env": {
+    "builtin": true,
+    "browser": true
+  },
+  "globals": {},
+  "ignorePatterns": [
+    "frontend/dist/**",
+    "target/**",
+    "node_modules/**",
+    "frontend/src/api/types.generated.ts"
+  ]
+}
