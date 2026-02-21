@@ -173,10 +173,11 @@ a.bt-badge-location:hover .bt-badge-file-icon {
   display: flex;
   align-items: baseline;
   gap: 12px;
-  padding: 3px 0;
+  padding: 3px 0 3px 6px;
   font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 40%, transparent);
+  border-left: 2px solid transparent;
 }
 
 .bt-frame-row:last-child {
@@ -192,8 +193,7 @@ a.bt-badge-location:hover .bt-badge-file-icon {
 }
 
 .bt-frame-row--app {
-  border-left: 2px solid var(--accent);
-  padding-left: 6px;
+  border-left-color: var(--accent);
 }
 
 .bt-frame-row--app .bt-fn {
