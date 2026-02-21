@@ -1704,6 +1704,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusqlite-facet"
+version = "0.1.0"
+dependencies = [
+ "facet",
+ "facet-core",
+ "facet-reflect",
+ "rusqlite",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
