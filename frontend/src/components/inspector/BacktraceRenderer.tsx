@@ -12,6 +12,20 @@ import { FrameCard } from "../../ui/primitives/FrameCard";
 import { SourcePreview } from "../../ui/primitives/SourcePreview";
 import "./BacktraceRenderer.css";
 
+/** Module-level cache: frameId → promise of source preview. Survives unmount/remount. */
+const sourcePreviewCache = new Map<number, Promise<SourcePreviewResponse>>();
+
+function cachedFetchSourcePreview(frameId: number): Promise<SourcePreviewResponse> {
+  let cached = sourcePreviewCache.get(frameId);
+  if (!cached) {
+    cached = apiClient.fetchSourcePreview(frameId);
+    // Evict on failure so a transient error can be retried next time.
+    cached.catch(() => sourcePreviewCache.delete(frameId));
+    sourcePreviewCache.set(frameId, cached);
+  }
+  return cached;
+}
+
 const SYSTEM_CRATES = new Set([
   "std",
   "core",
@@ -148,7 +162,7 @@ export function BacktracePanel({
 
     Promise.allSettled(
       targets.map(({ frameId }) =>
-        apiClient.fetchSourcePreview(frameId).then((res) => [frameId, res] as const),
+        cachedFetchSourcePreview(frameId).then((res) => [frameId, res] as const),
       ),
     )
       .then((results) => {
