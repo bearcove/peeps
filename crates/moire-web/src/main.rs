@@ -110,7 +110,7 @@ async fn run() -> Result<(), String> {
     let tcp_listener = TcpListener::bind(&tcp_addr)
         .await
         .map_err(|e| format!("failed to bind TCP on {tcp_addr}: {e}"))?;
-    info!(%tcp_addr, next_conn_id, "moire-web TCP ingest listener ready");
+    info!(%tcp_addr, %next_conn_id, "moire-web TCP ingest listener ready");
 
     let http_listener = TcpListener::bind(&http_addr)
         .await

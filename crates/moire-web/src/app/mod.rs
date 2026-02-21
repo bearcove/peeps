@@ -72,9 +72,9 @@ pub struct SnapshotStreamState {
 }
 
 impl ServerState {
-    pub fn new(next_conn_id: u64) -> Self {
+    pub fn new(next_conn_id: ConnectionId) -> Self {
         Self {
-            next_conn_id: ConnectionId::new(next_conn_id),
+            next_conn_id,
             next_cut_id: CutOrdinal::ONE,
             next_snapshot_id: 1,
             next_session_id: SessionOrdinal::ONE,
@@ -89,7 +89,7 @@ impl ServerState {
 }
 
 impl AppState {
-    pub fn new(db: Db, next_conn_id: u64, dev_proxy: Option<DevProxyState>) -> Self {
+    pub fn new(db: Db, next_conn_id: ConnectionId, dev_proxy: Option<DevProxyState>) -> Self {
         Self {
             inner: Arc::new(Mutex::new(ServerState::new(next_conn_id))),
             db: Arc::new(db),

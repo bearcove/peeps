@@ -1,4 +1,5 @@
 use facet::Facet;
+use moire_types::ConnectionId;
 use rusqlite::Connection;
 use rusqlite_facet::ConnectionFacetExt;
 
@@ -50,7 +51,7 @@ pub fn init_sqlite(db: &Db) -> Result<(), String> {
     Ok(())
 }
 
-pub fn load_next_connection_id(db: &Db) -> Result<u64, String> {
+pub fn load_next_connection_id(db: &Db) -> Result<ConnectionId, String> {
     let conn = db.open()?;
     let max_conn_id = conn
         .facet_query_one_ref::<MaxConnIdRow, _>(
@@ -66,9 +67,10 @@ pub fn load_next_connection_id(db: &Db) -> Result<u64, String> {
     }
     let max_conn_id = u64::try_from(max_conn_id)
         .map_err(|error| format!("convert max conn_id to u64: {error}"))?;
-    max_conn_id
+    let next = max_conn_id
         .checked_add(1)
-        .ok_or_else(|| String::from("invariant violated: conn_id overflow"))
+        .ok_or_else(|| String::from("invariant violated: conn_id overflow"))?;
+    Ok(ConnectionId::new(next))
 }
 
 fn reset_managed_schema(conn: &Connection) -> Result<(), String> {
