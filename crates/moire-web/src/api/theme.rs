@@ -6,7 +6,7 @@ use axum::response::IntoResponse;
 /// scoped via CSS `@media (prefers-color-scheme: ...)`.
 pub async fn api_arborium_theme_css() -> impl IntoResponse {
     let light = builtin::github_light().to_css(".ui-source-preview");
-    let dark = builtin::github_dark().to_css(".ui-source-preview");
+    let dark = builtin::catppuccin_mocha().to_css(".ui-source-preview");
 
     let css = format!(
         "@media (prefers-color-scheme: light) {{\n{light}\n}}\n\

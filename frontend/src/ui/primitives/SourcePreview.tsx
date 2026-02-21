@@ -26,7 +26,10 @@ export function SourcePreview({ preview }: { preview: SourcePreviewResponse }) {
               key={lineNum}
               className={`ui-source-preview__line${isTarget ? " ui-source-preview__line--target" : ""}`}
             >
-              <span className="ui-source-preview__gutter">{lineNum}</span>
+              <span className="ui-source-preview__gutter">
+                <span className="ui-source-preview__ln">{lineNum}</span>
+                <span className="ui-source-preview__ribbon" />
+              </span>
               {/* eslint-disable-next-line react/no-danger */}
               <span className="ui-source-preview__text" dangerouslySetInnerHTML={{ __html: html }} />
             </div>

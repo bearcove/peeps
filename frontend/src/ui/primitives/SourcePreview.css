@@ -1,12 +1,12 @@
 .ui-source-preview {
-    margin-top: 4px;
     overflow: hidden;
     background: var(--bg-base);
+    margin-bottom: 8px;
 }
 
 .ui-source-preview__code {
     margin: 0;
-    padding: 4px 0;
+    padding: 0;
     font-family: var(--font-mono);
     font-size: var(--font-size-sm);
     line-height: 1.6;
@@ -16,8 +16,9 @@
 .ui-source-preview__line {
     display: flex;
     align-items: baseline;
-    gap: 12px;
-    padding: 0 12px;
+    gap: 0;
+    padding: 0;
+    padding-right: 12px;
 }
 
 .ui-source-preview__line--target {
@@ -28,11 +29,25 @@
 }
 
 .ui-source-preview__gutter {
+    display: flex;
+    align-items: stretch;
     flex-shrink: 0;
-    width: 3ch;
+    user-select: none;
+}
+
+.ui-source-preview__ln {
+    display: inline-block;
+    width: 6ch;
+    padding: 0 6px;
+    opacity: 0.3;
     text-align: right;
     color: var(--text-muted);
-    user-select: none;
+}
+
+.ui-source-preview__ribbon {
+    width: 4px;
+    background: var(--frame-color, transparent);
+    margin-right: 12px;
 }
 
 .ui-source-preview__text {

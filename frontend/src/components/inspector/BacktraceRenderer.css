@@ -180,10 +180,9 @@ a.bt-badge-location:hover .bt-badge-file-icon {
   gap: 6px;
   min-width: 0;
 
-  padding: .2em .4em;
+  padding: .2em .6em;
 
-  background: var(--text-primary);
-  color: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 .bt-fn {
