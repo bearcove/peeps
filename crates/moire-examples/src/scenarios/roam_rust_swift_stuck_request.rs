@@ -23,6 +23,11 @@ fn spawn_swift_peer(workspace_root: &Path, peer_addr: &str) -> std::io::Result<C
     ur_taking_me_with_you::spawn_dying_with_parent_async(cmd)
 }
 
+#[roam::service]
+trait DummyService {
+    async fn noop_stall(&self);
+}
+
 pub async fn run(workspace_root: &Path) -> Result<(), String> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -59,12 +64,10 @@ pub async fn run(workspace_root: &Path) -> Result<(), String> {
         .named("roam.rust_host_driver"),
     );
 
-    let request_handle = handle.clone();
+    let client = DummyServiceClient::new(handle);
     moire::task::spawn(
         async move {
-            let _ = request_handle
-                .call_raw(0xfeed_f00d, "swift.noop.stall", Vec::new())
-                .await;
+            let _ = client.noop_stall().await;
         }
         .named("rust.calls.swift_noop"),
     );
