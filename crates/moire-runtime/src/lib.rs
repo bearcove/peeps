@@ -4,8 +4,8 @@ use moire_trace_capture::{
 };
 use moire_trace_types::{BacktraceId, FrameKey, ModuleId, RelPc, RuntimeBase};
 use moire_types::{
-    EntityId, Event, EventKind, EventTarget, ProcessId, ProcessScopeBody, ScopeBody, ScopeId,
-    TaskScopeBody, next_process_id,
+    AetherEntity, Entity, EntityBody, EntityId, Event, EventKind, EventTarget, ProcessId,
+    ProcessScopeBody, ScopeBody, ScopeId, TaskScopeBody, next_process_id,
 };
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -198,6 +198,25 @@ pub(crate) fn backtrace_records_after(
         .range((lower, Bound::Unbounded))
         .map(|(_, record)| record.clone())
         .collect()
+}
+
+pub(crate) fn aether_entity_for_current_task() -> Option<EntityId> {
+    let task_id = tokio::task::try_id()?;
+    let entity_id = EntityId::new(format!("AETHER#{task_id}"));
+    if let Ok(mut db) = db::runtime_db().lock() {
+        if !db.entities.contains_key(&entity_id) {
+            let mut entity = Entity::new(
+                capture_backtrace_id(),
+                format!("aether#{task_id}"),
+                EntityBody::Aether(AetherEntity {
+                    task_id: task_id.to_string(),
+                }),
+            );
+            entity.id = entity_id.clone();
+            db.upsert_entity(entity);
+        }
+    }
+    Some(entity_id)
 }
 
 pub fn current_process_scope_id() -> Option<ScopeId> {

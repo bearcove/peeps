@@ -75,6 +75,9 @@ crate::define_entity_body! {
 
         // User-defined
         Custom(CustomEntity),
+
+        // Synthetic entities for uninstrumented tasks
+        Aether(AetherEntity),
     }
 }
 
@@ -288,4 +291,15 @@ pub struct CustomEntity {
     pub icon: String,
     /// Arbitrary structured metadata as a JSON object string.
     pub attrs: Json,
+}
+
+/// Synthetic entity for uninstrumented tasks.
+///
+/// Created automatically when a moire-instrumented primitive is used from a task
+/// that was not spawned via `moire::task::spawn`. Makes deadlocks in uninstrumented
+/// code visible on the dashboard.
+#[derive(Facet)]
+pub struct AetherEntity {
+    /// Tokio task ID that this aether represents.
+    pub task_id: String,
 }
