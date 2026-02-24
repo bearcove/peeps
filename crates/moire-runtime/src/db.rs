@@ -494,16 +494,16 @@ impl RuntimeDb {
         self.events.push_back(event);
         // Evict old events and decrement ref counts.
         while self.events.len() > self.max_events {
-            if let Some(evicted) = self.events.pop_front() {
-                if let EventTarget::Entity(ref id) = evicted.target {
-                    let entity_id = EntityId::new(id.as_str());
-                    if let Some(count) = self.event_entity_refs.get_mut(&entity_id) {
-                        *count -= 1;
-                        if *count == 0 {
-                            self.event_entity_refs.remove(&entity_id);
-                            // If entity is dead and no longer referenced, sweep it.
-                            self.sweep_dead_entity(&entity_id);
-                        }
+            if let Some(evicted) = self.events.pop_front()
+                && let EventTarget::Entity(ref id) = evicted.target
+            {
+                let entity_id = EntityId::new(id.as_str());
+                if let Some(count) = self.event_entity_refs.get_mut(&entity_id) {
+                    *count -= 1;
+                    if *count == 0 {
+                        self.event_entity_refs.remove(&entity_id);
+                        // If entity is dead and no longer referenced, sweep it.
+                        self.sweep_dead_entity(&entity_id);
                     }
                 }
             }
