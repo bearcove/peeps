@@ -66,7 +66,7 @@ function Harness({ initialFilter }: { initialFilter: string }) {
 describe("GraphPanel filter input interactions", () => {
   it("focus starts a new fragment instead of editing last token", async () => {
     const user = userEvent.setup();
-    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+    render(<Harness initialFilter="colorBy:crate groupBy:process" />);
 
     const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
     expect(input.placeholder).toBe("to add filter");
@@ -82,7 +82,7 @@ describe("GraphPanel filter input interactions", () => {
 
   it("focuses the filter with Cmd+K", async () => {
     const user = userEvent.setup();
-    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+    render(<Harness initialFilter="colorBy:crate groupBy:process" />);
 
     const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
     expect(document.activeElement).not.toBe(input);
@@ -92,7 +92,7 @@ describe("GraphPanel filter input interactions", () => {
 
   it("supports signed include/exclude autocomplete", async () => {
     const user = userEvent.setup();
-    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+    render(<Harness initialFilter="colorBy:crate groupBy:process" />);
 
     const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
     await user.click(input);
@@ -128,7 +128,7 @@ describe("GraphPanel filter input interactions", () => {
 
   it("captures Tab and applies current autocomplete choice", async () => {
     const user = userEvent.setup();
-    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+    render(<Harness initialFilter="colorBy:crate groupBy:process" />);
 
     const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
     await user.click(input);
@@ -141,7 +141,7 @@ describe("GraphPanel filter input interactions", () => {
 
   it("captures Shift+Tab and cycles suggestions backwards", async () => {
     const user = userEvent.setup();
-    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+    render(<Harness initialFilter="colorBy:crate groupBy:process" />);
 
     const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
     await user.click(input);
@@ -155,7 +155,7 @@ describe("GraphPanel filter input interactions", () => {
 
   it("clicking outside unfocuses filter and closes suggestions", async () => {
     const user = userEvent.setup();
-    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+    render(<Harness initialFilter="colorBy:crate groupBy:process" />);
 
     const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
     await user.click(input);
@@ -173,7 +173,7 @@ describe("GraphPanel filter input interactions", () => {
 
   it("uses the same font size for chips and add-filter input", async () => {
     const user = userEvent.setup();
-    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+    render(<Harness initialFilter="colorBy:crate groupBy:process" />);
 
     const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
     await user.click(input);
@@ -187,7 +187,7 @@ describe("GraphPanel filter input interactions", () => {
 
   it("reopens suggestions after applying with Tab", async () => {
     const user = userEvent.setup();
-    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+    render(<Harness initialFilter="colorBy:crate groupBy:process" />);
 
     const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
     await user.click(input);
@@ -203,7 +203,7 @@ describe("GraphPanel filter input interactions", () => {
 
   it("reopens suggestions after applying with Enter", async () => {
     const user = userEvent.setup();
-    render(<Harness initialFilter="colorBy:crate groupBy:process loners:off" />);
+    render(<Harness initialFilter="colorBy:crate groupBy:process" />);
 
     const input = screen.getByLabelText("Graph filter query") as HTMLInputElement;
     await user.click(input);

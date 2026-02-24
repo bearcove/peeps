@@ -154,7 +154,7 @@ export function App() {
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [graphFilterText, setGraphFilterText] = useState(
-    "colorBy:crate groupBy:process loners:off",
+    "colorBy:crate groupBy:process",
   );
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [symbolicationProgress, setSymbolicationProgress] = useState<{
@@ -269,7 +269,7 @@ export function App() {
   const effectiveHiddenKrates = graphTextFilters.excludeCrates;
   const effectiveHiddenProcesses = graphTextFilters.excludeProcesses;
   const effectiveHiddenKinds = graphTextFilters.excludeKinds;
-  const effectiveShowLoners = graphTextFilters.showLoners ?? false;
+  const effectiveShowLoners = graphTextFilters.showLoners ?? true;
   const effectiveScopeColorMode: ScopeColorMode = graphTextFilters.colorBy ?? "none";
   const effectiveSubgraphScopeMode: SubgraphScopeMode = graphTextFilters.groupBy ?? "none";
   const effectiveLabelBy = graphTextFilters.labelBy;

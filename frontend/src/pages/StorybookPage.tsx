@@ -133,7 +133,7 @@ export function useStorybookState() {
   const [isLive, setIsLive] = useState(false);
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
   const [graphFilterText, setGraphFilterText] = useState(
-    "colorBy:crate groupBy:process loners:off",
+    "colorBy:crate groupBy:process",
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tones = useMemo<BadgeTone[]>(() => ["neutral", "ok", "warn", "crit"], []);
