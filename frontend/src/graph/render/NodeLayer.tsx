@@ -41,7 +41,7 @@ export async function measureGraphLayout(
   defs: EntityDef[],
   subgraphScopeMode: SubgraphScopeMode = "none",
   labelBy?: GraphFilterLabelMode,
-  sourceLineByFrameId?: Map<number, string>,
+  showSource?: boolean,
 ): Promise<GraphMeasureResult> {
   // Escape React's useEffect lifecycle so flushSync works on our measurement roots.
   await Promise.resolve();
@@ -67,9 +67,9 @@ export async function measureGraphLayout(
     const root = createRoot(el);
 
     const sublabel = labelBy ? computeNodeSublabel(def, labelBy) : undefined;
-    const frameId = def.topFrame?.frame_id;
-    const sourceLine = sourceLineByFrameId && frameId != null ? sourceLineByFrameId.get(frameId) : undefined;
-    flushSync(() => root.render(<GraphNode data={{ ...graphNodeDataFromEntity(def), sublabel, sourceLine }} />));
+    // During measurement, useSourceLine hooks won't fire (sync render),
+    // so frame lines show fn·file:line fallback text — same height as final.
+    flushSync(() => root.render(<GraphNode data={{ ...graphNodeDataFromEntity(def), sublabel, showSource }} />));
     sizes.set(def.id, { width: el.offsetWidth, height: el.offsetHeight });
     root.unmount();
   }

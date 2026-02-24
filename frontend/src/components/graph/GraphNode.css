@@ -34,14 +34,24 @@
     filter: saturate(0);
 }
 
+/* ── Card layout: vertical flex ── */
+
 .graph-node {
     display: flex;
-    flex-direction: row;
-    gap: 4px;
-    padding: 4px 4px 4px 8px;
-    align-items: center;
+    flex-direction: column;
+    padding: 6px 8px;
+    gap: 0;
     font-family: var(--font-mono);
     user-select: none;
+}
+
+/* ── Header row: icon + main + location badge ── */
+
+.graph-node-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
 }
 
 .graph-node-icon {
@@ -53,11 +63,31 @@
     color: inherit;
 }
 
-.graph-node-content {
+.graph-node-main {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--font-size-sm);
+    font-weight: 400;
     min-width: 0;
 }
+
+.graph-node-label {
+    overflow: hidden;
+    text-overflow: clip;
+    line-height: 1.2;
+}
+
+.graph-node-location {
+    margin-left: auto;
+    flex-shrink: 0;
+    font-size: 10px;
+    color: var(--text-tertiary);
+    line-height: 1.2;
+}
+
+/* ── Sublabel ── */
 
 .graph-node-sublabel {
     font-family: var(--font-ui);
@@ -67,30 +97,62 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    margin-top: 2px;
 }
 
-.graph-node-source-line {
+/* ── Frame lines ── */
+
+.graph-node-frames {
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.graph-node-frames--expandable {
+    cursor: pointer;
+}
+
+.graph-node-frame {
     font-family: var(--font-mono);
     font-size: 10px;
-    color: var(--text-tertiary);
-    line-height: 1.2;
+    line-height: 1.3;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 360px;
+    max-width: 400px;
+    margin: 0;
     padding: 0;
     background: none;
-    margin: 0.2em 0;
 }
 
-.graph-node-main {
+.graph-node-frame--text {
+    color: var(--text-secondary);
     display: flex;
     flex-direction: row;
-    align-items: center;
-    gap: 6px;
-    font-size: var(--font-size-sm);
-    font-weight: 400;
+    align-items: baseline;
+    gap: 4px;
 }
+
+.graph-node-frame-fn {
+    color: var(--text-secondary);
+}
+
+.graph-node-frame-dot {
+    color: var(--text-tertiary);
+}
+
+.graph-node-frame-loc {
+    color: var(--text-tertiary);
+}
+
+.graph-node-frames-hint {
+    font-size: 9px;
+    color: var(--text-tertiary);
+    line-height: 1.2;
+}
+
+/* ── Status/cycle tones ── */
 
 .graph-node--cycle {
     --graph-card-border-width: 2px;
@@ -100,18 +162,6 @@
 
 .graph-node--cycle .graph-node-icon {
     color: var(--status-danger);
-}
-
-.graph-node-label {
-    overflow: hidden;
-    text-overflow: clip;
-    line-height: 1.2;
-}
-
-.graph-node-details {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
 }
 
 .graph-node-dot {

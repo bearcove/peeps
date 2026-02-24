@@ -1121,6 +1121,7 @@ export function StorybookPage({
                   ageMs: 688,
                   stat: "N+1ms",
                   statTone: "warn",
+                  frames: [],
                 }}
               />
               <GraphNode
@@ -1133,6 +1134,7 @@ export function StorybookPage({
                   ageMs: 739,
                   stat: "0/256",
                   statTone: "ok",
+                  frames: [],
                 }}
               />
               <GraphNode
@@ -1145,6 +1147,7 @@ export function StorybookPage({
                   ageMs: 721,
                   stat: "RESP pending",
                   statTone: "warn",
+                  frames: [],
                 }}
               />
             </div>

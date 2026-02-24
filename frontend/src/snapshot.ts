@@ -208,13 +208,31 @@ function resolveBacktraceDisplay(
   backtraces: Map<number, ResolvedSnapshotBacktrace>,
   backtraceId: number,
   _context: string,
-): { source: RenderSource; topFrame?: RenderTopFrame } {
+): { source: RenderSource; topFrame?: RenderTopFrame; frames: RenderTopFrame[] } {
   const record = backtraces.get(backtraceId);
   if (!record) {
     return {
       source: backtraceSource(backtraceId),
       topFrame: undefined,
+      frames: [],
     };
+  }
+
+  // Collect all non-system resolved frames.
+  const frames: RenderTopFrame[] = [];
+  for (let i = 0; i < record.frames.length; i++) {
+    const f = record.frames[i];
+    if (!isResolvedFrame(f)) continue;
+    const krate = crateFromFunctionName(f.resolved.function_name);
+    if (SYSTEM_CRATES.has(krate)) continue;
+    frames.push({
+      function_name: f.resolved.function_name,
+      crate_name: krate,
+      module_path: f.resolved.module_path,
+      source_file: f.resolved.source_file,
+      line: f.resolved.line,
+      frame_id: record.frame_ids[i],
+    });
   }
 
   // Prefer the first non-system resolved frame; fall back to first resolved.
@@ -243,6 +261,7 @@ function resolveBacktraceDisplay(
         line: firstResolved.resolved.line,
         frame_id: record.frame_ids[topFrameIndex],
       },
+      frames,
     };
   }
 
@@ -255,12 +274,14 @@ function resolveBacktraceDisplay(
         krate: "~unresolved",
       },
       topFrame: undefined,
+      frames,
     };
   }
 
   return {
     source: backtraceSource(backtraceId),
     topFrame: undefined,
+    frames,
   };
 }
 
@@ -721,6 +742,7 @@ export function convertSnapshot(
         source: resolvedBacktrace.source,
         krate: resolvedBacktrace.source.krate,
         topFrame: resolvedBacktrace.topFrame,
+        frames: resolvedBacktrace.frames,
         birthPtime: e.birth,
         ageMs,
         birthApproxUnixMs: anchorUnixMs + e.birth,
