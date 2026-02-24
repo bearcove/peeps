@@ -1,12 +1,13 @@
 use moire_trace_types::BacktraceId;
 use moire_types::{EdgeKind, EntityId, FutureEntity};
+use std::cell::RefCell;
 use std::future::{Future, IntoFuture};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use super::db::runtime_db;
-use super::handles::{current_causal_target, EntityHandle, EntityRef};
 use super::FUTURE_CAUSAL_STACK;
+use super::db::runtime_db;
+use super::handles::{EntityHandle, EntityRef, current_causal_target};
 
 pub struct OperationFuture<F> {
     inner: F,
@@ -179,6 +180,58 @@ fn transition_relation_edge(
     relation.current_edge = next_edge;
 }
 
+impl<F: Future> InstrumentedFuture<F> {
+    fn poll_inner(&mut self, cx: &mut Context<'_>) -> Poll<F::Output> {
+        let future_id = EntityId::new(self.future_handle.id().as_str());
+        FUTURE_CAUSAL_STACK.with(|stack| {
+            stack.borrow_mut().push(EntityId::new(future_id.as_str()));
+        });
+
+        if let Some(relation) = self.awaited_by.as_mut() {
+            transition_relation_edge(&future_id, self.backtrace, relation, Some(EdgeKind::Polls));
+        }
+        if let Some(relation) = self.waits_on.as_mut() {
+            transition_relation_edge(&future_id, self.backtrace, relation, Some(EdgeKind::Polls));
+        }
+
+        let poll = unsafe { Pin::new_unchecked(&mut self.inner) }.poll(cx);
+        FUTURE_CAUSAL_STACK.with(|stack| {
+            stack.borrow_mut().pop();
+        });
+
+        match poll {
+            Poll::Pending => {
+                if let Some(relation) = self.awaited_by.as_mut() {
+                    transition_relation_edge(
+                        &future_id,
+                        self.backtrace,
+                        relation,
+                        Some(EdgeKind::WaitingOn),
+                    );
+                }
+                if let Some(relation) = self.waits_on.as_mut() {
+                    transition_relation_edge(
+                        &future_id,
+                        self.backtrace,
+                        relation,
+                        Some(EdgeKind::WaitingOn),
+                    );
+                }
+                Poll::Pending
+            }
+            Poll::Ready(output) => {
+                if let Some(relation) = self.awaited_by.as_mut() {
+                    transition_relation_edge(&future_id, self.backtrace, relation, None);
+                }
+                if let Some(relation) = self.waits_on.as_mut() {
+                    transition_relation_edge(&future_id, self.backtrace, relation, None);
+                }
+                Poll::Ready(output)
+            }
+        }
+    }
+}
+
 impl<F> Future for InstrumentedFuture<F>
 where
     F: Future,
@@ -187,56 +240,11 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
-        let future_id = EntityId::new(this.future_handle.id().as_str());
-        let pushed = FUTURE_CAUSAL_STACK
-            .try_with(|stack| {
-                stack.borrow_mut().push(EntityId::new(future_id.as_str()));
-            })
-            .is_ok();
-
-        if let Some(relation) = this.awaited_by.as_mut() {
-            transition_relation_edge(&future_id, this.backtrace, relation, Some(EdgeKind::Polls));
-        }
-        if let Some(relation) = this.waits_on.as_mut() {
-            transition_relation_edge(&future_id, this.backtrace, relation, Some(EdgeKind::Polls));
-        }
-
-        let poll = unsafe { Pin::new_unchecked(&mut this.inner) }.poll(cx);
-        if pushed {
-            let _ = FUTURE_CAUSAL_STACK.try_with(|stack| {
-                stack.borrow_mut().pop();
-            });
-        }
-        match poll {
-            Poll::Pending => {
-                if let Some(relation) = this.awaited_by.as_mut() {
-                    transition_relation_edge(
-                        &future_id,
-                        this.backtrace,
-                        relation,
-                        Some(EdgeKind::WaitingOn),
-                    );
-                }
-                if let Some(relation) = this.waits_on.as_mut() {
-                    transition_relation_edge(
-                        &future_id,
-                        this.backtrace,
-                        relation,
-                        Some(EdgeKind::WaitingOn),
-                    );
-                }
-                Poll::Pending
-            }
-            Poll::Ready(output) => {
-                if let Some(relation) = this.awaited_by.as_mut() {
-                    transition_relation_edge(&future_id, this.backtrace, relation, None);
-                }
-                if let Some(relation) = this.waits_on.as_mut() {
-                    transition_relation_edge(&future_id, this.backtrace, relation, None);
-                }
-
-                Poll::Ready(output)
-            }
+        let has_stack = FUTURE_CAUSAL_STACK.try_with(|_| ()).is_ok();
+        if has_stack {
+            this.poll_inner(cx)
+        } else {
+            FUTURE_CAUSAL_STACK.sync_scope(RefCell::new(Vec::new()), || this.poll_inner(cx))
         }
     }
 }
