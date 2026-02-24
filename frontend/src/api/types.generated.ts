@@ -25,6 +25,11 @@ export interface SourcePreviewResponse {
    * Line 1 of context_html = line context_range.start in the original.
    */
   context_range?: LineRange;
+  /**
+   * Single-line highlighted HTML of the target statement, whitespace-collapsed.
+   * Used for compact collapsed-frame display.
+   */
+  context_line?: string;
 }
 
 /**

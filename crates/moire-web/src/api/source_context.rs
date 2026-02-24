@@ -256,6 +256,91 @@ fn contains_point(node: &tree_sitter::Node, point: tree_sitter::Point) -> bool {
         && (point.row < end.row || (point.row == end.row && point.column <= end.column))
 }
 
+/// Statement-level node kinds we walk up to when extracting the target statement.
+const STATEMENT_KINDS: &[&str] = &[
+    "let_declaration",
+    "const_item",
+    "static_item",
+    "expression_statement",
+    "macro_invocation",
+    "function_item",
+    "if_expression",
+    "match_expression",
+    "for_expression",
+    "while_expression",
+    "loop_expression",
+    "return_expression",
+];
+
+/// Extract the target statement and collapse it to a single line.
+///
+/// Finds the statement containing the target position, extracts its full text,
+/// and collapses whitespace so a multi-line `let x = foo\n    .await;` becomes
+/// `let x = foo .await;`.
+pub fn extract_target_statement(
+    content: &str,
+    lang_name: &str,
+    target_line: u32,
+    target_col: Option<u32>,
+) -> Option<String> {
+    let ts_lang = arborium::get_language(lang_name)?;
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&ts_lang).ok()?;
+    let tree = parser.parse(content.as_bytes(), None)?;
+
+    let row = (target_line - 1) as usize;
+    let col = target_col.unwrap_or(0) as usize;
+    let point = tree_sitter::Point::new(row, col);
+
+    let node = tree
+        .root_node()
+        .named_descendant_for_point_range(point, point)?;
+
+    // Walk up to nearest statement node, but stop before scope nodes
+    let mut current = node;
+    loop {
+        if STATEMENT_KINDS.contains(&current.kind()) {
+            break;
+        }
+        if SCOPE_KINDS.contains(&current.kind()) {
+            break;
+        }
+        match current.parent() {
+            Some(parent) => {
+                if SCOPE_KINDS.contains(&parent.kind()) {
+                    break;
+                }
+                current = parent;
+            }
+            None => break,
+        }
+    }
+
+    // If we stopped at a block/declaration_list, find the child whose row range covers target
+    let statement = if current.kind() == "block" || current.kind() == "declaration_list" {
+        (0..current.named_child_count())
+            .filter_map(|i| current.named_child(i))
+            .find(|c| {
+                let s = c.start_position().row;
+                let e = c.end_position().row;
+                point.row >= s && point.row <= e
+            })
+            .unwrap_or(current)
+    } else {
+        current
+    };
+
+    let text = statement.utf8_text(content.as_bytes()).ok()?;
+
+    // Collapse: split on whitespace, rejoin with single spaces
+    let collapsed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+
+    Some(collapsed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -376,6 +461,34 @@ impl Foo {
         let result = cut_source(src, "rust", 6, None).expect("should find scope");
         assert!(result.cut_source.contains(".await"));
         assert_line_count_invariant(src, &result);
+    }
+
+    #[test]
+    fn extract_multi_line_await_statement() {
+        let src = r#"async fn do_work() {
+    let handle = session
+        .establish_as_acceptor(self.root_settings, self.metadata)
+        .await?;
+}"#;
+        // target on the .await line (line 3, 0-indexed row 2)
+        let result = extract_target_statement(src, "rust", 3, None).expect("should find statement");
+        assert!(result.contains("let handle = session"));
+        assert!(result.contains(".establish_as_acceptor"));
+        assert!(result.contains(".await?;"));
+        // Should be a single line (no newlines)
+        assert!(
+            !result.contains('\n'),
+            "should be collapsed to one line: {result}"
+        );
+    }
+
+    #[test]
+    fn extract_simple_statement() {
+        let src = r#"fn foo() {
+    let x = 42;
+}"#;
+        let result = extract_target_statement(src, "rust", 2, None).expect("should find statement");
+        assert_eq!(result, "let x = 42;");
     }
 
     #[test]

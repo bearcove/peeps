@@ -73,11 +73,16 @@ fn expand_impl(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
         Err(message) => return compile_error(name.span(), &message),
     };
 
+    // Use the span of the function name so backtraces point at the original fn,
+    // not at the #[moire::instrument] attribute.
+    let fn_span = name.span();
+
     if is_async {
         let output_ty = split_tail.return_type.unwrap_or_else(|| quote!(()));
         let where_clause = split_tail.where_clause;
 
-        return quote! {
+        return quote_spanned! {
+            fn_span =>
             #attributes_tokens
             #pre_fn_without_async fn #name #pre_params_tokens #params_tokens -> impl ::core::future::Future<Output = #output_ty> #where_clause {
                 ::moire::__internal::instrument_future(#fn_name, async move #body_tokens, None, None)
@@ -99,7 +104,8 @@ fn expand_impl(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
         );
     }
 
-    quote! {
+    quote_spanned! {
+        fn_span =>
         #attributes_tokens
         #pre_fn_without_async fn #name #pre_params_tokens #params_tokens #tail_tokens {
             ::moire::__internal::instrument_future(#fn_name, #body_tokens, None, None)

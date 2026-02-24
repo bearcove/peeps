@@ -5,8 +5,12 @@ import { useSourceLine } from "../../api/useSourceLine";
 import { useSourcePreview } from "../../api/useSourcePreview";
 import { splitHighlightedHtml, collapseContextLines } from "../../utils/highlightedHtml";
 import { langIcon } from "./langIcon";
+import { canonicalNodeKind } from "../../nodeKindSpec";
 import type { GraphFrameData, GraphNodeData } from "./graphNodeData";
 import "./GraphNode.css";
+
+/** Kinds that show source by default in collapsed view. */
+const SOURCE_BY_DEFAULT_KINDS = new Set(["future"]);
 
 export const COLLAPSED_FRAME_COUNT = 2;
 
@@ -125,6 +129,10 @@ export function GraphNode({
   const showScopeColor =
     data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
 
+  const canonical = canonicalNodeKind(data.kind);
+  // Futures show source by default; other kinds only when explicitly toggled
+  const collapsedShowSource = data.showSource || SOURCE_BY_DEFAULT_KINDS.has(canonical);
+
   const visibleFrames = expanded ? data.frames : pickCollapsedFrames(data.frames);
 
   const topFrame = data.frames[0];
@@ -190,7 +198,7 @@ export function GraphNode({
             expanded ? (
               <FrameLineExpanded key={frame.frame_id} frame={frame} showSource={data.showSource} />
             ) : (
-              <FrameLineCollapsed key={frame.frame_id} frame={frame} showSource={data.showSource} />
+              <FrameLineCollapsed key={frame.frame_id} frame={frame} showSource={collapsedShowSource} />
             )
           )}
         </div>

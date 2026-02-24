@@ -216,6 +216,10 @@ pub struct SourcePreviewResponse {
     /// Line 1 of context_html = line context_range.start in the original.
     #[facet(skip_unless_truthy)]
     pub context_range: Option<LineRange>,
+    /// Single-line highlighted HTML of the target statement, whitespace-collapsed.
+    /// Used for compact collapsed-frame display.
+    #[facet(skip_unless_truthy)]
+    pub context_line: Option<String>,
 }
 
 /// A 1-based inclusive line range within a source file.

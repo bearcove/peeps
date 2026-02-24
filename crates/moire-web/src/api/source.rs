@@ -6,7 +6,7 @@ use moire_trace_types::{FrameId, RelPc};
 use moire_types::SourcePreviewResponse;
 use rusqlite_facet::ConnectionFacetExt;
 
-use crate::api::source_context::cut_source;
+use crate::api::source_context::{cut_source, extract_target_statement};
 use crate::app::AppState;
 use crate::db::Db;
 use crate::snapshot::table::lookup_frame_source_by_raw;
@@ -203,6 +203,16 @@ fn lookup_source_in_db(
         None => (None, None),
     };
 
+    // Single-line collapsed statement for compact display
+    let context_line = lang.and_then(|lang_name| {
+        let stmt = extract_target_statement(&content, lang_name, target_line, target_col)?;
+        let mut hl = arborium::Highlighter::new();
+        Some(
+            hl.highlight(lang_name, &stmt)
+                .unwrap_or_else(|_| html_escape(&stmt)),
+        )
+    });
+
     Ok(Some(SourcePreviewResponse {
         frame_id,
         source_file: source_file_path,
@@ -212,5 +222,6 @@ fn lookup_source_in_db(
         html,
         context_html,
         context_range,
+        context_line,
     }))
 }

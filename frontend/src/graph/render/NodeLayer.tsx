@@ -5,6 +5,7 @@ import type { GeometryNode } from "../geometry";
 import type { EntityDef } from "../../snapshot";
 import { GraphNode, COLLAPSED_FRAME_COUNT } from "../../components/graph/GraphNode";
 import { graphNodeDataFromEntity, computeNodeSublabel, type GraphNodeData } from "../../components/graph/graphNodeData";
+import { canonicalNodeKind } from "../../nodeKindSpec";
 import { scopeKindIcon } from "../../scopeKindSpec";
 import type { GraphFilterLabelMode } from "../../graphFilter";
 import type { NodeExpandState } from "../../components/graph/GraphViewport";
@@ -46,13 +47,14 @@ export async function measureGraphLayout(
   showSource?: boolean,
   pinnedNodeIds?: Set<string>,
 ): Promise<GraphMeasureResult> {
-  // Pre-fetch all source data so the sync caches are warm before flushSync.
-  // Pinned (expanded) nodes need full previews; collapsed nodes need N lines
-  // (which come from the same preview endpoint).
-  if (showSource) {
+  // Pre-fetch source data so the sync caches are warm before flushSync.
+  // Futures always show source in collapsed view; other kinds only when showSource is on.
+  {
     const fetches: Promise<unknown>[] = [];
     for (const def of defs) {
       const isPinned = pinnedNodeIds?.has(def.id) ?? false;
+      const needsSource = showSource || canonicalNodeKind(def.kind) === "future";
+      if (!needsSource && !isPinned) continue;
       const frames = isPinned ? def.frames : def.frames.slice(0, COLLAPSED_FRAME_COUNT);
       for (const frame of frames) {
         if (frame.frame_id != null) {
@@ -60,7 +62,7 @@ export async function measureGraphLayout(
         }
       }
     }
-    await Promise.all(fetches);
+    if (fetches.length > 0) await Promise.all(fetches);
   }
 
   // Escape React's useEffect lifecycle so flushSync works on our measurement roots.
