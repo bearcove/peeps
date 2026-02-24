@@ -30,7 +30,7 @@ export function useSourceLine(frameId: number | undefined): string | undefined {
     let cancelled = false;
     cachedFetchSourcePreview(frameId).then((res) => {
       const lines = splitHighlightedHtml(res.html);
-      const targetIdx = res.target_line - 1;
+      const targetIdx = (res.display_line ?? res.target_line) - 1;
       const line = targetIdx >= 0 && targetIdx < lines.length ? lines[targetIdx]?.trim() : undefined;
       if (line) resolvedLineCache.set(frameId, line);
       if (!cancelled) setHtml(line);

@@ -13,8 +13,6 @@ import "./NodeLayer.css";
 
 export interface NodeLayerProps {
   nodes: GeometryNode[];
-  selectedNodeId?: string | null;
-  hoveredNodeId?: string | null;
   nodeExpandStates?: Map<string, NodeExpandState>;
   onNodeClick?: (id: string) => void;
   onNodeContextMenu?: (id: string, clientX: number, clientY: number) => void;
@@ -78,7 +76,6 @@ export async function measureGraphLayout(
       <GraphNode
         data={{ ...graphNodeDataFromEntity(def), sublabel, showSource }}
         expanded={isPinned}
-        pinned={isPinned}
       />
     ));
     sizes.set(def.id, { width: el.offsetWidth, height: el.offsetHeight });
@@ -120,8 +117,6 @@ export async function measureGraphLayout(
 
 export function NodeLayer({
   nodes,
-  selectedNodeId,
-  hoveredNodeId: _hoveredNodeId,
   nodeExpandStates,
   onNodeClick,
   onNodeContextMenu,
@@ -145,16 +140,13 @@ export function NodeLayer({
     <>
       {ordered.map((node) => {
         const { x, y, width, height } = node.worldRect;
-        const selected = node.id === selectedNodeId;
         const isGhost = !!(node.data?.ghost as boolean | undefined) || !!ghostNodeIds?.has(node.id);
         const expandState = nodeExpandStates?.get(node.id);
         const isExpanded = expandState === "expanded" || expandState === "pinned";
-        const isPinned = expandState === "pinned";
         const cardContent = (
           <GraphNode
-            data={{ ...(node.data as GraphNodeData), selected, ghost: isGhost }}
+            data={{ ...(node.data as GraphNodeData), ghost: isGhost }}
             expanded={isExpanded}
-            pinned={isPinned}
           />
         );
 

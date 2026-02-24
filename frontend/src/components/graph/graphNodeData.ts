@@ -12,7 +12,6 @@ export type GraphNodeData = {
   kind: string;
   label: string;
   inCycle: boolean;
-  selected: boolean;
   status?: { label: string; tone: Tone };
   ageMs?: number;
   stat?: string;
@@ -45,7 +44,7 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
       kind: "channel_pair",
       label: def.name,
       inCycle: def.inCycle,
-      selected: false,
+
       status: def.status,
       ageMs: def.ageMs,
       stat: def.stat,
@@ -66,7 +65,7 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
       kind: "rpc_pair",
       label: def.name,
       inCycle: def.inCycle,
-      selected: false,
+
       status: def.status,
       ageMs: def.rpcPair.resp.ageMs,
       stat: `RESP ${respStatusKey}`,
@@ -79,7 +78,6 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
     kind: def.kind,
     label: def.name,
     inCycle: def.inCycle,
-    selected: false,
     status: def.status,
     ageMs: def.ageMs,
     stat: def.stat,

@@ -196,33 +196,41 @@ export function GraphViewport({
             />
             <NodeLayer
               nodes={nodes}
-              selectedNodeId={selection?.kind === "entity" ? selection.id : null}
               nodeExpandStates={nodeExpandStates}
               ghostNodeIds={effectiveGhostNodeIds}
-              onNodeClick={(id) => {
-                closeNodeContextMenu();
-                const isSelected = selection?.kind === "entity" && selection.id === id;
-                const currentState = nodeExpandStates.get(id);
-
-                if (!isSelected) {
-                  // Click 1: select (clear any non-pinned expand)
+              onNodeHover={(id) => {
+                if (id) {
+                  // Hover selects the node (clear non-pinned expand from other nodes)
                   setNodeExpandStates((prev) => {
                     const next = new Map<string, NodeExpandState>();
                     for (const [nid, state] of prev) {
-                      if (state === "pinned") next.set(nid, "pinned");
+                      if (state === "pinned") next.set(nid, state);
+                      else if (nid === id) next.set(nid, state);
                     }
                     return next;
                   });
                   onSelect({ kind: "entity", id });
-                } else if (!currentState || currentState === "collapsed") {
-                  // Click 2: expand (visual overlay)
+                } else {
+                  // Mouse left all nodes: deselect unless something is expanded/pinned
+                  const selectedId = selection?.kind === "entity" ? selection.id : null;
+                  if (selectedId && !nodeExpandStates.has(selectedId)) {
+                    onSelect(null);
+                  }
+                }
+              }}
+              onNodeClick={(id) => {
+                closeNodeContextMenu();
+                const currentState = nodeExpandStates.get(id);
+
+                if (!currentState || currentState === "collapsed") {
+                  // Click 1: expand (visual overlay)
                   setNodeExpandStates((prev) => {
                     const next = new Map(prev);
                     next.set(id, "expanded");
                     return next;
                   });
                 } else if (currentState === "expanded") {
-                  // Click 3: pin (triggers relayout)
+                  // Click 2: pin (triggers relayout)
                   setNodeExpandStates((prev) => {
                     const next = new Map(prev);
                     next.set(id, "pinned");

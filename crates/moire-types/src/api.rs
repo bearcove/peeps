@@ -204,6 +204,10 @@ pub struct SourcePreviewResponse {
     pub target_line: u32,
     #[facet(skip_unless_truthy)]
     pub target_col: Option<u32>,
+    /// When the target line is uninteresting (`.await`, `}`, etc.), this points
+    /// to the containing statement's first line for compact display.
+    #[facet(skip_unless_truthy)]
+    pub display_line: Option<u32>,
     pub total_lines: u32,
     /// Full arborium-highlighted HTML for the entire file.
     /// The frontend splits this into per-line strings using splitHighlightedHtml.

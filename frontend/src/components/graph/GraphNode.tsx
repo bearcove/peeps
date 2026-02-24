@@ -48,11 +48,9 @@ function FrameLine({ frame, showSource }: { frame: GraphFrameData; showSource?: 
 export function GraphNode({
   data,
   expanded = false,
-  pinned = false,
 }: {
   data: GraphNodeData;
   expanded?: boolean;
-  pinned?: boolean;
 }) {
   const showScopeColor =
     data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
@@ -68,9 +66,7 @@ export function GraphNode({
         "graph-card",
         "graph-node",
         expanded && "graph-node--expanded",
-        pinned && "graph-node--pinned",
         data.inCycle && "graph-node--cycle",
-        data.selected && "graph-card--selected",
         data.statTone === "crit" && "graph-card--stat-crit",
         data.statTone === "warn" && "graph-card--stat-warn",
         showScopeColor && "graph-card--scope",
