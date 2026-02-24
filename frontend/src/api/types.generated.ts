@@ -9,12 +9,25 @@ export interface SourcePreviewResponse {
   source_file: string;
   target_line: number;
   target_col?: number;
+  /**
+   * When the target line is uninteresting (`.await`, `}`, etc.), this gives
+   * the line range of the containing statement for compact display.
+   */
+  display_range?: LineRange;
   total_lines: number;
   /**
    * Full arborium-highlighted HTML for the entire file.
    * The frontend splits this into per-line strings using splitHighlightedHtml.
    */
   html: string;
+}
+
+/**
+ * A 1-based inclusive line range within a source file.
+ */
+export interface LineRange {
+  start: number;
+  end: number;
 }
 
 export type FrameId = number;
@@ -377,7 +390,22 @@ export type EntityBody =
   | { net_write: NetWriteEntity }
   | { request: RequestEntity }
   | { response: ResponseEntity }
-  | { custom: CustomEntity };
+  | { custom: CustomEntity }
+  | { aether: AetherEntity };
+
+/**
+ * Synthetic entity for uninstrumented tasks.
+ *
+ * Created automatically when a moire-instrumented primitive is used from a task
+ * that was not spawned via `moire::task::spawn`. Makes deadlocks in uninstrumented
+ * code visible on the dashboard.
+ */
+export interface AetherEntity {
+  /**
+   * Tokio task ID that this aether represents.
+   */
+  task_id: string;
+}
 
 /**
  * A user-defined entity kind with arbitrary metadata.

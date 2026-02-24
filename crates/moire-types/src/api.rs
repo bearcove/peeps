@@ -204,14 +204,21 @@ pub struct SourcePreviewResponse {
     pub target_line: u32,
     #[facet(skip_unless_truthy)]
     pub target_col: Option<u32>,
-    /// When the target line is uninteresting (`.await`, `}`, etc.), this points
-    /// to the containing statement's first line for compact display.
+    /// When the target line is uninteresting (`.await`, `}`, etc.), this gives
+    /// the line range of the containing statement for compact display.
     #[facet(skip_unless_truthy)]
-    pub display_line: Option<u32>,
+    pub display_range: Option<LineRange>,
     pub total_lines: u32,
     /// Full arborium-highlighted HTML for the entire file.
     /// The frontend splits this into per-line strings using splitHighlightedHtml.
     pub html: String,
+}
+
+/// A 1-based inclusive line range within a source file.
+#[derive(Facet)]
+pub struct LineRange {
+    pub start: u32,
+    pub end: u32,
 }
 
 #[derive(Facet)]

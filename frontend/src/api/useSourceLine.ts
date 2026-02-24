@@ -30,8 +30,16 @@ export function useSourceLine(frameId: number | undefined): string | undefined {
     let cancelled = false;
     cachedFetchSourcePreview(frameId).then((res) => {
       const lines = splitHighlightedHtml(res.html);
-      const targetIdx = (res.display_line ?? res.target_line) - 1;
-      const line = targetIdx >= 0 && targetIdx < lines.length ? lines[targetIdx]?.trim() : undefined;
+      let line: string | undefined;
+      if (res.display_range) {
+        const startIdx = res.display_range.start - 1;
+        const endIdx = res.display_range.end - 1;
+        const rangeLines = lines.slice(startIdx, endIdx + 1);
+        line = rangeLines.map((l) => l.trim()).filter(Boolean).join(" ");
+      } else {
+        const targetIdx = res.target_line - 1;
+        line = targetIdx >= 0 && targetIdx < lines.length ? lines[targetIdx]?.trim() : undefined;
+      }
       if (line) resolvedLineCache.set(frameId, line);
       if (!cancelled) setHtml(line);
     }).catch(() => {

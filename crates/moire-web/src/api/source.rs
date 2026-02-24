@@ -1,9 +1,10 @@
+use arborium::tree_sitter;
 use axum::extract::{RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use facet::Facet;
 use moire_trace_types::{FrameId, RelPc};
-use moire_types::SourcePreviewResponse;
+use moire_types::{LineRange, SourcePreviewResponse};
 use rusqlite_facet::ConnectionFacetExt;
 
 use crate::app::AppState;
@@ -130,6 +131,69 @@ fn html_escape(s: &str) -> String {
     result
 }
 
+/// Node kinds that represent "interesting" statements in Rust's tree-sitter grammar.
+const INTERESTING_RUST_KINDS: &[&str] = &[
+    "let_declaration",
+    "const_item",
+    "static_item",
+    "expression_statement",
+    "macro_invocation",
+    "function_item",
+    "closure_expression",
+    "if_expression",
+    "match_expression",
+    "for_expression",
+    "while_expression",
+    "loop_expression",
+    "return_expression",
+    "assignment_expression",
+    "compound_assignment_expr",
+];
+
+/// Given source content and a target position, use tree-sitter to find the
+/// containing statement when the target line is uninteresting (`.await`, `}`, etc.).
+///
+/// Returns `Some(LineRange)` when the containing statement starts on a different
+/// line than `target_line`, `None` otherwise.
+fn find_display_range(
+    lang_name: &str,
+    content: &str,
+    target_line: u32,
+    target_col: Option<u32>,
+) -> Option<LineRange> {
+    let ts_lang = arborium::get_language(lang_name)?;
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&ts_lang).ok()?;
+    let tree = parser.parse(content.as_bytes(), None)?;
+
+    let row = target_line - 1; // tree-sitter is 0-based
+    let col = target_col.unwrap_or(0);
+    let point = tree_sitter::Point::new(row as usize, col as usize);
+
+    let node = tree
+        .root_node()
+        .named_descendant_for_point_range(point, point)?;
+
+    // Walk up until we find an interesting node
+    let mut current = node;
+    let interesting = loop {
+        if INTERESTING_RUST_KINDS.contains(&current.kind()) {
+            break current;
+        }
+        current = current.parent()?;
+    };
+
+    let start = interesting.start_position().row as u32 + 1;
+    let end = interesting.end_position().row as u32 + 1;
+
+    // Only return a range if it differs from just the target line
+    if start == target_line && end == target_line {
+        return None;
+    }
+
+    Some(LineRange { start, end })
+}
+
 fn lookup_source_in_db(
     db: &Db,
     frame_id: FrameId,
@@ -174,7 +238,11 @@ fn lookup_source_in_db(
 
     let total_lines = u32::try_from(content.lines().count()).unwrap_or(u32::MAX);
 
-    let html = match arborium_language(&source_file_path) {
+    let lang = arborium_language(&source_file_path);
+
+    let display_range = lang.and_then(|l| find_display_range(l, &content, target_line, target_col));
+
+    let html = match lang {
         Some(lang) => {
             let mut hl = arborium::Highlighter::new();
             hl.highlight(lang, &content)
@@ -188,6 +256,7 @@ fn lookup_source_in_db(
         source_file: source_file_path,
         target_line,
         target_col,
+        display_range,
         total_lines,
         html,
     }))
