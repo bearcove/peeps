@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Stack, FileRs } from "@phosphor-icons/react";
 import type { SnapshotBacktraceFrame, SourcePreviewResponse } from "../../api/types.generated";
-import type { ResolvedSnapshotBacktrace } from "../../snapshot";
+import { isSystemCrate, type ResolvedSnapshotBacktrace } from "../../snapshot";
 import { assignScopeColorRgbByKey, type ScopeColorPair } from "../graph/scopeColors";
 import { apiClient } from "../../api";
 import { Source } from "./Source";
@@ -26,21 +26,6 @@ function cachedFetchSourcePreview(frameId: number): Promise<SourcePreviewRespons
   return cached;
 }
 
-const SYSTEM_CRATES = new Set([
-  "std",
-  "core",
-  "alloc",
-  "tokio",
-  "tokio_util",
-  "futures",
-  "futures_core",
-  "futures_util",
-  "moire",
-  "moire_trace_capture",
-  "moire_runtime",
-  "moire_tokio",
-]);
-
 function isResolved(frame: SnapshotBacktraceFrame): frame is {
   resolved: { module_path: string; function_name: string; source_file: string; line?: number };
 } {
@@ -50,7 +35,7 @@ function isResolved(frame: SnapshotBacktraceFrame): frame is {
 function isSystemFrame(frame: SnapshotBacktraceFrame): boolean {
   if (!isResolved(frame)) return false;
   const crate = extractCrate(frame.resolved.function_name);
-  return crate !== null && SYSTEM_CRATES.has(crate);
+  return crate !== null && isSystemCrate(crate);
 }
 
 function detectAppCrate(frames: SnapshotBacktraceFrame[]): string | null {

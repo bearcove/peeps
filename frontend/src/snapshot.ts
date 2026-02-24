@@ -178,6 +178,25 @@ function crateFromFunctionName(functionName: string): string {
   return crate && crate.length > 0 ? crate : "~no-crate";
 }
 
+const SYSTEM_CRATES = new Set([
+  "std",
+  "core",
+  "alloc",
+  "tokio",
+  "tokio_util",
+  "futures",
+  "futures_core",
+  "futures_util",
+  "moire",
+  "moire_trace_capture",
+  "moire_runtime",
+  "moire_tokio",
+]);
+
+export function isSystemCrate(krate: string): boolean {
+  return SYSTEM_CRATES.has(krate);
+}
+
 function resolveBacktraceDisplay(
   backtraces: Map<number, ResolvedSnapshotBacktrace>,
   backtraceId: number,
@@ -190,21 +209,28 @@ function resolveBacktraceDisplay(
       topFrame: undefined,
     };
   }
-  const firstResolved = record.frames.find(isResolvedFrame)?.resolved;
-  if (firstResolved) {
-    const krate = crateFromFunctionName(firstResolved.function_name);
+
+  // Prefer the first non-system resolved frame; fall back to first resolved.
+  const firstAppFrame = record.frames.find((f) => {
+    if (!isResolvedFrame(f)) return false;
+    return !SYSTEM_CRATES.has(crateFromFunctionName(f.resolved.function_name));
+  });
+  const firstResolved = firstAppFrame ?? record.frames.find(isResolvedFrame);
+
+  if (firstResolved && isResolvedFrame(firstResolved)) {
+    const krate = crateFromFunctionName(firstResolved.resolved.function_name);
     return {
       source: {
-        path: firstResolved.source_file,
-        line: firstResolved.line ?? 0,
+        path: firstResolved.resolved.source_file,
+        line: firstResolved.resolved.line ?? 0,
         krate,
       },
       topFrame: {
-        function_name: firstResolved.function_name,
+        function_name: firstResolved.resolved.function_name,
         crate_name: krate,
-        module_path: firstResolved.module_path,
-        source_file: firstResolved.source_file,
-        line: firstResolved.line,
+        module_path: firstResolved.resolved.module_path,
+        source_file: firstResolved.resolved.source_file,
+        line: firstResolved.resolved.line,
       },
     };
   }
