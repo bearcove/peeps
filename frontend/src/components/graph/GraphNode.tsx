@@ -26,6 +26,14 @@ function shortFnName(fn_name: string): string {
   return parts.slice(-2).join("::");
 }
 
+function zedHref(sourceFile: string, line?: number): string {
+  return line != null ? `zed://file${sourceFile}:${line}` : `zed://file${sourceFile}`;
+}
+
+function stopPropagation(e: React.MouseEvent) {
+  e.stopPropagation();
+}
+
 function FrameLineCollapsed({ frame, showSource }: { frame: GraphFrameData; showSource?: boolean }) {
   const sourceHtml = useSourceLine(showSource ? frame.frame_id : undefined);
   const location = formatFileLocation(frame);
@@ -42,7 +50,7 @@ function FrameLineCollapsed({ frame, showSource }: { frame: GraphFrameData; show
         <pre className="graph-node-frame graph-node-frame--text">
           <span className="graph-node-frame-fn">{shortFnName(frame.function_name)}</span>
           <span className="graph-node-frame-dot">&middot;</span>
-          <span className="graph-node-frame-loc">{location}</span>
+          <a className="graph-node-frame-loc" href={zedHref(frame.source_file, frame.line)} onClick={stopPropagation}>{location}</a>
         </pre>
       )}
     </div>
@@ -60,7 +68,7 @@ function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showS
         <pre className="graph-node-frame graph-node-frame--text">
           <span className="graph-node-frame-fn">{shortFnName(frame.function_name)}</span>
           <span className="graph-node-frame-dot">&middot;</span>
-          <span className="graph-node-frame-loc">{location}</span>
+          <a className="graph-node-frame-loc" href={zedHref(frame.source_file, frame.line)} onClick={stopPropagation}>{location}</a>
         </pre>
       </div>
     );
@@ -90,7 +98,7 @@ function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showS
               {/* eslint-disable-next-line react/no-danger */}
               <span className="graph-node-frame-block__text" dangerouslySetInnerHTML={{ __html: html }} />
               {isTarget && (
-                <span className="graph-node-frame-block__loc">{location}</span>
+                <a className="graph-node-frame-block__loc" href={zedHref(frame.source_file, preview.target_line)} onClick={stopPropagation}>{location}</a>
               )}
             </div>
           );
