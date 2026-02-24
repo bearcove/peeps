@@ -1,21 +1,21 @@
 .graph-canvas {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  position: relative;
-  cursor: grab;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+    cursor: grab;
 }
 
 .graph-canvas:active {
-  cursor: grabbing;
+    cursor: grabbing;
 }
 
 .graph-canvas__svg {
-  display: block;
-  width: 100%;
-  height: 100%;
+    display: block;
+    width: 100%;
+    height: 100%;
 }
 
 .graph-canvas__dot {
-  fill: color-mix(in srgb, var(--text-primary) 18%, transparent);
+    fill: color-mix(in srgb, var(--text-primary) 12%, transparent);
 }

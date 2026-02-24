@@ -132,6 +132,10 @@
     margin-top: 2px;
 }
 
+.graph-node-frame-icon path {
+    fill: var(--text-tertiary);
+}
+
 .graph-node-frame {
     font-family: var(--font-mono);
     font-size: 10px;

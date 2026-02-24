@@ -23,6 +23,9 @@ importers:
       debug:
         specifier: ^4.4.3
         version: 4.4.3
+      devicons-react:
+        specifier: ^1.5.0
+        version: 1.5.0(react@19.2.4)
       elkjs:
         specifier: ^0.11.0
         version: 0.11.0
@@ -1603,6 +1606,11 @@ packages:
   dequal@2.0.3:
     resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
     engines: {node: '>=6'}
+
+  devicons-react@1.5.0:
+    resolution: {integrity: sha512-8DYsWpgdbwI7ENDyC6Z9eqV72H01zUIAeRRo+UxBAq4clpPWcFhtqDrWSm0i5GUqbn/iNyiIfT1K69y0XLsscg==}
+    peerDependencies:
+      react: '*'
 
   dom-accessibility-api@0.5.16:
     resolution: {integrity: sha512-X7BJ2yElsnOJ30pZF4uIIDfBEVgF4XEBxL9Bxhy6dnrm5hkzqmsWHGTiHqRiITNhMyFLyAiWndIJP7Z1NTteDg==}
@@ -3804,6 +3812,10 @@ snapshots:
   deep-eql@5.0.2: {}
 
   dequal@2.0.3: {}
+
+  devicons-react@1.5.0(react@19.2.4):
+    dependencies:
+      react: 19.2.4
 
   dom-accessibility-api@0.5.16: {}
 
