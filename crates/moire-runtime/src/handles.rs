@@ -1,5 +1,6 @@
 use moire_types::{
-    EdgeKind, Entity, EntityBody, EntityBodySlot, EntityId, Scope, ScopeBody, ScopeId,
+    CustomEventKind, EdgeKind, Entity, EntityBody, EntityBodySlot, EntityId, EventKind,
+    EventTarget, Json, Scope, ScopeBody, ScopeId,
 };
 use std::marker::PhantomData;
 use std::sync::{Arc, Weak};
@@ -200,6 +201,26 @@ where
             });
             f(slot);
         })
+    }
+}
+
+impl<S> EntityHandle<S> {
+    /// Emit a custom event on this entity.
+    pub fn emit_event(
+        &self,
+        kind: impl Into<String>,
+        display_name: impl Into<String>,
+        payload: Json,
+    ) {
+        let event = super::new_event(
+            EventTarget::Entity(EntityId::new(self.id().as_str())),
+            EventKind::Custom(CustomEventKind {
+                kind: kind.into(),
+                display_name: display_name.into(),
+                payload,
+            }),
+        );
+        super::record_event(event);
     }
 }
 

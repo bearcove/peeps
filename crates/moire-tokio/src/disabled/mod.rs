@@ -1,6 +1,7 @@
 use ctor::ctor;
 use std::sync::Once;
 
+pub mod custom;
 pub mod process;
 pub mod rpc;
 pub mod sync;

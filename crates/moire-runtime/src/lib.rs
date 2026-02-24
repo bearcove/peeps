@@ -247,6 +247,23 @@ pub fn record_event(event: Event) {
     }
 }
 
+pub fn record_custom_event(
+    target: EventTarget,
+    kind: impl Into<String>,
+    display_name: impl Into<String>,
+    payload: moire_types::Json,
+) {
+    let event = new_event(
+        target,
+        EventKind::Custom(moire_types::CustomEventKind {
+            kind: kind.into(),
+            display_name: display_name.into(),
+            payload,
+        }),
+    );
+    record_event(event);
+}
+
 pub fn record_event_with_entity_source(mut event: Event, entity_id: &EntityId) {
     if let Ok(mut db) = db::runtime_db().lock() {
         if let Some(entity) = db.entities.get(entity_id) {

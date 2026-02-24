@@ -1,7 +1,7 @@
 use facet::Facet;
 use moire_trace_types::BacktraceId;
 
-use crate::{next_event_id, EntityId, EventId, PTime, ScopeId};
+use crate::{EntityId, EventId, Json, PTime, ScopeId, next_event_id};
 
 // r[impl model.event.fields]
 #[derive(Facet)]
@@ -51,6 +51,20 @@ pub enum EventKind {
     StateChanged,
     ChannelSent,
     ChannelReceived,
+    Custom(CustomEventKind),
+}
+
+/// A user-defined event kind with arbitrary payload.
+///
+/// Library consumers can emit custom events on any entity without modifying moire source.
+#[derive(Facet)]
+pub struct CustomEventKind {
+    /// Event kind identifier (e.g. "query_executed").
+    pub kind: String,
+    /// Human-readable display name (e.g. "Query Executed").
+    pub display_name: String,
+    /// Arbitrary structured payload as JSON.
+    pub payload: Json,
 }
 
 crate::impl_sqlite_json!(EventTarget);

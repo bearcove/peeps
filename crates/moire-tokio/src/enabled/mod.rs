@@ -1,3 +1,4 @@
+pub mod custom;
 pub mod process;
 pub mod rpc;
 pub mod sync;

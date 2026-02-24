@@ -8,6 +8,7 @@ import type {
   SnapshotCutResponse,
   SnapshotSymbolicationUpdate,
 } from "./api/types.generated";
+import { registerCustomKindSpec } from "./nodeKindSpec";
 import { canonicalScopeKind } from "./scopeKindSpec";
 
 // ── Body type helpers ──────────────────────────────────────────
@@ -336,6 +337,7 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
 // ── Snapshot conversion ────────────────────────────────────────
 
 export function bodyToKind(body: EntityBody): string {
+  if ("custom" in body) return body.custom.kind;
   return Object.keys(body)[0];
 }
 
@@ -385,6 +387,7 @@ export function deriveStatus(body: EntityBody): { label: string; tone: Tone } {
   if ("net_connect" in body || "net_accept" in body || "net_read" in body || "net_write" in body) {
     return { label: "connected", tone: "ok" };
   }
+  if ("custom" in body) return { label: "active", tone: "neutral" };
   return { label: "unknown", tone: "neutral" };
 }
 
@@ -694,13 +697,18 @@ export function convertSnapshot(
         backtraceId,
         `entity ${e.id}`,
       );
+      const kind = bodyToKind(e.body);
+      if ("custom" in e.body) {
+        const c = e.body.custom;
+        registerCustomKindSpec(c.kind, c.display_name, c.category, c.icon);
+      }
       allEntities.push({
         id: e.id,
         processId: String(process_id),
         processName: process_name,
         processPid: pid,
         name: e.name,
-        kind: bodyToKind(e.body),
+        kind,
         body: e.body,
         backtraceId,
         source: resolvedBacktrace.source,
@@ -772,7 +780,12 @@ export type EventDef = {
   processId: string;
   atPtime: number;
   atApproxUnixMs: number;
+  /** Raw EventKind from the wire (string or object). */
   kind: EventKind;
+  /** Normalized string key for filtering/display. */
+  kindKey: string;
+  /** Human-readable display name for this event kind. */
+  kindDisplayName: string;
   targetId: string;
   targetKind: "entity" | "scope";
   targetName: string;
@@ -782,13 +795,23 @@ export type EventDef = {
   source: RenderSource;
 };
 
-const EVENT_KIND_DISPLAY: Record<EventKind, string> = {
+const EVENT_KIND_DISPLAY: Record<string, string> = {
   state_changed: "State Changed",
   channel_sent: "Channel Sent",
   channel_received: "Channel Received",
 };
 
+export function eventKindKey(kind: EventKind): string {
+  if (typeof kind === "object" && "custom" in kind) {
+    return `custom:${kind.custom.kind}`;
+  }
+  return kind;
+}
+
 export function eventKindDisplayName(kind: EventKind): string {
+  if (typeof kind === "object" && "custom" in kind) {
+    return kind.custom.display_name;
+  }
   return EVENT_KIND_DISPLAY[kind] ?? kind;
 }
 
@@ -834,12 +857,15 @@ export function extractEvents(snapshot: SnapshotCutResponse): EventDef[] {
         targetName = scopeMap.get(targetId) ?? targetId;
       }
 
+      const kindKey = eventKindKey(event.kind);
       result.push({
         id: `${processIdStr}:${event.id}`,
         processId: processIdStr,
         atPtime: event.at,
         atApproxUnixMs: anchorUnixMs + event.at,
         kind: event.kind,
+        kindKey,
+        kindDisplayName: eventKindDisplayName(event.kind),
         targetId,
         targetKind,
         targetName,

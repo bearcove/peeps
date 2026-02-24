@@ -6,26 +6,40 @@ import {
   ArrowsLeftRight,
   Bell,
   CircleDashed,
+  Cloud,
+  Cpu,
   Cube,
+  Database,
   DownloadSimple,
   Eye,
   FileText,
+  Flame,
   Gauge,
+  Gear,
   Ghost,
+  Globe,
   HourglassSimple,
+  Key,
   Lightning,
   LinkSimple,
+  ListBullets,
   Lock,
   LockOpen,
+  MagnifyingGlass,
   Moon,
   PaperPlaneTilt,
   Plugs,
+  Queue,
   Repeat,
   BracketsCurly,
   Pipe,
+  Shield,
   Stack,
   Terminal,
+  Timer,
+  TreeStructure,
   UploadSimple,
+  Users,
   WifiHigh,
 } from "@phosphor-icons/react";
 
@@ -299,6 +313,83 @@ export const NODE_KIND_SPECS: Record<string, NodeKindSpec> = {
     icon: iconFactory(Eye),
   },
 };
+
+// Curated map of Phosphor icons that custom entities can reference by name.
+const CUSTOM_ICON_MAP: Record<string, ComponentType<any>> = {
+  ArrowBendDownLeft,
+  ArrowLineDown,
+  ArrowLineUp,
+  ArrowsLeftRight,
+  Bell,
+  BracketsCurly,
+  Cloud,
+  Cpu,
+  Cube,
+  Database,
+  DownloadSimple,
+  Eye,
+  FileText,
+  Flame,
+  Gauge,
+  Gear,
+  Ghost,
+  Globe,
+  HourglassSimple,
+  Key,
+  Lightning,
+  LinkSimple,
+  ListBullets,
+  Lock,
+  LockOpen,
+  MagnifyingGlass,
+  Moon,
+  PaperPlaneTilt,
+  Pipe,
+  Plugs,
+  Queue,
+  Repeat,
+  Shield,
+  Stack,
+  Terminal,
+  Timer,
+  TreeStructure,
+  UploadSimple,
+  Users,
+  WifiHigh,
+};
+
+export function resolveCustomIcon(name: string): ComponentType<any> {
+  const icon = CUSTOM_ICON_MAP[name];
+  if (!icon && name) {
+    console.warn(`[moire] unknown custom icon "${name}", using default`);
+  }
+  return icon ?? CircleDashed;
+}
+
+/**
+ * Register a custom entity kind spec at runtime. Called during snapshot conversion
+ * when a custom entity body is encountered.
+ */
+export function registerCustomKindSpec(
+  kind: string,
+  displayName: string,
+  category: string,
+  iconName: string,
+): void {
+  if (NODE_KIND_SPECS[kind]) return;
+  const validCategory = (
+    ["async", "sync", "channel", "rpc", "net", "fs", "time", "meta"] as const
+  ).includes(category as NodeKindCategory)
+    ? (category as NodeKindCategory)
+    : "meta";
+  const Icon = resolveCustomIcon(iconName);
+  NODE_KIND_SPECS[kind] = {
+    canonical: kind,
+    displayName,
+    category: validCategory,
+    icon: iconFactory(Icon),
+  };
+}
 
 export function kindDisplayName(kind: string): string {
   const canonical = canonicalNodeKind(kind);

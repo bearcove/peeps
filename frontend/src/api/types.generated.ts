@@ -211,7 +211,33 @@ export interface Event {
   kind: EventKind;
 }
 
-export type EventKind = "state_changed" | "channel_sent" | "channel_received";
+export type EventKind =
+  | "state_changed"
+  | "channel_sent"
+  | "channel_received"
+  | { custom: CustomEventKind };
+
+/**
+ * A user-defined event kind with arbitrary payload.
+ *
+ * Library consumers can emit custom events on any entity without modifying moire source.
+ */
+export interface CustomEventKind {
+  /**
+   * Event kind identifier (e.g. "query_executed").
+   */
+  kind: string;
+  /**
+   * Human-readable display name (e.g. "Query Executed").
+   */
+  display_name: string;
+  /**
+   * Arbitrary structured payload as JSON.
+   */
+  payload: Json;
+}
+
+export type Json = string;
 
 export type EventTarget =
   | { entity: EntityId }
@@ -350,7 +376,37 @@ export type EntityBody =
   | { net_read: NetReadEntity }
   | { net_write: NetWriteEntity }
   | { request: RequestEntity }
-  | { response: ResponseEntity };
+  | { response: ResponseEntity }
+  | { custom: CustomEntity };
+
+/**
+ * A user-defined entity kind with arbitrary metadata.
+ *
+ * Library consumers can create custom entity kinds without modifying moire source.
+ * All fields are user-controlled; the runtime treats them opaquely.
+ */
+export interface CustomEntity {
+  /**
+   * Canonical kind identifier (e.g. "database_pool"). snake_case, non-empty.
+   */
+  kind: string;
+  /**
+   * Human-readable display name (e.g. "Database Pool").
+   */
+  display_name: string;
+  /**
+   * Category for UI grouping ("async"/"sync"/"channel"/"rpc"/"net"/"fs"/"time"/"meta").
+   */
+  category: string;
+  /**
+   * Phosphor icon name (e.g. "Database", "Cpu"). Empty string = default icon.
+   */
+  icon: string;
+  /**
+   * Arbitrary structured metadata as a JSON object string.
+   */
+  attrs: Json;
+}
 
 export interface ResponseEntity {
   /**
@@ -376,8 +432,6 @@ export type ResponseStatus =
 export type ResponseError =
   | { internal: string }
   | { user_json: Json };
-
-export type Json = string;
 
 /**
  * Correlation token for RPC is the request entity id propagated in metadata.

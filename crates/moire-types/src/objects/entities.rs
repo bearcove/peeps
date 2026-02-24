@@ -72,6 +72,9 @@ crate::define_entity_body! {
         // RPC lifecycle
         Request(RequestEntity),
         Response(ResponseEntity),
+
+        // User-defined
+        Custom(CustomEntity),
     }
 }
 
@@ -267,4 +270,22 @@ pub enum ResponseError {
     Internal(String),
     /// Application/user error represented as JSON.
     UserJson(Json),
+}
+
+/// A user-defined entity kind with arbitrary metadata.
+///
+/// Library consumers can create custom entity kinds without modifying moire source.
+/// All fields are user-controlled; the runtime treats them opaquely.
+#[derive(Facet)]
+pub struct CustomEntity {
+    /// Canonical kind identifier (e.g. "database_pool"). snake_case, non-empty.
+    pub kind: String,
+    /// Human-readable display name (e.g. "Database Pool").
+    pub display_name: String,
+    /// Category for UI grouping ("async"/"sync"/"channel"/"rpc"/"net"/"fs"/"time"/"meta").
+    pub category: String,
+    /// Phosphor icon name (e.g. "Database", "Cpu"). Empty string = default icon.
+    pub icon: String,
+    /// Arbitrary structured metadata as a JSON object string.
+    pub attrs: Json,
 }

@@ -5,7 +5,6 @@ import { Select } from "../../ui/primitives/Select";
 import { Badge } from "../../ui/primitives/Badge";
 import { canonicalNodeKind, kindDisplayName, kindIcon } from "../../nodeKindSpec";
 import type { EventDef } from "../../snapshot";
-import { eventKindDisplayName } from "../../snapshot";
 import "./EventTablePanel.css";
 
 type SortKey = "time" | "kind" | "target";
@@ -26,7 +25,7 @@ function compareEvents(a: EventDef, b: EventDef, key: SortKey): number {
   if (key === "time") return b.atApproxUnixMs - a.atApproxUnixMs;
   if (key === "kind") {
     return (
-      eventKindDisplayName(a.kind).localeCompare(eventKindDisplayName(b.kind)) ||
+      a.kindDisplayName.localeCompare(b.kindDisplayName) ||
       b.atApproxUnixMs - a.atApproxUnixMs
     );
   }
@@ -46,24 +45,26 @@ export function EventTablePanel({
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const kindOptions = useMemo(() => {
-    const kinds = Array.from(new Set(eventDefs.map((e) => e.kind))).sort(
-      (a, b) => eventKindDisplayName(a).localeCompare(eventKindDisplayName(b)),
-    );
+    const seen = new Map<string, string>();
+    for (const e of eventDefs) {
+      if (!seen.has(e.kindKey)) seen.set(e.kindKey, e.kindDisplayName);
+    }
+    const sorted = Array.from(seen.entries()).sort((a, b) => a[1].localeCompare(b[1]));
     return [
       { value: ALL_KINDS, label: "All kinds" },
-      ...kinds.map((kind) => ({ value: kind, label: eventKindDisplayName(kind) })),
+      ...sorted.map(([key, label]) => ({ value: key, label })),
     ];
   }, [eventDefs]);
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase();
     return eventDefs.filter((event) => {
-      if (selectedKind !== ALL_KINDS && event.kind !== selectedKind) return false;
+      if (selectedKind !== ALL_KINDS && event.kindKey !== selectedKind) return false;
       if (!query) return true;
       const haystack = [
         event.targetName,
-        event.kind,
-        eventKindDisplayName(event.kind),
+        event.kindKey,
+        event.kindDisplayName,
         event.targetEntityKind ?? "",
         formatTime(event.atApproxUnixMs),
       ]
@@ -95,7 +96,7 @@ export function EventTablePanel({
         sortable: true,
         width: "0.6fr",
         render: (row) => (
-          <Badge tone="neutral">{eventKindDisplayName(row.kind)}</Badge>
+          <Badge tone="neutral">{row.kindDisplayName}</Badge>
         ),
       },
       {

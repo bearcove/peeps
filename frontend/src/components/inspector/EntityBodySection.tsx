@@ -220,5 +220,39 @@ export function EntityBodySection({ entity }: { entity: EntityDef }) {
     }
   }
 
+  if ("custom" in body) {
+    const { kind, display_name, category, attrs } = body.custom;
+    let parsedAttrs: Record<string, unknown> = {};
+    try {
+      parsedAttrs = JSON.parse(attrs);
+    } catch {
+      // attrs may not be valid JSON object; show raw
+    }
+    return (
+      <>
+        <KeyValueRow label="Kind">
+          <span className="inspector-mono">{kind}</span>
+        </KeyValueRow>
+        <KeyValueRow label="Display name">
+          <span className="inspector-mono">{display_name}</span>
+        </KeyValueRow>
+        <KeyValueRow label="Category">
+          <Badge tone="neutral">{category}</Badge>
+        </KeyValueRow>
+        {typeof parsedAttrs === "object" && parsedAttrs !== null && !Array.isArray(parsedAttrs) ? (
+          Object.entries(parsedAttrs).map(([k, v]) => (
+            <KeyValueRow key={k} label={k}>
+              <span className="inspector-mono">{typeof v === "string" ? v : JSON.stringify(v)}</span>
+            </KeyValueRow>
+          ))
+        ) : (
+          <KeyValueRow label="Attrs">
+            <span className="inspector-mono">{attrs}</span>
+          </KeyValueRow>
+        )}
+      </>
+    );
+  }
+
   return null;
 }
