@@ -16,7 +16,7 @@ export function SourcePreview({ preview }: { preview: SourcePreviewResponse }) {
   const firstLineNum = start + 1;
 
   return (
-    <div className="ui-source-preview">
+    <div className="ui-source-preview arborium-hl">
       <pre className="ui-source-preview__code">
         {slice.map((html, i) => {
           const lineNum = firstLineNum + i;

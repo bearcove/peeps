@@ -12,6 +12,8 @@ import { GraphFilterInput } from "./GraphFilterInput";
 import { GraphViewport } from "./GraphViewport";
 import { computeNodeSublabel } from "./GraphNode";
 import type { GraphFilterLabelMode } from "../../graphFilter";
+import { cachedFetchSourcePreview } from "../../api/sourceCache";
+import { splitHighlightedHtml } from "../../utils/highlightedHtml";
 import "./GraphPanel.css";
 
 export type GraphSelection =
@@ -45,6 +47,7 @@ export function GraphPanel({
   scopeColorMode,
   subgraphScopeMode,
   labelByMode,
+  showSource,
   scopeFilterLabel,
   onClearScopeFilter,
   unionFrameLayout,
@@ -71,6 +74,7 @@ export function GraphPanel({
   scopeColorMode: ScopeColorMode;
   subgraphScopeMode: SubgraphScopeMode;
   labelByMode?: GraphFilterLabelMode;
+  showSource?: boolean;
   scopeFilterLabel?: string | null;
   onClearScopeFilter?: () => void;
   unionFrameLayout?: FrameRenderResult;
@@ -84,10 +88,53 @@ export function GraphPanel({
 }) {
   const [layout, setLayout] = useState<GraphGeometry | null>(null);
 
+  // Source line fetching: collect unique frame IDs and batch-fetch previews.
+  const [sourceLineByFrameId, setSourceLineByFrameId] = useState<Map<number, string>>(new Map());
+
+  const frameIdsToFetch = useMemo(() => {
+    if (!showSource) return [];
+    const ids = new Set<number>();
+    for (const entity of entityDefs) {
+      const fid = entity.topFrame?.frame_id;
+      if (fid != null) ids.add(fid);
+    }
+    return Array.from(ids);
+  }, [entityDefs, showSource]);
+
+  useEffect(() => {
+    if (frameIdsToFetch.length === 0) {
+      setSourceLineByFrameId(new Map());
+      return;
+    }
+    let cancelled = false;
+    Promise.allSettled(
+      frameIdsToFetch.map((frameId) =>
+        cachedFetchSourcePreview(frameId).then((res) => {
+          const lines = splitHighlightedHtml(res.html);
+          const targetIdx = res.target_line - 1;
+          const rawLine = targetIdx >= 0 && targetIdx < lines.length ? lines[targetIdx] : undefined;
+          return [frameId, rawLine?.trim()] as const;
+        }),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      const map = new Map<number, string>();
+      for (const r of results) {
+        if (r.status === "fulfilled") {
+          const [frameId, text] = r.value;
+          if (text) map.set(frameId, text);
+        }
+      }
+      setSourceLineByFrameId(map);
+    });
+    return () => { cancelled = true; };
+  }, [frameIdsToFetch]);
+
   useEffect(() => {
     if (unionFrameLayout) return;
     if (entityDefs.length === 0) return;
-    measureGraphLayout(entityDefs, subgraphScopeMode, labelByMode)
+    const effectiveSourceLines = showSource ? sourceLineByFrameId : undefined;
+    measureGraphLayout(entityDefs, subgraphScopeMode, labelByMode, effectiveSourceLines)
       .then((measurements) =>
         layoutGraph(entityDefs, edgeDefs, measurements.nodeSizes, subgraphScopeMode, {
           subgraphHeaderHeight: measurements.subgraphHeaderHeight,
@@ -95,10 +142,11 @@ export function GraphPanel({
       )
       .then(setLayout)
       .catch(console.error);
-  }, [entityDefs, edgeDefs, subgraphScopeMode, labelByMode, unionFrameLayout]);
+  }, [entityDefs, edgeDefs, subgraphScopeMode, labelByMode, unionFrameLayout, showSource, sourceLineByFrameId]);
 
   const effectiveGeometry: GraphGeometry | null = unionFrameLayout?.geometry ?? layout;
   const entityById = useMemo(() => new Map(entityDefs.map((entity) => [entity.id, entity])), [entityDefs]);
+
   const scopeColorByKey = useMemo<Map<string, ScopeColorPair>>(() => {
     if (scopeColorMode === "none") return new Map<string, ScopeColorPair>();
     return assignScopeColorRgbByKey(entityDefs.map((entity) => scopeKeyForEntity(entity, scopeColorMode) ?? ""));
@@ -111,6 +159,8 @@ export function GraphPanel({
       const scopeKey = entity ? scopeKeyForEntity(entity, scopeColorMode) : undefined;
       const scopeRgb = scopeKey ? scopeColorByKey.get(scopeKey) : undefined;
       const sublabel = entity && labelByMode ? computeNodeSublabel(entity, labelByMode) : undefined;
+      const frameId = entity?.topFrame?.frame_id;
+      const sourceLine = showSource && frameId != null ? sourceLineByFrameId.get(frameId) : undefined;
       return {
         ...n,
         data: {
@@ -118,10 +168,11 @@ export function GraphPanel({
           scopeRgbLight: scopeRgb?.light,
           scopeRgbDark: scopeRgb?.dark,
           sublabel,
+          sourceLine,
         },
       };
     });
-  }, [effectiveGeometry, entityById, scopeColorByKey, scopeColorMode, labelByMode]);
+  }, [effectiveGeometry, entityById, scopeColorByKey, scopeColorMode, labelByMode, showSource, sourceLineByFrameId]);
 
   const groupsWithScopeColor = useMemo(() => {
     if (!effectiveGeometry) return [];

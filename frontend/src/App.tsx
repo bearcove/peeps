@@ -158,7 +158,7 @@ export function App() {
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [graphFilterText, setGraphFilterText] = useState(
-    "colorBy:crate groupBy:process",
+    "colorBy:crate groupBy:process source:on",
   );
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [symbolicationProgress, setSymbolicationProgress] = useState<{
@@ -274,6 +274,7 @@ export function App() {
   const effectiveHiddenProcesses = graphTextFilters.excludeProcesses;
   const effectiveHiddenKinds = graphTextFilters.excludeKinds;
   const effectiveShowLoners = graphTextFilters.showLoners ?? true;
+  const effectiveShowSource = graphTextFilters.showSource ?? false;
   const effectiveScopeColorMode: ScopeColorMode = graphTextFilters.colorBy ?? "none";
   const effectiveSubgraphScopeMode: SubgraphScopeMode = graphTextFilters.groupBy ?? "none";
   const effectiveLabelBy = graphTextFilters.labelBy;
@@ -1406,6 +1407,7 @@ export function App() {
                 scopeColorMode={effectiveScopeColorMode}
                 subgraphScopeMode={effectiveSubgraphScopeMode}
                 labelByMode={effectiveLabelBy}
+                showSource={effectiveShowSource}
                 scopeFilterLabel={scopeEntityFilter?.scopeToken ?? null}
                 onClearScopeFilter={() => setScopeEntityFilter(null)}
                 unionFrameLayout={unionFrameLayout}

@@ -41,6 +41,7 @@
     padding: 4px 4px 4px 8px;
     align-items: center;
     font-family: var(--font-mono);
+    user-select: none;
 }
 
 .graph-node-icon {
@@ -66,6 +67,20 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.graph-node-source-line {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 360px;
+    padding: 0;
+    background: none;
+    margin: 0.2em 0;
 }
 
 .graph-node-main {

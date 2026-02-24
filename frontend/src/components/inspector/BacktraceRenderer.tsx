@@ -4,27 +4,13 @@ import { Stack, FileRs } from "@phosphor-icons/react";
 import type { SnapshotBacktraceFrame, SourcePreviewResponse } from "../../api/types.generated";
 import { isSystemCrate, type ResolvedSnapshotBacktrace } from "../../snapshot";
 import { assignScopeColorRgbByKey, type ScopeColorPair } from "../graph/scopeColors";
-import { apiClient } from "../../api";
+import { cachedFetchSourcePreview } from "../../api/sourceCache";
 import { Source } from "./Source";
 import { ClosurePill } from "../../ui/primitives/ClosurePill";
 import { tokenizeRustName, parseSlim, RustTokens } from "../../ui/primitives/RustName";
 import { FrameCard } from "../../ui/primitives/FrameCard";
 import { SourcePreview } from "../../ui/primitives/SourcePreview";
 import "./BacktraceRenderer.css";
-
-/** Module-level cache: frameId → promise of source preview. Survives unmount/remount. */
-const sourcePreviewCache = new Map<number, Promise<SourcePreviewResponse>>();
-
-function cachedFetchSourcePreview(frameId: number): Promise<SourcePreviewResponse> {
-  let cached = sourcePreviewCache.get(frameId);
-  if (!cached) {
-    cached = apiClient.fetchSourcePreview(frameId);
-    // Evict on failure so a transient error can be retried next time.
-    cached.catch(() => sourcePreviewCache.delete(frameId));
-    sourcePreviewCache.set(frameId, cached);
-  }
-  return cached;
-}
 
 function isResolved(frame: SnapshotBacktraceFrame): frame is {
   resolved: { module_path: string; function_name: string; source_file: string; line?: number };

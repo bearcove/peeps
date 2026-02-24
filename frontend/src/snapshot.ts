@@ -37,6 +37,7 @@ export type RenderTopFrame = {
   source_file: string;
   line?: number;
   column?: number;
+  frame_id?: number;
 };
 
 // f[impl display.entity]
@@ -52,6 +53,8 @@ export type EntityDef = {
   source: RenderSource;
   krate?: string;
   topFrame?: RenderTopFrame;
+  /** All non-system resolved frames from the backtrace, outermost first. */
+  frames: RenderTopFrame[];
   /** Process-relative birth time in ms (PTime). Not comparable across processes. */
   birthPtime: number;
   /** Age at capture time: ptime_now_ms - birthPtime (clamped to 0). */
@@ -215,11 +218,14 @@ function resolveBacktraceDisplay(
   }
 
   // Prefer the first non-system resolved frame; fall back to first resolved.
-  const firstAppFrame = record.frames.find((f) => {
+  let topFrameIndex = record.frames.findIndex((f) => {
     if (!isResolvedFrame(f)) return false;
     return !SYSTEM_CRATES.has(crateFromFunctionName(f.resolved.function_name));
   });
-  const firstResolved = firstAppFrame ?? record.frames.find(isResolvedFrame);
+  if (topFrameIndex === -1) {
+    topFrameIndex = record.frames.findIndex(isResolvedFrame);
+  }
+  const firstResolved = topFrameIndex !== -1 ? record.frames[topFrameIndex] : undefined;
 
   if (firstResolved && isResolvedFrame(firstResolved)) {
     const krate = crateFromFunctionName(firstResolved.resolved.function_name);
@@ -235,6 +241,7 @@ function resolveBacktraceDisplay(
         module_path: firstResolved.resolved.module_path,
         source_file: firstResolved.resolved.source_file,
         line: firstResolved.resolved.line,
+        frame_id: record.frame_ids[topFrameIndex],
       },
     };
   }

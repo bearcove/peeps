@@ -18,6 +18,7 @@ export type GraphNodeData = {
   scopeRgbDark?: string;
   ghost?: boolean;
   sublabel?: string;
+  sourceLine?: string;
 };
 
 export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
@@ -129,6 +130,9 @@ export function GraphNode({ data }: { data: GraphNodeData }) {
         </div>
         {data.sublabel && (
           <div className="graph-node-sublabel">{data.sublabel}</div>
+        )}
+        {data.sourceLine && (
+          <pre className="graph-node-source-line arborium-hl" dangerouslySetInnerHTML={{ __html: data.sourceLine }} />
         )}
       </div>
     </div>
