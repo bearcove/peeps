@@ -3,11 +3,12 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import type { GeometryNode } from "../geometry";
 import type { EntityDef } from "../../snapshot";
-import { GraphNode } from "../../components/graph/GraphNode";
+import { GraphNode, COLLAPSED_FRAME_COUNT } from "../../components/graph/GraphNode";
 import { graphNodeDataFromEntity, computeNodeSublabel, type GraphNodeData } from "../../components/graph/graphNodeData";
 import { scopeKindIcon } from "../../scopeKindSpec";
 import type { GraphFilterLabelMode } from "../../graphFilter";
 import type { NodeExpandState } from "../../components/graph/GraphViewport";
+import { cachedFetchSourcePreview } from "../../api/sourceCache";
 import "../../components/graph/ScopeGroupNode.css";
 import "./NodeLayer.css";
 
@@ -45,6 +46,23 @@ export async function measureGraphLayout(
   showSource?: boolean,
   pinnedNodeIds?: Set<string>,
 ): Promise<GraphMeasureResult> {
+  // Pre-fetch all source data so the sync caches are warm before flushSync.
+  // Pinned (expanded) nodes need full previews; collapsed nodes need N lines
+  // (which come from the same preview endpoint).
+  if (showSource) {
+    const fetches: Promise<unknown>[] = [];
+    for (const def of defs) {
+      const isPinned = pinnedNodeIds?.has(def.id) ?? false;
+      const frames = isPinned ? def.frames : def.frames.slice(0, COLLAPSED_FRAME_COUNT);
+      for (const frame of frames) {
+        if (frame.frame_id != null) {
+          fetches.push(cachedFetchSourcePreview(frame.frame_id).catch(() => {}));
+        }
+      }
+    }
+    await Promise.all(fetches);
+  }
+
   // Escape React's useEffect lifecycle so flushSync works on our measurement roots.
   await Promise.resolve();
   // Ensure text measurement uses final webfont metrics.

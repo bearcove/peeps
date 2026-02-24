@@ -8,8 +8,10 @@ import { langIcon } from "./langIcon";
 import type { GraphFrameData, GraphNodeData } from "./graphNodeData";
 import "./GraphNode.css";
 
+export const COLLAPSED_FRAME_COUNT = 2;
+
 function pickCollapsedFrames(frames: GraphFrameData[]): GraphFrameData[] {
-  return frames.slice(0, 2);
+  return frames.slice(0, COLLAPSED_FRAME_COUNT);
 }
 
 function formatFileLocation(f: GraphFrameData): string {
@@ -87,6 +89,9 @@ function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showS
               <span className="graph-node-frame-block__gutter">{lineNum}</span>
               {/* eslint-disable-next-line react/no-danger */}
               <span className="graph-node-frame-block__text" dangerouslySetInnerHTML={{ __html: html }} />
+              {isTarget && (
+                <span className="graph-node-frame-block__loc">{location}</span>
+              )}
             </div>
           );
         })}

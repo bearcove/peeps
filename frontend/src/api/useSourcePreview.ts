@@ -1,28 +1,28 @@
 import { useEffect, useState } from "react";
 import type { SourcePreviewResponse } from "./types.generated";
-import { cachedFetchSourcePreview } from "./sourceCache";
+import { cachedFetchSourcePreview, getSourcePreviewSync } from "./sourceCache";
 
-/**
- * Fetch and cache the full source preview for a frame.
- *
- * Returns the `SourcePreviewResponse` or `undefined` while loading / on error.
- */
 export function useSourcePreview(frameId: number | undefined): SourcePreviewResponse | undefined {
-  const [preview, setPreview] = useState<SourcePreviewResponse | undefined>(undefined);
+  const [preview, setPreview] = useState<SourcePreviewResponse | undefined>(
+    () => frameId != null ? getSourcePreviewSync(frameId) : undefined,
+  );
 
   useEffect(() => {
     if (frameId == null) {
       setPreview(undefined);
       return;
     }
-
+    const synced = getSourcePreviewSync(frameId);
+    if (synced) {
+      setPreview(synced);
+      return;
+    }
     let cancelled = false;
     cachedFetchSourcePreview(frameId).then((res) => {
       if (!cancelled) setPreview(res);
     }).catch(() => {
       if (!cancelled) setPreview(undefined);
     });
-
     return () => { cancelled = true; };
   }, [frameId]);
 

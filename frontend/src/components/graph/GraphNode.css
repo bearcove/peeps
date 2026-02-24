@@ -200,6 +200,14 @@
     min-width: 0;
 }
 
+.graph-node-frame-block__loc {
+    flex-shrink: 0;
+    margin-left: 2ch;
+    padding-right: 0.5ch;
+    color: var(--text-tertiary);
+    user-select: none;
+}
+
 /* ── Status/cycle tones ── */
 
 .graph-node--cycle {
