@@ -2,6 +2,8 @@ import React from "react";
 import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import { kindIcon } from "../../nodeKindSpec";
 import { useSourceLine } from "../../api/useSourceLine";
+import { useSourcePreview } from "../../api/useSourcePreview";
+import { splitHighlightedHtml } from "../../utils/highlightedHtml";
 import { langIcon } from "./langIcon";
 import type { GraphFrameData, GraphNodeData } from "./graphNodeData";
 import "./GraphNode.css";
@@ -22,7 +24,7 @@ function shortFnName(fn_name: string): string {
   return parts.slice(-2).join("::");
 }
 
-function FrameLine({ frame, showSource }: { frame: GraphFrameData; showSource?: boolean }) {
+function FrameLineCollapsed({ frame, showSource }: { frame: GraphFrameData; showSource?: boolean }) {
   const sourceHtml = useSourceLine(showSource ? frame.frame_id : undefined);
   const location = formatFileLocation(frame);
 
@@ -41,6 +43,54 @@ function FrameLine({ frame, showSource }: { frame: GraphFrameData; showSource?: 
           <span className="graph-node-frame-loc">{location}</span>
         </pre>
       )}
+    </div>
+  );
+}
+
+function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showSource?: boolean }) {
+  const preview = useSourcePreview(showSource ? frame.frame_id : undefined);
+  const location = formatFileLocation(frame);
+
+  if (!preview) {
+    return (
+      <div className="graph-node-frame-row">
+        {langIcon(frame.source_file, 10, "graph-node-frame-icon")}
+        <pre className="graph-node-frame graph-node-frame--text">
+          <span className="graph-node-frame-fn">{shortFnName(frame.function_name)}</span>
+          <span className="graph-node-frame-dot">&middot;</span>
+          <span className="graph-node-frame-loc">{location}</span>
+        </pre>
+      </div>
+    );
+  }
+
+  const allLines = splitHighlightedHtml(preview.html);
+  const range = preview.display_range;
+  const startLine = range ? range.start : preview.target_line;
+  const endLine = range ? range.end : preview.target_line;
+  const startIdx = startLine - 1;
+  const endIdx = endLine; // slice end is exclusive
+  const slice = allLines.slice(startIdx, endIdx);
+
+  return (
+    <div className="graph-node-frame-row graph-node-frame-row--expanded">
+      {langIcon(frame.source_file, 10, "graph-node-frame-icon")}
+      <pre className="graph-node-frame-block arborium-hl">
+        {slice.map((html, i) => {
+          const lineNum = startLine + i;
+          const isTarget = lineNum === preview.target_line;
+          return (
+            <div
+              key={lineNum}
+              className={`graph-node-frame-block__line${isTarget ? " graph-node-frame-block__line--target" : ""}`}
+            >
+              <span className="graph-node-frame-block__gutter">{lineNum}</span>
+              {/* eslint-disable-next-line react/no-danger */}
+              <span className="graph-node-frame-block__text" dangerouslySetInnerHTML={{ __html: html }} />
+            </div>
+          );
+        })}
+      </pre>
     </div>
   );
 }
@@ -116,9 +166,13 @@ export function GraphNode({
       {data.sublabel && <div className="graph-node-sublabel">{data.sublabel}</div>}
       {visibleFrames.length > 0 && (
         <div className="graph-node-frames">
-          {visibleFrames.map((frame, _i) => (
-            <FrameLine key={frame.frame_id} frame={frame} showSource={data.showSource} />
-          ))}
+          {visibleFrames.map((frame, _i) =>
+            expanded ? (
+              <FrameLineExpanded key={frame.frame_id} frame={frame} showSource={data.showSource} />
+            ) : (
+              <FrameLineCollapsed key={frame.frame_id} frame={frame} showSource={data.showSource} />
+            )
+          )}
         </div>
       )}
     </div>

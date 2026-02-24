@@ -165,6 +165,41 @@
     color: var(--text-tertiary);
 }
 
+/* ── Expanded source block ── */
+
+.graph-node-frame-block {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1.4;
+    margin: 0;
+    padding: 0;
+    background: none;
+    white-space: pre;
+}
+
+.graph-node-frame-block__line {
+    display: flex;
+    flex-direction: row;
+}
+
+.graph-node-frame-block__line--target {
+    background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.06));
+}
+
+.graph-node-frame-block__gutter {
+    flex-shrink: 0;
+    width: 3ch;
+    text-align: right;
+    padding-right: 1ch;
+    color: var(--text-tertiary);
+    user-select: none;
+}
+
+.graph-node-frame-block__text {
+    flex: 1;
+    min-width: 0;
+}
+
 /* ── Status/cycle tones ── */
 
 .graph-node--cycle {
