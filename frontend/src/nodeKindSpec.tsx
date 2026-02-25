@@ -92,6 +92,7 @@ const ALIASES: Record<string, string> = {
   lock: "mutex",
   once_cell: "oncecell",
   task: "future",
+  aether: "ghost",
 };
 
 export function canonicalNodeKind(kind: string): string {

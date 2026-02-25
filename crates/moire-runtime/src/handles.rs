@@ -25,22 +25,23 @@ pub fn entity_ref_from_wire(id: impl Into<String>) -> EntityRef {
 }
 
 pub fn current_causal_target() -> Option<EntityRef> {
-    // First try the causal stack (instrumented path)
-    let from_stack = super::FUTURE_CAUSAL_STACK
+    current_causal_target_from_stack()
+}
+
+pub fn current_causal_target_from_stack() -> Option<EntityRef> {
+    super::FUTURE_CAUSAL_STACK
         .try_with(|stack| {
             stack.borrow().last().map(|id| EntityRef {
                 id: EntityId::new(id.as_str()),
             })
         })
         .ok()
-        .flatten();
+        .flatten()
+}
 
-    if from_stack.is_some() {
-        return from_stack;
-    }
-
-    // No causal stack — synthesize an Aether entity for this task
-    super::aether_entity_for_current_task().map(|id| EntityRef { id })
+pub fn current_causal_target_with_task_fallback() -> Option<EntityRef> {
+    current_causal_target_from_stack()
+        .or_else(|| super::aether_entity_for_current_task().map(|id| EntityRef { id }))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

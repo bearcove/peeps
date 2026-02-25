@@ -4,8 +4,8 @@ use std::fmt;
 use std::ops::{Deref, DerefMut};
 
 use moire_runtime::{
-    AsEntityRef, EdgeHandle, EntityHandle, EntityRef, HELD_MUTEX_STACK, current_causal_target,
-    instrument_operation_on,
+    AsEntityRef, EdgeHandle, EntityHandle, EntityRef, HELD_MUTEX_STACK,
+    current_causal_target_with_task_fallback, instrument_operation_on_with_actor,
 };
 
 /// Instrumented version of [`tokio::sync::Mutex`].
@@ -79,14 +79,16 @@ impl<T> Mutex<T> {
 
     /// Acquires the lock asynchronously, matching [`tokio::sync::Mutex::lock`].
     pub async fn lock(&self) -> MutexGuard<'_, T> {
-        let owner_ref = current_causal_target();
-        let inner = instrument_operation_on(&self.handle, self.inner.lock()).await;
+        let owner_ref = current_causal_target_with_task_fallback();
+        let inner =
+            instrument_operation_on_with_actor(&self.handle, owner_ref.as_ref(), self.inner.lock())
+                .await;
         self.wrap_guard(inner, owner_ref.as_ref(), None)
     }
 
     /// Attempts lock acquisition without waiting, matching [`tokio::sync::Mutex::try_lock`].
     pub fn try_lock(&self) -> Result<MutexGuard<'_, T>, tokio::sync::TryLockError> {
-        let owner_ref = current_causal_target();
+        let owner_ref = current_causal_target_with_task_fallback();
         self.inner
             .try_lock()
             .map(|inner| self.wrap_guard(inner, owner_ref.as_ref(), Some(EdgeKind::Polls)))
@@ -134,7 +136,7 @@ impl<T> SyncMutex<T> {
 
     /// Acquires the lock, matching [`parking_lot::Mutex::lock`].
     pub fn lock(&self) -> SyncMutexGuard<'_, T> {
-        let owner_ref = current_causal_target();
+        let owner_ref = current_causal_target_with_task_fallback();
 
         if let Some(inner) = self.inner.try_lock() {
             return self.wrap_guard(inner, owner_ref.as_ref(), None);
@@ -151,7 +153,7 @@ impl<T> SyncMutex<T> {
 
     /// Attempts lock acquisition without blocking, matching [`parking_lot::Mutex::try_lock`].
     pub fn try_lock(&self) -> Option<SyncMutexGuard<'_, T>> {
-        let owner_ref = current_causal_target();
+        let owner_ref = current_causal_target_with_task_fallback();
         self.inner
             .try_lock()
             .map(|inner| self.wrap_guard(inner, owner_ref.as_ref(), Some(EdgeKind::Polls)))

@@ -7,7 +7,7 @@ use std::task::{Context, Poll};
 
 use super::FUTURE_CAUSAL_STACK;
 use super::db::runtime_db;
-use super::handles::{EntityHandle, EntityRef, current_causal_target};
+use super::handles::{EntityHandle, EntityRef, current_causal_target_from_stack};
 
 pub struct OperationFuture<F> {
     inner: F,
@@ -19,9 +19,17 @@ pub struct OperationFuture<F> {
 
 impl<F> OperationFuture<F> {
     fn new(inner: F, resource_id: EntityId) -> Self {
+        Self::new_with_actor(
+            inner,
+            resource_id,
+            current_causal_target_from_stack().map(|target| target.id().clone()),
+        )
+    }
+
+    fn new_with_actor(inner: F, resource_id: EntityId, actor_id: Option<EntityId>) -> Self {
         Self {
             inner,
-            actor_id: current_causal_target().map(|target| target.id().clone()),
+            actor_id,
             resource_id,
             current_edge: None,
             backtrace: super::capture_backtrace_id(),
@@ -86,6 +94,21 @@ where
     OperationFuture::new(fut.into_future(), EntityId::new(on.id().as_str()))
 }
 
+pub fn instrument_operation_on_with_actor<F, S>(
+    on: &EntityHandle<S>,
+    actor: Option<&EntityRef>,
+    fut: F,
+) -> OperationFuture<F::IntoFuture>
+where
+    F: IntoFuture,
+{
+    OperationFuture::new_with_actor(
+        fut.into_future(),
+        EntityId::new(on.id().as_str()),
+        actor.map(|target| target.id().clone()),
+    )
+}
+
 pub struct InstrumentedFuture<F> {
     inner: F,
     pub(super) future_handle: EntityHandle<FutureEntity>,
@@ -118,7 +141,7 @@ impl FutureEdgeRelation {
 
 impl<F> InstrumentedFuture<F> {
     fn new(inner: F, future_handle: EntityHandle<FutureEntity>, target: Option<EntityRef>) -> Self {
-        let awaited_by = current_causal_target().and_then(|parent| {
+        let awaited_by = current_causal_target_from_stack().and_then(|parent| {
             if parent.id().as_str() == future_handle.id().as_str() {
                 None
             } else {

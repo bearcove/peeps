@@ -23,7 +23,13 @@ type ResponseBody = Extract<EntityBody, { response: unknown }>;
 // f[impl display.tone]
 export type Tone = "ok" | "warn" | "crit" | "neutral";
 
-export type MetaValue = string | number | boolean | null | MetaValue[] | { [key: string]: MetaValue };
+export type MetaValue =
+  | string
+  | number
+  | boolean
+  | null
+  | MetaValue[]
+  | { [key: string]: MetaValue };
 
 export type RenderSource = {
   path: string;
@@ -177,7 +183,9 @@ export function buildBacktraceIndex(snapshot: SnapshotCutResponse): BacktraceInd
   return index;
 }
 
-export function isResolvedFrame(frame: SnapshotBacktraceFrame): frame is { resolved: BacktraceFrameResolved } {
+export function isResolvedFrame(
+  frame: SnapshotBacktraceFrame,
+): frame is { resolved: BacktraceFrameResolved } {
   return "resolved" in frame;
 }
 
@@ -213,7 +221,13 @@ function resolveBacktraceDisplay(
   backtraces: Map<number, ResolvedSnapshotBacktrace>,
   backtraceId: number,
   _context: string,
-): { source: RenderSource; topFrame?: RenderTopFrame; frames: RenderTopFrame[]; allFrames: RenderTopFrame[]; framesLoading: boolean } {
+): {
+  source: RenderSource;
+  topFrame?: RenderTopFrame;
+  frames: RenderTopFrame[];
+  allFrames: RenderTopFrame[];
+  framesLoading: boolean;
+} {
   const record = backtraces.get(backtraceId);
   if (!record) {
     return {
@@ -317,7 +331,9 @@ export function applySymbolicationUpdateToSnapshot(
     throw new Error(`[snapshot] invalid symbolication total_frames ${String(update.total_frames)}`);
   }
   if (!Number.isInteger(update.completed_frames) || update.completed_frames < 0) {
-    throw new Error(`[snapshot] invalid symbolication completed_frames ${String(update.completed_frames)}`);
+    throw new Error(
+      `[snapshot] invalid symbolication completed_frames ${String(update.completed_frames)}`,
+    );
   }
 
   const frameMap = new Map<number, SnapshotFrameRecord>();
@@ -354,7 +370,11 @@ export function extractScopes(snapshot: SnapshotCutResponse): ScopeDef[] {
 
     for (const scope of proc.snapshot.scopes) {
       const memberEntityIds = membersByScope.get(scope.id) ?? [];
-      const backtraceId = requireBacktraceId(scope, `scope ${processIdStr}/${scope.id}`, process_id);
+      const backtraceId = requireBacktraceId(
+        scope,
+        `scope ${processIdStr}/${scope.id}`,
+        process_id,
+      );
       const resolvedBacktrace = resolveBacktraceDisplay(
         backtraces,
         backtraceId,
@@ -422,6 +442,7 @@ export function deriveStatus(body: EntityBody): { label: string; tone: Tone } {
       tone: handed_out_permits > 0 ? "warn" : "ok",
     };
   }
+  if ("aether" in body) return { label: "anonymous", tone: "neutral" };
   if ("notify" in body) return { label: "waiting", tone: "neutral" };
   if ("once_cell" in body) {
     const s = body.once_cell.state;
@@ -739,11 +760,7 @@ export function convertSnapshot(
     for (const e of proc.snapshot.entities) {
       const ageMs = Math.max(0, ptime_now_ms - e.birth);
       const backtraceId = requireBacktraceId(e, `entity ${e.id}`, process_id);
-      const resolvedBacktrace = resolveBacktraceDisplay(
-        backtraces,
-        backtraceId,
-        `entity ${e.id}`,
-      );
+      const resolvedBacktrace = resolveBacktraceDisplay(backtraces, backtraceId, `entity ${e.id}`);
       const kind = bodyToKind(e.body);
       if ("custom" in e.body) {
         const c = e.body.custom;
@@ -1003,7 +1020,9 @@ export function collapseEdgesThroughHiddenNodes(
     (edge) => visibleEntityIds.has(edge.source) && visibleEntityIds.has(edge.target),
   );
   const resultById = new Map<string, EdgeDef>(visibleDirectEdges.map((edge) => [edge.id, edge]));
-  const visibleDirectPairs = new Set(visibleDirectEdges.map((edge) => pairKey(edge.source, edge.target)));
+  const visibleDirectPairs = new Set(
+    visibleDirectEdges.map((edge) => pairKey(edge.source, edge.target)),
+  );
 
   for (const sourceId of visibleEntityIds) {
     const firstHopOutgoing = outgoing.get(sourceId) ?? [];

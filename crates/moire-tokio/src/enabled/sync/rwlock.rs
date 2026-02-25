@@ -4,8 +4,8 @@ use std::fmt;
 use std::ops::{Deref, DerefMut};
 
 use moire_runtime::{
-    AsEntityRef, EdgeHandle, EntityHandle, EntityRef, current_causal_target,
-    instrument_operation_on,
+    AsEntityRef, EdgeHandle, EntityHandle, EntityRef, current_causal_target_with_task_fallback,
+    instrument_operation_on_with_actor,
 };
 
 /// Instrumented version of [`tokio::sync::RwLock`].
@@ -71,21 +71,28 @@ impl<T> RwLock<T> {
 
     /// Acquires a shared read guard asynchronously, matching [`tokio::sync::RwLock::read`].
     pub async fn read(&self) -> RwLockReadGuard<'_, T> {
-        let owner_ref = current_causal_target();
-        let inner = instrument_operation_on(&self.handle, self.inner.read()).await;
+        let owner_ref = current_causal_target_with_task_fallback();
+        let inner =
+            instrument_operation_on_with_actor(&self.handle, owner_ref.as_ref(), self.inner.read())
+                .await;
         self.wrap_read_guard(inner, owner_ref.as_ref(), None)
     }
 
     /// Acquires an exclusive write guard asynchronously, matching [`tokio::sync::RwLock::write`].
     pub async fn write(&self) -> RwLockWriteGuard<'_, T> {
-        let owner_ref = current_causal_target();
-        let inner = instrument_operation_on(&self.handle, self.inner.write()).await;
+        let owner_ref = current_causal_target_with_task_fallback();
+        let inner = instrument_operation_on_with_actor(
+            &self.handle,
+            owner_ref.as_ref(),
+            self.inner.write(),
+        )
+        .await;
         self.wrap_write_guard(inner, owner_ref.as_ref(), None)
     }
 
     /// Attempts a non-blocking read lock, matching [`tokio::sync::RwLock::try_read`].
     pub fn try_read(&self) -> Result<RwLockReadGuard<'_, T>, tokio::sync::TryLockError> {
-        let owner_ref = current_causal_target();
+        let owner_ref = current_causal_target_with_task_fallback();
         self.inner
             .try_read()
             .map(|inner| self.wrap_read_guard(inner, owner_ref.as_ref(), Some(EdgeKind::Polls)))
@@ -93,7 +100,7 @@ impl<T> RwLock<T> {
 
     /// Attempts a non-blocking write lock, matching [`tokio::sync::RwLock::try_write`].
     pub fn try_write(&self) -> Result<RwLockWriteGuard<'_, T>, tokio::sync::TryLockError> {
-        let owner_ref = current_causal_target();
+        let owner_ref = current_causal_target_with_task_fallback();
         self.inner
             .try_write()
             .map(|inner| self.wrap_write_guard(inner, owner_ref.as_ref(), Some(EdgeKind::Polls)))
@@ -143,7 +150,7 @@ impl<T> SyncRwLock<T> {
 
     /// Acquires a shared read guard, equivalent to [`parking_lot::RwLock::read`].
     pub fn read(&self) -> parking_lot::RwLockReadGuard<'_, T> {
-        if let Some(caller) = current_causal_target() {
+        if let Some(caller) = current_causal_target_with_task_fallback() {
             self.handle.link_to(&caller, EdgeKind::Polls);
         }
         self.inner.read()
@@ -151,7 +158,7 @@ impl<T> SyncRwLock<T> {
 
     /// Acquires an exclusive write guard, equivalent to [`parking_lot::RwLock::write`].
     pub fn write(&self) -> parking_lot::RwLockWriteGuard<'_, T> {
-        if let Some(caller) = current_causal_target() {
+        if let Some(caller) = current_causal_target_with_task_fallback() {
             self.handle.link_to(&caller, EdgeKind::Polls);
         }
         self.inner.write()
@@ -159,7 +166,7 @@ impl<T> SyncRwLock<T> {
 
     /// Attempts a non-blocking read lock, matching [`parking_lot::RwLock::try_read`].
     pub fn try_read(&self) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
-        if let Some(caller) = current_causal_target() {
+        if let Some(caller) = current_causal_target_with_task_fallback() {
             self.handle.link_to(&caller, EdgeKind::Polls);
         }
         self.inner.try_read()
@@ -167,7 +174,7 @@ impl<T> SyncRwLock<T> {
 
     /// Attempts a non-blocking write lock, matching [`parking_lot::RwLock::try_write`].
     pub fn try_write(&self) -> Option<parking_lot::RwLockWriteGuard<'_, T>> {
-        if let Some(caller) = current_causal_target() {
+        if let Some(caller) = current_causal_target_with_task_fallback() {
             self.handle.link_to(&caller, EdgeKind::Polls);
         }
         self.inner.try_write()

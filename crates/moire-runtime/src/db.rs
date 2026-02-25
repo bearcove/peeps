@@ -236,6 +236,12 @@ impl RuntimeDb {
         Some(scope_id)
     }
 
+    pub(crate) fn link_entity_to_current_task_scope(&mut self, entity_id: &EntityId) -> Option<()> {
+        let scope_id = self.ensure_current_task_scope_id()?;
+        self.link_entity_to_scope(entity_id, &scope_id);
+        Some(())
+    }
+
     fn body_fingerprint(body: &EntityBody) -> u64 {
         let bytes = facet_json::to_vec(body).expect("entity body serialization must succeed");
         let mut hasher = DefaultHasher::new();

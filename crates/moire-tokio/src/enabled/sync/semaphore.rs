@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use moire_runtime::{
-    AsEntityRef, EdgeHandle, EntityHandle, EntityRef, WeakEntityHandle, current_causal_target,
-    instrument_operation_on,
+    AsEntityRef, EdgeHandle, EntityHandle, EntityRef, WeakEntityHandle,
+    current_causal_target_with_task_fallback, instrument_operation_on_with_actor,
 };
 
 #[derive(Clone)]
@@ -91,8 +91,13 @@ impl Semaphore {
     }
     /// Acquires a permit asynchronously, matching [`tokio::sync::Semaphore::acquire`].
     pub async fn acquire(&self) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
-        let holder_ref = current_causal_target();
-        let permit = instrument_operation_on(&self.handle, self.inner.acquire()).await?;
+        let holder_ref = current_causal_target_with_task_fallback();
+        let permit = instrument_operation_on_with_actor(
+            &self.handle,
+            holder_ref.as_ref(),
+            self.inner.acquire(),
+        )
+        .await?;
         if let Some(holder_ref) = holder_ref.as_ref() {
             self.note_holder_acquired(holder_ref);
         }
@@ -111,8 +116,13 @@ impl Semaphore {
         &self,
         n: u32,
     ) -> Result<SemaphorePermit<'_>, tokio::sync::AcquireError> {
-        let holder_ref = current_causal_target();
-        let permit = instrument_operation_on(&self.handle, self.inner.acquire_many(n)).await?;
+        let holder_ref = current_causal_target_with_task_fallback();
+        let permit = instrument_operation_on_with_actor(
+            &self.handle,
+            holder_ref.as_ref(),
+            self.inner.acquire_many(n),
+        )
+        .await?;
         if let Some(holder_ref) = holder_ref.as_ref() {
             self.note_holder_acquired(holder_ref);
         }
@@ -128,9 +138,13 @@ impl Semaphore {
     }
     /// Acquires an owned permit asynchronously, matching [`tokio::sync::Semaphore::acquire_owned`].
     pub async fn acquire_owned(&self) -> Result<OwnedSemaphorePermit, tokio::sync::AcquireError> {
-        let holder_ref = current_causal_target();
-        let permit =
-            instrument_operation_on(&self.handle, Arc::clone(&self.inner).acquire_owned()).await?;
+        let holder_ref = current_causal_target_with_task_fallback();
+        let permit = instrument_operation_on_with_actor(
+            &self.handle,
+            holder_ref.as_ref(),
+            Arc::clone(&self.inner).acquire_owned(),
+        )
+        .await?;
         if let Some(holder_ref) = holder_ref.as_ref() {
             self.note_holder_acquired(holder_ref);
         }
@@ -149,10 +163,13 @@ impl Semaphore {
         &self,
         n: u32,
     ) -> Result<OwnedSemaphorePermit, tokio::sync::AcquireError> {
-        let holder_ref = current_causal_target();
-        let permit =
-            instrument_operation_on(&self.handle, Arc::clone(&self.inner).acquire_many_owned(n))
-                .await?;
+        let holder_ref = current_causal_target_with_task_fallback();
+        let permit = instrument_operation_on_with_actor(
+            &self.handle,
+            holder_ref.as_ref(),
+            Arc::clone(&self.inner).acquire_many_owned(n),
+        )
+        .await?;
         if let Some(holder_ref) = holder_ref.as_ref() {
             self.note_holder_acquired(holder_ref);
         }
@@ -170,7 +187,7 @@ impl Semaphore {
     /// Tries to acquire a permit immediately, matching [`tokio::sync::Semaphore::try_acquire`].
     pub fn try_acquire(&self) -> Result<SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
         let permit = self.inner.try_acquire()?;
-        let holder_ref = current_causal_target();
+        let holder_ref = current_causal_target_with_task_fallback();
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(SemaphorePermit {
             inner: Some(permit),
@@ -188,7 +205,7 @@ impl Semaphore {
         n: u32,
     ) -> Result<SemaphorePermit<'_>, tokio::sync::TryAcquireError> {
         let permit = self.inner.try_acquire_many(n)?;
-        let holder_ref = current_causal_target();
+        let holder_ref = current_causal_target_with_task_fallback();
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(SemaphorePermit {
             inner: Some(permit),
@@ -203,7 +220,7 @@ impl Semaphore {
     /// Tries to acquire an owned permit immediately, matching [`tokio::sync::Semaphore::try_acquire_owned`].
     pub fn try_acquire_owned(&self) -> Result<OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
         let permit = Arc::clone(&self.inner).try_acquire_owned()?;
-        let holder_ref = current_causal_target();
+        let holder_ref = current_causal_target_with_task_fallback();
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(OwnedSemaphorePermit {
             inner: Some(permit),
@@ -221,7 +238,7 @@ impl Semaphore {
         n: u32,
     ) -> Result<OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
         let permit = Arc::clone(&self.inner).try_acquire_many_owned(n)?;
-        let holder_ref = current_causal_target();
+        let holder_ref = current_causal_target_with_task_fallback();
         self.sync_state(self.max_permits.load(Ordering::Relaxed));
         Ok(OwnedSemaphorePermit {
             inner: Some(permit),
