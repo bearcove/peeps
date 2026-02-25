@@ -14,7 +14,7 @@
     position: relative;
     overscroll-behavior: none;
 
-    --graph-code-card-width: 600px;
+    --graph-code-card-width: 400px;
     box-shadow: var(--shadow-elevation-md);
 }
 
