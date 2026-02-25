@@ -31,6 +31,12 @@ type GraphTransitionState = {
   toGroups: GeometryGroup[];
 };
 
+type GraphTransitionTarget = {
+  geometry: GraphGeometry;
+  nodes: GeometryNode[];
+  groups: GeometryGroup[];
+};
+
 const GRAPH_TRANSITION_DURATION_MS = 220;
 
 function nearlyEqual(a: number, b: number, epsilon = 0.01): boolean {
@@ -186,6 +192,7 @@ export function GraphViewport({
   );
   const interpolatedGraphRef = useRef<InterpolatedGraph | null>(interpolatedGraph);
   const transitionRef = useRef<GraphTransitionState | null>(null);
+  const pendingTargetRef = useRef<GraphTransitionTarget | null>(null);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -195,6 +202,7 @@ export function GraphViewport({
   useEffect(() => {
     if (!geometry) {
       transitionRef.current = null;
+      pendingTargetRef.current = null;
       if (rafRef.current != null) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
@@ -224,6 +232,12 @@ export function GraphViewport({
       activeTransition.toGeometry = geometry;
       activeTransition.toNodes = nodes;
       activeTransition.toGroups = groups;
+      pendingTargetRef.current = null;
+      return;
+    }
+
+    if (activeTransition) {
+      pendingTargetRef.current = { geometry, nodes, groups };
       return;
     }
 
@@ -238,6 +252,7 @@ export function GraphViewport({
       )
     ) {
       transitionRef.current = null;
+      pendingTargetRef.current = null;
       if (rafRef.current != null) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
@@ -268,14 +283,42 @@ export function GraphViewport({
       const t = Math.max(0, Math.min(1, elapsedMs / transition.durationMs));
 
       if (t >= 1) {
+        const finalTarget = {
+          geometry: transition.toGeometry,
+          nodes: transition.toNodes,
+          groups: transition.toGroups,
+        };
         setInterpolatedGraph(
-          makeStableInterpolatedGraph(
-            transition.toGeometry,
-            transition.toNodes,
-            transition.toGroups,
-          ),
+          makeStableInterpolatedGraph(finalTarget.geometry, finalTarget.nodes, finalTarget.groups),
         );
         transitionRef.current = null;
+        const pending = pendingTargetRef.current;
+        if (
+          pending &&
+          !sameRenderableGeometry(
+            finalTarget.geometry,
+            pending.geometry,
+            finalTarget.nodes,
+            pending.nodes,
+            finalTarget.groups,
+            pending.groups,
+          )
+        ) {
+          pendingTargetRef.current = null;
+          transitionRef.current = {
+            startedAtMs: performance.now(),
+            durationMs: GRAPH_TRANSITION_DURATION_MS,
+            fromGeometry: finalTarget.geometry,
+            toGeometry: pending.geometry,
+            fromNodes: finalTarget.nodes,
+            toNodes: pending.nodes,
+            fromGroups: finalTarget.groups,
+            toGroups: pending.groups,
+          };
+          rafRef.current = requestAnimationFrame(tick);
+          return;
+        }
+        pendingTargetRef.current = null;
         rafRef.current = null;
         return;
       }
@@ -302,6 +345,7 @@ export function GraphViewport({
           ),
         );
         transitionRef.current = null;
+        pendingTargetRef.current = null;
         rafRef.current = null;
         return;
       }
@@ -316,6 +360,7 @@ export function GraphViewport({
   useEffect(() => {
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      pendingTargetRef.current = null;
     };
   }, []);
 
