@@ -10,7 +10,11 @@ import { GroupLayer } from "../../graph/render/GroupLayer";
 import { EdgeLayer } from "../../graph/render/EdgeLayer";
 import { NodeLayer } from "../../graph/render/NodeLayer";
 import type { GraphGeometry, GeometryGroup, GeometryNode } from "../../graph/geometry";
-import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "../../ui/primitives/ContextMenu";
+import {
+  ContextMenu,
+  ContextMenuItem,
+  ContextMenuSeparator,
+} from "../../ui/primitives/ContextMenu";
 
 // Node interaction states: unselected → selected → expanded → pinned
 export type NodeExpandState = "collapsed" | "expanded" | "pinned";
@@ -53,24 +57,12 @@ export function GraphViewport({
   onPinnedNodesChange?: (pinnedIds: Set<string>) => void;
 }) {
   const effectiveGhostNodeIds = useMemo(() => {
-    if (!geometry || selection?.kind !== "entity") return ghostNodeIds;
-    const selected = selection.id;
-    const s = new Set<string>(ghostNodeIds);
-    for (const node of geometry.nodes) {
-      if (node.id !== selected) s.add(node.id);
-    }
-    return s;
-  }, [geometry, selection, ghostNodeIds]);
+    return ghostNodeIds;
+  }, [ghostNodeIds]);
 
   const effectiveGhostEdgeIds = useMemo(() => {
-    if (!geometry || selection?.kind !== "entity") return ghostEdgeIds;
-    const selected = selection.id;
-    const s = new Set<string>(ghostEdgeIds);
-    for (const edge of geometry.edges) {
-      if (edge.sourceId !== selected && edge.targetId !== selected) s.add(edge.id);
-    }
-    return s;
-  }, [geometry, selection, ghostEdgeIds]);
+    return ghostEdgeIds;
+  }, [ghostEdgeIds]);
 
   const portAnchors = geometry?.portAnchors ?? new Map();
   const [hasFitted, setHasFitted] = useState(false);
@@ -118,66 +110,123 @@ export function GraphViewport({
 
   return (
     <div className="graph-flow" ref={graphFlowRef}>
-      {nodeContextMenu && (() => {
-        const entity = entityById.get(nodeContextMenu.nodeId);
-        const location = entity ? `${entity.source.path}:${entity.source.line}` : "";
-        const krate = entity?.topFrame?.crate_name;
-        const processId = entity?.processId ?? "";
-        const processLabel = entity
-          ? formatProcessLabel(entity.processName, entity.processPid)
-          : processId;
-        const kind = entity ? canonicalNodeKind(entity.kind) : "";
-        const kindLabel = kind ? kindDisplayName(kind) : "";
-        return (
-          <ContextMenu x={nodeContextMenu.x} y={nodeContextMenu.y} onClose={closeNodeContextMenu}>
-            <ContextMenuItem onClick={() => { onFocusConnected(nodeContextMenu.nodeId); closeNodeContextMenu(); }}>
-              Show only connected
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem prefix="−" onClick={() => { onHideNodeFilter(nodeContextMenu.nodeId); closeNodeContextMenu(); }}>
-              Hide this node
-            </ContextMenuItem>
-            {location && (
-              <ContextMenuItem prefix="−" onClick={() => { onHideLocationFilter(location); closeNodeContextMenu(); }}>
-                <NodeChip icon={<FileRs size={12} weight="bold" />} label={location.split("/").pop() ?? location} />
+      {nodeContextMenu &&
+        (() => {
+          const entity = entityById.get(nodeContextMenu.nodeId);
+          const location = entity ? `${entity.source.path}:${entity.source.line}` : "";
+          const krate = entity?.topFrame?.crate_name;
+          const processId = entity?.processId ?? "";
+          const processLabel = entity
+            ? formatProcessLabel(entity.processName, entity.processPid)
+            : processId;
+          const kind = entity ? canonicalNodeKind(entity.kind) : "";
+          const kindLabel = kind ? kindDisplayName(kind) : "";
+          return (
+            <ContextMenu x={nodeContextMenu.x} y={nodeContextMenu.y} onClose={closeNodeContextMenu}>
+              <ContextMenuItem
+                onClick={() => {
+                  onFocusConnected(nodeContextMenu.nodeId);
+                  closeNodeContextMenu();
+                }}
+              >
+                Show only connected
               </ContextMenuItem>
-            )}
-            {krate && (
-              <>
-                <ContextMenuSeparator />
-                <ContextMenuItem prefix="−" onClick={() => { onAppendFilterToken(`-crate:${quoteFilterValue(krate)}`); closeNodeContextMenu(); }}>
-                  <NodeChip icon={<Package size={12} weight="bold" />} label={krate} />
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                prefix="−"
+                onClick={() => {
+                  onHideNodeFilter(nodeContextMenu.nodeId);
+                  closeNodeContextMenu();
+                }}
+              >
+                Hide this node
+              </ContextMenuItem>
+              {location && (
+                <ContextMenuItem
+                  prefix="−"
+                  onClick={() => {
+                    onHideLocationFilter(location);
+                    closeNodeContextMenu();
+                  }}
+                >
+                  <NodeChip
+                    icon={<FileRs size={12} weight="bold" />}
+                    label={location.split("/").pop() ?? location}
+                  />
                 </ContextMenuItem>
-                <ContextMenuItem prefix="+" onClick={() => { onAppendFilterToken(`+crate:${quoteFilterValue(krate)}`); closeNodeContextMenu(); }}>
-                  <NodeChip icon={<Package size={12} weight="bold" />} label={krate} />
-                </ContextMenuItem>
-              </>
-            )}
-            {processId && (
-              <>
-                <ContextMenuSeparator />
-                <ContextMenuItem prefix="−" onClick={() => { onAppendFilterToken(`-process:${quoteFilterValue(processId)}`); closeNodeContextMenu(); }}>
-                  <NodeChip icon={<Terminal size={12} weight="bold" />} label={processLabel} />
-                </ContextMenuItem>
-                <ContextMenuItem prefix="+" onClick={() => { onAppendFilterToken(`+process:${quoteFilterValue(processId)}`); closeNodeContextMenu(); }}>
-                  <NodeChip icon={<Terminal size={12} weight="bold" />} label={processLabel} />
-                </ContextMenuItem>
-              </>
-            )}
-            {kind && (
-              <>
-                <ContextMenuSeparator />
-                <ContextMenuItem prefix="−" onClick={() => { onAppendFilterToken(`-kind:${quoteFilterValue(kind)}`); closeNodeContextMenu(); }}>
-                  <NodeChip icon={kindIcon(kind, 12)} label={kindLabel} />
-                </ContextMenuItem>
-                <ContextMenuItem prefix="+" onClick={() => { onAppendFilterToken(`+kind:${quoteFilterValue(kind)}`); closeNodeContextMenu(); }}>
-                  <NodeChip icon={kindIcon(kind, 12)} label={kindLabel} />
-                </ContextMenuItem>
-              </>
-            )}
-          </ContextMenu>
-        );
-      })()}
+              )}
+              {krate && (
+                <>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem
+                    prefix="−"
+                    onClick={() => {
+                      onAppendFilterToken(`-crate:${quoteFilterValue(krate)}`);
+                      closeNodeContextMenu();
+                    }}
+                  >
+                    <NodeChip icon={<Package size={12} weight="bold" />} label={krate} />
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    prefix="+"
+                    onClick={() => {
+                      onAppendFilterToken(`+crate:${quoteFilterValue(krate)}`);
+                      closeNodeContextMenu();
+                    }}
+                  >
+                    <NodeChip icon={<Package size={12} weight="bold" />} label={krate} />
+                  </ContextMenuItem>
+                </>
+              )}
+              {processId && (
+                <>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem
+                    prefix="−"
+                    onClick={() => {
+                      onAppendFilterToken(`-process:${quoteFilterValue(processId)}`);
+                      closeNodeContextMenu();
+                    }}
+                  >
+                    <NodeChip icon={<Terminal size={12} weight="bold" />} label={processLabel} />
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    prefix="+"
+                    onClick={() => {
+                      onAppendFilterToken(`+process:${quoteFilterValue(processId)}`);
+                      closeNodeContextMenu();
+                    }}
+                  >
+                    <NodeChip icon={<Terminal size={12} weight="bold" />} label={processLabel} />
+                  </ContextMenuItem>
+                </>
+              )}
+              {kind && (
+                <>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem
+                    prefix="−"
+                    onClick={() => {
+                      onAppendFilterToken(`-kind:${quoteFilterValue(kind)}`);
+                      closeNodeContextMenu();
+                    }}
+                  >
+                    <NodeChip icon={kindIcon(kind, 12)} label={kindLabel} />
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    prefix="+"
+                    onClick={() => {
+                      onAppendFilterToken(`+kind:${quoteFilterValue(kind)}`);
+                      closeNodeContextMenu();
+                    }}
+                  >
+                    <NodeChip icon={kindIcon(kind, 12)} label={kindLabel} />
+                  </ContextMenuItem>
+                </>
+              )}
+            </ContextMenu>
+          );
+        })()}
       <GraphCanvas
         geometry={geometry}
         onBackgroundClick={() => {
@@ -385,5 +434,3 @@ function GraphAutoFit({
 
   return null;
 }
-
-

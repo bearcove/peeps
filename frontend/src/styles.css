@@ -48,20 +48,19 @@
     --bg-elevated: var(--theme-bg);
     --bg-surface: color-mix(in oklab, var(--theme-fg) 7%, var(--theme-bg));
 
-    --border-default: light-dark(#1a1a1a, #fafafa);
-    --border-subtle: light-dark(#242424, #a0a0a0);
-    /*--border-subtle: light-dark(#d4d4d4, #2e2e28);*/
-    --border-edge: light-dark(#e8e8e8, #242420);
+    --border-default: color-mix(in oklab, var(--theme-fg) 80%, var(--theme-bg));
+    --border-subtle: color-mix(in oklab, var(--theme-fg) 25%, var(--theme-bg));
+    --border-edge:   color-mix(in oklab, var(--theme-fg) 10%, var(--theme-bg));
 
     --text-primary: var(--theme-fg);
     --text-secondary: light-dark(#3a3a3a, #e0e0e0);
     --text-muted: var(--hl-c);
     --text-tertiary: var(--text-muted);
 
-    --accent: light-dark(#1a1a1a, #f5f5f5);
-    --accent-hover: light-dark(#333333, #ffffff);
-    --accent-active: light-dark(#000000, #e0e0e0);
-    --accent-fg: light-dark(#ffffff, #111111);
+    --accent: var(--theme-fg);
+    --accent-hover: color-mix(in oklab, var(--theme-fg) 85%, var(--theme-bg));
+    --accent-active: color-mix(in oklab, var(--theme-fg) 70%, var(--theme-bg));
+    --accent-fg: var(--theme-bg);
 
     --status-success: var(--hl-da);
     --status-warning: light-dark(#b8860b, color-mix(in oklab, #d4820a 70%, white));

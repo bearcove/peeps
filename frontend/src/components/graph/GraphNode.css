@@ -11,7 +11,7 @@
     position: relative;
     overscroll-behavior: none;
 
-    transition: opacity 0.15s ease-in-out;
+    transition: all 0.1s ease-in-out;
     --graph-code-card-width: 600px;
 }
 
@@ -30,7 +30,7 @@
 
 .graph-card--ghost {
     opacity: 0.48;
-    filter: saturate(0);
+    filter: brightness(0.6);
 }
 
 /* ── Card layout: vertical flex ── */

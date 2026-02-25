@@ -75,9 +75,18 @@ export function EdgeLayer({
               strokeLinecap: "round",
             };
 
+        const edgeClass = [
+          "edge",
+          isSelected ? "edge--selected" : "",
+          isGhost ? "edge--ghost" : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+
         return (
           <g
             key={edge.id}
+            className={edgeClass}
             style={isGhost ? { opacity: 0.2, pointerEvents: "none" } : undefined}
           >
             {/* Wide invisible hit area */}
@@ -87,6 +96,7 @@ export function EdgeLayer({
               stroke="transparent"
               strokeWidth={14}
               data-pan-block="true"
+              className="edge-hit"
               style={{ cursor: "pointer", pointerEvents: isGhost ? "none" : "all" }}
               onClick={() => onEdgeClick?.(edge.id)}
               onMouseEnter={() => onEdgeHover?.(edge.id)}
@@ -112,6 +122,7 @@ export function EdgeLayer({
                   strokeWidth={5}
                   strokeLinecap="round"
                   opacity={0.45}
+                  className="edge-glow-inner"
                 />
               </>
             )}
@@ -121,6 +132,7 @@ export function EdgeLayer({
               id={edge.id}
               d={d}
               fill="none"
+              className="edge-path"
               style={visibleStyle}
               markerEnd={markerEnd}
             />
