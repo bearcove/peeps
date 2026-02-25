@@ -50,26 +50,36 @@ function FrameLineCollapsed({
   const sourceHtml = useSourceLine(showSource ? frame.frame_id : undefined);
   const location = formatFileLocation(frame);
 
-  return (
-    <div className="graph-node-frame-row graph-node-frame-row__collapsed">
-      {sourceHtml ? (
+  const content = (() => {
+    if (sourceHtml) {
+      return (
         <pre
           className="graph-node-frame arborium-hl"
           dangerouslySetInnerHTML={{ __html: sourceHtml }}
         />
-      ) : (
-        <pre className="graph-node-frame graph-node-frame--text">
-          <span className="graph-node-frame-fn">{shortFnName(frame.function_name)}</span>
-          <span className="graph-node-frame-dot">&middot;</span>
-          <a
-            className="graph-node-frame-loc"
-            href={zedHref(frame.source_file, frame.line)}
-            onClick={stopPropagation}
-          >
-            {location}
-          </a>
-        </pre>
-      )}
+      );
+    }
+    if (showSource) {
+      return <div className="graph-node-frame-skeleton" />;
+    }
+    return (
+      <pre className="graph-node-frame graph-node-frame--text">
+        <span className="graph-node-frame-fn">{shortFnName(frame.function_name)}</span>
+        <span className="graph-node-frame-dot">&middot;</span>
+        <a
+          className="graph-node-frame-loc"
+          href={zedHref(frame.source_file, frame.line)}
+          onClick={stopPropagation}
+        >
+          {location}
+        </a>
+      </pre>
+    );
+  })();
+
+  return (
+    <div className="graph-node-frame-row graph-node-frame-row__collapsed">
+      {content}
     </div>
   );
 }
@@ -210,7 +220,7 @@ export function GraphNode({ data, expanded = false }: { data: GraphNodeData; exp
           {data.sublabel && <div className="graph-node-sublabel">{data.sublabel}</div>}
         </>
       )}
-      {visibleFrames.length > 0 && (
+      {visibleFrames.length > 0 ? (
         <div className="graph-node-frames">
           {visibleFrames.map((frame, _i) =>
             expanded ? (
@@ -224,7 +234,11 @@ export function GraphNode({ data, expanded = false }: { data: GraphNodeData; exp
             ),
           )}
         </div>
-      )}
+      ) : data.framesLoading && isFuture ? (
+        <div className="graph-node-frames graph-node-frames--loading">
+          <div className="graph-node-frame-skeleton" />
+        </div>
+      ) : null}
     </div>
   );
 }

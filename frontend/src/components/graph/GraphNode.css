@@ -10,6 +10,9 @@
     color: var(--text-primary);
     position: relative;
     overscroll-behavior: none;
+
+    transition: opacity 0.15s ease-in-out;
+    --graph-code-card-width: 600px;
 }
 
 /*.graph-card--scope {
@@ -95,7 +98,7 @@
 
 .graph-node--expanded {
     z-index: 10;
-    min-width: 600px;
+    min-width: var(--graph-code-card-width);
     max-height: 20em;
     overflow-y: auto;
 
@@ -144,7 +147,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: pre;
-    width: 600px;
+    width: var(--graph-code-card-width);
     margin: 0;
     padding: 0;
     background: none;
@@ -276,6 +279,34 @@
     color: var(--text-tertiary);
     opacity: 0.5;
     letter-spacing: 2px;
+}
+
+/* ── Frame skeleton (loading state) ── */
+
+.graph-node-frame-skeleton {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    line-height: 1.3;
+    height: 1lh;
+    width: var(--graph-code-card-width);
+    border-radius: 3px;
+    background: linear-gradient(
+        90deg,
+        var(--border-subtle) 25%,
+        light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.08)) 50%,
+        var(--border-subtle) 75%
+    );
+    background-size: 200% 100%;
+    animation: graph-node-skeleton-shimmer 2.4s infinite linear;
+}
+
+@keyframes graph-node-skeleton-shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
 }
 
 /* ── Status/cycle tones ── */

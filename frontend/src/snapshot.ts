@@ -56,6 +56,8 @@ export type EntityDef = {
   topFrame?: RenderTopFrame;
   /** All non-system resolved frames from the backtrace, outermost first. */
   frames: RenderTopFrame[];
+  /** True while symbolication is in progress and no user frames are resolved yet. */
+  framesLoading: boolean;
   /** Process-relative birth time in ms (PTime). Not comparable across processes. */
   birthPtime: number;
   /** Age at capture time: ptime_now_ms - birthPtime (clamped to 0). */
@@ -209,13 +211,14 @@ function resolveBacktraceDisplay(
   backtraces: Map<number, ResolvedSnapshotBacktrace>,
   backtraceId: number,
   _context: string,
-): { source: RenderSource; topFrame?: RenderTopFrame; frames: RenderTopFrame[] } {
+): { source: RenderSource; topFrame?: RenderTopFrame; frames: RenderTopFrame[]; framesLoading: boolean } {
   const record = backtraces.get(backtraceId);
   if (!record) {
     return {
       source: backtraceSource(backtraceId),
       topFrame: undefined,
       frames: [],
+      framesLoading: false,
     };
   }
 
@@ -235,6 +238,8 @@ function resolveBacktraceDisplay(
       frame_id: record.frame_ids[i],
     });
   }
+
+  const framesLoading = frames.length === 0 && record.frames.some(isPendingFrame);
 
   // Prefer the first non-system resolved frame; fall back to first resolved.
   let topFrameIndex = record.frames.findIndex((f) => {
@@ -263,6 +268,7 @@ function resolveBacktraceDisplay(
         frame_id: record.frame_ids[topFrameIndex],
       },
       frames,
+      framesLoading,
     };
   }
 
@@ -276,6 +282,7 @@ function resolveBacktraceDisplay(
       },
       topFrame: undefined,
       frames,
+      framesLoading,
     };
   }
 
@@ -283,6 +290,7 @@ function resolveBacktraceDisplay(
     source: backtraceSource(backtraceId),
     topFrame: undefined,
     frames,
+    framesLoading,
   };
 }
 
@@ -744,6 +752,7 @@ export function convertSnapshot(
         krate: resolvedBacktrace.source.krate,
         topFrame: resolvedBacktrace.topFrame,
         frames: resolvedBacktrace.frames,
+        framesLoading: resolvedBacktrace.framesLoading,
         birthPtime: e.birth,
         ageMs,
         birthApproxUnixMs: anchorUnixMs + e.birth,

@@ -323,6 +323,7 @@ export function StorybookPage({
                   stat: "N+1ms",
                   statTone: "warn",
                   frames: [],
+                  framesLoading: false,
                   skipEntryFrames: 0,
                 }}
               />
@@ -336,6 +337,7 @@ export function StorybookPage({
                   stat: "0/256",
                   statTone: "ok",
                   frames: [],
+                  framesLoading: false,
                   skipEntryFrames: 0,
                 }}
               />
@@ -349,6 +351,7 @@ export function StorybookPage({
                   stat: "RESP pending",
                   statTone: "warn",
                   frames: [],
+                  framesLoading: false,
                   skipEntryFrames: 0,
                 }}
               />
