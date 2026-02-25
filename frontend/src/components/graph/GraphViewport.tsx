@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, CircleNotch, FileRs, Package, Terminal } from "@phosphor-icons/react";
 import type { EntityDef } from "../../snapshot";
+import type { SourcePreviewResponse } from "../../api/types.generated";
 import { quoteFilterValue } from "../../graphFilter";
 import { canonicalNodeKind, kindDisplayName, kindIcon } from "../../nodeKindSpec";
 import { formatProcessLabel } from "../../processLabel";
@@ -37,6 +38,8 @@ export function GraphViewport({
   onAppendFilterToken,
   ghostNodeIds,
   ghostEdgeIds,
+  sourcePreviewByFrameId,
+  sourceLoadingNodeIds,
   expandedNodeId,
   expandingNodeId,
   onExpandedNodeChange,
@@ -58,6 +61,8 @@ export function GraphViewport({
   onAppendFilterToken: (token: string) => void;
   ghostNodeIds?: Set<string>;
   ghostEdgeIds?: Set<string>;
+  sourcePreviewByFrameId?: Map<number, SourcePreviewResponse>;
+  sourceLoadingNodeIds?: Set<string>;
   expandedNodeId?: string | null;
   expandingNodeId?: string | null;
   onExpandedNodeChange?: (id: string | null) => void;
@@ -264,6 +269,8 @@ export function GraphViewport({
               prevNodes={prevNodes}
               nodeExpandStates={nodeExpandStates}
               ghostNodeIds={effectiveGhostNodeIds}
+              sourcePreviewByFrameId={sourcePreviewByFrameId}
+              sourceLoadingNodeIds={sourceLoadingNodeIds}
               onNodeHover={(id) => {
                 if (id) {
                   // If a node is already expanded, hover on other nodes is blocked.
@@ -381,13 +388,15 @@ function NodeExpandPanner({
       savedManualVersionRef.current = null;
       canRestoreRef.current = false;
       didAutoPanRef.current = false;
-    } else if (!isEmpty && canRestoreRef.current && !didAutoPanRef.current) {
+    } else if (!isEmpty) {
       const expandedEntry = [...nodeExpandStates].find(([, state]) => state === "expanded");
       if (expandedEntry) {
         const [id] = expandedEntry;
+        const prevExpandedId = [...prev].find(([, state]) => state === "expanded")?.[0] ?? null;
         const prevState = prev.get(id);
         const justFinishedExpand = prevState !== "expanded";
-        if (justFinishedExpand) {
+        const switchedExpandedNode = prevExpandedId !== null && prevExpandedId !== id;
+        if (justFinishedExpand || switchedExpandedNode) {
           const node = nodes.find((n) => n.id === id);
           if (node) {
             const { x, y, width } = node.worldRect;

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import type { SourcePreviewResponse } from "../../api/types.generated";
 import type { GraphFrameData, GraphNodeData } from "./graphNodeData";
 import { FrameLineCollapsed, FrameLineExpanded } from "./GraphNode";
 import "./FrameList.css";
@@ -10,9 +11,17 @@ type FrameListProps = {
   collapsedShowSource: boolean;
   /** Frames to show in collapsed mode (pre-sliced by caller). */
   collapsedFrames: GraphFrameData[];
+  sourcePreviewByFrameId?: Map<number, SourcePreviewResponse>;
 };
 
-export function FrameList({ data, expanded, isFuture, collapsedShowSource, collapsedFrames }: FrameListProps) {
+export function FrameList({
+  data,
+  expanded,
+  isFuture,
+  collapsedShowSource,
+  collapsedFrames,
+  sourcePreviewByFrameId,
+}: FrameListProps) {
   const [showSystem, setShowSystem] = useState(false);
 
   const hasSystemFrames = data.allFrames.length > data.frames.length;
@@ -35,6 +44,9 @@ export function FrameList({ data, expanded, isFuture, collapsedShowSource, colla
             key={frame.frame_id}
             frame={frame}
             showSource={collapsedShowSource}
+            preloadedPreview={
+              frame.frame_id != null ? sourcePreviewByFrameId?.get(frame.frame_id) : undefined
+            }
           />
         ))}
       </div>
@@ -51,7 +63,14 @@ export function FrameList({ data, expanded, isFuture, collapsedShowSource, colla
       <div className={hasSystemFrames ? "graph-node-frames-scroll" : undefined}>
         <div className="graph-node-frames">
           {effectiveFrames.map((frame) => (
-            <FrameLineExpanded key={frame.frame_id} frame={frame} showSource={data.showSource} />
+            <FrameLineExpanded
+              key={frame.frame_id}
+              frame={frame}
+              showSource={data.showSource}
+              preloadedPreview={
+                frame.frame_id != null ? sourcePreviewByFrameId?.get(frame.frame_id) : undefined
+              }
+            />
           ))}
         </div>
       </div>

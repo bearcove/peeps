@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import type { GeometryNode } from "../geometry";
 import type { EntityDef } from "../../snapshot";
+import type { SourcePreviewResponse } from "../../api/types.generated";
 import { GraphNode, collapsedFrameCount } from "../../components/graph/GraphNode";
 import {
   graphNodeDataFromEntity,
@@ -25,6 +26,8 @@ export interface NodeLayerProps {
   onNodeContextMenu?: (id: string, clientX: number, clientY: number) => void;
   onNodeHover?: (id: string | null) => void;
   ghostNodeIds?: Set<string>;
+  sourcePreviewByFrameId?: Map<number, SourcePreviewResponse>;
+  sourceLoadingNodeIds?: Set<string>;
 }
 
 type SubgraphScopeMode = "none" | "process" | "crate";
@@ -160,6 +163,8 @@ export function NodeLayer({
   onNodeContextMenu,
   onNodeHover,
   ghostNodeIds,
+  sourcePreviewByFrameId,
+  sourceLoadingNodeIds,
 }: NodeLayerProps) {
   if (nodes.length === 0) return null;
 
@@ -181,11 +186,14 @@ export function NodeLayer({
         const expandState = nodeExpandStates?.get(node.id);
         const isExpanded = expandState === "expanded";
         const isExpanding = expandState === "expanding";
+        const isSourceLoading = sourceLoadingNodeIds?.has(node.id) ?? false;
         const cardContent = (
           <GraphNode
             data={{ ...(node.data as GraphNodeData), ghost: isGhost }}
             expanded={isExpanded}
             expanding={isExpanding}
+            sourcePreviewByFrameId={sourcePreviewByFrameId}
+            sourceLoading={isSourceLoading}
           />
         );
 

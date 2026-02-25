@@ -223,7 +223,7 @@ pub struct SourcePreviewResponse {
 }
 
 /// A 1-based inclusive line range within a source file.
-#[derive(Facet)]
+#[derive(Facet, Debug)]
 pub struct LineRange {
     pub start: u32,
     pub end: u32,

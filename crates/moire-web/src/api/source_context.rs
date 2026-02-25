@@ -204,7 +204,9 @@ pub fn cut_source(
 }
 
 /// Walk up the tree to find the nearest scope node.
-/// If the innermost scope has only 1 statement, walk up further.
+/// If the innermost scope has only 1 statement, walk up further —
+/// UNLESS the target is not inside any body child (e.g. it's on the
+/// opening/closing brace), in which case this scope is the right one.
 fn find_scope<'a>(
     node: tree_sitter::Node<'a>,
     target: tree_sitter::Point,
@@ -215,7 +217,10 @@ fn find_scope<'a>(
     loop {
         if SCOPE_KINDS.contains(&current.kind()) {
             let child_count = count_body_children(&current);
-            if child_count <= 1 && current.kind() != "source_file" {
+            // If the target is on the closing brace row, don't walk up —
+            // this scope is the right one regardless of child count.
+            let on_closing_brace = target_is_on_closing_brace(&current, target);
+            if child_count <= 1 && current.kind() != "source_file" && !on_closing_brace {
                 // Too few statements, keep looking for outer scope
                 found_scope = Some(current);
             } else {
@@ -232,6 +237,23 @@ fn find_scope<'a>(
                 return found_scope;
             }
         }
+    }
+}
+
+/// Returns true if `target` is on the closing brace row of `scope`'s body
+/// (i.e. target.row >= body.end_position().row).  This means the target is
+/// past all statements and we should NOT walk up to a richer outer scope.
+fn target_is_on_closing_brace(scope: &tree_sitter::Node, target: tree_sitter::Point) -> bool {
+    if scope.kind() == "source_file" {
+        return false;
+    }
+    let body_kind = body_kind_for_scope(scope.kind());
+    let body = (0..scope.child_count())
+        .filter_map(|i| scope.child(i))
+        .find(|c| c.kind() == body_kind);
+    match body {
+        Some(b) => target.row >= b.end_position().row,
+        None => false,
     }
 }
 
@@ -765,6 +787,164 @@ async fn recv(&mut self) -> Result<Option<Msg>> {
         // Should walk up to outer function
         let result = cut_source(src, "rust", 5, None).expect("should find scope");
         assert_eq!(result.scope_range.start, 1); // outer function
+        assert_line_count_invariant(src, &result);
+    }
+
+    // --- Closing brace edge cases ---
+    // When a backtrace points at the closing `}` of a function, we should
+    // scope to that function — not walk up to source_file and capture
+    // the entire file.
+
+    #[test]
+    fn closing_brace_of_empty_function_not_whole_file() {
+        // `fn foo() {}` collapsed to two lines: header + brace
+        let src = r#"fn unrelated_a() {
+    do_stuff();
+    do_more_stuff();
+    even_more();
+}
+
+fn foo() {
+}
+
+fn unrelated_b() {
+    something();
+    something_else();
+    and_more();
+}"#;
+        let total_lines = src.lines().count() as u32;
+        // target = closing `}` of `foo`, line 8
+        let result = cut_source(src, "rust", 8, None).expect("should find scope");
+        assert_ne!(
+            result.scope_range.end, total_lines,
+            "must not capture entire file; got scope_range {:?}",
+            result.scope_range
+        );
+        assert_line_count_invariant(src, &result);
+    }
+
+    #[test]
+    fn closing_brace_of_single_stmt_function_not_whole_file() {
+        let src = r#"fn unrelated_a() {
+    do_stuff();
+    do_more_stuff();
+    even_more();
+}
+
+fn short_fn() {
+    single_call()
+}
+
+fn unrelated_b() {
+    something();
+    something_else();
+    and_more();
+}"#;
+        let total_lines = src.lines().count() as u32;
+        // target = closing `}` of `short_fn`, line 9
+        let result = cut_source(src, "rust", 9, None).expect("should find scope");
+        assert_ne!(
+            result.scope_range.end, total_lines,
+            "must not capture entire file; got scope_range {:?}",
+            result.scope_range
+        );
+        // Scope should contain the short_fn body
+        assert!(
+            result.scope_range.start <= 7 && result.scope_range.end >= 9,
+            "scope should cover short_fn (lines 7-9), got {:?}",
+            result.scope_range
+        );
+        assert_line_count_invariant(src, &result);
+    }
+
+    #[test]
+    fn closing_brace_of_multi_stmt_function_stays_in_function() {
+        let src = r#"fn many() {
+    let a = 1;
+    let b = 2;
+    let c = 3;
+    let d = 4;
+    let e = 5;
+}"#;
+        let total_lines = src.lines().count() as u32;
+        // target = closing `}` on last line
+        let result = cut_source(src, "rust", total_lines, None).expect("should find scope");
+        assert_eq!(result.scope_range.start, 1);
+        assert_eq!(result.scope_range.end, total_lines);
+        assert_line_count_invariant(src, &result);
+    }
+
+    #[test]
+    fn closing_brace_of_method_in_impl_not_whole_file() {
+        let src = r#"struct Foo;
+
+impl Foo {
+    fn method_a(&self) {
+        do_a();
+        do_b();
+        do_c();
+    }
+
+    fn getter(&self) -> u32 {
+        self.value
+    }
+
+    fn method_b(&self) {
+        do_x();
+        do_y();
+        do_z();
+    }
+}"#;
+        let total_lines = src.lines().count() as u32;
+        // target = closing `}` of `getter`, line 12
+        let result = cut_source(src, "rust", 12, None).expect("should find scope");
+        assert_ne!(
+            result.scope_range.end, total_lines,
+            "must not capture entire file; got scope_range {:?}",
+            result.scope_range
+        );
+        assert_line_count_invariant(src, &result);
+    }
+
+    #[test]
+    fn closing_brace_of_closure_not_whole_file() {
+        // Standalone closure assigned to a variable — 1 statement inside
+        let src = r#"fn outer() {
+    let a = 1;
+    let b = 2;
+    let handler = || {
+        single_call()
+    };
+    let c = 3;
+    let d = 4;
+}"#;
+        let total_lines = src.lines().count() as u32;
+        // target = closing `}` of the closure, line 6
+        let result = cut_source(src, "rust", 6, None).expect("should find scope");
+        assert_ne!(
+            result.scope_range.end, total_lines,
+            "must not capture entire file; got scope_range {:?}",
+            result.scope_range
+        );
+        assert_line_count_invariant(src, &result);
+    }
+
+    // Regression: walking up for a 1-stmt closure whose target is INSIDE
+    // the body (not on the brace) should still walk up to outer scope.
+    #[test]
+    fn single_stmt_closure_target_inside_still_walks_up() {
+        let src = r#"fn outer() {
+    let a = 1;
+    let b = 2;
+    let c = vec.iter().map(|x| {
+        x + 1
+    });
+    let d = 3;
+    let e = 4;
+}"#;
+        // target_line = 5 — INSIDE the closure body, not on brace
+        let result = cut_source(src, "rust", 5, None).expect("should find scope");
+        assert_eq!(result.scope_range.start, 1, "should walk up to outer fn");
         assert_line_count_invariant(src, &result);
     }
 }

@@ -201,8 +201,10 @@
 }
 
 .graph-node-frame-section:not(:first-child) .graph-node-frame-sep {
-    /*border-top: 1px solid var(--border-edge);*/
-    margin-top: 1.2em;
+    border-top: 1px solid var(--border-edge);
+
+    padding-top: 0.4em;
+    margin-top: 0.6em;
 }
 
 .graph-node-frame-sep__icon {
@@ -296,81 +298,41 @@
     letter-spacing: 2px;
 }
 
-/* ── Expanding skeleton (fixed-size placeholder while ELK runs) ── */
-
-.graph-node-expand-skeleton {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: var(--graph-code-card-width);
-    height: 25em;
-    padding: 8px 0;
-}
-
-.graph-node-expand-skeleton__bar {
-    height: 1lh;
-    border-radius: var(--radius-control);
-    corner-shape: squircle;
-    background: linear-gradient(
-        90deg,
-        var(--border-subtle) 25%,
-        light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.08)) 50%,
-        var(--border-subtle) 75%
-    );
-    background-size: 200% 100%;
-    animation: graph-node-skeleton-shimmer 2.4s infinite linear;
-}
-
-.graph-node-expand-skeleton__bar:nth-child(1) {
-    width: 75%;
-}
-.graph-node-expand-skeleton__bar:nth-child(2) {
-    width: 90%;
-}
-.graph-node-expand-skeleton__bar:nth-child(3) {
-    width: 60%;
-}
-.graph-node-expand-skeleton__bar:nth-child(4) {
-    width: 85%;
-}
-.graph-node-expand-skeleton__bar:nth-child(5) {
-    width: 50%;
-}
-
 /* ── Expanding state (loading indicator) ── */
 
 .graph-node--expanding {
     z-index: 10;
 }
 
-.graph-node-expand-progress {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    border-radius: 0 0 var(--radius-control) var(--radius-control);
-    overflow: hidden;
-    background: var(--border-subtle);
-}
-
-.graph-node-expand-progress::after {
-    content: "";
+.graph-node-expand-overlay {
     position: absolute;
     top: 0;
-    left: -60%;
-    width: 60%;
-    height: 100%;
-    background: var(--accent);
-    animation: graph-node-expand-progress-sweep 1.2s ease-in-out infinite;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    place-items: center;
+    border-radius: inherit;
+    background: light-dark(rgba(255, 255, 255, 0.38), rgba(0, 0, 0, 0.32));
+    backdrop-filter: blur(1px);
+    pointer-events: none;
 }
 
-@keyframes graph-node-expand-progress-sweep {
+.graph-node-expand-spinner {
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    border: 2px solid color-mix(in srgb, var(--text-primary) 30%, transparent);
+    border-top-color: var(--accent);
+    animation: graph-node-expand-spin 0.8s linear infinite;
+}
+
+@keyframes graph-node-expand-spin {
     0% {
-        left: -60%;
+        transform: rotate(0deg);
     }
     100% {
-        left: 160%;
+        transform: rotate(360deg);
     }
 }
 
