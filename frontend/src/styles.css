@@ -57,9 +57,9 @@
     --text-muted: var(--hl-c);
     --text-tertiary: var(--text-muted);
 
-    --accent: var(--theme-fg);
-    --accent-hover: color-mix(in oklab, var(--theme-fg) 85%, var(--theme-bg));
-    --accent-active: color-mix(in oklab, var(--theme-fg) 70%, var(--theme-bg));
+    --accent: var(--hl-k);
+    --accent-hover: color-mix(in oklab, var(--hl-k) 85%, var(--theme-bg));
+    --accent-active: color-mix(in oklab, var(--hl-k) 70%, var(--theme-bg));
     --accent-fg: var(--theme-bg);
 
     --status-success: var(--hl-da);
