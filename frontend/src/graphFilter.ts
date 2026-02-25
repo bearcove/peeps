@@ -1,4 +1,4 @@
-export type GraphFilterMode = "process" | "crate";
+export type GraphFilterMode = "process" | "crate" | "task";
 
 export type GraphFilterLabelMode = "process" | "crate" | "location";
 
@@ -107,7 +107,7 @@ export function tokenizeFilterQuery(input: string): string[] {
       escaped = true;
       continue;
     }
-    if (ch === "\"") {
+    if (ch === '"') {
       current += ch;
       inQuotes = !inQuotes;
       continue;
@@ -126,15 +126,15 @@ export function tokenizeFilterQuery(input: string): string[] {
 
 export function stripFilterQuotes(value: string): string {
   const trimmed = value.trim();
-  if (trimmed.length >= 2 && trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
-    return trimmed.slice(1, -1).replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
   }
   return trimmed;
 }
 
 export function quoteFilterValue(value: string): string {
   if (/^[^\s"]+$/.test(value)) return value;
-  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 // f[impl filter.token.syntax]
@@ -188,7 +188,11 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
     if (signed !== 0 && !isPlaceholderValue && (keyLower === "node" || keyLower === "id")) {
       (signed > 0 ? includeNodeIds : excludeNodeIds).add(value);
       valid = true;
-    } else if (signed !== 0 && !isPlaceholderValue && (keyLower === "location" || keyLower === "source")) {
+    } else if (
+      signed !== 0 &&
+      !isPlaceholderValue &&
+      (keyLower === "location" || keyLower === "source")
+    ) {
       (signed > 0 ? includeLocations : excludeLocations).add(value);
       valid = true;
     } else if (signed !== 0 && !isPlaceholderValue && keyLower === "crate") {
@@ -212,12 +216,12 @@ export function parseGraphFilterQuery(filterText: string): GraphFilterParseResul
         valid = true;
       }
     } else if (keyLower === "colorby") {
-      if (value === "process" || value === "crate") {
+      if (value === "process" || value === "crate" || value === "task") {
         colorBy = value;
         valid = true;
       }
     } else if (keyLower === "groupby") {
-      if (value === "process" || value === "crate") {
+      if (value === "process" || value === "crate" || value === "task") {
         groupBy = value;
         valid = true;
       } else if (value === "none") {
@@ -535,19 +539,33 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
     const rootSuggestions = [
       { token: "+", description: "Include only filter", applyToken: "+" },
       { token: "-", description: "Exclude everything matching this filter", applyToken: "-" },
-      { token: "focus:<id>", description: "Focus connected subgraph from one node", applyToken: "focus:" },
-      { token: "expand:<id>", description: "Expand a node to show its full frame list", applyToken: "expand:" },
+      {
+        token: "focus:<id>",
+        description: "Focus connected subgraph from one node",
+        applyToken: "focus:",
+      },
+      {
+        token: "expand:<id>",
+        description: "Expand a node to show its full frame list",
+        applyToken: "expand:",
+      },
       { token: "loners:on", description: "Show unconnected nodes" },
       { token: "loners:off", description: "Hide unconnected nodes" },
       { token: "colorBy:process", description: "Color nodes by process" },
       { token: "colorBy:crate", description: "Color nodes by crate" },
+      { token: "colorBy:task", description: "Color nodes by task" },
       { token: "groupBy:process", description: "Group by process subgraphs" },
       { token: "groupBy:crate", description: "Group by crate subgraphs" },
+      { token: "groupBy:task", description: "Group by task subgraphs" },
       { token: "labelBy:crate", description: "Show crate name on each card" },
       { token: "labelBy:process", description: "Show process name on each card" },
       { token: "labelBy:location", description: "Show source location on each card" },
     ];
-    for (const item of sortedMatches(rootSuggestions, lowerFragment, (v) => `${v.token} ${v.description}`)) {
+    for (const item of sortedMatches(
+      rootSuggestions,
+      lowerFragment,
+      (v) => `${v.token} ${v.description}`,
+    )) {
       uniquePush(out, item.token, item.description, item.applyToken, existingTokens);
     }
     if (lowerFragment.length > 0 && input.entities && input.entities.length > 0) {
@@ -560,7 +578,13 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       for (const entity of entityMatches.slice(0, 3)) {
         const quoted = quoteFilterValue(entity.id);
         uniquePush(out, `focus:${quoted}`, `Focus ${entity.label}`, undefined, existingTokens);
-        uniquePush(out, `+node:${quoted}`, `Include only ${entity.label}`, undefined, existingTokens);
+        uniquePush(
+          out,
+          `+node:${quoted}`,
+          `Include only ${entity.label}`,
+          undefined,
+          existingTokens,
+        );
         uniquePush(out, `-node:${quoted}`, `Exclude ${entity.label}`, undefined, existingTokens);
       }
     }
@@ -569,32 +593,59 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
 
   if (!unsignedFragment || !unsignedFragment.includes(":")) {
     const keySuggestions: readonly { key: string; label: string; applyToken?: string }[] = [
-      { key: "+node:<id>", label: "Include only matching nodes by entity id", applyToken: "+node:" },
+      {
+        key: "+node:<id>",
+        label: "Include only matching nodes by entity id",
+        applyToken: "+node:",
+      },
       { key: "-node:<id>", label: "Exclude matching nodes by entity id", applyToken: "-node:" },
-      { key: "+location:<src>", label: "Include only matching source locations", applyToken: "+location:" },
-      { key: "-location:<src>", label: "Exclude matching source locations", applyToken: "-location:" },
+      {
+        key: "+location:<src>",
+        label: "Include only matching source locations",
+        applyToken: "+location:",
+      },
+      {
+        key: "-location:<src>",
+        label: "Exclude matching source locations",
+        applyToken: "-location:",
+      },
       { key: "+crate:<name>", label: "Include only matching crates", applyToken: "+crate:" },
       { key: "-crate:<name>", label: "Exclude matching crates", applyToken: "-crate:" },
       { key: "+process:<id>", label: "Include only matching processes", applyToken: "+process:" },
       { key: "-process:<id>", label: "Exclude matching processes", applyToken: "-process:" },
       { key: "+kind:<kind>", label: "Include only matching kinds", applyToken: "+kind:" },
       { key: "-kind:<kind>", label: "Exclude matching kinds", applyToken: "-kind:" },
-      { key: "+module:<path>", label: "Include only matching module paths", applyToken: "+module:" },
+      {
+        key: "+module:<path>",
+        label: "Include only matching module paths",
+        applyToken: "+module:",
+      },
       { key: "-module:<path>", label: "Exclude matching module paths", applyToken: "-module:" },
       { key: "loners:on", label: "Show unconnected nodes" },
       { key: "loners:off", label: "Hide unconnected nodes" },
       { key: "focus:<id>", label: "Focus connected subgraph from one node", applyToken: "focus:" },
-      { key: "expand:<id>", label: "Expand a node to show its full frame list", applyToken: "expand:" },
+      {
+        key: "expand:<id>",
+        label: "Expand a node to show its full frame list",
+        applyToken: "expand:",
+      },
       { key: "colorBy:process", label: "Color nodes by process" },
       { key: "colorBy:crate", label: "Color nodes by crate" },
+      { key: "colorBy:task", label: "Color nodes by task" },
       { key: "groupBy:process", label: "Group by process subgraphs" },
       { key: "groupBy:crate", label: "Group by crate subgraphs" },
+      { key: "groupBy:task", label: "Group by task subgraphs" },
       { key: "labelBy:crate", label: "Show crate name on each card" },
       { key: "labelBy:process", label: "Show process name on each card" },
       { key: "labelBy:location", label: "Show source location on each card" },
     ];
-    const matched = sortedMatches(keySuggestions, lowerFragment, (entry) => `${entry.key} ${entry.label}`);
-    for (const entry of matched) uniquePush(out, entry.key, entry.label, entry.applyToken, existingTokens);
+    const matched = sortedMatches(
+      keySuggestions,
+      lowerFragment,
+      (entry) => `${entry.key} ${entry.label}`,
+    );
+    for (const entry of matched)
+      uniquePush(out, entry.key, entry.label, entry.applyToken, existingTokens);
     return out;
   }
 
@@ -605,67 +656,120 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
 
   if ((keyLower === "node" || keyLower === "id") && signed) {
     for (const id of sortedMatches(input.nodeIds, valueLower, (v) => v)) {
-      uniquePush(out, `${signed}node:${quoteFilterValue(id)}`, `${signedDesc} node ${id}`, undefined, existingTokens);
+      uniquePush(
+        out,
+        `${signed}node:${quoteFilterValue(id)}`,
+        `${signedDesc} node ${id}`,
+        undefined,
+        existingTokens,
+      );
     }
     return out;
   }
   if ((keyLower === "location" || keyLower === "source") && signed) {
     for (const location of sortedMatches(input.locations, valueLower, (v) => v)) {
-      uniquePush(out, `${signed}location:${quoteFilterValue(location)}`, `${signedDesc} location ${location}`, undefined, existingTokens);
+      uniquePush(
+        out,
+        `${signed}location:${quoteFilterValue(location)}`,
+        `${signedDesc} location ${location}`,
+        undefined,
+        existingTokens,
+      );
     }
     return out;
   }
   if (keyLower === "crate" && signed) {
     for (const item of sortedMatches(input.crates, valueLower, (v) => `${v.id} ${v.label}`)) {
-      uniquePush(out, `${signed}crate:${quoteFilterValue(item.id)}`, `${signedDesc} crate ${item.label}`, undefined, existingTokens);
+      uniquePush(
+        out,
+        `${signed}crate:${quoteFilterValue(item.id)}`,
+        `${signedDesc} crate ${item.label}`,
+        undefined,
+        existingTokens,
+      );
     }
     return out;
   }
   if (keyLower === "process" && signed) {
     for (const item of sortedMatches(input.processes, valueLower, (v) => `${v.id} ${v.label}`)) {
-      uniquePush(out, `${signed}process:${quoteFilterValue(item.id)}`, `${signedDesc} process ${item.label}`, undefined, existingTokens);
+      uniquePush(
+        out,
+        `${signed}process:${quoteFilterValue(item.id)}`,
+        `${signedDesc} process ${item.label}`,
+        undefined,
+        existingTokens,
+      );
     }
     return out;
   }
   if (keyLower === "kind" && signed) {
     for (const item of sortedMatches(input.kinds, valueLower, (v) => `${v.id} ${v.label}`)) {
-      uniquePush(out, `${signed}kind:${quoteFilterValue(item.id)}`, `${signedDesc} kind ${item.label}`, undefined, existingTokens);
+      uniquePush(
+        out,
+        `${signed}kind:${quoteFilterValue(item.id)}`,
+        `${signedDesc} kind ${item.label}`,
+        undefined,
+        existingTokens,
+      );
     }
     return out;
   }
   if (keyLower === "module" && signed) {
     for (const item of sortedMatches(input.modules, valueLower, (v) => `${v.id} ${v.label}`)) {
-      uniquePush(out, `${signed}module:${quoteFilterValue(item.id)}`, `${signedDesc} module ${item.label}`, undefined, existingTokens);
+      uniquePush(
+        out,
+        `${signed}module:${quoteFilterValue(item.id)}`,
+        `${signedDesc} module ${item.label}`,
+        undefined,
+        existingTokens,
+      );
     }
     return out;
   }
   if (keyLower === "loners") {
     for (const mode of sortedMatches(["on", "off"], valueLower, (v) => v)) {
-      uniquePush(out, `loners:${mode}`, mode === "on" ? "Show unconnected nodes" : "Hide unconnected nodes", undefined, existingTokens);
+      uniquePush(
+        out,
+        `loners:${mode}`,
+        mode === "on" ? "Show unconnected nodes" : "Hide unconnected nodes",
+        undefined,
+        existingTokens,
+      );
     }
     return out;
   }
   if (keyLower === "source") {
     for (const mode of sortedMatches(["on", "off"], valueLower, (v) => v)) {
-      uniquePush(out, `source:${mode}`, mode === "on" ? "Show source code on cards" : "Hide source code on cards", undefined, existingTokens);
+      uniquePush(
+        out,
+        `source:${mode}`,
+        mode === "on" ? "Show source code on cards" : "Hide source code on cards",
+        undefined,
+        existingTokens,
+      );
     }
     return out;
   }
   if (keyLower === "colorby") {
-    for (const mode of sortedMatches(["process", "crate"], valueLower, (v) => v)) {
+    for (const mode of sortedMatches(["process", "crate", "task"], valueLower, (v) => v)) {
       uniquePush(out, `colorBy:${mode}`, `Color nodes by ${mode}`, undefined, existingTokens);
     }
     return out;
   }
   if (keyLower === "groupby") {
-    for (const mode of sortedMatches(["process", "crate"], valueLower, (v) => v)) {
+    for (const mode of sortedMatches(["process", "crate", "task"], valueLower, (v) => v)) {
       uniquePush(out, `groupBy:${mode}`, `Group by ${mode}`, undefined, existingTokens);
     }
     return out;
   }
   if (keyLower === "labelby") {
     for (const mode of sortedMatches(["crate", "process", "location"], valueLower, (v) => v)) {
-      const desc = mode === "crate" ? "Show crate name on each card" : mode === "process" ? "Show process name on each card" : "Show source location on each card";
+      const desc =
+        mode === "crate"
+          ? "Show crate name on each card"
+          : mode === "process"
+            ? "Show process name on each card"
+            : "Show source location on each card";
       uniquePush(out, `labelBy:${mode}`, desc, undefined, existingTokens);
     }
     return out;
@@ -688,7 +792,13 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
       return out;
     }
     for (const id of sortedMatches(input.nodeIds, valueLower, (v) => v)) {
-      uniquePush(out, `focus:${quoteFilterValue(id)}`, `Focus connected subgraph around ${id}`, undefined, existingTokens);
+      uniquePush(
+        out,
+        `focus:${quoteFilterValue(id)}`,
+        `Focus connected subgraph around ${id}`,
+        undefined,
+        existingTokens,
+      );
     }
     return out;
   }
@@ -696,34 +806,90 @@ export function graphFilterSuggestions(input: GraphFilterSuggestionInput): Graph
   const fallbackKeys: readonly { key: string; label: string; applyToken?: string }[] = signed
     ? [
         { key: `${signed}node:<id>`, label: "Filter by node id", applyToken: `${signed}node:` },
-        { key: `${signed}location:<src>`, label: "Filter by source location", applyToken: `${signed}location:` },
+        {
+          key: `${signed}location:<src>`,
+          label: "Filter by source location",
+          applyToken: `${signed}location:`,
+        },
         { key: `${signed}crate:<name>`, label: "Filter by crate", applyToken: `${signed}crate:` },
-        { key: `${signed}process:<id>`, label: "Filter by process", applyToken: `${signed}process:` },
+        {
+          key: `${signed}process:<id>`,
+          label: "Filter by process",
+          applyToken: `${signed}process:`,
+        },
         { key: `${signed}kind:<kind>`, label: "Filter by kind", applyToken: `${signed}kind:` },
-        { key: `${signed}module:<path>`, label: "Filter by module path", applyToken: `${signed}module:` },
+        {
+          key: `${signed}module:<path>`,
+          label: "Filter by module path",
+          applyToken: `${signed}module:`,
+        },
       ]
     : [
         { key: "loners:on", label: "Show unconnected nodes" },
         { key: "loners:off", label: "Hide unconnected nodes" },
         { key: "colorBy:process", label: "Color nodes by process" },
         { key: "colorBy:crate", label: "Color nodes by crate" },
+        { key: "colorBy:task", label: "Color nodes by task" },
         { key: "groupBy:process", label: "Group by process subgraphs" },
         { key: "groupBy:crate", label: "Group by crate subgraphs" },
+        { key: "groupBy:task", label: "Group by task subgraphs" },
         { key: "labelBy:crate", label: "Show crate name on each card" },
         { key: "labelBy:process", label: "Show process name on each card" },
         { key: "labelBy:location", label: "Show source location on each card" },
-        { key: "focus:<id>", label: "Focus connected subgraph from one node", applyToken: "focus:" },
-        { key: "expand:<id>", label: "Expand a node to show its full frame list", applyToken: "expand:" },
+        {
+          key: "focus:<id>",
+          label: "Focus connected subgraph from one node",
+          applyToken: "focus:",
+        },
+        {
+          key: "expand:<id>",
+          label: "Expand a node to show its full frame list",
+          applyToken: "expand:",
+        },
       ];
-  for (const entry of sortedMatches(fallbackKeys, signed ? unsignedLower : lowerFragment, (v) => `${v.key} ${v.label}`)) {
+  for (const entry of sortedMatches(
+    fallbackKeys,
+    signed ? unsignedLower : lowerFragment,
+    (v) => `${v.key} ${v.label}`,
+  )) {
     uniquePush(out, entry.key, entry.label, entry.applyToken, existingTokens);
   }
   if (!signed && (lowerFragment === "+" || lowerFragment === "-")) {
-    uniquePush(out, `${lowerFragment}node:<id>`, "Filter by node id", `${lowerFragment}node:`, existingTokens);
-    uniquePush(out, `${lowerFragment}location:<src>`, "Filter by source location", `${lowerFragment}location:`, existingTokens);
-    uniquePush(out, `${lowerFragment}crate:<name>`, "Filter by crate", `${lowerFragment}crate:`, existingTokens);
-    uniquePush(out, `${lowerFragment}process:<id>`, "Filter by process", `${lowerFragment}process:`, existingTokens);
-    uniquePush(out, `${lowerFragment}kind:<kind>`, "Filter by kind", `${lowerFragment}kind:`, existingTokens);
+    uniquePush(
+      out,
+      `${lowerFragment}node:<id>`,
+      "Filter by node id",
+      `${lowerFragment}node:`,
+      existingTokens,
+    );
+    uniquePush(
+      out,
+      `${lowerFragment}location:<src>`,
+      "Filter by source location",
+      `${lowerFragment}location:`,
+      existingTokens,
+    );
+    uniquePush(
+      out,
+      `${lowerFragment}crate:<name>`,
+      "Filter by crate",
+      `${lowerFragment}crate:`,
+      existingTokens,
+    );
+    uniquePush(
+      out,
+      `${lowerFragment}process:<id>`,
+      "Filter by process",
+      `${lowerFragment}process:`,
+      existingTokens,
+    );
+    uniquePush(
+      out,
+      `${lowerFragment}kind:<kind>`,
+      "Filter by kind",
+      `${lowerFragment}kind:`,
+      existingTokens,
+    );
   }
   return out;
 }

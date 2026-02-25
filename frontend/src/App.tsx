@@ -154,7 +154,7 @@ export function App() {
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
-  const DEFAULT_FILTER = "colorBy:crate groupBy:process";
+  const DEFAULT_FILTER = "colorBy:crate groupBy:task loners:off";
   const graphFilterText = searchParams.get("filter") ?? DEFAULT_FILTER;
   const setGraphFilterText = useCallback(
     (next: string) => {

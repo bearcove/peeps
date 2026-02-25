@@ -2,6 +2,7 @@
     --graph-card-bg: var(--bg-elevated);
     --graph-card-border-color: transparent;
     --graph-card-border-width: var(--graph-border-width);
+    --graph-card-tone-shadow: none;
     --graph-node-padding: 8px;
 
     border-radius: var(--radius-control);
@@ -10,6 +11,7 @@
     white-space: nowrap;
     background: var(--graph-card-bg);
     border: var(--graph-card-border-width) solid var(--graph-card-border-color);
+    box-shadow: var(--graph-card-tone-shadow);
     color: var(--text-primary);
     position: relative;
     overscroll-behavior: none;
@@ -24,10 +26,14 @@
 
 .graph-card--stat-crit {
     --graph-card-border-color: var(--status-danger);
+    --graph-card-tone-shadow: inset 0 0 0 1px
+        color-mix(in srgb, var(--status-danger) 65%, transparent);
 }
 
 .graph-card--stat-warn {
     --graph-card-border-color: var(--status-warning);
+    --graph-card-tone-shadow: inset 0 0 0 1px
+        color-mix(in srgb, var(--status-warning) 60%, transparent);
 }
 
 .graph-card--ghost {
@@ -397,6 +403,8 @@
     --graph-card-border-width: 2px;
     --graph-card-border-color: var(--status-danger);
     --graph-card-bg: color-mix(in srgb, var(--status-danger) 14%, var(--bg-elevated));
+    --graph-card-tone-shadow: inset 0 0 0 2px
+        color-mix(in srgb, var(--status-danger) 70%, transparent);
 }
 
 .graph-node--cycle .graph-node-icon {

@@ -29,7 +29,7 @@ export interface NodeLayerProps {
   ghostNodeIds?: Set<string>;
 }
 
-type SubgraphScopeMode = "none" | "process" | "crate";
+type SubgraphScopeMode = "none" | "process" | "crate" | "task";
 
 export type GraphMeasureResult = {
   nodeSizes: Map<string, { width: number; height: number }>;
@@ -142,7 +142,11 @@ export async function measureGraphLayout(
       container.appendChild(el);
       const root = createRoot(el);
       const sampleLabel =
-        subgraphScopeMode === "process" ? "moire-examples(27139)" : "moire-example";
+        subgraphScopeMode === "process"
+          ? "moire-examples(27139)"
+          : subgraphScopeMode === "task"
+            ? "task.spawn#42"
+            : "moire-example";
 
       try {
         flushSync(() =>

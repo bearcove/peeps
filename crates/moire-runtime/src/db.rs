@@ -47,6 +47,25 @@ pub(crate) struct RuntimeDb {
 }
 
 impl RuntimeDb {
+    fn should_link_entity_to_creation_task_scope(body: &EntityBody) -> bool {
+        matches!(
+            body,
+            EntityBody::Future(_)
+                | EntityBody::Lock(_)
+                | EntityBody::MpscTx(_)
+                | EntityBody::MpscRx(_)
+                | EntityBody::BroadcastTx(_)
+                | EntityBody::BroadcastRx(_)
+                | EntityBody::WatchTx(_)
+                | EntityBody::WatchRx(_)
+                | EntityBody::OneshotTx(_)
+                | EntityBody::OneshotRx(_)
+                | EntityBody::Semaphore(_)
+                | EntityBody::Notify(_)
+                | EntityBody::OnceCell(_)
+        )
+    }
+
     pub(crate) fn new(stream_id: StreamId, max_events: usize) -> Self {
         Self {
             stream_id,
@@ -161,14 +180,21 @@ impl RuntimeDb {
 
     pub(crate) fn upsert_entity(&mut self, entity: Entity) {
         let entity_id = EntityId::new(entity.id.as_str());
-        let should_link_task_scope = matches!(&entity.body, EntityBody::Future(_));
+        let should_link_task_scope = Self::should_link_entity_to_creation_task_scope(&entity.body);
+        let require_real_tokio_task_for_creation_link =
+            matches!(&entity.body, EntityBody::Future(_));
         let entity_json = facet_json::to_vec(&entity).ok();
         self.entities
             .insert(EntityId::new(entity.id.as_str()), entity);
         if let Some(scope_id) = current_process_scope_id() {
             self.link_entity_to_scope(&entity_id, &scope_id);
         }
-        if should_link_task_scope && let Some(scope_id) = self.ensure_current_task_scope_id() {
+        let can_link_creation_scope =
+            !require_real_tokio_task_for_creation_link || current_tokio_task_key().is_some();
+        if should_link_task_scope
+            && can_link_creation_scope
+            && let Some(scope_id) = self.ensure_current_task_scope_id()
+        {
             self.link_entity_to_scope(&entity_id, &scope_id);
         }
         if let Some(entity_json) = entity_json {
@@ -207,7 +233,7 @@ impl RuntimeDb {
     }
 
     fn ensure_current_task_scope_id(&mut self) -> Option<ScopeId> {
-        let task_key = current_tokio_task_key()?;
+        let task_key = current_tokio_task_key().unwrap_or_else(|| String::from("main"));
         if let Some(existing_scope_id) = self.task_scope_ids.get(&task_key).cloned() {
             if self.scopes.contains_key(&existing_scope_id) {
                 return Some(existing_scope_id);

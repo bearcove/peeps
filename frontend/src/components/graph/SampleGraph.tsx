@@ -18,8 +18,8 @@ export function SampleGraph({
 }: {
   entityDefs: EntityDef[];
   edgeDefs: EdgeDef[];
-  scopeColorMode?: "none" | "process" | "crate";
-  subgraphScopeMode?: "none" | "process" | "crate";
+  scopeColorMode?: "none" | "process" | "crate" | "task";
+  subgraphScopeMode?: "none" | "process" | "crate" | "task";
 }) {
   const [layout, setLayout] = useState<GraphGeometry | null>(null);
   const [selection, setSelection] = useState<GraphSelection>(null);
@@ -36,15 +36,13 @@ export function SampleGraph({
       .catch(console.error);
   }, [entityDefs, edgeDefs, subgraphScopeMode]);
 
-  const entityById = useMemo(
-    () => new Map(entityDefs.map((e) => [e.id, e])),
-    [entityDefs],
-  );
+  const entityById = useMemo(() => new Map(entityDefs.map((e) => [e.id, e])), [entityDefs]);
 
   const scopeColorByKey = useMemo<Map<string, ScopeColorPair>>(() => {
     if (scopeColorMode === "none") return new Map();
     const keys = entityDefs.map((e) => {
       if (scopeColorMode === "process") return e.processId;
+      if (scopeColorMode === "task") return e.taskScopeKey ?? `${e.processId}:~no-task`;
       return e.krate ?? "~no-crate";
     });
     return assignScopeColorRgbByKey(keys);
@@ -58,7 +56,9 @@ export function SampleGraph({
       const scopeKey =
         scopeColorMode === "process"
           ? entity?.processId
-          : entity?.krate ?? "~no-crate";
+          : scopeColorMode === "task"
+            ? (entity?.taskScopeKey ?? (entity ? `${entity.processId}:~no-task` : undefined))
+            : (entity?.krate ?? "~no-crate");
       const rgb = scopeKey ? scopeColorByKey.get(scopeKey) : undefined;
       return {
         ...n,

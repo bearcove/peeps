@@ -1,7 +1,7 @@
 use std::collections::{HashMap, hash_map::Entry};
 use std::path::Path as FsPath;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use facet::Facet;
@@ -31,7 +31,7 @@ const TOP_FRAME_CRATE_EXCLUSIONS: &[&str] = &[
 ];
 static SYMBOLIZER_LOADER_ATTEMPT_ID: AtomicU64 = AtomicU64::new(1);
 
-#[derive(Facet)]
+#[derive(Facet, Clone)]
 struct SymbolicationCacheEntry {
     status: String,
     function_name: Option<String>,
@@ -56,6 +56,43 @@ struct PendingFrameJob {
 #[derive(Facet)]
 struct PendingFrameLookupParams {
     backtrace_id: BacktraceId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct SymbolicationCacheKey {
+    module_identity: String,
+    rel_pc_raw: u64,
+}
+
+impl SymbolicationCacheKey {
+    fn new(module_identity: String, rel_pc: RelPc) -> Self {
+        Self {
+            module_identity,
+            rel_pc_raw: rel_pc.get(),
+        }
+    }
+
+    fn rel_pc(&self) -> RelPc {
+        RelPc::new(self.rel_pc_raw).unwrap_or_else(|_| {
+            panic!(
+                "invariant violated: cached rel_pc must be JS-safe, got {}",
+                self.rel_pc_raw
+            )
+        })
+    }
+}
+
+#[derive(Clone)]
+enum PlannedFrameResolution {
+    Cached(SymbolicationCacheEntry),
+    ResolveKnown(SymbolicationCacheKey),
+    ResolveDirect,
+}
+
+#[derive(Clone)]
+struct PlannedFrameJob {
+    job: PendingFrameJob,
+    resolution: PlannedFrameResolution,
 }
 
 #[derive(Facet)]
@@ -167,6 +204,75 @@ pub async fn symbolicate_pending_frames_for_backtraces(
     .map_err(|error| format!("join symbolication worker: {error}"))?
 }
 
+fn resolve_frame_jobs_parallel(jobs: &[PendingFrameJob]) -> Vec<SymbolicationCacheEntry> {
+    if jobs.is_empty() {
+        return Vec::new();
+    }
+
+    let worker_count = std::thread::available_parallelism()
+        .map(|parallelism| parallelism.get())
+        .unwrap_or(1)
+        .min(jobs.len());
+
+    if worker_count <= 1 {
+        let mut module_cache: HashMap<String, ModuleSymbolizerState> = HashMap::new();
+        return jobs
+            .iter()
+            .map(|job| resolve_frame_symbolication(job, &mut module_cache))
+            .collect();
+    }
+
+    let jobs = Arc::new(jobs.to_vec());
+    let next_index = Arc::new(AtomicUsize::new(0));
+    let produced = Arc::new(Mutex::new(
+        Vec::<(usize, SymbolicationCacheEntry)>::with_capacity(jobs.len()),
+    ));
+
+    std::thread::scope(|scope| {
+        for _ in 0..worker_count {
+            let jobs = Arc::clone(&jobs);
+            let next_index = Arc::clone(&next_index);
+            let produced = Arc::clone(&produced);
+            scope.spawn(move || {
+                let mut module_cache: HashMap<String, ModuleSymbolizerState> = HashMap::new();
+                let mut local = Vec::<(usize, SymbolicationCacheEntry)>::new();
+                loop {
+                    let index = next_index.fetch_add(1, Ordering::Relaxed);
+                    if index >= jobs.len() {
+                        break;
+                    }
+                    let resolved = resolve_frame_symbolication(&jobs[index], &mut module_cache);
+                    local.push((index, resolved));
+                }
+                if !local.is_empty() {
+                    let Ok(mut sink) = produced.lock() else {
+                        panic!("symbolication result sink mutex poisoned");
+                    };
+                    sink.extend(local);
+                }
+            });
+        }
+    });
+
+    let mut slots: Vec<Option<SymbolicationCacheEntry>> = vec![None; jobs.len()];
+    let Ok(mut resolved_pairs) = produced.lock() else {
+        panic!("symbolication result sink mutex poisoned");
+    };
+    for (index, resolved) in resolved_pairs.drain(..) {
+        slots[index] = Some(resolved);
+    }
+
+    slots
+        .into_iter()
+        .enumerate()
+        .map(|(index, maybe_resolved)| {
+            maybe_resolved.unwrap_or_else(|| {
+                panic!("invariant violated: parallel symbolication missing result for job index {index}")
+            })
+        })
+        .collect()
+}
+
 fn symbolicate_pending_frames_for_backtraces_blocking(
     db: &Db,
     backtrace_ids: &[BacktraceId],
@@ -199,9 +305,11 @@ fn symbolicate_pending_frames_for_backtraces_blocking(
         )
         .map_err(|error| format!("prepare pending frame query: {error}"))?;
 
-    let mut module_cache: HashMap<String, ModuleSymbolizerState> = HashMap::new();
-    let mut processed = 0usize;
+    let mut cached_by_key: HashMap<SymbolicationCacheKey, SymbolicationCacheEntry> = HashMap::new();
+    let mut resolve_job_by_key: HashMap<SymbolicationCacheKey, PendingFrameJob> = HashMap::new();
+    let mut pending_jobs_by_backtrace = Vec::<(BacktraceId, Vec<PlannedFrameJob>)>::new();
     let mut unknown_module_jobs = 0usize;
+
     for backtrace_id in backtrace_ids {
         let params = PendingFrameLookupParams {
             backtrace_id: *backtrace_id,
@@ -210,64 +318,133 @@ fn symbolicate_pending_frames_for_backtraces_blocking(
             .facet_query_ref::<PendingFrameJob, _>(&params)
             .map_err(|error| format!("query pending frame rows: {error}"))?;
 
-        for job in &jobs {
+        let mut planned_jobs = Vec::with_capacity(jobs.len());
+        for job in jobs {
             if job.module_path.starts_with("<unknown-module-id:") {
                 unknown_module_jobs = unknown_module_jobs.saturating_add(1);
             }
-            let cache = if job.module_identity != "unknown" {
-                if let Some(hit) =
-                    lookup_symbolication_cache(&tx, job.module_identity.as_str(), job.rel_pc)?
+            if job.module_identity == "unknown" {
+                planned_jobs.push(PlannedFrameJob {
+                    job,
+                    resolution: PlannedFrameResolution::ResolveDirect,
+                });
+                continue;
+            }
+
+            let cache_key = SymbolicationCacheKey::new(job.module_identity.clone(), job.rel_pc);
+            if let Some(hit) = cached_by_key.get(&cache_key).cloned() {
+                planned_jobs.push(PlannedFrameJob {
+                    job,
+                    resolution: PlannedFrameResolution::Cached(hit),
+                });
+                continue;
+            }
+            if resolve_job_by_key.contains_key(&cache_key) {
+                planned_jobs.push(PlannedFrameJob {
+                    job,
+                    resolution: PlannedFrameResolution::ResolveKnown(cache_key),
+                });
+                continue;
+            }
+
+            if let Some(hit) = lookup_symbolication_cache(
+                &tx,
+                cache_key.module_identity.as_str(),
+                cache_key.rel_pc(),
+            )? {
+                if hit.status == "unresolved"
+                    && hit
+                        .unresolved_reason
+                        .as_deref()
+                        .is_some_and(should_retry_unresolved_reason)
                 {
-                    if hit.status == "unresolved"
-                        && hit
-                            .unresolved_reason
-                            .as_deref()
-                            .is_some_and(should_retry_unresolved_reason)
-                    {
-                        debug!(
-                            process_id = %job.process_id.as_str(),
-                            backtrace_id = %job.backtrace_id,
-                            frame_index = job.frame_index,
-                            "retrying previously scaffolded unresolved cache entry"
-                        );
-                        let resolved = resolve_frame_symbolication(job, &mut module_cache);
-                        upsert_symbolication_cache(
-                            &tx,
-                            job.module_identity.as_str(),
-                            job.rel_pc,
-                            &resolved,
-                        )?;
-                        resolved
-                    } else {
-                        hit
-                    }
+                    debug!(
+                        process_id = %job.process_id.as_str(),
+                        backtrace_id = %job.backtrace_id,
+                        frame_index = job.frame_index,
+                        "retrying previously scaffolded unresolved cache entry"
+                    );
+                    resolve_job_by_key.insert(cache_key.clone(), job.clone());
+                    planned_jobs.push(PlannedFrameJob {
+                        job,
+                        resolution: PlannedFrameResolution::ResolveKnown(cache_key),
+                    });
                 } else {
-                    let resolved = resolve_frame_symbolication(job, &mut module_cache);
-                    upsert_symbolication_cache(
-                        &tx,
-                        job.module_identity.as_str(),
-                        job.rel_pc,
-                        &resolved,
-                    )?;
-                    resolved
+                    cached_by_key.insert(cache_key.clone(), hit.clone());
+                    planned_jobs.push(PlannedFrameJob {
+                        job,
+                        resolution: PlannedFrameResolution::Cached(hit),
+                    });
                 }
             } else {
-                resolve_frame_symbolication(job, &mut module_cache)
+                resolve_job_by_key.insert(cache_key.clone(), job.clone());
+                planned_jobs.push(PlannedFrameJob {
+                    job,
+                    resolution: PlannedFrameResolution::ResolveKnown(cache_key),
+                });
+            }
+        }
+        pending_jobs_by_backtrace.push((*backtrace_id, planned_jobs));
+    }
+
+    drop(pending_stmt);
+
+    let jobs_to_resolve_by_key: Vec<(SymbolicationCacheKey, PendingFrameJob)> =
+        resolve_job_by_key.into_iter().collect();
+    let resolution_inputs: Vec<PendingFrameJob> = jobs_to_resolve_by_key
+        .iter()
+        .map(|(_, job)| job.clone())
+        .collect();
+    let resolved_entries = resolve_frame_jobs_parallel(&resolution_inputs);
+    for ((cache_key, _), resolved) in jobs_to_resolve_by_key.into_iter().zip(resolved_entries) {
+        upsert_symbolication_cache(
+            &tx,
+            cache_key.module_identity.as_str(),
+            cache_key.rel_pc(),
+            &resolved,
+        )?;
+        cached_by_key.insert(cache_key, resolved);
+    }
+
+    let mut processed = 0usize;
+    let mut direct_module_cache: HashMap<String, ModuleSymbolizerState> = HashMap::new();
+    for (backtrace_id, planned_jobs) in &pending_jobs_by_backtrace {
+        for planned in planned_jobs {
+            let cache = match &planned.resolution {
+                PlannedFrameResolution::Cached(cached) => cached.clone(),
+                PlannedFrameResolution::ResolveKnown(cache_key) => {
+                    cached_by_key
+                        .get(cache_key)
+                        .cloned()
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "invariant violated: missing resolved cache entry for module_identity={} rel_pc=0x{:x}",
+                                cache_key.module_identity,
+                                cache_key.rel_pc_raw
+                            )
+                        })
+                }
+                PlannedFrameResolution::ResolveDirect => {
+                    resolve_frame_symbolication(&planned.job, &mut direct_module_cache)
+                }
             };
             upsert_symbolicated_frame(
                 &tx,
-                job.process_id.clone(),
-                job.backtrace_id,
-                job.frame_index,
-                job.module_path.as_str(),
-                job.rel_pc,
+                planned.job.process_id.clone(),
+                planned.job.backtrace_id,
+                planned.job.frame_index,
+                planned.job.module_path.as_str(),
+                planned.job.rel_pc,
                 &cache,
             )?;
-            processed += 1;
+            processed = processed.saturating_add(1);
         }
-        if !jobs.is_empty() {
-            let owner_process_id = jobs[0].process_id.clone();
-            if jobs.iter().any(|job| job.process_id != owner_process_id) {
+        if !planned_jobs.is_empty() {
+            let owner_process_id = planned_jobs[0].job.process_id.clone();
+            if planned_jobs
+                .iter()
+                .any(|planned| planned.job.process_id != owner_process_id)
+            {
                 return Err(format!(
                     "invariant violated: backtrace {} spans multiple process_id values in pending frame rows",
                     backtrace_id
@@ -277,18 +454,18 @@ fn symbolicate_pending_frames_for_backtraces_blocking(
         }
     }
 
-    drop(pending_stmt);
     tx.commit()
         .map_err(|error| format!("commit symbolication pass: {error}"))?;
     if processed > 0 {
         info!(
             processed_frames = processed,
             unknown_module_jobs,
-            module_cache_entries = module_cache.len(),
+            cache_resolved_entries = resolution_inputs.len(),
+            cache_hits_reused = cached_by_key.len().saturating_sub(resolution_inputs.len()),
             elapsed_ms = started.elapsed().as_millis(),
             "symbolication pass completed"
         );
-        if module_cache.is_empty() && unknown_module_jobs > 0 {
+        if resolution_inputs.is_empty() && unknown_module_jobs > 0 {
             warn!(
                 unknown_module_jobs,
                 "symbolication did not open any modules because jobs referenced unknown module ids"

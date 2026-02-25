@@ -27,7 +27,9 @@ pub async fn run() -> Result<(), String> {
             println!("sent prefill item {i}");
         }
 
-        println!("attempting 17th send; this should block because capacity is 16 and receiver is stalled");
+        println!(
+            "attempting 17th send; this should block because capacity is 16 and receiver is stalled"
+        );
 
         tx.send(16).await.expect("send unexpectedly unblocked");
     })

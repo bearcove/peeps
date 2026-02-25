@@ -217,7 +217,7 @@ fn http_get_ok(url: &str) -> bool {
 fn spawn_backend(cfg: &Config) -> AnyResult<Child> {
     let mut cmd = Command::new("cargo");
     cmd.current_dir(&cfg.root_dir)
-        .args(["run", "--bin", "moire-web", "--", "--dev"])
+        .args(["run", "--release", "--bin", "moire-web", "--", "--dev"])
         .env("MOIRE_LISTEN", &cfg.moire_listen)
         .env("MOIRE_HTTP", &cfg.moire_http)
         .stdin(Stdio::null())

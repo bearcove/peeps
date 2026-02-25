@@ -212,6 +212,9 @@ fn transition_relation_edge(
 impl<F: Future> InstrumentedFuture<F> {
     fn poll_inner(&mut self, cx: &mut Context<'_>) -> Poll<F::Output> {
         let future_id = EntityId::new(self.future_handle.id().as_str());
+        if let Ok(mut db) = runtime_db().lock() {
+            let _ = db.link_entity_to_current_task_scope(&future_id);
+        }
         FUTURE_CAUSAL_STACK.with(|stack| {
             stack.borrow_mut().push(EntityId::new(future_id.as_str()));
         });

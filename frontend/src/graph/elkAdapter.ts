@@ -20,9 +20,9 @@ const elkOptions = {
 };
 
 const subgraphPaddingBase = {
-  top: 6,
+  top: 10,
   left: 20,
-  bottom: 6,
+  bottom: 10,
   right: 20,
 };
 
@@ -76,7 +76,7 @@ export function edgeMarkerSize(_edge: EdgeDef): number {
 
 // ── Types ─────────────────────────────────────────────────────
 
-export type SubgraphScopeMode = "none" | "process" | "crate";
+export type SubgraphScopeMode = "none" | "process" | "crate" | "task";
 
 export type LayoutGraphOptions = {
   subgraphHeaderHeight?: number;
@@ -98,11 +98,14 @@ export async function layoutGraph(
   const groupKeyFor = (entity: EntityDef): string | null => {
     if (subgraphScopeMode === "process") return entity.processId;
     if (subgraphScopeMode === "crate") return entity.topFrame?.crate_name ?? "~no-crate";
+    if (subgraphScopeMode === "task") return entity.taskScopeKey ?? `${entity.processId}:~no-task`;
     return null;
   };
 
   const hasSubgraphs = subgraphScopeMode !== "none";
   const measuredHeaderHeight = Math.max(0, Math.ceil(options.subgraphHeaderHeight ?? 0));
+  const subgraphContentInsetTop = measuredHeaderHeight + subgraphPaddingBase.top;
+  const subgraphContentInsetBottom = subgraphPaddingBase.bottom;
   const subgraphElkPadding = `[top=${measuredHeaderHeight + subgraphPaddingBase.top},left=${subgraphPaddingBase.left},bottom=${subgraphPaddingBase.bottom},right=${subgraphPaddingBase.right}]`;
 
   const edgeSourceRef = (edge: EdgeDef) =>
@@ -121,27 +124,15 @@ export async function layoutGraph(
     if (entity.channelPair) {
       const mergedId = entity.id;
       return [
-        {
-          id: `${mergedId}:tx`,
-          layoutOptions: { "elk.port.side": "SOUTH", "elk.port.borderOffset": PORT_BORDER_OFFSET },
-        },
-        {
-          id: `${mergedId}:rx`,
-          layoutOptions: { "elk.port.side": "NORTH", "elk.port.borderOffset": PORT_BORDER_OFFSET },
-        },
+        { id: `${mergedId}:tx`, layoutOptions: {} },
+        { id: `${mergedId}:rx`, layoutOptions: {} },
       ];
     }
     if (entity.rpcPair) {
       const mergedId = entity.id;
       return [
-        {
-          id: `${mergedId}:req`,
-          layoutOptions: { "elk.port.side": "SOUTH", "elk.port.borderOffset": PORT_BORDER_OFFSET },
-        },
-        {
-          id: `${mergedId}:resp`,
-          layoutOptions: { "elk.port.side": "NORTH", "elk.port.borderOffset": PORT_BORDER_OFFSET },
-        },
+        { id: `${mergedId}:req`, layoutOptions: {} },
+        { id: `${mergedId}:resp`, layoutOptions: {} },
       ];
     }
     // Default: one port per connecting edge so ELK spreads them along the side
@@ -178,11 +169,12 @@ export async function layoutGraph(
 
   const elkNodeForEntity = (entity: EntityDef) => {
     const size = requireNodeSize(entity.id);
+    const isFreePort = !!(entity.channelPair || entity.rpcPair);
     return {
       id: entity.id,
       width: size.width,
       height: size.height,
-      layoutOptions: nodeLayoutOptions,
+      layoutOptions: isFreePort ? { "elk.portConstraints": "FREE" } : nodeLayoutOptions,
       ports: portsForEntity(entity),
     };
   };
@@ -294,6 +286,9 @@ export async function layoutGraph(
         if (scopeKind === "process" && memberEntities.length > 0) {
           const anchor = memberEntities[0];
           canonicalLabel = formatProcessLabel(anchor.processName, anchor.processPid);
+        } else if (scopeKind === "task" && memberEntities.length > 0) {
+          const named = memberEntities.find((entity: EntityDef) => !!entity.taskScopeName);
+          canonicalLabel = named?.taskScopeName ?? "(no task scope)";
         } else if (scopeKind === "connection" && memberEntities.length > 0) {
           const named =
             memberEntities.find((entity: EntityDef) => entity.kind === "connection") ??
@@ -339,24 +334,56 @@ export async function layoutGraph(
 
       // Collect port face positions from ELK layout output.
       // With shapeCoords:ROOT, port x/y are already in root/world coordinates.
-      // ELK places ports PORT_BORDER_OFFSET px outside the node face; snap y
-      // back to the face so arrowheads land on the node boundary while the
-      // routing stub before any bend is preserved.
+      // ELK places ports PORT_BORDER_OFFSET px outside the node face; snap
+      // back to the nearest node face so arrowheads land on the node boundary.
+      const nodeWidth = size.width;
       const nodeHeight = size.height;
       for (const port of child.ports ?? []) {
         const portId = String(port.id);
         const portAbsX = port.x ?? 0;
         const portAbsY = port.y ?? 0;
-        const isNorthPort = portAbsY < absY + nodeHeight / 2;
-        portAnchorMap.set(portId, {
-          x: portAbsX,
-          y: isNorthPort ? absY : absY + nodeHeight,
-        });
+        // Distance from port to each of the four node faces
+        const dNorth = Math.abs(portAbsY - absY);
+        const dSouth = Math.abs(portAbsY - (absY + nodeHeight));
+        const dWest = Math.abs(portAbsX - absX);
+        const dEast = Math.abs(portAbsX - (absX + nodeWidth));
+        const minD = Math.min(dNorth, dSouth, dWest, dEast);
+        let snappedX = portAbsX;
+        let snappedY = portAbsY;
+        if (minD === dNorth) snappedY = absY;
+        else if (minD === dSouth) snappedY = absY + nodeHeight;
+        else if (minD === dWest) snappedX = absX;
+        else snappedX = absX + nodeWidth;
+        portAnchorMap.set(portId, { x: snappedX, y: snappedY });
       }
     }
   };
 
   walkChildren(result.children);
+
+  // ELK hierarchy can stretch parent group heights based on cross-group edge routing,
+  // which makes nodes look arbitrarily "too high/low" inside group boxes. Keep the
+  // visual group containers tight around member node content in Y.
+  if (hasSubgraphs && geoGroups.length > 0) {
+    const nodeRectById = new Map(geoNodes.map((node) => [node.id, node.worldRect]));
+    for (const group of geoGroups) {
+      const memberRects = group.members
+        .map((memberId) => nodeRectById.get(memberId))
+        .filter((rect): rect is { x: number; y: number; width: number; height: number } => !!rect);
+      if (memberRects.length === 0) continue;
+
+      const minMemberY = Math.min(...memberRects.map((rect) => rect.y));
+      const maxMemberY = Math.max(...memberRects.map((rect) => rect.y + rect.height));
+      const tightY = minMemberY - subgraphContentInsetTop;
+      const tightHeight =
+        maxMemberY - minMemberY + subgraphContentInsetTop + subgraphContentInsetBottom;
+      group.worldRect = {
+        ...group.worldRect,
+        y: tightY,
+        height: tightHeight,
+      };
+    }
+  }
 
   type SectionFragment = {
     sectionId: string | null;

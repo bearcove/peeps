@@ -53,6 +53,10 @@ export type EntityDef = {
   processId: string;
   processName: string;
   processPid: number;
+  /** Process-scoped key for the task scope this entity belongs to, if any. */
+  taskScopeKey?: string;
+  taskScopeId?: string;
+  taskScopeName?: string;
   name: string;
   kind: string;
   body: EntityBody;
@@ -99,7 +103,7 @@ export type EdgeDef = {
   targetPort?: string;
 };
 
-export type SnapshotGroupMode = "none" | "process" | "crate";
+export type SnapshotGroupMode = "none" | "process" | "crate" | "task";
 
 // f[impl display.scope]
 export type ScopeDef = {
@@ -436,9 +440,8 @@ export function deriveStatus(body: EntityBody): { label: string; tone: Tone } {
   if ("oneshot_rx" in body) return { label: "waiting", tone: "neutral" };
   if ("semaphore" in body) {
     const { max_permits, handed_out_permits } = body.semaphore;
-    const available = max_permits - handed_out_permits;
     return {
-      label: `${available}/${max_permits} permits`,
+      label: `${handed_out_permits}/${max_permits} permits`,
       tone: handed_out_permits > 0 ? "warn" : "ok",
     };
   }
@@ -463,7 +466,7 @@ export function deriveStatus(body: EntityBody): { label: string; tone: Tone } {
 export function deriveStat(body: EntityBody): string | undefined {
   if ("semaphore" in body) {
     const { max_permits, handed_out_permits } = body.semaphore;
-    return `${max_permits - handed_out_permits}/${max_permits}`;
+    return `${handed_out_permits}/${max_permits}`;
   }
   if ("mpsc_tx" in body) {
     const { queue_len, capacity } = body.mpsc_tx;
@@ -480,6 +483,10 @@ export function deriveStat(body: EntityBody): string | undefined {
 
 // f[impl display.entity.stat-tone]
 export function deriveStatTone(body: EntityBody): Tone | undefined {
+  if ("semaphore" in body) {
+    const { handed_out_permits } = body.semaphore;
+    if (handed_out_permits > 0) return "warn";
+  }
   if ("mpsc_tx" in body) {
     const { queue_len, capacity } = body.mpsc_tx;
     if (capacity == null) return undefined;
@@ -615,6 +622,7 @@ export function mergeChannelPairs(
 function groupKeyForEntity(entity: EntityDef, mode: SnapshotGroupMode): string {
   if (mode === "process") return `process:${entity.processId}`;
   if (mode === "crate") return `crate:${entity.topFrame?.crate_name ?? "~no-crate"}`;
+  if (mode === "task") return `task:${entity.taskScopeKey ?? `${entity.processId}:~no-task`}`;
   return "all";
 }
 
@@ -755,22 +763,61 @@ export function convertSnapshot(
   // First pass: collect all entities so we can do cross-process edge resolution.
   for (const proc of snapshot.processes) {
     const { process_id, process_name, pid, ptime_now_ms } = proc;
+    const processIdStr = String(process_id);
     const anchorUnixMs = snapshot.captured_at_unix_ms - ptime_now_ms;
+    const taskScopeById = new Map<
+      string,
+      { id: string; key: string; name: string; birth: number; isMain: boolean }
+    >();
+    for (const scope of proc.snapshot.scopes) {
+      if (canonicalScopeKind(scope.body) !== "task") continue;
+      const isMain = "task" in scope.body && scope.body.task.task_key === "main";
+      taskScopeById.set(scope.id, {
+        id: scope.id,
+        key: `${processIdStr}:${scope.id}`,
+        name: scope.name,
+        birth: scope.birth,
+        isMain,
+      });
+    }
+
+    const taskScopeByEntityId = new Map<
+      string,
+      { id: string; key: string; name: string; birth: number; isMain: boolean }
+    >();
+    for (const link of proc.scope_entity_links ?? []) {
+      const taskScope = taskScopeById.get(link.scope_id);
+      if (!taskScope) continue;
+      const existing = taskScopeByEntityId.get(link.entity_id);
+      if (existing && existing.id !== taskScope.id) {
+        const prefersCandidate =
+          (existing.isMain && !taskScope.isMain) ||
+          (existing.isMain === taskScope.isMain &&
+            (taskScope.birth > existing.birth ||
+              (taskScope.birth === existing.birth && taskScope.id > existing.id)));
+        if (!prefersCandidate) continue;
+      }
+      taskScopeByEntityId.set(link.entity_id, taskScope);
+    }
 
     for (const e of proc.snapshot.entities) {
       const ageMs = Math.max(0, ptime_now_ms - e.birth);
       const backtraceId = requireBacktraceId(e, `entity ${e.id}`, process_id);
       const resolvedBacktrace = resolveBacktraceDisplay(backtraces, backtraceId, `entity ${e.id}`);
       const kind = bodyToKind(e.body);
+      const taskScope = taskScopeByEntityId.get(e.id);
       if ("custom" in e.body) {
         const c = e.body.custom;
         registerCustomKindSpec(c.kind, c.display_name, c.category, c.icon);
       }
       allEntities.push({
         id: e.id,
-        processId: String(process_id),
+        processId: processIdStr,
         processName: process_name,
         processPid: pid,
+        taskScopeKey: taskScope?.key,
+        taskScopeId: taskScope?.id,
+        taskScopeName: taskScope?.name,
         name: e.name,
         kind,
         body: e.body,
@@ -796,6 +843,7 @@ export function convertSnapshot(
 
   // Index lock entities by id so we can patch them when we see `holds` edges.
   const lockEntitiesById = new Map<string, EntityDef>();
+  const semaphoreWaiterCounts = new Map<string, number>();
   const entityById = new Map<string, EntityDef>();
   for (const ent of allEntities) {
     entityById.set(ent.id, ent);
@@ -821,6 +869,23 @@ export function convertSnapshot(
           if (holder) lockEntity.holderName = holder.name;
         }
       }
+      if (e.kind === "waiting_on") {
+        const target = entityById.get(e.dst);
+        if (target && "semaphore" in target.body) {
+          semaphoreWaiterCounts.set(e.dst, (semaphoreWaiterCounts.get(e.dst) ?? 0) + 1);
+        }
+      }
+    }
+  }
+
+  for (const entity of allEntities) {
+    if (!("semaphore" in entity.body)) continue;
+    const { max_permits, handed_out_permits } = entity.body.semaphore;
+    const available = max_permits - handed_out_permits;
+    const waiterCount = semaphoreWaiterCounts.get(entity.id) ?? 0;
+    if (available === 0 && waiterCount > 0) {
+      entity.statTone = "crit";
+      entity.status = { ...entity.status, tone: "crit" };
     }
   }
 

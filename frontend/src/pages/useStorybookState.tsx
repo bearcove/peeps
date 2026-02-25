@@ -93,13 +93,13 @@ export function useStorybookState() {
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
   const [hiddenProcesses, setHiddenProcesses] = useState<Set<string>>(new Set());
   const [hiddenCrates, setHiddenCrates] = useState<Set<string>>(new Set());
-  const [leftPaneTab, setLeftPaneTab] = useState<"graph" | "scopes" | "entities" | "events">("graph");
+  const [leftPaneTab, setLeftPaneTab] = useState<"graph" | "scopes" | "entities" | "events">(
+    "graph",
+  );
   const [showLoners, setShowLoners] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
-  const [graphFilterText, setGraphFilterText] = useState(
-    "colorBy:crate groupBy:process",
-  );
+  const [graphFilterText, setGraphFilterText] = useState("colorBy:crate groupBy:task");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tones = useMemo<BadgeTone[]>(() => ["neutral", "ok", "warn", "crit"], []);
   const searchDataset = useMemo(
@@ -620,7 +620,9 @@ export function useStorybookState() {
         krate: "roam-session",
         name: "DemoRpc.sleepy_forever",
         kind: "request",
-        body: { request: { service_name: "DemoRpc", method_name: "sleepy_forever", args_json: "()" } },
+        body: {
+          request: { service_name: "DemoRpc", method_name: "sleepy_forever", args_json: "()" },
+        },
         status: { label: "in_flight", tone: "warn" as const },
         ageMs: 4800,
       },
@@ -741,4 +743,3 @@ export function useStorybookState() {
 }
 
 export type StorybookState = ReturnType<typeof useStorybookState>;
-

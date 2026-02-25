@@ -12,9 +12,21 @@ import {
 const baseInput = {
   nodeIds: ["1/alpha", "1/beta", "2/worker-loop"],
   entities: [
-    { id: "1/alpha", label: "sleepy forever (web:1234)", searchText: "sleepy forever future web 1234" },
-    { id: "1/beta", label: "semaphore gate (web:1234)", searchText: "semaphore gate lock web 1234" },
-    { id: "2/worker-loop", label: "worker loop (worker:5678)", searchText: "worker loop process worker 5678" },
+    {
+      id: "1/alpha",
+      label: "sleepy forever (web:1234)",
+      searchText: "sleepy forever future web 1234",
+    },
+    {
+      id: "1/beta",
+      label: "semaphore gate (web:1234)",
+      searchText: "semaphore gate lock web 1234",
+    },
+    {
+      id: "2/worker-loop",
+      label: "worker loop (worker:5678)",
+      searchText: "worker loop process worker 5678",
+    },
   ],
   locations: ["src/main.rs:12", "crates/moire/src/enabled.rs:505"],
   crates: [
@@ -35,7 +47,10 @@ const baseInput = {
   ],
 };
 
-function reduce(state: GraphFilterEditorState, ...actions: GraphFilterEditorAction[]): GraphFilterEditorState {
+function reduce(
+  state: GraphFilterEditorState,
+  ...actions: GraphFilterEditorAction[]
+): GraphFilterEditorState {
   let next = state;
   for (const action of actions) {
     next = graphFilterEditorReducer(next, action);
@@ -61,6 +76,7 @@ describe("graphFilterSuggestions", () => {
     const out = graphFilterSuggestions({ ...baseInput, fragment: "group" });
     expect(out.map((s) => s.token)).toContain("groupBy:process");
     expect(out.map((s) => s.token)).toContain("groupBy:crate");
+    expect(out.map((s) => s.token)).toContain("groupBy:task");
     expect(out.map((s) => s.token)).not.toContain("groupBy:none");
   });
 
@@ -149,8 +165,10 @@ describe("graphFilterSuggestions", () => {
     ["-location:enabled", "-location:crates/moire/src/enabled.rs:505"],
     ["groupBy:pro", "groupBy:process"],
     ["groupBy:cr", "groupBy:crate"],
+    ["groupBy:ta", "groupBy:task"],
     ["colorBy:pro", "colorBy:process"],
     ["colorBy:cr", "colorBy:crate"],
+    ["colorBy:ta", "colorBy:task"],
     ["+module:server", "+module:moire_core::server"],
     ["-module:handler", "-module:moire_web::handler"],
   ])("suggests value for %s", (fragment, expectedToken) => {
@@ -279,6 +297,12 @@ describe("parseGraphFilterQuery include/exclude syntax", () => {
   it("treats groupBy:none as valid no-op", () => {
     const out = parseGraphFilterQuery("groupBy:none");
     expect(out.groupBy).toBeUndefined();
+    expect(out.tokens[0]?.valid).toBe(true);
+  });
+
+  it("parses groupBy:task", () => {
+    const out = parseGraphFilterQuery("groupBy:task");
+    expect(out.groupBy).toBe("task");
     expect(out.tokens[0]?.valid).toBe(true);
   });
 

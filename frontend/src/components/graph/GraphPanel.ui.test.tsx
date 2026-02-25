@@ -24,7 +24,7 @@ function findChipButtonsByName(pattern: RegExp): HTMLButtonElement[] {
 
 function Harness({ initialFilter }: { initialFilter: string }) {
   const [graphFilterText, setGraphFilterText] = useState(initialFilter);
-  const [subgraphScopeMode] = useState<"none" | "process" | "crate">("none");
+  const [subgraphScopeMode] = useState<"none" | "process" | "crate" | "task">("none");
 
   return (
     <GraphPanel
@@ -42,9 +42,7 @@ function Harness({ initialFilter }: { initialFilter: string }) {
         { id: "crate-a", label: "crate-a", meta: 1 },
         { id: "crate-b", label: "crate-b", meta: 1 },
       ]}
-      processItems={[
-        { id: "1", label: "web(1234)", meta: 1 },
-      ]}
+      processItems={[{ id: "1", label: "web(1234)", meta: 1 }]}
       kindItems={[
         { id: "request", label: "request", meta: 1 },
         { id: "response", label: "response", meta: 1 },
@@ -76,7 +74,9 @@ describe("GraphPanel filter input interactions", () => {
     await user.click(input);
     expect(input.value).toBe("");
     expect(screen.getByRole("button", { name: /Include only filter/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Exclude everything matching this filter/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Exclude everything matching this filter/i }),
+    ).toBeTruthy();
 
     await user.type(input, "-n");
     expect(input.value).toBe("-n");
@@ -121,9 +121,9 @@ describe("GraphPanel filter input interactions", () => {
     await user.keyboard("{Backspace}");
 
     expect(findChipButtonsByName(/groupBy:process/i)).toHaveLength(0);
-    const chipTexts = Array.from(document.querySelectorAll<HTMLButtonElement>(".graph-filter-chip")).map(
-      (chip) => chip.textContent ?? "",
-    );
+    const chipTexts = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".graph-filter-chip"),
+    ).map((chip) => chip.textContent ?? "");
     expect(chipTexts.some((text) => /colorBy:crate/i.test(text))).toBe(true);
     expect(input.value).toBe("");
   });
@@ -200,7 +200,9 @@ describe("GraphPanel filter input interactions", () => {
     expect(screen.getByRole("button", { name: /-kind:request/i })).toBeTruthy();
     expect(input.value).toBe("");
     expect(screen.getByRole("button", { name: /Include only filter/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Exclude everything matching this filter/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Exclude everything matching this filter/i }),
+    ).toBeTruthy();
   });
 
   it("reopens suggestions after applying with Enter", async () => {
@@ -216,7 +218,9 @@ describe("GraphPanel filter input interactions", () => {
     expect(screen.getByRole("button", { name: /-kind:request/i })).toBeTruthy();
     expect(input.value).toBe("");
     expect(screen.getByRole("button", { name: /Include only filter/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Exclude everything matching this filter/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Exclude everything matching this filter/i }),
+    ).toBeTruthy();
   });
 
   it("does not suggest already-applied kind include values", async () => {
