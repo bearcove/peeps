@@ -1,4 +1,13 @@
-import React, { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { GraphGeometry } from "../geometry";
 import { type Camera, cameraTransform } from "./camera";
 import { useCameraController } from "./useCameraController";
@@ -9,6 +18,8 @@ interface CameraContextValue {
   setCamera: (c: Camera) => void;
   fitView: () => void;
   panTo: (worldX: number, worldY: number) => void;
+  animateCameraTo: (target: Camera) => void;
+  getManualInteractionVersion: () => number;
   clientToGraph: (clientX: number, clientY: number) => { x: number; y: number } | null;
   viewportWidth: number;
   viewportHeight: number;
@@ -63,10 +74,15 @@ export function GraphCanvas({
     return () => observer.disconnect();
   }, []);
 
-  const { camera, setCamera, fitView, panTo, handlers } = useCameraController(
-    svgRef,
-    geometry?.bounds ?? null,
-  );
+  const {
+    camera,
+    setCamera,
+    fitView,
+    panTo,
+    animateCameraTo,
+    getManualInteractionVersion,
+    handlers,
+  } = useCameraController(svgRef, geometry?.bounds ?? null);
 
   // Attach wheel listener as non-passive to allow preventDefault
   useEffect(() => {
@@ -132,7 +148,10 @@ export function GraphCanvas({
     return { x: point.x, y: point.y };
   }, []);
 
-  const markerUrl = useCallback((size: number) => `url(#arrowhead-${size}-${instanceId})`, [instanceId]);
+  const markerUrl = useCallback(
+    (size: number) => `url(#arrowhead-${size}-${instanceId})`,
+    [instanceId],
+  );
 
   const cameraContextValue = useMemo(
     () => ({
@@ -140,12 +159,25 @@ export function GraphCanvas({
       setCamera,
       fitView,
       panTo,
+      animateCameraTo,
+      getManualInteractionVersion,
       clientToGraph,
       viewportWidth: viewportSize.width,
       viewportHeight: viewportSize.height,
       markerUrl,
     }),
-    [camera, setCamera, fitView, panTo, clientToGraph, viewportSize.width, viewportSize.height, markerUrl],
+    [
+      camera,
+      setCamera,
+      fitView,
+      panTo,
+      animateCameraTo,
+      getManualInteractionVersion,
+      clientToGraph,
+      viewportSize.width,
+      viewportSize.height,
+      markerUrl,
+    ],
   );
 
   return (
@@ -171,29 +203,45 @@ export function GraphCanvas({
             >
               <circle cx="1" cy="1" r="0.8" className="graph-canvas__dot" />
             </pattern>
-            <marker id={arrowhead8Id} markerWidth="8" markerHeight="8" refX="0" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+            <marker
+              id={arrowhead8Id}
+              markerWidth="8"
+              markerHeight="8"
+              refX="0"
+              refY="4"
+              orient="auto"
+              markerUnits="userSpaceOnUse"
+            >
               <path d="M 0 0 L 8 4 L 0 8 Z" fill="context-stroke" />
             </marker>
-            <marker id={arrowhead10Id} markerWidth="10" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+            <marker
+              id={arrowhead10Id}
+              markerWidth="10"
+              markerHeight="10"
+              refX="0"
+              refY="5"
+              orient="auto"
+              markerUnits="userSpaceOnUse"
+            >
               <path d="M 0 0 L 10 5 L 0 10 Z" fill="context-stroke" />
             </marker>
-            <marker id={arrowhead14Id} markerWidth="14" markerHeight="14" refX="0" refY="7" orient="auto" markerUnits="userSpaceOnUse">
+            <marker
+              id={arrowhead14Id}
+              markerWidth="14"
+              markerHeight="14"
+              refX="0"
+              refY="7"
+              orient="auto"
+              markerUnits="userSpaceOnUse"
+            >
               <path d="M 0 0 L 14 7 L 0 14 Z" fill="context-stroke" />
             </marker>
           </defs>
-          <rect
-            width="100%"
-            height="100%"
-            fill="var(--bg-base)"
-            data-background="true"
-          />
-          <rect
-            width="100%"
-            height="100%"
-            fill={`url(#${dotPatternId})`}
-            data-background="true"
-          />
-          <g ref={worldRef} transform={transform}>{children}</g>
+          <rect width="100%" height="100%" fill="var(--bg-base)" data-background="true" />
+          <rect width="100%" height="100%" fill={`url(#${dotPatternId})`} data-background="true" />
+          <g ref={worldRef} transform={transform}>
+            {children}
+          </g>
         </svg>
       </div>
     </CameraContext.Provider>

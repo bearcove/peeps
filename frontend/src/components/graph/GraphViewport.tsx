@@ -24,6 +24,7 @@ export function GraphViewport({
   snapPhase,
   waitingForProcesses,
   geometry,
+  prevNodes,
   groups,
   nodes,
   selection,
@@ -44,6 +45,7 @@ export function GraphViewport({
   snapPhase: "idle" | "cutting" | "loading" | "ready" | "error";
   waitingForProcesses: boolean;
   geometry: GraphGeometry | null;
+  prevNodes?: GeometryNode[];
   groups: GeometryGroup[];
   nodes: GeometryNode[];
   selection: { kind: "entity"; id: string } | { kind: "edge"; id: string } | null;
@@ -85,8 +87,8 @@ export function GraphViewport({
   const nodeExpandStates = useMemo(() => {
     const m = new Map<string, NodeExpandState>();
     // "expanding" takes priority while loading; once ELK lands it transitions to "expanded".
-    if (expandingNodeId) m.set(expandingNodeId, "expanding");
     if (expandedNodeId) m.set(expandedNodeId, "expanded");
+    if (expandingNodeId) m.set(expandingNodeId, "expanding");
     return m;
   }, [expandedNodeId, expandingNodeId]);
 
@@ -259,6 +261,7 @@ export function GraphViewport({
             />
             <NodeLayer
               nodes={nodes}
+              prevNodes={prevNodes}
               nodeExpandStates={nodeExpandStates}
               ghostNodeIds={effectiveGhostNodeIds}
               onNodeHover={(id) => {
@@ -335,48 +338,78 @@ function NodeExpandPanner({
   nodes: GeometryNode[];
   nodeExpandStates: Map<string, NodeExpandState>;
 }) {
-  const { panTo, setCamera, viewportHeight, camera } = useCameraContext();
+  const { panTo, animateCameraTo, getManualInteractionVersion, viewportHeight, camera } =
+    useCameraContext();
   const prevStatesRef = useRef<Map<string, NodeExpandState>>(new Map());
-  // Camera position saved just before first node expansion; restored on full collapse
+  // Camera position saved when expansion starts; restored on collapse unless user manually moved.
   const savedCameraRef = useRef<typeof camera | null>(null);
+  const savedManualVersionRef = useRef<number | null>(null);
+  const canRestoreRef = useRef(false);
+  const didAutoPanRef = useRef(false);
 
   useEffect(() => {
     const prev = prevStatesRef.current;
     const wasEmpty = prev.size === 0;
     const isEmpty = nodeExpandStates.size === 0;
 
+    if (!isEmpty && wasEmpty) {
+      savedCameraRef.current = camera;
+      savedManualVersionRef.current = getManualInteractionVersion();
+      canRestoreRef.current = true;
+      didAutoPanRef.current = false;
+    }
+
+    if (
+      !isEmpty &&
+      canRestoreRef.current &&
+      savedManualVersionRef.current != null &&
+      getManualInteractionVersion() !== savedManualVersionRef.current
+    ) {
+      // User manually panned/zoomed: forget pan-back target immediately.
+      savedCameraRef.current = null;
+      savedManualVersionRef.current = null;
+      canRestoreRef.current = false;
+      didAutoPanRef.current = false;
+    }
+
     if (isEmpty && !wasEmpty) {
-      // All nodes collapsed — pan back to the saved camera position
-      if (savedCameraRef.current) {
-        const { x, y } = savedCameraRef.current;
-        panTo(x, y);
-        savedCameraRef.current = null;
+      // All nodes collapsed — restore only if we auto-panned and user never moved manually.
+      if (canRestoreRef.current && didAutoPanRef.current && savedCameraRef.current) {
+        animateCameraTo(savedCameraRef.current);
       }
-    } else if (!isEmpty) {
-      // Find the newly expanded node (wasn't expanded before)
-      for (const [id] of nodeExpandStates) {
-        if (!prev.has(id)) {
-          // Save camera before first expansion
-          if (wasEmpty) {
-            savedCameraRef.current = camera;
-          }
+      savedCameraRef.current = null;
+      savedManualVersionRef.current = null;
+      canRestoreRef.current = false;
+      didAutoPanRef.current = false;
+    } else if (!isEmpty && canRestoreRef.current && !didAutoPanRef.current) {
+      const expandedEntry = [...nodeExpandStates].find(([, state]) => state === "expanded");
+      if (expandedEntry) {
+        const [id] = expandedEntry;
+        const prevState = prev.get(id);
+        const justFinishedExpand = prevState !== "expanded";
+        if (justFinishedExpand) {
           const node = nodes.find((n) => n.id === id);
           if (node) {
             const { x, y, width } = node.worldRect;
-            // Position the node top ~20% from the top of the viewport so the
-            // expanded card (which can be up to 35em tall) has room below.
-            // camera.y = worldY puts worldY at viewport center (50%).
-            // We want node top at 20%, so shift camera.y down by 30% of viewport in world units.
+            // Keep the node top around 20% viewport height so there is room for expanded content.
             const offsetY = (viewportHeight * 0.3) / camera.zoom;
             panTo(x + width / 2, y + offsetY);
+            didAutoPanRef.current = true;
           }
-          break;
         }
       }
     }
 
     prevStatesRef.current = new Map(nodeExpandStates);
-  }, [nodeExpandStates, nodes, panTo, setCamera, viewportHeight, camera]);
+  }, [
+    nodeExpandStates,
+    nodes,
+    panTo,
+    animateCameraTo,
+    getManualInteractionVersion,
+    viewportHeight,
+    camera,
+  ]);
 
   return null;
 }

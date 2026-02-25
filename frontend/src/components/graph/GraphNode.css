@@ -109,7 +109,7 @@
 }
 
 .graph-node-frames-scroll {
-    max-height: 25em;
+    height: 25em;
     overflow-y: auto;
     overscroll-behavior: none;
 }
@@ -294,6 +294,47 @@
     color: var(--text-tertiary);
     opacity: 0.5;
     letter-spacing: 2px;
+}
+
+/* ── Expanding skeleton (fixed-size placeholder while ELK runs) ── */
+
+.graph-node-expand-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: var(--graph-code-card-width);
+    height: 25em;
+    padding: 8px 0;
+}
+
+.graph-node-expand-skeleton__bar {
+    height: 1lh;
+    border-radius: var(--radius-control);
+    corner-shape: squircle;
+    background: linear-gradient(
+        90deg,
+        var(--border-subtle) 25%,
+        light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.08)) 50%,
+        var(--border-subtle) 75%
+    );
+    background-size: 200% 100%;
+    animation: graph-node-skeleton-shimmer 2.4s infinite linear;
+}
+
+.graph-node-expand-skeleton__bar:nth-child(1) {
+    width: 75%;
+}
+.graph-node-expand-skeleton__bar:nth-child(2) {
+    width: 90%;
+}
+.graph-node-expand-skeleton__bar:nth-child(3) {
+    width: 60%;
+}
+.graph-node-expand-skeleton__bar:nth-child(4) {
+    width: 85%;
+}
+.graph-node-expand-skeleton__bar:nth-child(5) {
+    width: 50%;
 }
 
 /* ── Expanding state (loading indicator) ── */

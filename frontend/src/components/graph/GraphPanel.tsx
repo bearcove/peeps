@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { FilterMenuItem } from "../../ui/primitives/FilterMenu";
 import type { EntityDef, EdgeDef } from "../../snapshot";
 import { layoutGraph, type SubgraphScopeMode } from "../../graph/elkAdapter";
@@ -14,10 +14,7 @@ import { computeNodeSublabel } from "./graphNodeData";
 import type { GraphFilterLabelMode } from "../../graphFilter";
 import "./GraphPanel.css";
 
-export type GraphSelection =
-  | { kind: "entity"; id: string }
-  | { kind: "edge"; id: string }
-  | null;
+export type GraphSelection = { kind: "entity"; id: string } | { kind: "edge"; id: string } | null;
 
 export type SnapPhase = "idle" | "cutting" | "loading" | "ready" | "error";
 
@@ -89,6 +86,10 @@ export function GraphPanel({
   floatingFilterBar?: boolean;
 }) {
   const [layout, setLayout] = useState<GraphGeometry | null>(null);
+  const [prevLayout, setPrevLayout] = useState<GraphGeometry | null>(null);
+  const layoutRef = useRef<GraphGeometry | null>(null);
+  const layoutRunIdRef = useRef(0);
+  layoutRef.current = layout;
   const expandedNodeIds = useMemo(
     () => (expandedEntityId ? new Set([expandedEntityId]) : new Set<string>()),
     [expandedEntityId],
@@ -100,30 +101,64 @@ export function GraphPanel({
   const expandedKey = [...expandedNodeIds].sort().join(",");
 
   useEffect(() => {
-    if (unionFrameLayout) return;
+    if (unionFrameLayout) {
+      setExpandingNodeId(null);
+      return;
+    }
     if (entityDefs.length === 0) return;
+    let cancelled = false;
+    const runId = ++layoutRunIdRef.current;
+    const runExpandedEntityId = expandedEntityId;
     // Mark the newly-requested node as "expanding" so the UI shows a spinner immediately.
-    if (expandedEntityId) setExpandingNodeId(expandedEntityId);
-    measureGraphLayout(entityDefs, subgraphScopeMode, labelByMode, showSource, expandedNodeIds)
-      .then((measurements) =>
-        layoutGraph(entityDefs, edgeDefs, measurements.nodeSizes, subgraphScopeMode, {
+    setExpandingNodeId(runExpandedEntityId);
+
+    void measureGraphLayout(entityDefs, subgraphScopeMode, labelByMode, showSource, expandedNodeIds)
+      .then((measurements) => {
+        if (cancelled || layoutRunIdRef.current !== runId) return null;
+        return layoutGraph(entityDefs, edgeDefs, measurements.nodeSizes, subgraphScopeMode, {
           subgraphHeaderHeight: measurements.subgraphHeaderHeight,
-        }),
-      )
-      .then((geo) => {
-        setExpandingNodeId(null);
-        setLayout(geo);
+        });
       })
-      .catch(console.error);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- expandedKey is the serialized form of expandedNodeIds
-  }, [entityDefs, edgeDefs, subgraphScopeMode, labelByMode, unionFrameLayout, showSource, expandedKey]);
+      .then((geo) => {
+        if (!geo) return;
+        if (cancelled || layoutRunIdRef.current !== runId) return;
+        // Save current layout as prev for FLIP animation before updating
+        setPrevLayout(layoutRef.current);
+        setLayout(geo);
+        setExpandingNodeId((current) => (current === runExpandedEntityId ? null : current));
+      })
+      .catch((error) => {
+        if (cancelled || layoutRunIdRef.current !== runId) return;
+        setExpandingNodeId((current) => (current === runExpandedEntityId ? null : current));
+        console.error(error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- expandedKey is the serialized form of expandedNodeIds
+  }, [
+    entityDefs,
+    edgeDefs,
+    subgraphScopeMode,
+    labelByMode,
+    unionFrameLayout,
+    showSource,
+    expandedKey,
+  ]);
 
   const effectiveGeometry: GraphGeometry | null = unionFrameLayout?.geometry ?? layout;
-  const entityById = useMemo(() => new Map(entityDefs.map((entity) => [entity.id, entity])), [entityDefs]);
+  const effectivePrevGeometry: GraphGeometry | null = unionFrameLayout ? null : prevLayout;
+  const entityById = useMemo(
+    () => new Map(entityDefs.map((entity) => [entity.id, entity])),
+    [entityDefs],
+  );
 
   const scopeColorByKey = useMemo<Map<string, ScopeColorPair>>(() => {
     if (scopeColorMode === "none") return new Map<string, ScopeColorPair>();
-    return assignScopeColorRgbByKey(entityDefs.map((entity) => scopeKeyForEntity(entity, scopeColorMode) ?? ""));
+    return assignScopeColorRgbByKey(
+      entityDefs.map((entity) => scopeKeyForEntity(entity, scopeColorMode) ?? ""),
+    );
   }, [entityDefs, scopeColorMode]);
 
   const nodesWithScopeColor = useMemo(() => {
@@ -211,6 +246,7 @@ export function GraphPanel({
         snapPhase={snapPhase}
         waitingForProcesses={waitingForProcesses}
         geometry={effectiveGeometry}
+        prevNodes={effectivePrevGeometry?.nodes}
         groups={groupsWithScopeColor}
         nodes={nodesWithScopeColor}
         selection={selection}

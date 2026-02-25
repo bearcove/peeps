@@ -19,6 +19,7 @@ import "./NodeLayer.css";
 
 export interface NodeLayerProps {
   nodes: GeometryNode[];
+  prevNodes?: GeometryNode[];
   nodeExpandStates?: Map<string, NodeExpandState>;
   onNodeClick?: (id: string) => void;
   onNodeContextMenu?: (id: string, clientX: number, clientY: number) => void;
@@ -51,15 +52,16 @@ export async function measureGraphLayout(
   showSource?: boolean,
   expandedNodeIds?: Set<string>,
 ): Promise<GraphMeasureResult> {
-  // Pre-fetch source data so the sync caches are warm before flushSync.
-  // Futures always show source in collapsed view; other kinds only when showSource is on.
+  // Pre-fetch source data for collapsed nodes that need it (futures, showSource).
+  // Expanded nodes are measured from DOM output and do not block on full source previews.
   {
     const fetches: Promise<unknown>[] = [];
     for (const def of defs) {
       const isExpanded = expandedNodeIds?.has(def.id) ?? false;
+      if (isExpanded) continue;
       const needsSource = showSource || canonicalNodeKind(def.kind) === "future";
-      if (!needsSource && !isExpanded) continue;
-      const frames = isExpanded ? def.frames : def.frames.slice(0, collapsedFrameCount(def.kind));
+      if (!needsSource) continue;
+      const frames = def.frames.slice(0, collapsedFrameCount(def.kind));
       for (const frame of frames) {
         if (frame.frame_id != null) {
           fetches.push(cachedFetchSourcePreview(frame.frame_id).catch(() => {}));
@@ -87,60 +89,72 @@ export async function measureGraphLayout(
 
   const sizes = new Map<string, { width: number; height: number }>();
 
-  for (const def of defs) {
-    const el = document.createElement("div");
-    container.appendChild(el);
-    const root = createRoot(el);
+  try {
+    for (const def of defs) {
+      const isExpanded = expandedNodeIds?.has(def.id) ?? false;
+      const el = document.createElement("div");
+      container.appendChild(el);
+      const root = createRoot(el);
 
-    const sublabel = labelBy ? computeNodeSublabel(def, labelBy) : undefined;
-    const isExpanded = expandedNodeIds?.has(def.id) ?? false;
-    // During measurement, useSourceLine hooks won't fire (sync render),
-    // so frame lines show fn·file:line fallback text — same height as final.
-    flushSync(() =>
-      root.render(
-        <GraphNode
-          data={{ ...graphNodeDataFromEntity(def), sublabel, showSource }}
-          expanded={isExpanded}
-        />,
-      ),
-    );
-    sizes.set(def.id, { width: el.offsetWidth, height: el.offsetHeight });
-    root.unmount();
+      try {
+        const sublabel = labelBy ? computeNodeSublabel(def, labelBy) : undefined;
+        // During measurement, hooks won't complete async fetches in this render turn.
+        flushSync(() =>
+          root.render(
+            <GraphNode
+              data={{ ...graphNodeDataFromEntity(def), sublabel, showSource }}
+              expanded={isExpanded}
+            />,
+          ),
+        );
+        sizes.set(def.id, { width: el.offsetWidth, height: el.offsetHeight });
+      } finally {
+        root.unmount();
+        container.removeChild(el);
+      }
+    }
+
+    let subgraphHeaderHeight = 0;
+    if (subgraphScopeMode !== "none") {
+      const el = document.createElement("div");
+      container.appendChild(el);
+      const root = createRoot(el);
+      const sampleLabel =
+        subgraphScopeMode === "process" ? "moire-examples(27139)" : "moire-example";
+
+      try {
+        flushSync(() =>
+          root.render(
+            <div className="scope-group" style={{ width: 320 }}>
+              <div className="scope-group-header">
+                <span className="scope-group-label">
+                  <span className="scope-group-icon">{scopeKindIcon(subgraphScopeMode, 12)}</span>
+                  <span>{sampleLabel}</span>
+                </span>
+              </div>
+            </div>,
+          ),
+        );
+
+        const headerEl = el.querySelector(".scope-group-header");
+        if (headerEl instanceof HTMLElement) subgraphHeaderHeight = headerEl.offsetHeight;
+      } finally {
+        root.unmount();
+        container.removeChild(el);
+      }
+    }
+
+    return { nodeSizes: sizes, subgraphHeaderHeight };
+  } finally {
+    document.body.removeChild(container);
   }
-
-  let subgraphHeaderHeight = 0;
-  if (subgraphScopeMode !== "none") {
-    const el = document.createElement("div");
-    container.appendChild(el);
-    const root = createRoot(el);
-    const sampleLabel = subgraphScopeMode === "process" ? "moire-examples(27139)" : "moire-example";
-
-    flushSync(() =>
-      root.render(
-        <div className="scope-group" style={{ width: 320 }}>
-          <div className="scope-group-header">
-            <span className="scope-group-label">
-              <span className="scope-group-icon">{scopeKindIcon(subgraphScopeMode, 12)}</span>
-              <span>{sampleLabel}</span>
-            </span>
-          </div>
-        </div>,
-      ),
-    );
-
-    const headerEl = el.querySelector(".scope-group-header");
-    if (headerEl instanceof HTMLElement) subgraphHeaderHeight = headerEl.offsetHeight;
-    root.unmount();
-  }
-
-  document.body.removeChild(container);
-  return { nodeSizes: sizes, subgraphHeaderHeight };
 }
 
 // ── NodeLayer ──────────────────────────────────────────────────
 
 export function NodeLayer({
   nodes,
+  prevNodes: _prevNodes,
   nodeExpandStates,
   onNodeClick,
   onNodeContextMenu,
@@ -149,12 +163,14 @@ export function NodeLayer({
 }: NodeLayerProps) {
   if (nodes.length === 0) return null;
 
-  // Render expanded/pinned nodes last so they paint on top (SVG has no z-index).
-  const expandedId = nodeExpandStates
-    ? ([...nodeExpandStates].find(([, s]) => s === "expanded")?.[0] ?? null)
+  // Render expanded/expanding nodes last so they paint on top (SVG has no z-index).
+  const expandedOrExpandingId = nodeExpandStates
+    ? ([...nodeExpandStates].find(([, s]) => s === "expanded" || s === "expanding")?.[0] ?? null)
     : null;
-  const ordered = expandedId
-    ? [...nodes].sort((a, b) => (a.id === expandedId ? 1 : b.id === expandedId ? -1 : 0))
+  const ordered = expandedOrExpandingId
+    ? [...nodes].sort((a, b) =>
+        a.id === expandedOrExpandingId ? 1 : b.id === expandedOrExpandingId ? -1 : 0,
+      )
     : nodes;
 
   return (

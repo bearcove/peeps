@@ -22,6 +22,8 @@ export function useCameraController(
   setCamera: (c: Camera) => void;
   fitView: () => void;
   panTo: (worldX: number, worldY: number) => void;
+  animateCameraTo: (target: Camera) => void;
+  getManualInteractionVersion: () => number;
   handlers: {
     onWheel: (e: WheelEvent) => void;
     onPointerDown: (e: PointerEvent) => void;
@@ -35,6 +37,7 @@ export function useCameraController(
   const cameraRef = useRef<Camera>(camera);
   cameraRef.current = camera;
   const animFrameRef = useRef<number>(0);
+  const manualInteractionVersionRef = useRef(0);
 
   const panState = useRef<{
     active: boolean;
@@ -56,6 +59,33 @@ export function useCameraController(
     setCamera(fitBounds(bounds, width, height, 40));
   }, [bounds, getViewportSize]);
 
+  const animateCameraTo = useCallback((target: Camera) => {
+    cancelAnimationFrame(animFrameRef.current);
+    const start = cameraRef.current;
+    const dx = target.x - start.x;
+    const dy = target.y - start.y;
+    const dz = target.zoom - start.zoom;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(dz) < 0.001) return;
+    const startTime = performance.now();
+    const tick = () => {
+      const elapsed = performance.now() - startTime;
+      const t = Math.min(1, elapsed / PAN_DURATION_MS);
+      // ease-out cubic
+      const ease = 1 - (1 - t) ** 3;
+      setCamera({
+        x: start.x + dx * ease,
+        y: start.y + dy * ease,
+        zoom: start.zoom + dz * ease,
+      });
+      if (t < 1) {
+        animFrameRef.current = requestAnimationFrame(tick);
+      }
+    };
+    animFrameRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  const getManualInteractionVersion = useCallback(() => manualInteractionVersionRef.current, []);
+
   const onWheel = useCallback(
     (e: WheelEvent) => {
       // If the cursor is over a scrollable block (e.g., an expanded graph node),
@@ -64,6 +94,8 @@ export function useCameraController(
       if (target.closest('[data-scroll-block="true"]')) return;
 
       e.preventDefault();
+      cancelAnimationFrame(animFrameRef.current);
+      manualInteractionVersionRef.current += 1;
       const svg = svgRef.current;
       if (!svg) return;
       const svgRect = svg.getBoundingClientRect();
@@ -103,6 +135,7 @@ export function useCameraController(
       if (!svg) return;
       if (target.closest('[data-pan-block="true"]')) return;
       e.preventDefault();
+      cancelAnimationFrame(animFrameRef.current);
       if (svg.setPointerCapture) {
         svg.setPointerCapture(e.pointerId);
       }
@@ -119,6 +152,7 @@ export function useCameraController(
   const onPointerMove = useCallback((e: PointerEvent) => {
     const state = panState.current;
     if (!state.active) return;
+    manualInteractionVersionRef.current += 1;
     const dx = e.clientX - state.startClientX;
     const dy = e.clientY - state.startClientY;
     setCamera({
@@ -158,30 +192,13 @@ export function useCameraController(
 
   const panTo = useCallback(
     (worldX: number, worldY: number) => {
-      cancelAnimationFrame(animFrameRef.current);
-      const startX = cameraRef.current.x;
-      const startY = cameraRef.current.y;
-      const dx = worldX - startX;
-      const dy = worldY - startY;
-      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
-      const startTime = performance.now();
-      const tick = () => {
-        const elapsed = performance.now() - startTime;
-        const t = Math.min(1, elapsed / PAN_DURATION_MS);
-        // ease-out cubic
-        const ease = 1 - (1 - t) ** 3;
-        setCamera((prev) => ({
-          ...prev,
-          x: startX + dx * ease,
-          y: startY + dy * ease,
-        }));
-        if (t < 1) {
-          animFrameRef.current = requestAnimationFrame(tick);
-        }
-      };
-      animFrameRef.current = requestAnimationFrame(tick);
+      animateCameraTo({
+        ...cameraRef.current,
+        x: worldX,
+        y: worldY,
+      });
     },
-    [], // stable — reads from cameraRef
+    [animateCameraTo],
   );
 
   return {
@@ -189,6 +206,8 @@ export function useCameraController(
     setCamera,
     fitView,
     panTo,
+    animateCameraTo,
+    getManualInteractionVersion,
     handlers: {
       onWheel,
       onPointerDown,
