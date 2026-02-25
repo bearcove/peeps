@@ -41,13 +41,14 @@
     line-height: 1.4;
 
     /* Role tokens */
-    --bg-base: light-dark(#ffffff, #0a0a07);
-    --bg-surface: var(--bg-base);
-    --bg-elevated: var(--bg-base);
+    --bg-base: light-dark(#ffffff, #0f0f0f);
+    --bg-elevated: light-dark(#f5f5f5, color-mix(white 4%, #141410));
+    --bg-surface: light-dark(#ebebeb, #1c1c17);
 
-    --border-subtle: light-dark(#1a1a1a, #fafafa);
-    --border-default: var(--border-subtle);
-    --border-edge: var(--border-subtle);
+    --border-default: light-dark(#1a1a1a, #fafafa);
+    --border-subtle: light-dark(#242424, #a0a0a0);
+    /*--border-subtle: light-dark(#d4d4d4, #2e2e28);*/
+    --border-edge: light-dark(#e8e8e8, #242420);
 
     --text-primary: light-dark(#111111, #fafafa);
     --text-secondary: light-dark(#3a3a3a, #e0e0e0);

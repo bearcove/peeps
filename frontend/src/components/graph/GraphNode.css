@@ -1,20 +1,21 @@
 .graph-card {
-    --graph-card-bg: var(--bg-surface);
-    --graph-card-border-color: var(--border-default);
+    --graph-card-bg: var(--bg-elevated);
+    --graph-card-border-color: var(--border-subtle);
     --graph-card-border-width: var(--graph-border-width);
+    border-radius: var(--radius-control);
     font-family: var(--font-ui);
     white-space: nowrap;
     background: var(--graph-card-bg);
     border: var(--graph-card-border-width) solid var(--graph-card-border-color);
     color: var(--text-primary);
     position: relative;
-    border-radius: var(--radius-control);
+    overscroll-behavior: none;
 }
 
-.graph-card--scope {
+/*.graph-card--scope {
     box-shadow: inset 3px 0 0 0
         light-dark(rgb(var(--scope-rgb-light) / 0.95), rgb(var(--scope-rgb-dark) / 0.9));
-}
+}*/
 
 .graph-card--stat-crit {
     --graph-card-border-color: var(--status-danger);
@@ -95,7 +96,7 @@
 .graph-node--expanded {
     z-index: 10;
     min-width: 600px;
-    max-height: 30em;
+    max-height: 20em;
     overflow-y: auto;
 
     .graph-node-frame {
@@ -124,6 +125,10 @@
     align-items: flex-start;
     gap: 4px;
 }
+/*
+.graph-node-frame-row__collapsed {
+    width: 800px;
+}*/
 
 .graph-node-frame-icon {
     flex-shrink: 0;
@@ -143,7 +148,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: pre;
-    max-width: 600px;
+    width: 600px;
     margin: 0;
     padding: 0;
     background: none;

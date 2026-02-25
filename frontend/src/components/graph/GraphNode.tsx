@@ -51,8 +51,7 @@ function FrameLineCollapsed({
   const location = formatFileLocation(frame);
 
   return (
-    <div className="graph-node-frame-row">
-      {langIcon(frame.source_file, 10, "graph-node-frame-icon")}
+    <div className="graph-node-frame-row graph-node-frame-row__collapsed">
       {sourceHtml ? (
         <pre
           className="graph-node-frame arborium-hl"
@@ -107,7 +106,10 @@ function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showS
             >
               <span className="graph-node-frame-block__gutter">{entry.lineNum}</span>
               {/* eslint-disable-next-line react/no-danger */}
-              <span className="graph-node-frame-block__text" dangerouslySetInnerHTML={{ __html: entry.html }} />
+              <span
+                className="graph-node-frame-block__text"
+                dangerouslySetInnerHTML={{ __html: entry.html }}
+              />
             </div>
           );
         })}
@@ -143,8 +145,11 @@ export function GraphNode({ data, expanded = false }: { data: GraphNodeData; exp
   const collapsedShowSource = data.showSource || isFuture;
   const showHeader = !isFuture;
 
-  const effectiveFrames = data.skipEntryFrames > 0 ? data.frames.slice(data.skipEntryFrames) : data.frames;
-  const visibleFrames = expanded ? effectiveFrames : pickCollapsedFrames(data.kind, effectiveFrames);
+  const effectiveFrames =
+    data.skipEntryFrames > 0 ? data.frames.slice(data.skipEntryFrames) : data.frames;
+  const visibleFrames = expanded
+    ? effectiveFrames
+    : pickCollapsedFrames(data.kind, effectiveFrames);
 
   return (
     <div
@@ -177,9 +182,10 @@ export function GraphNode({ data, expanded = false }: { data: GraphNodeData; exp
             <span className="graph-node-icon">{kindIcon(data.kind, 30)}</span>
             <div className="graph-node-main">
               <span className="graph-node-label">{data.label}</span>
+            </div>
+            <div className="graph-node-main">
               {(data.ageMs ?? 0) > 3000 && (
                 <>
-                  <span className="graph-node-dot">&middot;</span>
                   <DurationDisplay ms={data.ageMs ?? 0} />
                 </>
               )}
