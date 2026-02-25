@@ -47,10 +47,12 @@ export function FrameList({ data, expanded, isFuture, collapsedShowSource, colla
     data.skipEntryFrames > 0 ? sourceFrames.slice(data.skipEntryFrames) : sourceFrames;
 
   return (
-    <div className="graph-node-frames">
-      {effectiveFrames.map((frame) => (
-        <FrameLineExpanded key={frame.frame_id} frame={frame} showSource={data.showSource} />
-      ))}
+    <>
+      <div className="graph-node-frames">
+        {effectiveFrames.map((frame) => (
+          <FrameLineExpanded key={frame.frame_id} frame={frame} showSource={data.showSource} />
+        ))}
+      </div>
       {hasSystemFrames && (
         <label className="frame-list-system-toggle">
           <input
@@ -61,6 +63,6 @@ export function FrameList({ data, expanded, isFuture, collapsedShowSource, colla
           Show system frames
         </label>
       )}
-    </div>
+    </>
   );
 }

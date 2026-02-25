@@ -186,8 +186,7 @@
     flex-direction: row;
     align-items: center;
     gap: 5px;
-    padding: 5px 0 3px;
-    border-top: 1px solid var(--border-subtle);
+    padding: 12px 0 8px;
 }
 
 .graph-node-frame-section:first-child .graph-node-frame-sep {
@@ -197,12 +196,11 @@
 
 .graph-node-frame-sep__icon {
     flex-shrink: 0;
-    color: var(--text-tertiary);
-    opacity: 0.5;
+    color: var(--text-primary);
 }
 
 .graph-node-frame-sep__icon path {
-    fill: var(--text-tertiary);
+    fill: var(--text-primary);
 }
 
 .graph-node-frame-sep__name {
@@ -254,11 +252,14 @@
 
 .graph-node-frame-block__gutter {
     flex-shrink: 0;
-    width: 3ch;
+    width: 5ch;
     text-align: right;
     padding-right: 1ch;
     color: var(--text-tertiary);
     user-select: none;
+
+    border-right: 3px solid var(--accent);
+    margin-right: 0.8em;
 }
 
 .graph-node-frame-block__text {

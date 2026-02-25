@@ -78,14 +78,16 @@ export function FrameLineCollapsed({
     );
   })();
 
-  return (
-    <div className="graph-node-frame-row graph-node-frame-row__collapsed">
-      {content}
-    </div>
-  );
+  return <div className="graph-node-frame-row graph-node-frame-row__collapsed">{content}</div>;
 }
 
-export function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showSource?: boolean }) {
+export function FrameLineExpanded({
+  frame,
+  showSource,
+}: {
+  frame: GraphFrameData;
+  showSource?: boolean;
+}) {
   const preview = useSourcePreview(showSource ? frame.frame_id : undefined);
   const location = formatFileLocation(frame);
 
@@ -131,7 +133,7 @@ export function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData
   return (
     <div className="graph-node-frame-section">
       <div className="graph-node-frame-sep">
-        {langIcon(frame.source_file, 10, "graph-node-frame-sep__icon")}
+        {langIcon(frame.source_file, 16, "graph-node-frame-sep__icon")}
         <span className="graph-node-frame-sep__name">{shortFnName(frame.function_name)}</span>
         <a
           className="graph-node-frame-sep__loc"
@@ -146,7 +148,15 @@ export function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData
   );
 }
 
-export function GraphNode({ data, expanded = false, pinned = false }: { data: GraphNodeData; expanded?: boolean; pinned?: boolean }) {
+export function GraphNode({
+  data,
+  expanded = false,
+  pinned = false,
+}: {
+  data: GraphNodeData;
+  expanded?: boolean;
+  pinned?: boolean;
+}) {
   const showScopeColor =
     data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
 
