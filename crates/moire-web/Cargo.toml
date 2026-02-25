@@ -30,6 +30,7 @@ addr2line.workspace = true
 arborium.workspace = true
 object = "0.36"
 ur-taking-me-with-you.workspace = true
+arborium-theme = "2"
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

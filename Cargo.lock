@@ -1647,6 +1647,7 @@ version = "0.1.0"
 dependencies = [
  "addr2line",
  "arborium",
+ "arborium-theme",
  "axum",
  "facet",
  "facet-json",
