@@ -15,7 +15,7 @@ function normalizeWheelDeltaY(e: WheelEvent): number {
 const PAN_DURATION_MS = 300;
 
 export function useCameraController(
-  svgRef: RefObject<SVGSVGElement | null>,
+  surfaceRef: RefObject<HTMLElement | null>,
   bounds: Rect | null,
 ): {
   camera: Camera;
@@ -47,11 +47,11 @@ export function useCameraController(
   }>({ active: false, startClientX: 0, startClientY: 0, startCamera: { x: 0, y: 0, zoom: 1 } });
 
   const getViewportSize = useCallback(() => {
-    const svg = svgRef.current;
-    if (!svg) return { width: 800, height: 600 };
-    const rect = svg.getBoundingClientRect();
+    const surface = surfaceRef.current;
+    if (!surface) return { width: 800, height: 600 };
+    const rect = surface.getBoundingClientRect();
     return { width: rect.width, height: rect.height };
-  }, [svgRef]);
+  }, [surfaceRef]);
 
   const fitView = useCallback(() => {
     if (!bounds) return;
@@ -96,14 +96,14 @@ export function useCameraController(
       e.preventDefault();
       cancelAnimationFrame(animFrameRef.current);
       manualInteractionVersionRef.current += 1;
-      const svg = svgRef.current;
-      if (!svg) return;
-      const svgRect = svg.getBoundingClientRect();
+      const surface = surfaceRef.current;
+      if (!surface) return;
+      const surfaceRect = surface.getBoundingClientRect();
       const { width, height } = getViewportSize();
 
-      // Cursor position relative to SVG top-left
-      const cursorX = e.clientX - svgRect.left;
-      const cursorY = e.clientY - svgRect.top;
+      // Cursor position relative to canvas top-left
+      const cursorX = e.clientX - surfaceRect.left;
+      const cursorY = e.clientY - surfaceRect.top;
 
       setCamera((prev) => {
         const worldAtCursor = screenToWorld(prev, width, height, {
@@ -124,20 +124,20 @@ export function useCameraController(
         };
       });
     },
-    [getViewportSize, svgRef],
+    [getViewportSize, surfaceRef],
   );
 
   const onPointerDown = useCallback(
     (e: PointerEvent) => {
       if (e.button !== 0) return;
       const target = e.target as Element;
-      const svg = svgRef.current;
-      if (!svg) return;
+      const surface = surfaceRef.current;
+      if (!surface) return;
       if (target.closest('[data-pan-block="true"]')) return;
       e.preventDefault();
       cancelAnimationFrame(animFrameRef.current);
-      if (svg.setPointerCapture) {
-        svg.setPointerCapture(e.pointerId);
+      if (surface.setPointerCapture) {
+        surface.setPointerCapture(e.pointerId);
       }
       panState.current = {
         active: true,
@@ -146,7 +146,7 @@ export function useCameraController(
         startCamera: camera,
       };
     },
-    [camera, svgRef],
+    [camera, surfaceRef],
   );
 
   const onPointerMove = useCallback((e: PointerEvent) => {
@@ -166,24 +166,24 @@ export function useCameraController(
     (e: PointerEvent) => {
       if (!panState.current.active) return;
       panState.current.active = false;
-      const svg = svgRef.current;
-      if (svg && svg.hasPointerCapture?.(e.pointerId)) {
-        svg.releasePointerCapture(e.pointerId);
+      const surface = surfaceRef.current;
+      if (surface && surface.hasPointerCapture?.(e.pointerId)) {
+        surface.releasePointerCapture(e.pointerId);
       }
     },
-    [svgRef],
+    [surfaceRef],
   );
 
   const onPointerCancel = useCallback(
     (e: PointerEvent) => {
       if (!panState.current.active) return;
       panState.current.active = false;
-      const svg = svgRef.current;
-      if (svg && svg.hasPointerCapture?.(e.pointerId)) {
-        svg.releasePointerCapture(e.pointerId);
+      const surface = surfaceRef.current;
+      if (surface && surface.hasPointerCapture?.(e.pointerId)) {
+        surface.releasePointerCapture(e.pointerId);
       }
     },
-    [svgRef],
+    [surfaceRef],
   );
 
   const onLostPointerCapture = useCallback(() => {

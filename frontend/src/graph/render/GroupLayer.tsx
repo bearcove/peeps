@@ -20,18 +20,18 @@ export function GroupLayer({ groups, groupOpacityById }: GroupLayerProps) {
         const opacity = groupOpacityById?.get(group.id) ?? 1;
 
         return (
-          <foreignObject
+          <div
             key={group.id}
-            x={x}
-            y={y}
-            width={width}
-            height={height}
-            style={{ pointerEvents: "none", opacity }}
+            style={{
+              position: "absolute",
+              transform: `translate(${x}px, ${y}px)`,
+              width,
+              height,
+              pointerEvents: "none",
+              opacity,
+            }}
           >
-            {/* xmlns required for HTML content inside SVG foreignObject */}
             <div
-              // @ts-expect-error xmlns is valid in SVG foreignObject context
-              xmlns="http://www.w3.org/1999/xhtml"
               className="scope-group"
               style={
                 scopeRgbLight !== undefined && scopeRgbDark !== undefined
@@ -49,7 +49,7 @@ export function GroupLayer({ groups, groupOpacityById }: GroupLayerProps) {
                 </span>
               </div>
             </div>
-          </foreignObject>
+          </div>
         );
       })}
     </>

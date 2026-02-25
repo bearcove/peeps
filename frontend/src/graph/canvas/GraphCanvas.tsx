@@ -9,7 +9,7 @@ import React, {
   useState,
 } from "react";
 import type { GraphGeometry } from "../geometry";
-import { type Camera, cameraTransform } from "./camera";
+import { type Camera, cameraTransform, screenToWorld } from "./camera";
 import { useCameraController } from "./useCameraController";
 import "./GraphCanvas.css";
 
@@ -23,7 +23,6 @@ interface CameraContextValue {
   clientToGraph: (clientX: number, clientY: number) => { x: number; y: number } | null;
   viewportWidth: number;
   viewportHeight: number;
-  markerUrl: (size: number) => string;
 }
 
 export const CameraContext = createContext<CameraContextValue | null>(null);
@@ -49,17 +48,13 @@ export function GraphCanvas({
 }: GraphCanvasProps) {
   const instanceId = useId();
   const dotPatternId = `graph-canvas-dots-${instanceId}`;
-  const arrowhead8Id = `arrowhead-8-${instanceId}`;
-  const arrowhead10Id = `arrowhead-10-${instanceId}`;
-  const arrowhead14Id = `arrowhead-14-${instanceId}`;
-  const svgRef = useRef<SVGSVGElement>(null);
-  const worldRef = useRef<SVGGElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 800, height: 600 });
 
   useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
-    const rect = svg.getBoundingClientRect();
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    const rect = surface.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
       setViewportSize({ width: rect.width, height: rect.height });
     }
@@ -70,7 +65,7 @@ export function GraphCanvas({
         setViewportSize({ width, height });
       }
     });
-    observer.observe(svg);
+    observer.observe(surface);
     return () => observer.disconnect();
   }, []);
 
@@ -82,39 +77,39 @@ export function GraphCanvas({
     animateCameraTo,
     getManualInteractionVersion,
     handlers,
-  } = useCameraController(svgRef, geometry?.bounds ?? null);
+  } = useCameraController(surfaceRef, geometry?.bounds ?? null);
 
   // Attach wheel listener as non-passive to allow preventDefault
   useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
-    svg.addEventListener("wheel", handlers.onWheel, { passive: false });
-    return () => svg.removeEventListener("wheel", handlers.onWheel);
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    surface.addEventListener("wheel", handlers.onWheel, { passive: false });
+    return () => surface.removeEventListener("wheel", handlers.onWheel);
   }, [handlers.onWheel]);
 
   const handlePointerDown = useCallback(
-    (e: React.PointerEvent<SVGSVGElement>) => {
+    (e: React.PointerEvent<HTMLDivElement>) => {
       handlers.onPointerDown(e.nativeEvent);
     },
     [handlers],
   );
 
   const handlePointerMove = useCallback(
-    (e: React.PointerEvent<SVGSVGElement>) => {
+    (e: React.PointerEvent<HTMLDivElement>) => {
       handlers.onPointerMove(e.nativeEvent);
     },
     [handlers],
   );
 
   const handlePointerUp = useCallback(
-    (e: React.PointerEvent<SVGSVGElement>) => {
+    (e: React.PointerEvent<HTMLDivElement>) => {
       handlers.onPointerUp(e.nativeEvent);
     },
     [handlers],
   );
 
   const handlePointerCancel = useCallback(
-    (e: React.PointerEvent<SVGSVGElement>) => {
+    (e: React.PointerEvent<HTMLDivElement>) => {
       handlers.onPointerCancel(e.nativeEvent);
     },
     [handlers],
@@ -125,32 +120,27 @@ export function GraphCanvas({
   }, [handlers]);
 
   const handleClick = useCallback(
-    (e: React.MouseEvent<SVGSVGElement>) => {
+    (e: React.MouseEvent<HTMLDivElement>) => {
       const target = e.target as Element;
-      const svg = svgRef.current;
-      if (!svg) return;
-      if (target === svg || target.getAttribute("data-background") === "true") {
-        onBackgroundClick?.();
-      }
+      if (target.closest('[data-pan-block="true"]')) return;
+      onBackgroundClick?.();
     },
     [onBackgroundClick],
   );
 
   const transform = cameraTransform(camera, viewportSize.width, viewportSize.height);
   const dotPatternTransform = `translate(${viewportSize.width / 2 - camera.x * camera.zoom}, ${viewportSize.height / 2 - camera.y * camera.zoom}) scale(${camera.zoom})`;
-  const clientToGraph = useCallback((clientX: number, clientY: number) => {
-    const svg = svgRef.current;
-    const world = worldRef.current;
-    if (!svg || !world) return null;
-    const ctm = world.getScreenCTM();
-    if (!ctm) return null;
-    const point = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
-    return { x: point.x, y: point.y };
-  }, []);
-
-  const markerUrl = useCallback(
-    (size: number) => `url(#arrowhead-${size}-${instanceId})`,
-    [instanceId],
+  const clientToGraph = useCallback(
+    (clientX: number, clientY: number) => {
+      const surface = surfaceRef.current;
+      if (!surface) return null;
+      const rect = surface.getBoundingClientRect();
+      return screenToWorld(camera, viewportSize.width, viewportSize.height, {
+        x: clientX - rect.left,
+        y: clientY - rect.top,
+      });
+    },
+    [camera, viewportSize.width, viewportSize.height],
   );
 
   const cameraContextValue = useMemo(
@@ -164,7 +154,6 @@ export function GraphCanvas({
       clientToGraph,
       viewportWidth: viewportSize.width,
       viewportHeight: viewportSize.height,
-      markerUrl,
     }),
     [
       camera,
@@ -176,23 +165,22 @@ export function GraphCanvas({
       clientToGraph,
       viewportSize.width,
       viewportSize.height,
-      markerUrl,
     ],
   );
 
   return (
     <CameraContext.Provider value={cameraContextValue}>
-      <div className={`graph-canvas${className ? ` ${className}` : ""}`}>
-        <svg
-          ref={svgRef}
-          className="graph-canvas__svg"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerCancel}
-          onLostPointerCapture={handleLostPointerCapture}
-          onClick={handleClick}
-        >
+      <div
+        ref={surfaceRef}
+        className={`graph-canvas${className ? ` ${className}` : ""}`}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onLostPointerCapture={handleLostPointerCapture}
+        onClick={handleClick}
+      >
+        <svg className="graph-canvas__background" aria-hidden="true">
           <defs>
             <pattern
               id={dotPatternId}
@@ -203,46 +191,13 @@ export function GraphCanvas({
             >
               <circle cx="1" cy="1" r="0.8" className="graph-canvas__dot" />
             </pattern>
-            <marker
-              id={arrowhead8Id}
-              markerWidth="8"
-              markerHeight="8"
-              refX="0"
-              refY="4"
-              orient="auto"
-              markerUnits="userSpaceOnUse"
-            >
-              <path d="M 0 0 L 8 4 L 0 8 Z" fill="context-stroke" />
-            </marker>
-            <marker
-              id={arrowhead10Id}
-              markerWidth="10"
-              markerHeight="10"
-              refX="0"
-              refY="5"
-              orient="auto"
-              markerUnits="userSpaceOnUse"
-            >
-              <path d="M 0 0 L 10 5 L 0 10 Z" fill="context-stroke" />
-            </marker>
-            <marker
-              id={arrowhead14Id}
-              markerWidth="14"
-              markerHeight="14"
-              refX="0"
-              refY="7"
-              orient="auto"
-              markerUnits="userSpaceOnUse"
-            >
-              <path d="M 0 0 L 14 7 L 0 14 Z" fill="context-stroke" />
-            </marker>
           </defs>
           <rect width="100%" height="100%" fill="var(--bg-base)" data-background="true" />
           <rect width="100%" height="100%" fill={`url(#${dotPatternId})`} data-background="true" />
-          <g ref={worldRef} transform={transform}>
-            {children}
-          </g>
         </svg>
+        <div className="graph-canvas__world" style={{ transform }}>
+          {children}
+        </div>
       </div>
     </CameraContext.Provider>
   );

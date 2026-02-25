@@ -39,7 +39,9 @@ export function cameraTransform(
   viewportWidth: number,
   viewportHeight: number,
 ): string {
-  return `translate(${viewportWidth / 2}, ${viewportHeight / 2}) scale(${camera.zoom}) translate(${-camera.x}, ${-camera.y})`;
+  const tx = viewportWidth / 2 - camera.x * camera.zoom;
+  const ty = viewportHeight / 2 - camera.y * camera.zoom;
+  return `translate(${tx}px, ${ty}px) scale(${camera.zoom})`;
 }
 
 export function fitBounds(

@@ -201,17 +201,16 @@ export function NodeLayer({
         );
 
         return (
-          <foreignObject
+          <div
             key={node.id}
-            x={x}
-            y={y}
-            width={width}
-            height={height}
             data-pan-block="true"
+            className="nl-node-shell"
             style={{
-              overflow: "visible",
+              transform: `translate(${x}px, ${y}px)`,
+              width,
+              height,
               opacity: transitionOpacity,
-              pointerEvents: transitionOpacity < 0.99 ? "none" : undefined,
+              pointerEvents: transitionOpacity < 0.99 ? "none" : "all",
             }}
             onClick={() => onNodeClick?.(node.id)}
             onContextMenu={(event) => {
@@ -222,15 +221,8 @@ export function NodeLayer({
             onMouseEnter={() => onNodeHover?.(node.id)}
             onMouseLeave={() => onNodeHover?.(null)}
           >
-            {/* xmlns required for HTML content inside SVG foreignObject */}
-            <div
-              // @ts-expect-error xmlns is valid in SVG foreignObject context
-              xmlns="http://www.w3.org/1999/xhtml"
-              className="nl-fo-wrapper"
-            >
-              {cardContent}
-            </div>
-          </foreignObject>
+            <div className="nl-node-content">{cardContent}</div>
+          </div>
         );
       })}
     </>
