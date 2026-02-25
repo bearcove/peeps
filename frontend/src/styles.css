@@ -41,16 +41,19 @@
     line-height: 1.4;
 
     /* Role tokens */
-    --bg-base: light-dark(#ffffff, #0f0f0f);
-    --bg-elevated: light-dark(#f5f5f5, color-mix(white 4%, #141410));
-    --bg-surface: light-dark(#ebebeb, #1c1c17);
+    --bg-base: light-dark(
+        color-mix(in oklab, var(--theme-bg), var(--theme-fg) 6%),
+        color-mix(in oklab, var(--theme-bg), black 30%)
+    );
+    --bg-elevated: var(--theme-bg);
+    --bg-surface: color-mix(in oklab, var(--theme-fg) 7%, var(--theme-bg));
 
     --border-default: light-dark(#1a1a1a, #fafafa);
     --border-subtle: light-dark(#242424, #a0a0a0);
     /*--border-subtle: light-dark(#d4d4d4, #2e2e28);*/
     --border-edge: light-dark(#e8e8e8, #242420);
 
-    --text-primary: light-dark(#111111, #fafafa);
+    --text-primary: var(--theme-fg);
     --text-secondary: light-dark(#3a3a3a, #e0e0e0);
     --text-muted: var(--hl-c);
     --text-tertiary: var(--text-muted);
@@ -60,9 +63,9 @@
     --accent-active: light-dark(#000000, #e0e0e0);
     --accent-fg: light-dark(#ffffff, #111111);
 
-    --status-success: light-dark(#1c9e3c, color-mix(in oklab, #3fb950 65%, white));
+    --status-success: var(--hl-da);
     --status-warning: light-dark(#b8860b, color-mix(in oklab, #d4820a 70%, white));
-    --status-danger: light-dark(#b91c1c, color-mix(in oklab, #f85149 65%, white));
+    --status-danger: var(--hl-dd);
 
     --focus-ring: color-mix(in srgb, var(--accent) 30%, transparent);
 

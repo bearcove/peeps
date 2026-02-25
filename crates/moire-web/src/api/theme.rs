@@ -28,6 +28,13 @@ fn theme_to_css_vars(theme: &Theme) -> String {
         }
     }
 
+    if let Some(bg) = &theme.background {
+        writeln!(css, "  --theme-bg: {};", bg.to_hex()).unwrap();
+    }
+    if let Some(fg) = &theme.foreground {
+        writeln!(css, "  --theme-fg: {};", fg.to_hex()).unwrap();
+    }
+
     let mut emitted: HashSet<&str> = HashSet::new();
     for (i, def) in HIGHLIGHTS.iter().enumerate() {
         if def.tag.is_empty() || emitted.contains(def.tag) {
