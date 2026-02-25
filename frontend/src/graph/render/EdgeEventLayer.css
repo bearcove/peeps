@@ -40,22 +40,32 @@
     position: absolute;
     transform: translateX(-50%);
     pointer-events: all;
-    --graph-card-bg: var(--bg-elevated);
-    --graph-card-border-color: var(--border-edge);
-    --graph-card-tone-shadow: var(--shadow-elevation-lg);
+
+    --graph-node-padding: 8px;
+    --graph-code-card-width: 100%;
 
     width: min(640px, 58vw);
     max-height: 62vh;
-    overflow: auto;
-    padding: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: none;
+
+    background: var(--bg-elevated);
+    border: 1.4px solid var(--border-edge);
+    border-radius: var(--radius-control);
+    corner-shape: squircle;
+    box-shadow: var(--shadow-elevation-md);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
 }
 
 .edge-event-inspector__header {
     display: flex;
     align-items: baseline;
     gap: 10px;
-    margin-bottom: 10px;
-    padding: 1px 2px 0;
+    padding: 5px var(--graph-node-padding);
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
 }
 
 .edge-event-inspector__title {
@@ -70,17 +80,4 @@
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text-muted);
-}
-
-.edge-event-inspector__frames {
-    display: grid;
-    gap: 6px;
-    padding: 0 2px 2px;
-}
-
-.edge-event-inspector__empty {
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 6px 2px;
 }

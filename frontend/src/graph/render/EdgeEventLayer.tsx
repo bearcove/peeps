@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo } from "react";
-import { cachedFetchSourcePreviews } from "../../api/sourceCache";
+import React, { useMemo } from "react";
 import type { GraphFrameData } from "../../components/graph/graphNodeData";
-import { FrameLine } from "../../components/graph/GraphNode";
+import { BacktraceDisplay } from "../../components/graph/BacktraceDisplay";
 import type { GeometryEdge, Point } from "../geometry";
 import "./EdgeEventLayer.css";
 
@@ -46,21 +45,12 @@ export function EdgeEventLayer({ edges, selectedEdgeId, onEdgeClick }: EdgeEvent
     return entries.find((entry) => entry.edge.id === selectedEdgeId) ?? null;
   }, [entries, selectedEdgeId]);
 
-  const selectedDisplayFrames = useMemo(() => {
+  // When there are no user frames, fall back to all frames as primary display.
+  const displayFrames = useMemo(() => {
     if (!selectedEntry) return [];
-    return selectedEntry.meta.frames.length > 0
-      ? selectedEntry.meta.frames
-      : selectedEntry.meta.allFrames;
+    const { frames, allFrames } = selectedEntry.meta;
+    return frames.length > 0 ? frames : allFrames;
   }, [selectedEntry]);
-
-  useEffect(() => {
-    if (!selectedEntry) return;
-    const frameIds = selectedDisplayFrames
-      .map((frame) => frame.frame_id)
-      .filter((frameId): frameId is number => frameId != null);
-    if (frameIds.length === 0) return;
-    void cachedFetchSourcePreviews(frameIds);
-  }, [selectedEntry, selectedDisplayFrames]);
 
   return (
     <div className="edge-event-layer">
@@ -86,7 +76,7 @@ export function EdgeEventLayer({ edges, selectedEdgeId, onEdgeClick }: EdgeEvent
       {selectedEntry && (
         <div
           data-pan-block="true"
-          className="edge-event-inspector graph-card"
+          className="edge-event-inspector"
           style={{ left: selectedEntry.point.x, top: selectedEntry.point.y + 20 }}
           onClick={(event) => event.stopPropagation()}
           role="dialog"
@@ -96,22 +86,12 @@ export function EdgeEventLayer({ edges, selectedEdgeId, onEdgeClick }: EdgeEvent
             <span className="edge-event-inspector__title">{selectedEntry.meta.eventLabel}</span>
             <span className="edge-event-inspector__bt">bt:{selectedEntry.meta.backtraceId}</span>
           </div>
-          <div className="edge-event-inspector__frames">
-            {selectedDisplayFrames.length > 0 ? (
-              selectedDisplayFrames.map((frame, index) => (
-                <FrameLine
-                  key={`${selectedEntry.edge.id}:${frame.frame_id ?? "none"}:${index}`}
-                  frame={frame}
-                  expanded={true}
-                  showSource={true}
-                />
-              ))
-            ) : selectedEntry.meta.framesLoading ? (
-              <div className="edge-event-inspector__empty">symbolicating backtrace…</div>
-            ) : (
-              <div className="edge-event-inspector__empty">No resolved frames for this edge.</div>
-            )}
-          </div>
+          <BacktraceDisplay
+            frames={displayFrames}
+            allFrames={selectedEntry.meta.allFrames}
+            framesLoading={selectedEntry.meta.framesLoading}
+            showSource={true}
+          />
         </div>
       )}
     </div>
