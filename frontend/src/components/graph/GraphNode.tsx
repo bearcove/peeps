@@ -83,8 +83,20 @@ export function FrameLine({
 
     if (!expanded) {
       if (frame.frame_id == null) return fallbackCollapsedLine;
+      const preview = getSourcePreviewSync(frame.frame_id);
+      if (!preview) return fallbackExpandedLine;
+      const enclosingFn = preview.enclosing_fn;
+      if (enclosingFn) {
+        return (
+          <div className="graph-node-enclosing-fn">
+            <span className="graph-node-enclosing-fn__in">in </span>
+            <span className="graph-node-enclosing-fn__name">{enclosingFn}</span>
+          </div>
+        );
+      }
+      // Fallback for non-Rust: show the single-line code snippet
       const lineHtml = getSourceLineSync(frame.frame_id);
-      if (!lineHtml) return fallbackExpandedLine;
+      if (!lineHtml) return null;
       return (
         <pre
           className="graph-node-frame arborium-hl"

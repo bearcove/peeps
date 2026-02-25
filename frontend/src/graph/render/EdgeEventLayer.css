@@ -1,0 +1,86 @@
+.edge-event-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.edge-event-chip {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    pointer-events: all;
+    border: 1px solid color-mix(in srgb, var(--border-edge) 78%, transparent);
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    color: color-mix(in srgb, var(--text-primary) 92%, var(--accent));
+    box-shadow: var(--shadow-elevation-sm);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    text-transform: lowercase;
+    padding: 4px 6px;
+    cursor: pointer;
+}
+
+.edge-event-chip:hover {
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--border-edge));
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
+}
+
+.edge-event-chip--selected {
+    border-color: color-mix(in srgb, var(--accent) 72%, var(--border-edge));
+    color: color-mix(in srgb, var(--accent) 88%, var(--text-primary));
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),
+        var(--shadow-elevation-sm);
+}
+
+.edge-event-inspector {
+    position: absolute;
+    transform: translateX(-50%);
+    pointer-events: all;
+    --graph-card-bg: var(--bg-elevated);
+    --graph-card-border-color: var(--border-edge);
+    --graph-card-tone-shadow: var(--shadow-elevation-lg);
+
+    width: min(640px, 58vw);
+    max-height: 62vh;
+    overflow: auto;
+    padding: 0;
+}
+
+.edge-event-inspector__header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 1px 2px 0;
+}
+
+.edge-event-inspector__title {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-transform: lowercase;
+}
+
+.edge-event-inspector__bt {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.edge-event-inspector__frames {
+    display: grid;
+    gap: 6px;
+    padding: 0 2px 2px;
+}
+
+.edge-event-inspector__empty {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 6px 2px;
+}

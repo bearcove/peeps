@@ -283,6 +283,26 @@
     text-underline-offset: 2px;
 }
 
+/* ── Enclosing function context (collapsed future display) ── */
+
+.graph-node-enclosing-fn {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    line-height: 1.3;
+    padding: 3px var(--graph-node-padding) 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.graph-node-enclosing-fn__in {
+    color: var(--text-tertiary);
+}
+
+.graph-node-enclosing-fn__name {
+    color: var(--text-secondary);
+}
+
 /* ── Expanded source block ── */
 
 .graph-node-frame-block {

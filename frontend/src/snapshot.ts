@@ -97,6 +97,13 @@ export type EdgeDef = {
   source: string;
   target: string;
   kind: EdgeKind;
+  backtraceId?: number;
+  sourceFrame?: RenderSource;
+  krate?: string;
+  topFrame?: RenderTopFrame;
+  frames?: RenderTopFrame[];
+  allFrames?: RenderTopFrame[];
+  framesLoading?: boolean;
   /** ELK port ID on the source node, when the source is a merged channel pair. */
   sourcePort?: string;
   /** ELK port ID on the target node, when the target is a merged channel pair. */
@@ -852,13 +859,31 @@ export function convertSnapshot(
 
   // Second pass: build edges, and derive lock state from `holds` edges inline.
   for (const proc of snapshot.processes) {
+    const processIdStr = String(proc.process_id);
     for (let i = 0; i < proc.snapshot.edges.length; i++) {
       const e = proc.snapshot.edges[i];
+      const backtraceId = requireBacktraceId(
+        e,
+        `edge ${e.src}->${e.dst} (${e.kind})`,
+        processIdStr,
+      );
+      const resolvedBacktrace = resolveBacktraceDisplay(
+        backtraces,
+        backtraceId,
+        `edge ${e.src}->${e.dst} (${e.kind})`,
+      );
       allEdges.push({
         id: `e${i}-${e.src}-${e.dst}-${e.kind}`,
         source: e.src,
         target: e.dst,
         kind: e.kind,
+        backtraceId,
+        sourceFrame: resolvedBacktrace.source,
+        krate: resolvedBacktrace.source.krate,
+        topFrame: resolvedBacktrace.topFrame,
+        frames: resolvedBacktrace.frames,
+        allFrames: resolvedBacktrace.allFrames,
+        framesLoading: resolvedBacktrace.framesLoading,
       });
 
       if (e.kind === "holds") {

@@ -9,6 +9,7 @@ import { GraphCanvas, useCameraContext } from "../../graph/canvas/GraphCanvas";
 import type { Camera as CameraState } from "../../graph/canvas/camera";
 import { GroupLayer } from "../../graph/render/GroupLayer";
 import { EdgeLayer } from "../../graph/render/EdgeLayer";
+import { EdgeEventLayer } from "../../graph/render/EdgeEventLayer";
 import { NodeLayer } from "../../graph/render/NodeLayer";
 import type { GraphGeometry, GeometryGroup, GeometryNode } from "../../graph/geometry";
 import { interpolateGraph, type InterpolatedGraph } from "../../graph/transition";
@@ -563,7 +564,11 @@ export function GraphViewport({
               portAnchors={portAnchors}
               onEdgeClick={(id) => {
                 closeNodeContextMenu();
-                onSelect({ kind: "edge", id });
+                if (selection?.kind === "edge" && selection.id === id) {
+                  onSelect(null);
+                } else {
+                  onSelect({ kind: "edge", id });
+                }
               }}
             />
             <NodeLayer
@@ -597,6 +602,18 @@ export function GraphViewport({
                 const x = Math.max(8, Math.min(clientX - rect.left, Math.max(8, rect.width - 8)));
                 const y = Math.max(8, Math.min(clientY - rect.top, Math.max(8, rect.height - 8)));
                 setNodeContextMenu({ nodeId: id, x, y });
+              }}
+            />
+            <EdgeEventLayer
+              edges={renderedGeometry.edges}
+              selectedEdgeId={selection?.kind === "edge" ? selection.id : null}
+              onEdgeClick={(id) => {
+                closeNodeContextMenu();
+                if (selection?.kind === "edge" && selection.id === id) {
+                  onSelect(null);
+                } else {
+                  onSelect({ kind: "edge", id });
+                }
               }}
             />
           </>
@@ -648,8 +665,14 @@ function NodeExpandPanner({
   nodeExpandStates: Map<string, NodeExpandState>;
   transitionDurationMs: number;
 }) {
-  const { panTo, animateCameraTo, getManualInteractionVersion, getCamera, getAnimationDestination, viewportHeight } =
-    useCameraContext();
+  const {
+    panTo,
+    animateCameraTo,
+    getManualInteractionVersion,
+    getCamera,
+    getAnimationDestination,
+    viewportHeight,
+  } = useCameraContext();
   const prevStatesRef = useRef<Map<string, NodeExpandState>>(new Map());
   // Camera position saved when expansion starts; restored on collapse unless user manually moved.
   const savedCameraRef = useRef<CameraState | null>(null);

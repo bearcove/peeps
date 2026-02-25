@@ -391,6 +391,168 @@ pub fn extract_target_statement(
     Some(collapsed)
 }
 
+/// Extract the collapsed enclosing-function context for compact display.
+///
+/// Walks up the syntax tree from the target location to find the nearest
+/// enclosing `function_item` (named function or method, not closure).
+/// Returns a string like:
+///   `run()`
+///   `SomeType::process(&self, config, handle, …)`
+///
+/// Parameters are name-only (type stripped), up to 3, then `…`.
+/// Currently only implemented for Rust; returns `None` for other languages.
+pub fn extract_enclosing_fn(
+    content: &str,
+    lang_name: &str,
+    target_line: u32,
+    target_col: Option<u32>,
+) -> Option<String> {
+    if lang_name != "rust" {
+        return None;
+    }
+    let ts_lang = arborium::get_language(lang_name)?;
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&ts_lang).ok()?;
+    let tree = parser.parse(content.as_bytes(), None)?;
+
+    let row = (target_line - 1) as usize;
+    let col = target_col.unwrap_or(0) as usize;
+    let point = tree_sitter::Point::new(row, col);
+
+    let node = tree
+        .root_node()
+        .named_descendant_for_point_range(point, point)?;
+
+    let bytes = content.as_bytes();
+
+    // Walk up to find the nearest enclosing function_item.
+    // Closures (closure_expression) are skipped naturally since they
+    // are not "function_item" nodes.
+    let fn_node = {
+        let mut current = node;
+        loop {
+            if current.kind() == "function_item" {
+                break Some(current);
+            }
+            match current.parent() {
+                Some(parent) => current = parent,
+                None => break None,
+            }
+        }
+    }?;
+
+    // Check if this fn is inside an impl_item and get the implementing type name
+    let impl_type_name = {
+        let mut c = fn_node;
+        let mut found: Option<String> = None;
+        while let Some(parent) = c.parent() {
+            if parent.kind() == "impl_item" {
+                found = extract_impl_type_name(&parent, bytes);
+                break;
+            }
+            c = parent;
+        }
+        found
+    };
+
+    let fn_name = fn_node
+        .child_by_field_name("name")
+        .and_then(|n| n.utf8_text(bytes).ok())?;
+
+    let params = collapse_fn_params(&fn_node, bytes);
+
+    let mut result = String::new();
+    if let Some(impl_type) = impl_type_name {
+        result.push_str(&impl_type);
+        result.push_str("::");
+    }
+    result.push_str(fn_name);
+    result.push('(');
+    result.push_str(&params);
+    result.push(')');
+
+    Some(result)
+}
+
+/// Extract the plain type identifier from an impl_item's `type` field.
+fn extract_impl_type_name(impl_node: &tree_sitter::Node, bytes: &[u8]) -> Option<String> {
+    let type_node = impl_node.child_by_field_name("type")?;
+    unwrap_to_type_identifier(&type_node, bytes)
+}
+
+/// Recursively unwrap generic/scoped type nodes to the base `type_identifier`.
+fn unwrap_to_type_identifier(node: &tree_sitter::Node, bytes: &[u8]) -> Option<String> {
+    match node.kind() {
+        "type_identifier" | "identifier" => node.utf8_text(bytes).ok().map(|s| s.to_string()),
+        "generic_type" | "scoped_type_identifier" => {
+            if let Some(inner) = node.child_by_field_name("type") {
+                unwrap_to_type_identifier(&inner, bytes)
+            } else {
+                node.named_child(0)
+                    .as_ref()
+                    .and_then(|n| unwrap_to_type_identifier(n, bytes))
+            }
+        }
+        _ => node
+            .named_child(0)
+            .as_ref()
+            .and_then(|n| unwrap_to_type_identifier(n, bytes)),
+    }
+}
+
+/// Collapse a function's parameter list to names-only, up to 3, then `…`.
+///
+/// - `self` / `&self` / `&mut self` kept as-is (whitespace collapsed)
+/// - regular parameters: only the pattern name, type stripped
+/// - more than 3 params: trailing `, …` appended
+fn collapse_fn_params(fn_node: &tree_sitter::Node, bytes: &[u8]) -> String {
+    let params_node = match fn_node.child_by_field_name("parameters") {
+        Some(n) => n,
+        None => return String::new(),
+    };
+
+    let mut names: Vec<String> = Vec::new();
+    let mut has_more = false;
+
+    for i in 0..params_node.named_child_count() {
+        let child = match params_node.named_child(i) {
+            Some(c) => c,
+            None => continue,
+        };
+
+        let name: Option<String> = match child.kind() {
+            "self_parameter" => child
+                .utf8_text(bytes)
+                .ok()
+                .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" ")),
+            "parameter" => child
+                .child_by_field_name("pattern")
+                .and_then(|p| p.utf8_text(bytes).ok())
+                .map(|s| s.to_string()),
+            "variadic_parameter" => Some("..".to_string()),
+            _ => continue,
+        };
+
+        if let Some(n) = name {
+            if names.len() < 3 {
+                names.push(n);
+            } else {
+                has_more = true;
+                break;
+            }
+        }
+    }
+
+    let mut result = names.join(", ");
+    if has_more {
+        if !result.is_empty() {
+            result.push_str(", ");
+        }
+        result.push('…');
+    }
+    result
+}
+
 /// Collapse whitespace between tokens, suppressing the space where it would
 /// look wrong in a single-line rendering:
 ///   - before `.` `;` `?` `)` `]` `>` `,` `:`
@@ -751,6 +913,91 @@ async fn recv(&mut self) -> Result<Option<Msg>> {
             result.contains("match"),
             "should contain match keyword, got: {result}"
         );
+    }
+
+    // ── extract_enclosing_fn tests ────────────────────────────────────────────
+
+    #[test]
+    fn enclosing_fn_free_function_no_params() {
+        let src = r#"fn run() {
+    let a = 1;
+    spawn(async move { a });
+}"#;
+        let result = extract_enclosing_fn(src, "rust", 3, None).expect("should find fn");
+        assert_eq!(result, "run()");
+    }
+
+    #[test]
+    fn enclosing_fn_impl_method_with_self() {
+        let src = r#"struct Foo;
+impl Foo {
+    pub async fn run(&self) {
+        let a = 1;
+        spawn(async move { a });
+    }
+}"#;
+        let result = extract_enclosing_fn(src, "rust", 5, None).expect("should find fn");
+        assert_eq!(result, "Foo::run(&self)");
+    }
+
+    #[test]
+    fn enclosing_fn_params_truncated_at_3() {
+        let src = r#"fn process(a: u32, b: u32, c: u32, d: u32) {
+    spawn(async move { a });
+}"#;
+        let result = extract_enclosing_fn(src, "rust", 2, None).expect("should find fn");
+        assert_eq!(result, "process(a, b, c, …)");
+    }
+
+    #[test]
+    fn enclosing_fn_exactly_3_params_no_truncation() {
+        let src = r#"fn process(a: u32, b: u32, c: u32) {
+    spawn(async move { a });
+}"#;
+        let result = extract_enclosing_fn(src, "rust", 2, None).expect("should find fn");
+        assert_eq!(result, "process(a, b, c)");
+    }
+
+    #[test]
+    fn enclosing_fn_inside_closure_returns_outer() {
+        let src = r#"fn run() {
+    let v: Vec<u32> = vec![1, 2, 3];
+    v.iter().for_each(|x| {
+        spawn(async move { *x });
+    });
+}"#;
+        let result = extract_enclosing_fn(src, "rust", 4, None).expect("should find fn");
+        assert_eq!(result, "run()");
+    }
+
+    #[test]
+    fn enclosing_fn_generic_impl() {
+        let src = r#"struct Queue<T>;
+impl<T: Send> Queue<T> {
+    fn push(&mut self, value: T) {
+        spawn(async move { value });
+    }
+}"#;
+        let result = extract_enclosing_fn(src, "rust", 4, None).expect("should find fn");
+        assert_eq!(result, "Queue::push(&mut self, value)");
+    }
+
+    #[test]
+    fn enclosing_fn_non_rust_returns_none() {
+        let src = "function run() { spawn(async () => {}); }";
+        let result = extract_enclosing_fn(src, "javascript", 1, None);
+        assert!(result.is_none(), "non-rust should return None");
+    }
+
+    #[test]
+    fn enclosing_fn_self_mut_ref() {
+        let src = r#"impl Handler {
+    async fn handle(&mut self, req: Request, ctx: Context) {
+        spawn(async move { req });
+    }
+}"#;
+        let result = extract_enclosing_fn(src, "rust", 3, None).expect("should find fn");
+        assert_eq!(result, "Handler::handle(&mut self, req, ctx)");
     }
 
     #[test]

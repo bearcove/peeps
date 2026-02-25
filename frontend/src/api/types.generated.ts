@@ -42,6 +42,12 @@ export interface SourcePreviewResponse {
    * Used for compact collapsed-frame display.
    */
   context_line?: string;
+  /**
+   * Plain-text collapsed signature of the enclosing function/method.
+   * e.g. `"run()"` or `"SomeType::run(&self, config, handle)"`.
+   * Currently only populated for Rust source files.
+   */
+  enclosing_fn?: string;
 }
 
 /**

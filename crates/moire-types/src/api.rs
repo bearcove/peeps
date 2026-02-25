@@ -220,6 +220,11 @@ pub struct SourcePreviewResponse {
     /// Used for compact collapsed-frame display.
     #[facet(skip_unless_truthy)]
     pub context_line: Option<String>,
+    /// Plain-text collapsed signature of the enclosing function/method.
+    /// e.g. `"run()"` or `"SomeType::run(&self, config, handle)"`.
+    /// Currently only populated for Rust source files.
+    #[facet(skip_unless_truthy)]
+    pub enclosing_fn: Option<String>,
 }
 
 /// Request body for `POST /api/source/previews`.

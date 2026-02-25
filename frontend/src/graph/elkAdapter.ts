@@ -70,6 +70,19 @@ export function edgeTooltip(edge: EdgeDef, sourceName: string, targetName: strin
   }
 }
 
+function edgeEventLabel(kind: EdgeDef["kind"]): string | null {
+  switch (kind) {
+    case "waiting_on":
+      return "waits on";
+    case "polls":
+      return "poll";
+    case "holds":
+      return "holds";
+    case "paired_with":
+      return null;
+  }
+}
+
 export function edgeMarkerSize(_edge: EdgeDef): number {
   return 10;
 }
@@ -571,6 +584,13 @@ export async function layoutGraph(
         sourcePortRef: expectedSourceRef,
         targetPortRef: expectedTargetRef,
         markerSize,
+        eventLabel: edgeEventLabel(def.kind),
+        backtraceId: def.backtraceId,
+        sourceFrame: def.sourceFrame,
+        topFrame: def.topFrame,
+        frames: def.frames,
+        allFrames: def.allFrames,
+        framesLoading: def.framesLoading,
       },
     };
     return edge;

@@ -7,7 +7,7 @@ use moire_trace_types::{FrameId, RelPc};
 use moire_types::{SourcePreviewBatchRequest, SourcePreviewBatchResponse, SourcePreviewResponse};
 use rusqlite_facet::ConnectionFacetExt;
 
-use crate::api::source_context::{cut_source, extract_target_statement};
+use crate::api::source_context::{cut_source, extract_enclosing_fn, extract_target_statement};
 use crate::app::AppState;
 use crate::db::Db;
 use crate::snapshot::table::lookup_frame_source_by_raw;
@@ -282,6 +282,10 @@ fn lookup_source_in_db(
         )
     });
 
+    // Enclosing function context for compact "in run()" display
+    let enclosing_fn = lang
+        .and_then(|lang_name| extract_enclosing_fn(&content, lang_name, target_line, target_col));
+
     Ok(Some(SourcePreviewResponse {
         frame_id,
         source_file: resolved_path.into_owned(),
@@ -292,5 +296,6 @@ fn lookup_source_in_db(
         context_html,
         context_range,
         context_line,
+        enclosing_fn,
     }))
 }
