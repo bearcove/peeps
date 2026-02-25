@@ -555,6 +555,7 @@ export function GraphViewport({
             <GroupLayer groups={renderedGroups} groupOpacityById={renderedGroupOpacityById} />
             <EdgeLayer
               edges={renderedGeometry.edges}
+              nodes={renderedNodes}
               selectedEdgeId={selection?.kind === "edge" ? selection.id : null}
               ghostEdgeIds={effectiveGhostEdgeIds}
               edgeOpacityById={renderedEdgeOpacityById}
