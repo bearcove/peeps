@@ -10,6 +10,7 @@ use moire_types::{
 
 use crate::db::Db;
 use crate::snapshot::repository::load_backtrace_frame_batches;
+use crate::util::source_path::resolve_source_path;
 
 pub struct SnapshotBacktraceTable {
     pub backtraces: Vec<SnapshotBacktrace>,
@@ -91,7 +92,7 @@ fn load_snapshot_backtrace_table_blocking(
                             SnapshotBacktraceFrame::Resolved(BacktraceFrameResolved {
                                 module_path: sym.module_path.clone(),
                                 function_name: function_name.clone(),
-                                source_file: source_file.clone(),
+                                source_file: resolve_source_path(source_file).into_owned(),
                                 line: sym.source_line.and_then(|line| u32::try_from(line).ok()),
                             })
                         }

@@ -28,6 +28,7 @@
     --font-mono: "Maple Mono", monospace;
     --font-ui: var(--font-mono); /* just trying things out */
     --font-scale-ui: 1.08;
+    --font-size-xxs: calc(9px * var(--font-scale-ui));
     --font-size-xs: calc(10px * var(--font-scale-ui));
     --font-size-sm: calc(12px * var(--font-scale-ui));
     --font-size-md: calc(14px * var(--font-scale-ui));

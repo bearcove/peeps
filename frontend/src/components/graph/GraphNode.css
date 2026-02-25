@@ -197,19 +197,20 @@
     flex-direction: row;
     align-items: center;
     gap: 5px;
-    padding: var(--graph-node-padding);
+    padding: 4px var(--graph-node-padding);
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: var(--font-size-xxs);
 }
 
 .graph-node--expanded .graph-node-frame-sep {
-    margin: 2px 0;
     position: sticky;
-    top: -4px;
-    background: var(--graph-card-bg);
+    top: 0;
     z-index: 1;
 }
 
 .graph-node-frame-section > .graph-node-frame {
-    padding: 0 var(--graph-node-padding) var(--graph-node-padding);
+    padding: var(--graph-node-padding);
 }
 
 .graph-node-frame-sep__icon {
@@ -224,7 +225,6 @@
 .graph-node-frame-sep__name {
     flex: 1;
     font-family: var(--font-mono);
-    font-size: var(--font-size-xs);
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -234,7 +234,6 @@
 .graph-node-frame-sep__loc {
     flex-shrink: 0;
     font-family: var(--font-mono);
-    font-size: var(--font-size-xs);
     color: var(--text-tertiary);
     text-decoration: none;
     white-space: nowrap;

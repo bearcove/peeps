@@ -47,7 +47,7 @@ export function FrameSep({ frame }: { frame: GraphFrameData }) {
   const location = formatFileLocation(frame);
   return (
     <div className="graph-node-frame-sep">
-      {langIcon(frame.source_file, 16, "graph-node-frame-sep__icon")}
+      {langIcon(frame.source_file, 12, "graph-node-frame-sep__icon")}
       <span className="graph-node-frame-sep__name">{shortFnName(frame.function_name)}</span>
       <a
         className="graph-node-frame-sep__loc"
