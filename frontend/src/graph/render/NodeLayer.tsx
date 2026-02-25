@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import type { GeometryNode } from "../geometry";
 import type { EntityDef } from "../../snapshot";
-import { GraphNode, COLLAPSED_FRAME_COUNT } from "../../components/graph/GraphNode";
+import { GraphNode, collapsedFrameCount } from "../../components/graph/GraphNode";
 import { graphNodeDataFromEntity, computeNodeSublabel, type GraphNodeData } from "../../components/graph/graphNodeData";
 import { canonicalNodeKind } from "../../nodeKindSpec";
 import { scopeKindIcon } from "../../scopeKindSpec";
@@ -55,7 +55,7 @@ export async function measureGraphLayout(
       const isPinned = pinnedNodeIds?.has(def.id) ?? false;
       const needsSource = showSource || canonicalNodeKind(def.kind) === "future";
       if (!needsSource && !isPinned) continue;
-      const frames = isPinned ? def.frames : def.frames.slice(0, COLLAPSED_FRAME_COUNT);
+      const frames = isPinned ? def.frames : def.frames.slice(0, collapsedFrameCount(def.kind));
       for (const frame of frames) {
         if (frame.frame_id != null) {
           fetches.push(cachedFetchSourcePreview(frame.frame_id).catch(() => {}));

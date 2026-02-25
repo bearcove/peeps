@@ -308,6 +308,16 @@ pub fn extract_target_statement(
         match current.parent() {
             Some(parent) => {
                 if SCOPE_KINDS.contains(&parent.kind()) {
+                    // If we're on an intermediate node (not a block/decl_list
+                    // that we can search children of) and the parent is also a
+                    // statement kind (e.g. function_item), step up to it — we
+                    // want the full signature, not just a sub-node like
+                    // `parameters` or `async`.
+                    let is_body_container =
+                        current.kind() == "block" || current.kind() == "declaration_list";
+                    if !is_body_container && STATEMENT_KINDS.contains(&parent.kind()) {
+                        current = parent;
+                    }
                     break;
                 }
                 current = parent;
@@ -330,10 +340,28 @@ pub fn extract_target_statement(
         current
     };
 
-    let text = statement.utf8_text(content.as_bytes()).ok()?;
+    // Skip leading attribute children so compact view doesn't show
+    // `#[moire::instrument] pub async fn foo()` — just `pub async fn foo()`.
+    let text_start = {
+        let mut start = statement.start_byte();
+        for i in 0..statement.child_count() {
+            if let Some(child) = statement.child(i) {
+                if child.kind() == "attribute_item"
+                    || child.kind() == "attribute"
+                    || child.kind() == "attributes"
+                {
+                    continue;
+                }
+                start = child.start_byte();
+                break;
+            }
+        }
+        start
+    };
 
-    // Collapse: split on whitespace, rejoin with single spaces
-    let collapsed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let text = &content[text_start..statement.end_byte()];
+
+    let collapsed = collapse_whitespace(text);
     if collapsed.is_empty() {
         return None;
     }
@@ -341,9 +369,91 @@ pub fn extract_target_statement(
     Some(collapsed)
 }
 
+/// Collapse whitespace between tokens, suppressing the space where it would
+/// look wrong in a single-line rendering:
+///   - before `.` `;` `?` `)` `]` `>` `,` `:`
+///   - after  `(` `[` `<` `.`
+fn collapse_whitespace(text: &str) -> String {
+    let tokens: Vec<&str> = text.split_whitespace().collect();
+    if tokens.is_empty() {
+        return String::new();
+    }
+
+    let mut out = String::with_capacity(text.len());
+    out.push_str(tokens[0]);
+
+    for window in tokens.windows(2) {
+        let prev = window[0];
+        let next = window[1];
+
+        let suppress = next.starts_with('.')
+            || next.starts_with(';')
+            || next.starts_with('?')
+            || next.starts_with(')')
+            || next.starts_with(']')
+            || next.starts_with(',')
+            || prev.ends_with('(')
+            || prev.ends_with('[')
+            || prev.ends_with('.');
+
+        if !suppress {
+            out.push(' ');
+        }
+        out.push_str(next);
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Dump tree-sitter node structure for a parsed statement. Call from any
+    /// test when debugging — e.g. `dump_node_tree(src, "rust", 3, Some(0));`
+    #[allow(dead_code)]
+    fn dump_node_tree(content: &str, lang_name: &str, target_line: u32, target_col: Option<u32>) {
+        let ts_lang = arborium::get_language(lang_name).unwrap();
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&ts_lang).unwrap();
+        let tree = parser.parse(content.as_bytes(), None).unwrap();
+        let row = (target_line - 1) as usize;
+        let col = target_col.unwrap_or(0) as usize;
+        let point = tree_sitter::Point::new(row, col);
+        let node = tree
+            .root_node()
+            .named_descendant_for_point_range(point, point)
+            .unwrap();
+
+        fn print_node(node: tree_sitter::Node, content: &[u8], depth: usize) {
+            let indent = "  ".repeat(depth);
+            let text = node.utf8_text(content).unwrap_or("<err>");
+            let short = if text.len() > 50 {
+                format!("{}...", &text[..50])
+            } else {
+                text.to_string()
+            };
+            eprintln!(
+                "{indent}{:?} named={} rows={}..{} text={short:?}",
+                node.kind(),
+                node.is_named(),
+                node.start_position().row,
+                node.end_position().row,
+            );
+            for i in 0..node.child_count() {
+                if let Some(child) = node.child(i) {
+                    print_node(child, content, depth + 1);
+                }
+            }
+        }
+
+        // Walk up to root, then print from there
+        let mut current = node;
+        while let Some(parent) = current.parent() {
+            current = parent;
+        }
+        print_node(current, content.as_bytes(), 0);
+    }
 
     fn assert_line_count_invariant(_content: &str, result: &CutResult) {
         let expected = (result.scope_range.end - result.scope_range.start + 1) as usize;
@@ -472,13 +582,10 @@ impl Foo {
 }"#;
         // target on the .await line (line 3, 0-indexed row 2)
         let result = extract_target_statement(src, "rust", 3, None).expect("should find statement");
-        assert!(result.contains("let handle = session"));
-        assert!(result.contains(".establish_as_acceptor"));
-        assert!(result.contains(".await?;"));
-        // Should be a single line (no newlines)
-        assert!(
-            !result.contains('\n'),
-            "should be collapsed to one line: {result}"
+        // Method chains should not have spaces before `.`
+        assert_eq!(
+            result,
+            "let handle = session.establish_as_acceptor(self.root_settings, self.metadata).await?;"
         );
     }
 
@@ -489,6 +596,158 @@ impl Foo {
 }"#;
         let result = extract_target_statement(src, "rust", 2, None).expect("should find statement");
         assert_eq!(result, "let x = 42;");
+    }
+
+    #[test]
+    fn extract_target_on_fn_signature_line() {
+        // When the target is the fn signature line itself (e.g. from a backtrace
+        // pointing at `async fn recv(&mut self)`), we should get the full
+        // signature collapsed, NOT just `(&mut self)`.
+        let src = r#"impl Session {
+    async fn recv(&mut self) -> Result<Option<SelfRef<Msg<'static>>>, Self::Error> {
+        let backing = match self
+            .link_rx
+            .recv()
+            .await;
+    }
+}"#;
+        // target_line = 2 (the `async fn recv` line), col 0
+        let result =
+            extract_target_statement(src, "rust", 2, Some(0)).expect("should find statement");
+        assert!(
+            result.contains("async fn recv"),
+            "should contain fn signature, got: {result}"
+        );
+        assert!(
+            !result.contains('\n'),
+            "should be collapsed to one line: {result}"
+        );
+    }
+
+    #[test]
+    fn extract_strips_attributes() {
+        let src = r#"impl Session {
+    #[moire::instrument]
+    pub async fn establish(self) -> Result<(Session<C>, ConnectionHandle), SessionError> {
+        let (mut server_session, server_handle) = acceptor(server_conduit)
+            .establish()
+            .await
+            .expect("server");
+    }
+}"#;
+        // target_line = 3 (the fn line)
+        let result =
+            extract_target_statement(src, "rust", 3, Some(4)).expect("should find statement");
+        assert!(
+            !result.contains("moire::instrument"),
+            "should strip attributes, got: {result}"
+        );
+        assert!(
+            result.contains("pub async fn establish"),
+            "should keep fn signature, got: {result}"
+        );
+    }
+
+    #[test]
+    fn extract_strips_multiple_attributes() {
+        let src = r#"#[allow(dead_code)]
+#[moire::instrument]
+async fn recv(&mut self) -> Result<Option<Msg>> {
+    self.rx.recv().await
+}"#;
+        let result =
+            extract_target_statement(src, "rust", 3, Some(0)).expect("should find statement");
+        assert!(
+            !result.contains("moire::instrument"),
+            "should strip moire attr, got: {result}"
+        );
+        assert!(
+            !result.contains("allow"),
+            "should strip all attrs, got: {result}"
+        );
+        assert!(
+            result.contains("async fn recv"),
+            "should keep fn signature, got: {result}"
+        );
+    }
+
+    #[test]
+    fn extract_target_on_fn_keyword() {
+        // Target pointing at the `fn` keyword specifically
+        let src = r#"fn do_stuff(x: u32, y: u32) -> bool {
+    let z = x + y;
+    z > 10
+}"#;
+        // target_line = 1, col at `fn` keyword
+        let result =
+            extract_target_statement(src, "rust", 1, Some(0)).expect("should find statement");
+        assert!(
+            result.contains("fn do_stuff"),
+            "should contain fn signature, got: {result}"
+        );
+    }
+
+    #[test]
+    fn extract_target_on_async_fn_with_multiline_params() {
+        let src = r#"async fn establish_as_acceptor(
+    &mut self,
+    settings: ConnectionSettings,
+    metadata: Metadata<'_>,
+) -> Result<Handle> {
+    let handle = session
+        .establish(self.root_settings, self.metadata)
+        .await?;
+    Ok(handle)
+}"#;
+        // target_line = 1 (the `async fn` line)
+        let result =
+            extract_target_statement(src, "rust", 1, Some(0)).expect("should find statement");
+        assert!(
+            result.contains("async fn establish_as_acceptor"),
+            "should contain fn name, got: {result}"
+        );
+    }
+
+    #[test]
+    fn extract_match_expression() {
+        let src = r#"fn process() {
+    let x = 1;
+    match self.rx.recv().await {
+        Ok(Some(msg)) => {
+            let payload = msg.map(|m| m.payload);
+            handle(payload);
+        }
+        Ok(None) => {}
+        Err(e) => return Err(e),
+    }
+    let y = 2;
+}"#;
+        // target on the match line
+        let result =
+            extract_target_statement(src, "rust", 3, Some(4)).expect("should find statement");
+        assert!(
+            result.contains("match"),
+            "should contain match keyword, got: {result}"
+        );
+    }
+
+    #[test]
+    fn extract_channel_creation() {
+        // Simulating the `let (tx_a, rx_b) = mpsc::channel(...)` case from the screenshot
+        let src = r#"fn setup() {
+    let (tx_a, rx_b) = mpsc::channel("memory_link.a→b", buffer);
+    let (a, b) = memory_link_pair(64);
+}"#;
+        let result =
+            extract_target_statement(src, "rust", 2, Some(4)).expect("should find statement");
+        assert!(
+            result.contains("mpsc::channel"),
+            "should contain channel call, got: {result}"
+        );
+        assert!(
+            result.contains("let (tx_a, rx_b)"),
+            "should contain destructuring, got: {result}"
+        );
     }
 
     #[test]

@@ -9,13 +9,15 @@ import { canonicalNodeKind } from "../../nodeKindSpec";
 import type { GraphFrameData, GraphNodeData } from "./graphNodeData";
 import "./GraphNode.css";
 
-/** Kinds that show source by default in collapsed view. */
-const SOURCE_BY_DEFAULT_KINDS = new Set(["future"]);
+/** Futures: no header, 2 source frames. Everything else: header, 0 frames. */
+const FRAMELESS_HEADER_KINDS = new Set(["future"]);
 
-export const COLLAPSED_FRAME_COUNT = 2;
+export function collapsedFrameCount(kind: string): number {
+  return FRAMELESS_HEADER_KINDS.has(canonicalNodeKind(kind)) ? 2 : 0;
+}
 
-function pickCollapsedFrames(frames: GraphFrameData[]): GraphFrameData[] {
-  return frames.slice(0, COLLAPSED_FRAME_COUNT);
+function pickCollapsedFrames(kind: string, frames: GraphFrameData[]): GraphFrameData[] {
+  return frames.slice(0, collapsedFrameCount(kind));
 }
 
 function formatFileLocation(f: GraphFrameData): string {
@@ -130,10 +132,13 @@ export function GraphNode({
     data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
 
   const canonical = canonicalNodeKind(data.kind);
-  // Futures show source by default; other kinds only when explicitly toggled
-  const collapsedShowSource = data.showSource || SOURCE_BY_DEFAULT_KINDS.has(canonical);
+  const isFuture = FRAMELESS_HEADER_KINDS.has(canonical);
+  // Futures always show source; other kinds only when explicitly toggled
+  const collapsedShowSource = data.showSource || isFuture;
+  // Futures hide the header in collapsed view (source frames are the identity)
+  const showHeader = expanded || !isFuture;
 
-  const visibleFrames = expanded ? data.frames : pickCollapsedFrames(data.frames);
+  const visibleFrames = expanded ? data.frames : pickCollapsedFrames(data.kind, data.frames);
 
   const topFrame = data.frames[0];
   const topLocation = topFrame ? formatFileLocation(topFrame) : undefined;
@@ -161,37 +166,41 @@ export function GraphNode({
           : undefined
       }
     >
-      {/* Header row: icon + main info + file:line badge */}
-      <div className="graph-node-header">
-        <span className="graph-node-icon">{kindIcon(data.kind, 14)}</span>
-        <div className="graph-node-main">
-          <span className="graph-node-label">{data.label}</span>
-          {(data.ageMs ?? 0) > 3000 && (
-            <>
-              <span className="graph-node-dot">&middot;</span>
-              <DurationDisplay ms={data.ageMs ?? 0} />
-            </>
-          )}
-          {data.stat && (
-            <>
-              <span className="graph-node-dot">&middot;</span>
-              <span
-                className={[
-                  "graph-node-stat",
-                  data.statTone === "crit" && "graph-node-stat--crit",
-                  data.statTone === "warn" && "graph-node-stat--warn",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                {data.stat}
-              </span>
-            </>
-          )}
-        </div>
-        {topLocation && <span className="graph-node-location">{topLocation}</span>}
-      </div>
-      {data.sublabel && <div className="graph-node-sublabel">{data.sublabel}</div>}
+      {showHeader && (
+        <>
+          {/* Header row: icon + main info + file:line badge */}
+          <div className="graph-node-header">
+            <span className="graph-node-icon">{kindIcon(data.kind, 14)}</span>
+            <div className="graph-node-main">
+              <span className="graph-node-label">{data.label}</span>
+              {(data.ageMs ?? 0) > 3000 && (
+                <>
+                  <span className="graph-node-dot">&middot;</span>
+                  <DurationDisplay ms={data.ageMs ?? 0} />
+                </>
+              )}
+              {data.stat && (
+                <>
+                  <span className="graph-node-dot">&middot;</span>
+                  <span
+                    className={[
+                      "graph-node-stat",
+                      data.statTone === "crit" && "graph-node-stat--crit",
+                      data.statTone === "warn" && "graph-node-stat--warn",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    {data.stat}
+                  </span>
+                </>
+              )}
+            </div>
+            {topLocation && <span className="graph-node-location">{topLocation}</span>}
+          </div>
+          {data.sublabel && <div className="graph-node-sublabel">{data.sublabel}</div>}
+        </>
+      )}
       {visibleFrames.length > 0 && (
         <div className="graph-node-frames">
           {visibleFrames.map((frame, _i) =>
