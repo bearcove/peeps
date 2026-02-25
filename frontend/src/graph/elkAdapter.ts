@@ -2,6 +2,7 @@ import ELK from "elkjs/lib/elk-api.js";
 import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
 import type { EntityDef, EdgeDef } from "../snapshot";
 import { graphNodeDataFromEntity } from "../components/graph/graphNodeData";
+import { formatProcessLabel } from "../processLabel";
 import type { GraphGeometry, GeometryNode, GeometryGroup, GeometryEdge, Point } from "./geometry";
 
 // ── ELK layout ────────────────────────────────────────────────
@@ -277,9 +278,7 @@ export async function layoutGraph(
         let canonicalLabel = rawScopeKey === "~no-crate" ? "(no crate)" : rawScopeKey;
         if (scopeKind === "process" && memberEntities.length > 0) {
           const anchor = memberEntities[0];
-          const pidSuffix =
-            anchor.processPid != null ? String(anchor.processPid) : anchor.processId;
-          canonicalLabel = `${anchor.processName}(${pidSuffix})`;
+          canonicalLabel = formatProcessLabel(anchor.processName, anchor.processPid);
         } else if (scopeKind === "connection" && memberEntities.length > 0) {
           const named =
             memberEntities.find((entity: EntityDef) => entity.kind === "connection") ??
