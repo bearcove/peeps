@@ -99,6 +99,23 @@ export function GraphViewport({
     setHasFitted(false);
   }, [geometryKey]);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      setNodeExpandStates((prev) => {
+        const next = new Map<string, NodeExpandState>();
+        for (const [id, state] of prev) {
+          if (state === "pinned") next.set(id, "pinned");
+        }
+        return next.size === prev.size ? prev : next;
+      });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <div className="graph-flow" ref={graphFlowRef}>
       {nodeContextMenu && (() => {
@@ -201,6 +218,10 @@ export function GraphViewport({
               ghostNodeIds={effectiveGhostNodeIds}
               onNodeHover={(id) => {
                 if (id) {
+                  // If any node is expanded (non-pinned), hover on other nodes is blocked.
+                  const hasExpanded = [...nodeExpandStates.values()].some((s) => s === "expanded");
+                  if (hasExpanded && !nodeExpandStates.has(id)) return;
+
                   // Hover selects the node (clear non-pinned expand from other nodes)
                   setNodeExpandStates((prev) => {
                     const next = new Map<string, NodeExpandState>();

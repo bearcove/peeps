@@ -13,7 +13,7 @@ import "./GraphNode.css";
 const FRAMELESS_HEADER_KINDS = new Set(["future"]);
 
 export function collapsedFrameCount(kind: string): number {
-  return FRAMELESS_HEADER_KINDS.has(canonicalNodeKind(kind)) ? 2 : 0;
+  return FRAMELESS_HEADER_KINDS.has(canonicalNodeKind(kind)) ? 1 : 0;
 }
 
 function pickCollapsedFrames(kind: string, frames: GraphFrameData[]): GraphFrameData[] {
@@ -40,7 +40,13 @@ function stopPropagation(e: React.MouseEvent) {
   e.stopPropagation();
 }
 
-function FrameLineCollapsed({ frame, showSource }: { frame: GraphFrameData; showSource?: boolean }) {
+function FrameLineCollapsed({
+  frame,
+  showSource,
+}: {
+  frame: GraphFrameData;
+  showSource?: boolean;
+}) {
   const sourceHtml = useSourceLine(showSource ? frame.frame_id : undefined);
   const location = formatFileLocation(frame);
 
@@ -56,7 +62,13 @@ function FrameLineCollapsed({ frame, showSource }: { frame: GraphFrameData; show
         <pre className="graph-node-frame graph-node-frame--text">
           <span className="graph-node-frame-fn">{shortFnName(frame.function_name)}</span>
           <span className="graph-node-frame-dot">&middot;</span>
-          <a className="graph-node-frame-loc" href={zedHref(frame.source_file, frame.line)} onClick={stopPropagation}>{location}</a>
+          <a
+            className="graph-node-frame-loc"
+            href={zedHref(frame.source_file, frame.line)}
+            onClick={stopPropagation}
+          >
+            {location}
+          </a>
         </pre>
       )}
     </div>
@@ -74,7 +86,13 @@ function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showS
         <pre className="graph-node-frame graph-node-frame--text">
           <span className="graph-node-frame-fn">{shortFnName(frame.function_name)}</span>
           <span className="graph-node-frame-dot">&middot;</span>
-          <a className="graph-node-frame-loc" href={zedHref(frame.source_file, frame.line)} onClick={stopPropagation}>{location}</a>
+          <a
+            className="graph-node-frame-loc"
+            href={zedHref(frame.source_file, frame.line)}
+            onClick={stopPropagation}
+          >
+            {location}
+          </a>
         </pre>
       </div>
     );
@@ -109,9 +127,18 @@ function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showS
             >
               <span className="graph-node-frame-block__gutter">{entry.lineNum}</span>
               {/* eslint-disable-next-line react/no-danger */}
-              <span className="graph-node-frame-block__text" dangerouslySetInnerHTML={{ __html: entry.html }} />
+              <span
+                className="graph-node-frame-block__text"
+                dangerouslySetInnerHTML={{ __html: entry.html }}
+              />
               {isTarget && (
-                <a className="graph-node-frame-block__loc" href={zedHref(frame.source_file, preview.target_line)} onClick={stopPropagation}>{location}</a>
+                <a
+                  className="graph-node-frame-block__loc"
+                  href={zedHref(frame.source_file, preview.target_line)}
+                  onClick={stopPropagation}
+                >
+                  {location}
+                </a>
               )}
             </div>
           );
@@ -121,13 +148,7 @@ function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showS
   );
 }
 
-export function GraphNode({
-  data,
-  expanded = false,
-}: {
-  data: GraphNodeData;
-  expanded?: boolean;
-}) {
+export function GraphNode({ data, expanded = false }: { data: GraphNodeData; expanded?: boolean }) {
   const showScopeColor =
     data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
 
@@ -135,13 +156,9 @@ export function GraphNode({
   const isFuture = FRAMELESS_HEADER_KINDS.has(canonical);
   // Futures always show source; other kinds only when explicitly toggled
   const collapsedShowSource = data.showSource || isFuture;
-  // Futures hide the header in collapsed view (source frames are the identity)
-  const showHeader = expanded || !isFuture;
+  const showHeader = !isFuture;
 
   const visibleFrames = expanded ? data.frames : pickCollapsedFrames(data.kind, data.frames);
-
-  const topFrame = data.frames[0];
-  const topLocation = topFrame ? formatFileLocation(topFrame) : undefined;
 
   return (
     <div
@@ -157,6 +174,7 @@ export function GraphNode({
       ]
         .filter(Boolean)
         .join(" ")}
+      data-scroll-block={expanded ? "true" : undefined}
       style={
         showScopeColor
           ? ({
@@ -170,7 +188,7 @@ export function GraphNode({
         <>
           {/* Header row: icon + main info + file:line badge */}
           <div className="graph-node-header">
-            <span className="graph-node-icon">{kindIcon(data.kind, 14)}</span>
+            <span className="graph-node-icon">{kindIcon(data.kind, 30)}</span>
             <div className="graph-node-main">
               <span className="graph-node-label">{data.label}</span>
               {(data.ageMs ?? 0) > 3000 && (
@@ -196,7 +214,6 @@ export function GraphNode({
                 </>
               )}
             </div>
-            {topLocation && <span className="graph-node-location">{topLocation}</span>}
           </div>
           {data.sublabel && <div className="graph-node-sublabel">{data.sublabel}</div>}
         </>
@@ -207,8 +224,12 @@ export function GraphNode({
             expanded ? (
               <FrameLineExpanded key={frame.frame_id} frame={frame} showSource={data.showSource} />
             ) : (
-              <FrameLineCollapsed key={frame.frame_id} frame={frame} showSource={collapsedShowSource} />
-            )
+              <FrameLineCollapsed
+                key={frame.frame_id}
+                frame={frame}
+                showSource={collapsedShowSource}
+              />
+            ),
           )}
         </div>
       )}

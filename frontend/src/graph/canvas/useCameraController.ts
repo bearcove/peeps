@@ -58,6 +58,11 @@ export function useCameraController(
 
   const onWheel = useCallback(
     (e: WheelEvent) => {
+      // If the cursor is over a scrollable block (e.g., an expanded graph node),
+      // let it capture all scroll events — never zoom through it.
+      const target = e.target as Element;
+      if (target.closest('[data-scroll-block="true"]')) return;
+
       e.preventDefault();
       const svg = svgRef.current;
       if (!svg) return;
