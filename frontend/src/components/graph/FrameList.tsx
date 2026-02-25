@@ -22,18 +22,23 @@ export function FrameList({
   const [showSystem, setShowSystem] = useState(false);
 
   const hasSystemFrames = data.allFrames.length > data.frames.length;
-  const loadingPlaceholder = (
-    <div className="graph-node-frame-loading-placeholder">symbolicating...</div>
+
+  const compactLoadingPlaceholder = (
+    <div className="graph-node-frames">
+      <div className="graph-node-frame-section graph-node-frame-section--loading">
+        <div className="graph-node-frame-sep graph-node-frame-sep--loading">
+          <span className="graph-node-frame-sep__name">symbolicating…</span>
+          <span className="graph-node-frame-sep__loc">loading source</span>
+        </div>
+        <pre className="graph-node-frame graph-node-frame--text graph-node-frame--fallback">…</pre>
+      </div>
+    </div>
   );
 
   if (!expanded) {
     if (collapsedFrames.length === 0) {
       if (data.framesLoading && collapsedShowSource && collapsedFrameSlotCount > 0) {
-        return (
-          <div className="graph-node-loading-shell graph-node-loading-shell--source">
-            {loadingPlaceholder}
-          </div>
-        );
+        return compactLoadingPlaceholder;
       }
       return null;
     }
@@ -79,7 +84,7 @@ export function FrameList({
                 />
               ))
             : data.framesLoading
-              ? loadingPlaceholder
+              ? compactLoadingPlaceholder
               : null}
         </div>
       </div>

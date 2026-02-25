@@ -14,7 +14,7 @@
     position: relative;
     overscroll-behavior: none;
 
-    --graph-code-card-width: 400px;
+    --graph-code-card-width: 600px;
 }
 
 /*.graph-card--scope {
@@ -212,6 +212,10 @@
     flex-direction: column;
 }
 
+.graph-node-frame-section--loading {
+    opacity: 0.82;
+}
+
 .graph-node-frame-sep {
     display: flex;
     flex-direction: row;
@@ -221,6 +225,10 @@
     background: var(--bg-surface);
     border-bottom: 1px solid var(--border-subtle);
     font-size: var(--font-size-xxs);
+}
+
+.graph-node-frame-sep--loading {
+    border-bottom-style: dashed;
 }
 
 .graph-node--expanded .graph-node-frame-sep {
