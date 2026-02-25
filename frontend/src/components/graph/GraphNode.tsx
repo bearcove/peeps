@@ -79,38 +79,18 @@ function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showS
   const preview = useSourcePreview(showSource ? frame.frame_id : undefined);
   const location = formatFileLocation(frame);
 
-  if (!preview) {
+  const codeBlock = (() => {
+    if (!preview) return null;
+    const useCtx = preview.context_html != null && preview.context_range != null;
+    const rawLines = splitHighlightedHtml(useCtx ? preview.context_html! : preview.html);
+    const startLineNum = useCtx ? preview.context_range!.start : 1;
+    const lines = useCtx
+      ? collapseContextLines(rawLines, startLineNum)
+      : rawLines.map((html, i) => ({ lineNum: startLineNum + i, html, isSeparator: false }));
+
     return (
-      <div className="graph-node-frame-row">
-        {langIcon(frame.source_file, 10, "graph-node-frame-icon")}
-        <pre className="graph-node-frame graph-node-frame--text">
-          <span className="graph-node-frame-fn">{shortFnName(frame.function_name)}</span>
-          <span className="graph-node-frame-dot">&middot;</span>
-          <a
-            className="graph-node-frame-loc"
-            href={zedHref(frame.source_file, frame.line)}
-            onClick={stopPropagation}
-          >
-            {location}
-          </a>
-        </pre>
-      </div>
-    );
-  }
-
-  // Prefer context_html (language-aware scope excerpt with cuts) over full file
-  const useContext = preview.context_html != null && preview.context_range != null;
-  const rawLines = splitHighlightedHtml(useContext ? preview.context_html! : preview.html);
-  const startLineNum = useContext ? preview.context_range!.start : 1;
-  const collapsed = useContext
-    ? collapseContextLines(rawLines, startLineNum)
-    : rawLines.map((html, i) => ({ lineNum: startLineNum + i, html, isSeparator: false }));
-
-  return (
-    <div className="graph-node-frame-row graph-node-frame-row--expanded">
-      {langIcon(frame.source_file, 10, "graph-node-frame-icon")}
       <pre className="graph-node-frame-block arborium-hl">
-        {collapsed.map((entry) => {
+        {lines.map((entry) => {
           if (entry.isSeparator) {
             return (
               <div key={`sep-${entry.lineNum}`} className="graph-node-frame-block__sep">
@@ -127,23 +107,28 @@ function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showS
             >
               <span className="graph-node-frame-block__gutter">{entry.lineNum}</span>
               {/* eslint-disable-next-line react/no-danger */}
-              <span
-                className="graph-node-frame-block__text"
-                dangerouslySetInnerHTML={{ __html: entry.html }}
-              />
-              {isTarget && (
-                <a
-                  className="graph-node-frame-block__loc"
-                  href={zedHref(frame.source_file, preview.target_line)}
-                  onClick={stopPropagation}
-                >
-                  {location}
-                </a>
-              )}
+              <span className="graph-node-frame-block__text" dangerouslySetInnerHTML={{ __html: entry.html }} />
             </div>
           );
         })}
       </pre>
+    );
+  })();
+
+  return (
+    <div className="graph-node-frame-section">
+      <div className="graph-node-frame-sep">
+        {langIcon(frame.source_file, 10, "graph-node-frame-sep__icon")}
+        <span className="graph-node-frame-sep__name">{shortFnName(frame.function_name)}</span>
+        <a
+          className="graph-node-frame-sep__loc"
+          href={zedHref(frame.source_file, frame.line)}
+          onClick={stopPropagation}
+        >
+          {location}
+        </a>
+      </div>
+      {codeBlock}
     </div>
   );
 }

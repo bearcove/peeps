@@ -95,7 +95,7 @@
 .graph-node--expanded {
     z-index: 10;
     min-width: 600px;
-    max-height: 35em;
+    max-height: 30em;
     overflow-y: auto;
 
     .graph-node-frame {
@@ -111,6 +111,11 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
+    width: 100%;
+}
+
+.graph-node--expanded .graph-node-frames {
+    gap: 0;
 }
 
 .graph-node-frame-row {
@@ -167,6 +172,62 @@
     text-underline-offset: 2px;
 }
 
+/* ── Expanded frame section ── */
+
+.graph-node-frame-section {
+    display: flex;
+    flex-direction: column;
+}
+
+.graph-node-frame-sep {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 0 3px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.graph-node-frame-section:first-child .graph-node-frame-sep {
+    border-top: none;
+    padding-top: 0;
+}
+
+.graph-node-frame-sep__icon {
+    flex-shrink: 0;
+    color: var(--text-tertiary);
+    opacity: 0.5;
+}
+
+.graph-node-frame-sep__icon path {
+    fill: var(--text-tertiary);
+}
+
+.graph-node-frame-sep__name {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.graph-node-frame-sep__loc {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.graph-node-frame-sep__loc:hover {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
 /* ── Expanded source block ── */
 
 .graph-node-frame-block {
@@ -201,21 +262,6 @@
 .graph-node-frame-block__text {
     flex: 1;
     min-width: 0;
-}
-
-.graph-node-frame-block__loc {
-    flex-shrink: 0;
-    margin-left: 2ch;
-    padding-right: 0.5ch;
-    color: var(--text-tertiary);
-    user-select: none;
-    text-decoration: none;
-}
-
-.graph-node-frame-block__loc:hover {
-    color: var(--accent);
-    text-decoration: underline;
-    text-underline-offset: 2px;
 }
 
 /* ── Cut separator ── */
