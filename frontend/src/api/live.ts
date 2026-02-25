@@ -8,6 +8,7 @@ import type {
   SnapshotSymbolicationUpdate,
   SqlResponse,
   SnapshotCutResponse,
+  SourcePreviewBatchResponse,
   SourcePreviewResponse,
   TriggerCutResponse,
 } from "./types.generated";
@@ -124,7 +125,9 @@ export function createLiveApiClient(): ApiClient {
             `[symbolication] failed to parse websocket payload: ${e instanceof Error ? e.message : String(e)}`,
           );
           apiLog("WS %s parse error %s", url, error.message);
-          console.warn(`[moire:symbolication] parse error snapshot_id=${snapshotId}: ${error.message}`);
+          console.warn(
+            `[moire:symbolication] parse error snapshot_id=${snapshotId}: ${error.message}`,
+          );
           if (onError) onError(error);
         }
       });
@@ -151,7 +154,8 @@ export function createLiveApiClient(): ApiClient {
         "/api/record/stop",
       ),
     fetchRecordingCurrent: () => getJson<RecordCurrentResponse>("/api/record/current"),
-    fetchRecordingFrame: (frameIndex: number) => getJson<SnapshotCutResponse>(`/api/record/current/frame/${frameIndex}`),
+    fetchRecordingFrame: (frameIndex: number) =>
+      getJson<SnapshotCutResponse>(`/api/record/current/frame/${frameIndex}`),
     exportRecording: async () => {
       apiLog("GET /api/record/current/export request");
       const res = await fetch("/api/record/current/export");
@@ -165,6 +169,8 @@ export function createLiveApiClient(): ApiClient {
     },
     fetchSourcePreview: (frameId: number) =>
       getJson<SourcePreviewResponse>(`/api/source/preview?frame_id=${frameId}`),
+    fetchSourcePreviews: (frameIds: number[]) =>
+      postJson<SourcePreviewBatchResponse>("/api/source/previews", { frame_ids: frameIds }),
     importRecording: async (file: File) => {
       apiLog("POST /api/record/import request size=%d", file.size);
       const res = await fetch("/api/record/import", {

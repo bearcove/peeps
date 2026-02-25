@@ -12,7 +12,7 @@ import { GraphFilterInput } from "./GraphFilterInput";
 import { GraphViewport } from "./GraphViewport";
 import { computeNodeSublabel, graphNodeDataFromEntity } from "./graphNodeData";
 import type { GraphFilterLabelMode } from "../../graphFilter";
-import { cachedFetchSourcePreview } from "../../api/sourceCache";
+import { cachedFetchSourcePreviews } from "../../api/sourceCache";
 import "./GraphPanel.css";
 
 export type GraphSelection = { kind: "entity"; id: string } | { kind: "edge"; id: string } | null;
@@ -51,7 +51,7 @@ async function preloadExpandedSourcePreviews(
 ): Promise<void> {
   const frameIds = collectExpandedFrameIds(defs, expandedNodeIds, showSource);
   if (frameIds.size === 0) return;
-  await Promise.all([...frameIds].map((frameId) => cachedFetchSourcePreview(frameId)));
+  await cachedFetchSourcePreviews([...frameIds]);
 }
 
 export function GraphPanel({

@@ -1,9 +1,9 @@
-use axum::extract::{RawQuery, State};
+use axum::extract::{Json, RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use facet::Facet;
 use moire_trace_types::{FrameId, RelPc};
-use moire_types::SourcePreviewResponse;
+use moire_types::{SourcePreviewBatchRequest, SourcePreviewBatchResponse, SourcePreviewResponse};
 use rusqlite_facet::ConnectionFacetExt;
 
 use crate::api::source_context::{cut_source, extract_target_statement};
@@ -65,6 +65,64 @@ pub async fn api_source_preview(
     match result {
         Ok(Some(response)) => json_ok(&response),
         Ok(None) => json_error(StatusCode::NOT_FOUND, "source not available for frame"),
+        Err(error) => json_error(StatusCode::INTERNAL_SERVER_ERROR, error),
+    }
+}
+
+// r[impl api.source.previews]
+pub async fn api_source_previews(
+    State(state): State<AppState>,
+    Json(body): Json<SourcePreviewBatchRequest>,
+) -> impl IntoResponse {
+    if body.frame_ids.is_empty() {
+        return json_error(
+            StatusCode::BAD_REQUEST,
+            "frame_ids must be non-empty for source preview batch fetch",
+        );
+    }
+
+    let mut lookups = Vec::with_capacity(body.frame_ids.len());
+    let mut unknown_frame_ids = Vec::new();
+    for frame_id in body.frame_ids {
+        match lookup_frame_source_by_raw(frame_id.as_u64()) {
+            Some((canonical_frame_id, module_identity, rel_pc)) => {
+                lookups.push((canonical_frame_id, module_identity, rel_pc));
+            }
+            None => unknown_frame_ids.push(frame_id),
+        }
+    }
+    if !unknown_frame_ids.is_empty() {
+        let rendered = unknown_frame_ids
+            .iter()
+            .map(|id| id.as_u64().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return json_error(
+            StatusCode::BAD_REQUEST,
+            format!("unknown frame_id values in batch: [{rendered}]"),
+        );
+    }
+
+    let db = state.db.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut previews = Vec::with_capacity(lookups.len());
+        let mut unavailable_frame_ids = Vec::new();
+        for (frame_id, module_identity, rel_pc) in lookups {
+            match lookup_source_in_db(&db, frame_id, module_identity, rel_pc)? {
+                Some(preview) => previews.push(preview),
+                None => unavailable_frame_ids.push(frame_id),
+            }
+        }
+        Ok::<SourcePreviewBatchResponse, String>(SourcePreviewBatchResponse {
+            previews,
+            unavailable_frame_ids,
+        })
+    })
+    .await
+    .unwrap_or_else(|error| Err(format!("join source preview batch lookup: {error}")));
+
+    match result {
+        Ok(response) => json_ok(&response),
         Err(error) => json_error(StatusCode::INTERNAL_SERVER_ERROR, error),
     }
 }

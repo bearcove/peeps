@@ -5,6 +5,7 @@ import { type Camera, MIN_ZOOM, MAX_ZOOM, fitBounds, screenToWorld } from "./cam
 
 const WHEEL_PIXEL_SENSITIVITY = 0.0042;
 const WHEEL_ZOOM_DAMPING_AT_MAX = 0.55;
+const DRAG_THRESHOLD_PX = 4;
 
 function normalizeWheelDeltaY(e: WheelEvent): number {
   if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) return e.deltaY * 16;
@@ -17,6 +18,7 @@ const PAN_DURATION_MS = 300;
 export function useCameraController(
   surfaceRef: RefObject<HTMLElement | null>,
   bounds: Rect | null,
+  onBackgroundClick?: () => void,
 ): {
   camera: Camera;
   setCamera: (c: Camera) => void;
@@ -38,6 +40,8 @@ export function useCameraController(
   cameraRef.current = camera;
   const animFrameRef = useRef<number>(0);
   const manualInteractionVersionRef = useRef(0);
+  const onBackgroundClickRef = useRef(onBackgroundClick);
+  onBackgroundClickRef.current = onBackgroundClick;
 
   const panState = useRef<{
     active: boolean;
@@ -45,6 +49,8 @@ export function useCameraController(
     startClientY: number;
     startCamera: Camera;
   }>({ active: false, startClientX: 0, startClientY: 0, startCamera: { x: 0, y: 0, zoom: 1 } });
+  // True once the pointer moves past the drag threshold during a pan.
+  const didDragRef = useRef(false);
 
   const getViewportSize = useCallback(() => {
     const surface = surfaceRef.current;
@@ -145,6 +151,7 @@ export function useCameraController(
         startClientY: e.clientY,
         startCamera: camera,
       };
+      didDragRef.current = false;
     },
     [camera, surfaceRef],
   );
@@ -155,6 +162,9 @@ export function useCameraController(
     manualInteractionVersionRef.current += 1;
     const dx = e.clientX - state.startClientX;
     const dy = e.clientY - state.startClientY;
+    if (!didDragRef.current && (Math.abs(dx) > DRAG_THRESHOLD_PX || Math.abs(dy) > DRAG_THRESHOLD_PX)) {
+      didDragRef.current = true;
+    }
     setCamera({
       ...state.startCamera,
       x: state.startCamera.x - dx / state.startCamera.zoom,
@@ -170,6 +180,10 @@ export function useCameraController(
       if (surface && surface.hasPointerCapture?.(e.pointerId)) {
         surface.releasePointerCapture(e.pointerId);
       }
+      if (!didDragRef.current) {
+        onBackgroundClickRef.current?.();
+      }
+      didDragRef.current = false;
     },
     [surfaceRef],
   );
@@ -178,6 +192,7 @@ export function useCameraController(
     (e: PointerEvent) => {
       if (!panState.current.active) return;
       panState.current.active = false;
+      didDragRef.current = false;
       const surface = surfaceRef.current;
       if (surface && surface.hasPointerCapture?.(e.pointerId)) {
         surface.releasePointerCapture(e.pointerId);
@@ -188,6 +203,7 @@ export function useCameraController(
 
   const onLostPointerCapture = useCallback(() => {
     panState.current.active = false;
+    didDragRef.current = false;
   }, []);
 
   const panTo = useCallback(

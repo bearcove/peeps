@@ -10,7 +10,7 @@ use crate::api::recording::{
     api_record_stop,
 };
 use crate::api::snapshot::{api_snapshot, api_snapshot_current, api_snapshot_symbolication_ws};
-use crate::api::source::api_source_preview;
+use crate::api::source::{api_source_preview, api_source_previews};
 use crate::api::sql::{api_query, api_sql};
 use crate::api::theme::api_arborium_theme_css;
 use crate::db::{Db, StoredModuleManifestEntry};
@@ -125,6 +125,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/record/current/export", get(api_record_export))
         .route("/api/record/import", post(api_record_import))
         .route("/api/source/preview", get(api_source_preview))
+        .route("/api/source/previews", post(api_source_previews))
         .route("/api/arborium-theme.css", get(api_arborium_theme_css));
     if state.dev_proxy.is_some() {
         app = app.fallback(any(proxy_vite));

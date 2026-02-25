@@ -158,6 +158,12 @@
     background: none;
 }
 
+.graph-node-frame--fallback {
+    min-height: 1.3lh;
+    color: var(--text-tertiary);
+    padding: 0 var(--graph-node-padding) 6px;
+}
+
 .graph-node-frame-loading-placeholder {
     font-family: var(--font-mono);
     font-size: var(--font-size-xs);

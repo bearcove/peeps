@@ -1,5 +1,5 @@
 import React, { useId, useMemo } from "react";
-import type { GeometryEdge, GeometryNode, Point, Rect } from "../geometry";
+import type { GeometryEdge, GeometryNode, Point } from "../geometry";
 import { polylineToPath, hitTestPath } from "./edgePath";
 import "./EdgeLayer.css";
 
@@ -17,7 +17,7 @@ export interface EdgeLayerProps {
 
 export function EdgeLayer({
   edges,
-  nodes,
+  nodes: _nodes,
   selectedEdgeId,
   hoveredEdgeId: _hoveredEdgeId,
   onEdgeClick,
@@ -34,12 +34,6 @@ export function EdgeLayer({
     }
     return [...sizes].sort((a, b) => a - b);
   }, [edges]);
-  const nodeRectById = useMemo(() => {
-    const map = new Map<string, Rect>();
-    for (const node of nodes ?? []) map.set(node.id, node.worldRect);
-    return map;
-  }, [nodes]);
-
   return (
     <svg className="graph-layer edge-layer" aria-hidden="true">
       <defs>
@@ -72,45 +66,10 @@ export function EdgeLayer({
           const targetPortRef = edge.data?.targetPortRef as string | undefined;
           const sourceAnchor = sourcePortRef ? portAnchors?.get(sourcePortRef) : undefined;
           const targetAnchor = targetPortRef ? portAnchors?.get(targetPortRef) : undefined;
-          const sourceNodeRect = nodeRectById.get(edge.sourceId);
-          const targetNodeRect = nodeRectById.get(edge.targetId);
           const polyline = edge.polyline.map((p) => ({ ...p }));
           if (polyline.length > 1) {
-            const sourceNeighbor = polyline[1];
-            const targetNeighbor = polyline[polyline.length - 2];
-            const resolvedSourceAnchor = resolveEdgeEndpointAnchor({
-              nodeRect: sourceNodeRect,
-              portRef: sourcePortRef,
-              portAnchor: sourceAnchor,
-              neighbor: sourceNeighbor,
-              isSource: true,
-            });
-            const resolvedTargetAnchor = resolveEdgeEndpointAnchor({
-              nodeRect: targetNodeRect,
-              portRef: targetPortRef,
-              portAnchor: targetAnchor,
-              neighbor: targetNeighbor,
-              isSource: false,
-            });
-            if (resolvedSourceAnchor) {
-              const dx = resolvedSourceAnchor.x - polyline[0].x;
-              const dy = resolvedSourceAnchor.y - polyline[0].y;
-              polyline[0] = resolvedSourceAnchor;
-              polyline[1] = {
-                x: polyline[1].x + dx,
-                y: polyline[1].y + dy,
-              };
-            }
-            if (resolvedTargetAnchor) {
-              const lastIndex = polyline.length - 1;
-              const dx = resolvedTargetAnchor.x - polyline[lastIndex].x;
-              const dy = resolvedTargetAnchor.y - polyline[lastIndex].y;
-              polyline[lastIndex] = resolvedTargetAnchor;
-              polyline[lastIndex - 1] = {
-                x: polyline[lastIndex - 1].x + dx,
-                y: polyline[lastIndex - 1].y + dy,
-              };
-            }
+            if (sourceAnchor) polyline[0] = sourceAnchor;
+            if (targetAnchor) polyline[polyline.length - 1] = targetAnchor;
           }
           const edgeStyle = edge.data?.style ?? {};
           const stroke = isSelected
@@ -137,7 +96,7 @@ export function EdgeLayer({
             }
           }
 
-          const d = polylineToPath(visPolyline);
+          const d = polylineToPath(visPolyline, true);
           const hitD = hitTestPath(polyline);
 
           const visibleStyle: React.CSSProperties = isSelected
@@ -222,11 +181,6 @@ export function EdgeLayer({
   );
 }
 
-type PortFace = "north" | "south" | "east" | "west";
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
 function pointDistance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
@@ -235,91 +189,24 @@ function ensureTerminalSegmentLength(polyline: Point[], minLength: number): Poin
   if (polyline.length < 2) return polyline;
   const out = polyline.map((point) => ({ ...point }));
   const tip = out[out.length - 1];
-  let prevIndex = out.length - 2;
-  while (prevIndex >= 0 && pointDistance(out[prevIndex], tip) < minLength) {
-    prevIndex -= 1;
-  }
-  if (prevIndex < 0) return out;
+  const terminalIndex = out.length - 2;
+  if (pointDistance(out[terminalIndex], tip) >= minLength) return out;
 
-  const pivot = out[prevIndex];
+  let pivotIndex = terminalIndex - 1;
+  while (pivotIndex >= 0 && pointDistance(out[pivotIndex], tip) < minLength) {
+    pivotIndex -= 1;
+  }
+  if (pivotIndex < 0) return out;
+
+  const pivot = out[pivotIndex];
   const dx = pivot.x - tip.x;
   const dy = pivot.y - tip.y;
   const len = Math.hypot(dx, dy);
   if (len <= 0) return out;
 
-  out[out.length - 2] = {
+  out[terminalIndex] = {
     x: tip.x + (dx / len) * minLength,
     y: tip.y + (dy / len) * minLength,
   };
   return out;
-}
-
-function inferFaceFromPortRef(portRef: string | undefined, isSource: boolean): PortFace | null {
-  if (!portRef) return null;
-  if (portRef.includes(":in:") || portRef.endsWith(":rx") || portRef.endsWith(":resp")) {
-    return "north";
-  }
-  if (portRef.includes(":out:") || portRef.endsWith(":tx") || portRef.endsWith(":req")) {
-    return "south";
-  }
-  return isSource ? "south" : "north";
-}
-
-function closestRectFace(rect: Rect, point: Point): PortFace {
-  const dNorth = Math.abs(point.y - rect.y);
-  const dSouth = Math.abs(point.y - (rect.y + rect.height));
-  const dWest = Math.abs(point.x - rect.x);
-  const dEast = Math.abs(point.x - (rect.x + rect.width));
-  const min = Math.min(dNorth, dSouth, dWest, dEast);
-  if (min === dNorth) return "north";
-  if (min === dSouth) return "south";
-  if (min === dWest) return "west";
-  return "east";
-}
-
-function inferFaceFromNeighbor(rect: Rect, neighbor: Point, isSource: boolean): PortFace {
-  const cx = rect.x + rect.width / 2;
-  const cy = rect.y + rect.height / 2;
-  const dx = neighbor.x - cx;
-  const dy = neighbor.y - cy;
-  if (Math.abs(dx) > Math.abs(dy)) {
-    if (dx >= 0) return isSource ? "east" : "west";
-    return isSource ? "west" : "east";
-  }
-  if (dy >= 0) return isSource ? "south" : "north";
-  return isSource ? "north" : "south";
-}
-
-function anchorPointForFace(rect: Rect, face: PortFace, hint: Point | null): Point {
-  const centerX = rect.x + rect.width / 2;
-  const centerY = rect.y + rect.height / 2;
-  const hintX = hint ? clamp(hint.x, rect.x, rect.x + rect.width) : centerX;
-  const hintY = hint ? clamp(hint.y, rect.y, rect.y + rect.height) : centerY;
-  if (face === "north") return { x: hintX, y: rect.y };
-  if (face === "south") return { x: hintX, y: rect.y + rect.height };
-  if (face === "west") return { x: rect.x, y: hintY };
-  return { x: rect.x + rect.width, y: hintY };
-}
-
-function resolveEdgeEndpointAnchor({
-  nodeRect,
-  portRef,
-  portAnchor,
-  neighbor,
-  isSource,
-}: {
-  nodeRect: Rect | undefined;
-  portRef: string | undefined;
-  portAnchor: Point | undefined;
-  neighbor: Point;
-  isSource: boolean;
-}): Point | undefined {
-  if (!nodeRect) {
-    return portAnchor;
-  }
-  const face =
-    (portAnchor ? closestRectFace(nodeRect, portAnchor) : null) ??
-    inferFaceFromPortRef(portRef, isSource) ??
-    inferFaceFromNeighbor(nodeRect, neighbor, isSource);
-  return anchorPointForFace(nodeRect, face, portAnchor ?? neighbor);
 }

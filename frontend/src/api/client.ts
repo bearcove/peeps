@@ -7,6 +7,7 @@ import type {
   SnapshotSymbolicationUpdate,
   SqlResponse,
   SnapshotCutResponse,
+  SourcePreviewBatchResponse,
   SourcePreviewResponse,
   TriggerCutResponse,
 } from "./types.generated";
@@ -32,4 +33,5 @@ export interface ApiClient {
   exportRecording(): Promise<Blob>; // f[impl api.record.export] f[impl recording.export]
   importRecording(file: File): Promise<RecordingSessionInfo>; // f[impl api.record.import] f[impl recording.import]
   fetchSourcePreview(frameId: number): Promise<SourcePreviewResponse>; // f[impl api.source.preview]
+  fetchSourcePreviews(frameIds: number[]): Promise<SourcePreviewBatchResponse>; // f[impl api.source.previews]
 }

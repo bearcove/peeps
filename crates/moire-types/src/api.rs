@@ -222,6 +222,19 @@ pub struct SourcePreviewResponse {
     pub context_line: Option<String>,
 }
 
+/// Request body for `POST /api/source/previews`.
+#[derive(Facet)]
+pub struct SourcePreviewBatchRequest {
+    pub frame_ids: Vec<FrameId>,
+}
+
+/// Response for `POST /api/source/previews`.
+#[derive(Facet)]
+pub struct SourcePreviewBatchResponse {
+    pub previews: Vec<SourcePreviewResponse>,
+    pub unavailable_frame_ids: Vec<FrameId>,
+}
+
 /// A 1-based inclusive line range within a source file.
 #[derive(Facet, Debug)]
 pub struct LineRange {

@@ -19,6 +19,8 @@ fn main() -> Result<(), String> {
     tsgen.add_type::<moire_types::RecordCurrentResponse>();
     tsgen.add_type::<moire_types::RecordingImportBody>();
     tsgen.add_type::<moire_types::SourcePreviewResponse>();
+    tsgen.add_type::<moire_types::SourcePreviewBatchRequest>();
+    tsgen.add_type::<moire_types::SourcePreviewBatchResponse>();
 
     let generated = tsgen.finish();
     let mut out = String::new();

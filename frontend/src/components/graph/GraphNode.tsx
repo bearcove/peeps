@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import { kindIcon } from "../../nodeKindSpec";
 import {
-  cachedFetchSourcePreview,
+  cachedFetchSourcePreviews,
   getSourceLineSync,
   getSourcePreviewSync,
 } from "../../api/sourceCache";
@@ -69,12 +69,22 @@ export function FrameLine({
   expanded: boolean;
   showSource?: boolean;
 }) {
+  const fallbackCollapsedLine = (
+    <pre className="graph-node-frame graph-node-frame--text graph-node-frame--fallback">
+      {frame.function_name}
+    </pre>
+  );
+  const fallbackExpandedLine = (
+    <pre className="graph-node-frame graph-node-frame--text graph-node-frame--fallback">…</pre>
+  );
+
   const codeBlock = (() => {
-    if (!showSource || frame.frame_id == null) return null;
+    if (!showSource) return null;
 
     if (!expanded) {
+      if (frame.frame_id == null) return fallbackCollapsedLine;
       const lineHtml = getSourceLineSync(frame.frame_id);
-      if (!lineHtml) return null;
+      if (!lineHtml) return fallbackExpandedLine;
       return (
         <pre
           className="graph-node-frame arborium-hl"
@@ -83,8 +93,9 @@ export function FrameLine({
       );
     }
 
+    if (frame.frame_id == null) return fallbackCollapsedLine;
     const preview = getSourcePreviewSync(frame.frame_id);
-    if (!preview) return null;
+    if (!preview) return fallbackExpandedLine;
     const useCtx = preview.context_html != null && preview.context_range != null;
     const rawLines = splitHighlightedHtml(useCtx ? preview.context_html! : preview.html);
     const startLineNum = useCtx ? preview.context_range!.start : 1;
@@ -189,9 +200,7 @@ export function GraphNode({
     }
     let cancelled = false;
     setCollapsedSourceLoading(true);
-    void Promise.allSettled(
-      missingFrameIds.map((frameId) => cachedFetchSourcePreview(frameId)),
-    ).then(() => {
+    void cachedFetchSourcePreviews(missingFrameIds).then(() => {
       if (cancelled) return;
       setCollapsedSourceLoading(false);
     });

@@ -13,7 +13,7 @@ import { canonicalNodeKind } from "../../nodeKindSpec";
 import { scopeKindIcon } from "../../scopeKindSpec";
 import type { GraphFilterLabelMode } from "../../graphFilter";
 import type { NodeExpandState } from "../../components/graph/GraphViewport";
-import { cachedFetchSourcePreview } from "../../api/sourceCache";
+import { cachedFetchSourcePreviews } from "../../api/sourceCache";
 import "../../components/graph/ScopeGroupNode.css";
 import "./NodeLayer.css";
 
@@ -56,7 +56,7 @@ export async function measureGraphLayout(
   // Pre-fetch source data for collapsed nodes that need it (futures, showSource).
   // Expanded nodes are measured from DOM output and do not block on full source previews.
   {
-    const fetches: Promise<unknown>[] = [];
+    const frameIdsToFetch: number[] = [];
     for (const def of defs) {
       const isExpanded = expandedNodeIds?.has(def.id) ?? false;
       if (isExpanded) continue;
@@ -65,11 +65,11 @@ export async function measureGraphLayout(
       const frames = def.frames.slice(0, collapsedFrameCount(def.kind));
       for (const frame of frames) {
         if (frame.frame_id != null) {
-          fetches.push(cachedFetchSourcePreview(frame.frame_id).catch(() => {}));
+          frameIdsToFetch.push(frame.frame_id);
         }
       }
     }
-    if (fetches.length > 0) await Promise.all(fetches);
+    if (frameIdsToFetch.length > 0) await cachedFetchSourcePreviews(frameIdsToFetch);
   }
 
   // Escape React's useEffect lifecycle so flushSync works on our measurement roots.

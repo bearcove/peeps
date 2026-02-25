@@ -77,7 +77,7 @@ export function GraphCanvas({
     animateCameraTo,
     getManualInteractionVersion,
     handlers,
-  } = useCameraController(surfaceRef, geometry?.bounds ?? null);
+  } = useCameraController(surfaceRef, geometry?.bounds ?? null, onBackgroundClick);
 
   // Attach wheel listener as non-passive to allow preventDefault
   useEffect(() => {
@@ -118,15 +118,6 @@ export function GraphCanvas({
   const handleLostPointerCapture = useCallback(() => {
     handlers.onLostPointerCapture();
   }, [handlers]);
-
-  const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const target = e.target as Element;
-      if (target.closest('[data-pan-block="true"]')) return;
-      onBackgroundClick?.();
-    },
-    [onBackgroundClick],
-  );
 
   const transform = cameraTransform(camera, viewportSize.width, viewportSize.height);
   const dotPatternTransform = `translate(${viewportSize.width / 2 - camera.x * camera.zoom}, ${viewportSize.height / 2 - camera.y * camera.zoom}) scale(${camera.zoom})`;
@@ -178,7 +169,6 @@ export function GraphCanvas({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onLostPointerCapture={handleLostPointerCapture}
-        onClick={handleClick}
       >
         <svg className="graph-canvas__background" aria-hidden="true">
           <defs>

@@ -7,6 +7,7 @@ import type {
   RecordingSessionInfo,
   SqlResponse,
   SnapshotCutResponse,
+  SourcePreviewBatchResponse,
   TriggerCutResponse,
 } from "./types.generated";
 
@@ -62,20 +63,160 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
     { backtrace_id: 202006, frame_ids: [14] },
   ],
   frames: [
-    { frame_id: 1, frame: { resolved: { module_path: "lab_server::rpc::demo", function_name: "handle_sleepy_forever", source_file: "/workspace/lab-server/src/rpc/demo.rs", line: 42 } } },
-    { frame_id: 2, frame: { resolved: { module_path: "lab_server::rpc::demo", function_name: "finish_sleepy_forever", source_file: "/workspace/lab-server/src/rpc/demo.rs", line: 45 } } },
-    { frame_id: 3, frame: { resolved: { module_path: "lab_server::rpc::demo", function_name: "handle_ping", source_file: "/workspace/lab-server/src/rpc/demo.rs", line: 18 } } },
-    { frame_id: 4, frame: { resolved: { module_path: "lab_server::rpc::demo", function_name: "finish_ping", source_file: "/workspace/lab-server/src/rpc/demo.rs", line: 20 } } },
-    { frame_id: 5, frame: { resolved: { module_path: "lab_server::state", function_name: "lock_state", source_file: "/workspace/lab-server/src/state.rs", line: 12 } } },
-    { frame_id: 6, frame: { resolved: { module_path: "lab_server::dispatch", function_name: "send_dispatch", source_file: "/workspace/lab-server/src/dispatch.rs", line: 67 } } },
-    { frame_id: 7, frame: { resolved: { module_path: "lab_server::dispatch", function_name: "recv_dispatch", source_file: "/workspace/lab-server/src/dispatch.rs", line: 68 } } },
-    { frame_id: 8, frame: { resolved: { module_path: "lab_server::store", function_name: "poll_store_incoming", source_file: "/workspace/lab-server/src/store.rs", line: 104 } } },
-    { frame_id: 9, frame: { resolved: { module_path: "lab_loader::server::limits", function_name: "acquire_connection_permit", source_file: "/workspace/lab-loader/src/server/limits.rs", line: 28 } } },
-    { frame_id: 10, frame: { resolved: { module_path: "lab_loader::lifecycle", function_name: "wait_for_shutdown", source_file: "/workspace/lab-loader/src/lifecycle.rs", line: 15 } } },
-    { frame_id: 11, frame: { resolved: { module_path: "lab_loader::config", function_name: "init_config_cell", source_file: "/workspace/lab-loader/src/config.rs", line: 8 } } },
-    { frame_id: 12, frame: { resolved: { module_path: "lab_loader::bootstrap", function_name: "spawn_migration", source_file: "/workspace/lab-loader/src/bootstrap.rs", line: 55 } } },
-    { frame_id: 13, frame: { resolved: { module_path: "lab_loader::config", function_name: "read_config_file", source_file: "/workspace/lab-loader/src/config.rs", line: 22 } } },
-    { frame_id: 14, frame: { resolved: { module_path: "lab_loader::net::peer", function_name: "connect_peer", source_file: "/workspace/lab-loader/src/net/peer.rs", line: 31 } } },
+    {
+      frame_id: 1,
+      frame: {
+        resolved: {
+          module_path: "lab_server::rpc::demo",
+          function_name: "handle_sleepy_forever",
+          source_file: "/workspace/lab-server/src/rpc/demo.rs",
+          line: 42,
+        },
+      },
+    },
+    {
+      frame_id: 2,
+      frame: {
+        resolved: {
+          module_path: "lab_server::rpc::demo",
+          function_name: "finish_sleepy_forever",
+          source_file: "/workspace/lab-server/src/rpc/demo.rs",
+          line: 45,
+        },
+      },
+    },
+    {
+      frame_id: 3,
+      frame: {
+        resolved: {
+          module_path: "lab_server::rpc::demo",
+          function_name: "handle_ping",
+          source_file: "/workspace/lab-server/src/rpc/demo.rs",
+          line: 18,
+        },
+      },
+    },
+    {
+      frame_id: 4,
+      frame: {
+        resolved: {
+          module_path: "lab_server::rpc::demo",
+          function_name: "finish_ping",
+          source_file: "/workspace/lab-server/src/rpc/demo.rs",
+          line: 20,
+        },
+      },
+    },
+    {
+      frame_id: 5,
+      frame: {
+        resolved: {
+          module_path: "lab_server::state",
+          function_name: "lock_state",
+          source_file: "/workspace/lab-server/src/state.rs",
+          line: 12,
+        },
+      },
+    },
+    {
+      frame_id: 6,
+      frame: {
+        resolved: {
+          module_path: "lab_server::dispatch",
+          function_name: "send_dispatch",
+          source_file: "/workspace/lab-server/src/dispatch.rs",
+          line: 67,
+        },
+      },
+    },
+    {
+      frame_id: 7,
+      frame: {
+        resolved: {
+          module_path: "lab_server::dispatch",
+          function_name: "recv_dispatch",
+          source_file: "/workspace/lab-server/src/dispatch.rs",
+          line: 68,
+        },
+      },
+    },
+    {
+      frame_id: 8,
+      frame: {
+        resolved: {
+          module_path: "lab_server::store",
+          function_name: "poll_store_incoming",
+          source_file: "/workspace/lab-server/src/store.rs",
+          line: 104,
+        },
+      },
+    },
+    {
+      frame_id: 9,
+      frame: {
+        resolved: {
+          module_path: "lab_loader::server::limits",
+          function_name: "acquire_connection_permit",
+          source_file: "/workspace/lab-loader/src/server/limits.rs",
+          line: 28,
+        },
+      },
+    },
+    {
+      frame_id: 10,
+      frame: {
+        resolved: {
+          module_path: "lab_loader::lifecycle",
+          function_name: "wait_for_shutdown",
+          source_file: "/workspace/lab-loader/src/lifecycle.rs",
+          line: 15,
+        },
+      },
+    },
+    {
+      frame_id: 11,
+      frame: {
+        resolved: {
+          module_path: "lab_loader::config",
+          function_name: "init_config_cell",
+          source_file: "/workspace/lab-loader/src/config.rs",
+          line: 8,
+        },
+      },
+    },
+    {
+      frame_id: 12,
+      frame: {
+        resolved: {
+          module_path: "lab_loader::bootstrap",
+          function_name: "spawn_migration",
+          source_file: "/workspace/lab-loader/src/bootstrap.rs",
+          line: 55,
+        },
+      },
+    },
+    {
+      frame_id: 13,
+      frame: {
+        resolved: {
+          module_path: "lab_loader::config",
+          function_name: "read_config_file",
+          source_file: "/workspace/lab-loader/src/config.rs",
+          line: 22,
+        },
+      },
+    },
+    {
+      frame_id: 14,
+      frame: {
+        resolved: {
+          module_path: "lab_loader::net::peer",
+          function_name: "connect_peer",
+          source_file: "/workspace/lab-loader/src/net/peer.rs",
+          line: 31,
+        },
+      },
+    },
   ],
   processes: [
     {
@@ -93,28 +234,44 @@ const MOCK_SNAPSHOT: SnapshotCutResponse = {
             birth: birth(LAB_SERVER_PTIME_NOW, 1_245_000),
             backtrace: 101001,
             name: "DemoRpc.sleepy_forever",
-            body: { request: { service_name: "DemoRpc", method_name: "sleepy_forever", args_json: "(no args)" } },
+            body: {
+              request: {
+                service_name: "DemoRpc",
+                method_name: "sleepy_forever",
+                args_json: "(no args)",
+              },
+            },
           },
           {
             id: "resp_sleepy",
             birth: birth(LAB_SERVER_PTIME_NOW, 1_244_800),
             backtrace: 101002,
             name: "DemoRpc.sleepy_forever",
-            body: { response: { service_name: "DemoRpc", method_name: "sleepy_forever", status: { error: { internal: "deadline exceeded" } } } },
+            body: {
+              response: {
+                service_name: "DemoRpc",
+                method_name: "sleepy_forever",
+                status: { error: { internal: "deadline exceeded" } },
+              },
+            },
           },
           {
             id: "req_ping",
             birth: birth(LAB_SERVER_PTIME_NOW, 820_000),
             backtrace: 101003,
             name: "DemoRpc.ping",
-            body: { request: { service_name: "DemoRpc", method_name: "ping", args_json: "{ ttl: 30 }" } },
+            body: {
+              request: { service_name: "DemoRpc", method_name: "ping", args_json: "{ ttl: 30 }" },
+            },
           },
           {
             id: "resp_ping",
             birth: birth(LAB_SERVER_PTIME_NOW, 819_500),
             backtrace: 101004,
             name: "DemoRpc.ping",
-            body: { response: { service_name: "DemoRpc", method_name: "ping", status: { ok: "{}" } } },
+            body: {
+              response: { service_name: "DemoRpc", method_name: "ping", status: { ok: "{}" } },
+            },
           },
           {
             id: "lock_state",
@@ -261,7 +418,7 @@ export function createMockApiClient(): ApiClient {
             "incoming_connections",
             "connection",
             4,
-            "{\"id\":\"scope_conn_1\",\"name\":\"incoming_connections\",\"body\":\"connection\",\"meta\":{\"in_flight\":4,\"capacity\":64}}",
+            '{"id":"scope_conn_1","name":"incoming_connections","body":"connection","meta":{"in_flight":4,"capacity":64}}',
           ],
           [
             101,
@@ -272,7 +429,7 @@ export function createMockApiClient(): ApiClient {
             "rpc handlers",
             "task",
             3,
-            "{\"id\":\"scope_tasks_1\",\"name\":\"rpc handlers\",\"body\":\"task\",\"meta\":{\"executor\":\"tokio\"}}",
+            '{"id":"scope_tasks_1","name":"rpc handlers","body":"task","meta":{"executor":"tokio"}}',
           ],
           [
             202,
@@ -283,7 +440,7 @@ export function createMockApiClient(): ApiClient {
             "tokio worker",
             "thread",
             2,
-            "{\"id\":\"scope_thread_1\",\"name\":\"tokio worker\",\"body\":\"thread\",\"meta\":{\"worker\":1}}",
+            '{"id":"scope_thread_1","name":"tokio worker","body":"thread","meta":{"worker":1}}',
           ],
         ],
         row_count: 3,
@@ -363,9 +520,24 @@ export function createMockApiClient(): ApiClient {
     stopRecording: () => {
       const now = Date.now();
       const frames: FrameSummary[] = [
-        { frame_index: 0, captured_at_unix_ms: now - 3000, process_count: 2, capture_duration_ms: 12 },
-        { frame_index: 1, captured_at_unix_ms: now - 2000, process_count: 2, capture_duration_ms: 10 },
-        { frame_index: 2, captured_at_unix_ms: now - 1000, process_count: 2, capture_duration_ms: 11 },
+        {
+          frame_index: 0,
+          captured_at_unix_ms: now - 3000,
+          process_count: 2,
+          capture_duration_ms: 12,
+        },
+        {
+          frame_index: 1,
+          captured_at_unix_ms: now - 2000,
+          process_count: 2,
+          capture_duration_ms: 10,
+        },
+        {
+          frame_index: 2,
+          captured_at_unix_ms: now - 1000,
+          process_count: 2,
+          capture_duration_ms: 11,
+        },
       ];
       const session: RecordingSessionInfo = {
         session_id: "mock-session-001",
@@ -392,6 +564,9 @@ export function createMockApiClient(): ApiClient {
     fetchRecordingFrame: (_frameIndex) => delay(MOCK_SNAPSHOT, 300),
     exportRecording: () => Promise.resolve(new Blob(["{}"], { type: "application/json" })),
     importRecording: () => Promise.reject(new Error("import not supported in mock")),
-    fetchSourcePreview: (_frameId) => Promise.reject(new Error("source preview not supported in mock")),
+    fetchSourcePreview: (_frameId) =>
+      Promise.reject(new Error("source preview not supported in mock")),
+    fetchSourcePreviews: (_frameIds: number[]): Promise<SourcePreviewBatchResponse> =>
+      Promise.reject(new Error("source preview batch not supported in mock")),
   };
 }

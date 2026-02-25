@@ -47,7 +47,8 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
   const frames = def.frames.map(frameDataFromRenderTopFrame);
   const allFrames = def.allFrames.map(frameDataFromRenderTopFrame);
   const skipEntryFrames = "future" in def.body ? (def.body.future.skip_entry_frames ?? 0) : 0;
-  const framesLoading = def.framesLoading;
+  const hasResolvedFrames = frames.length > 0 || allFrames.length > 0;
+  const framesLoading = def.framesLoading && !hasResolvedFrames;
   if (def.channelPair) {
     return {
       kind: "channel_pair",
@@ -65,13 +66,22 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
     };
   }
   if (def.rpcPair) {
-    const respBody =
-      "response" in def.rpcPair.resp.body
-        ? def.rpcPair.resp.body.response
-        : null;
+    const respBody = "response" in def.rpcPair.resp.body ? def.rpcPair.resp.body.response : null;
     const respStatus = respBody?.status;
-    const respStatusKey = respStatus == null ? "pending" : typeof respStatus === "string" ? respStatus : Object.keys(respStatus)[0];
-    const respTone: Tone = respStatus == null || typeof respStatus === "string" ? "warn" : "ok" in respStatus ? "ok" : "error" in respStatus ? "crit" : "warn";
+    const respStatusKey =
+      respStatus == null
+        ? "pending"
+        : typeof respStatus === "string"
+          ? respStatus
+          : Object.keys(respStatus)[0];
+    const respTone: Tone =
+      respStatus == null || typeof respStatus === "string"
+        ? "warn"
+        : "ok" in respStatus
+          ? "ok"
+          : "error" in respStatus
+            ? "crit"
+            : "warn";
     return {
       kind: "rpc_pair",
       label: def.name,
