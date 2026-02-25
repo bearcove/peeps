@@ -12,14 +12,7 @@ import { GraphFilterInput } from "./GraphFilterInput";
 import { GraphViewport } from "./GraphViewport";
 import { computeNodeSublabel } from "./graphNodeData";
 import type { GraphFilterLabelMode } from "../../graphFilter";
-import { collapsedFrameCount } from "./GraphNode";
-import { canonicalNodeKind } from "../../nodeKindSpec";
-import {
-  cachedFetchSourcePreview,
-  getSourceLineSync,
-  getSourcePreviewSync,
-} from "../../api/sourceCache";
-import type { SourcePreviewResponse } from "../../api/types.generated";
+import { cachedFetchSourcePreview } from "../../api/sourceCache";
 import "./GraphPanel.css";
 
 export type GraphSelection = { kind: "entity"; id: string } | { kind: "edge"; id: string } | null;
@@ -34,46 +27,21 @@ function scopeKeyForEntity(entity: EntityDef, scopeColorMode: ScopeColorMode): s
   return undefined;
 }
 
-function collectRenderedFrameIdsForSourcePreviews(
+function collectExpandedFrameIds(
   defs: EntityDef[],
   expandedNodeIds: Set<string>,
   showSource?: boolean,
 ): Set<number> {
-  const collapsedFrameIdsByNode = collectCollapsedSourceFrameIdsByNode(defs, showSource);
+  if (!showSource || expandedNodeIds.size === 0) return new Set<number>();
   const frameIds = new Set<number>();
   for (const def of defs) {
-    const isExpanded = expandedNodeIds.has(def.id);
+    if (!expandedNodeIds.has(def.id)) continue;
     const skipEntryFrames = "future" in def.body ? (def.body.future.skip_entry_frames ?? 0) : 0;
-
-    if (isExpanded && showSource) {
-      for (const frame of def.frames.slice(skipEntryFrames)) {
-        if (frame.frame_id != null) frameIds.add(frame.frame_id);
-      }
+    for (const frame of def.frames.slice(skipEntryFrames)) {
+      if (frame.frame_id != null) frameIds.add(frame.frame_id);
     }
   }
-  for (const ids of collapsedFrameIdsByNode.values()) {
-    for (const frameId of ids) frameIds.add(frameId);
-  }
   return frameIds;
-}
-
-function collectCollapsedSourceFrameIdsByNode(
-  defs: EntityDef[],
-  showSource?: boolean,
-): Map<string, number[]> {
-  const frameIdsByNode = new Map<string, number[]>();
-  for (const def of defs) {
-    const needsCollapsedSource = showSource || canonicalNodeKind(def.kind) === "future";
-    if (!needsCollapsedSource) continue;
-    const skipEntryFrames = "future" in def.body ? (def.body.future.skip_entry_frames ?? 0) : 0;
-    const effectiveFrames = skipEntryFrames > 0 ? def.frames.slice(skipEntryFrames) : def.frames;
-    const collapsedFrames = effectiveFrames.slice(0, collapsedFrameCount(def.kind));
-    const frameIds = collapsedFrames
-      .map((frame) => frame.frame_id)
-      .filter((frameId): frameId is number => frameId != null);
-    if (frameIds.length > 0) frameIdsByNode.set(def.id, frameIds);
-  }
-  return frameIdsByNode;
 }
 
 async function preloadExpandedSourcePreviews(
@@ -81,7 +49,7 @@ async function preloadExpandedSourcePreviews(
   expandedNodeIds: Set<string>,
   showSource?: boolean,
 ): Promise<void> {
-  const frameIds = collectRenderedFrameIdsForSourcePreviews(defs, expandedNodeIds, showSource);
+  const frameIds = collectExpandedFrameIds(defs, expandedNodeIds, showSource);
   if (frameIds.size === 0) return;
   await Promise.all([...frameIds].map((frameId) => cachedFetchSourcePreview(frameId)));
 }
@@ -149,7 +117,7 @@ export function GraphPanel({
   const [prevLayout, setPrevLayout] = useState<GraphGeometry | null>(null);
   const layoutRef = useRef<GraphGeometry | null>(null);
   const layoutRunIdRef = useRef(0);
-  const sourceLoadRunIdRef = useRef(0);
+  const lastLaidOutExpandedIdRef = useRef<string | null>(null);
   layoutRef.current = layout;
   const expandedNodeIds = useMemo(
     () => (expandedEntityId ? new Set([expandedEntityId]) : new Set<string>()),
@@ -157,60 +125,9 @@ export function GraphPanel({
   );
   // Transient: the node that is currently loading (fetching source + running ELK).
   const [expandingNodeId, setExpandingNodeId] = useState<string | null>(null);
-  const [sourceLoadingNodeIds, setSourceLoadingNodeIds] = useState<Set<string>>(new Set());
-  const [sourcePreviewVersion, setSourcePreviewVersion] = useState(0);
 
   // Serialize expanded set for stable dependency tracking
   const expandedKey = [...expandedNodeIds].sort().join(",");
-
-  useEffect(() => {
-    if (entityDefs.length === 0) {
-      setSourceLoadingNodeIds(new Set());
-      return;
-    }
-
-    let cancelled = false;
-    const runId = ++sourceLoadRunIdRef.current;
-    const collapsedFrameIdsByNode = collectCollapsedSourceFrameIdsByNode(entityDefs, showSource);
-    const allRenderedFrameIds = collectRenderedFrameIdsForSourcePreviews(
-      entityDefs,
-      expandedNodeIds,
-      showSource,
-    );
-    const missingPreviewIds = [...allRenderedFrameIds].filter(
-      (frameId) => !getSourcePreviewSync(frameId),
-    );
-
-    const loadingNodeIds = new Set<string>();
-    for (const [nodeId, frameIds] of collapsedFrameIdsByNode.entries()) {
-      if (frameIds.some((frameId) => getSourceLineSync(frameId) == null)) {
-        loadingNodeIds.add(nodeId);
-      }
-    }
-    setSourceLoadingNodeIds(loadingNodeIds);
-
-    if (missingPreviewIds.length === 0) {
-      return;
-    }
-
-    void Promise.allSettled(
-      missingPreviewIds.map((frameId) => cachedFetchSourcePreview(frameId)),
-    ).then(() => {
-      if (cancelled || sourceLoadRunIdRef.current !== runId) return;
-      const nextLoadingNodeIds = new Set<string>();
-      for (const [nodeId, frameIds] of collapsedFrameIdsByNode.entries()) {
-        if (frameIds.some((frameId) => getSourceLineSync(frameId) == null)) {
-          nextLoadingNodeIds.add(nodeId);
-        }
-      }
-      setSourceLoadingNodeIds(nextLoadingNodeIds);
-      setSourcePreviewVersion((v) => v + 1);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [entityDefs, showSource, expandedKey, expandedNodeIds]);
 
   useEffect(() => {
     if (unionFrameLayout) {
@@ -221,8 +138,10 @@ export function GraphPanel({
     let cancelled = false;
     const runId = ++layoutRunIdRef.current;
     const runExpandedEntityId = expandedEntityId;
+    const shouldEnterExpanding =
+      runExpandedEntityId != null && runExpandedEntityId !== lastLaidOutExpandedIdRef.current;
     // Mark the newly-requested node as "expanding" so the UI shows a spinner immediately.
-    setExpandingNodeId(runExpandedEntityId);
+    if (shouldEnterExpanding) setExpandingNodeId(runExpandedEntityId);
 
     void preloadExpandedSourcePreviews(entityDefs, expandedNodeIds, showSource)
       .then(() => {
@@ -248,11 +167,16 @@ export function GraphPanel({
         // Save current layout as prev for FLIP animation before updating
         setPrevLayout(layoutRef.current);
         setLayout(geo);
-        setExpandingNodeId((current) => (current === runExpandedEntityId ? null : current));
+        lastLaidOutExpandedIdRef.current = runExpandedEntityId;
+        if (shouldEnterExpanding) {
+          setExpandingNodeId((current) => (current === runExpandedEntityId ? null : current));
+        }
       })
       .catch((error) => {
         if (cancelled || layoutRunIdRef.current !== runId) return;
-        setExpandingNodeId((current) => (current === runExpandedEntityId ? null : current));
+        if (shouldEnterExpanding) {
+          setExpandingNodeId((current) => (current === runExpandedEntityId ? null : current));
+        }
         console.error(error);
       });
 
@@ -272,20 +196,6 @@ export function GraphPanel({
 
   const effectiveGeometry: GraphGeometry | null = unionFrameLayout?.geometry ?? layout;
   const effectivePrevGeometry: GraphGeometry | null = unionFrameLayout ? null : prevLayout;
-  const sourcePreviewByFrameId = useMemo<Map<number, SourcePreviewResponse>>(() => {
-    const frameIds = collectRenderedFrameIdsForSourcePreviews(
-      entityDefs,
-      expandedNodeIds,
-      showSource,
-    );
-    const previews = new Map<number, SourcePreviewResponse>();
-    for (const frameId of frameIds) {
-      const preview = getSourcePreviewSync(frameId);
-      if (preview) previews.set(frameId, preview);
-    }
-    return previews;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- sourcePreviewVersion triggers re-run when cache fills; expandedKey is serialized expandedNodeIds
-  }, [entityDefs, expandedKey, showSource, sourcePreviewVersion, expandedNodeIds]);
   const entityById = useMemo(
     () => new Map(entityDefs.map((entity) => [entity.id, entity])),
     [entityDefs],
@@ -396,8 +306,6 @@ export function GraphPanel({
         onAppendFilterToken={onAppendFilterToken}
         ghostNodeIds={unionFrameLayout?.ghostNodeIds}
         ghostEdgeIds={unionFrameLayout?.ghostEdgeIds}
-        sourcePreviewByFrameId={sourcePreviewByFrameId}
-        sourceLoadingNodeIds={sourceLoadingNodeIds}
         expandedNodeId={expandedEntityId}
         expandingNodeId={expandingNodeId}
         onExpandedNodeChange={(id) => {

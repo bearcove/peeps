@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import type { SourcePreviewResponse } from "../../api/types.generated";
 import type { GraphFrameData, GraphNodeData } from "./graphNodeData";
 import { FrameLineCollapsed, FrameLineExpanded } from "./GraphNode";
 import "./FrameList.css";
@@ -11,7 +10,6 @@ type FrameListProps = {
   collapsedShowSource: boolean;
   /** Frames to show in collapsed mode (pre-sliced by caller). */
   collapsedFrames: GraphFrameData[];
-  sourcePreviewByFrameId?: Map<number, SourcePreviewResponse>;
 };
 
 export function FrameList({
@@ -20,7 +18,6 @@ export function FrameList({
   isFuture,
   collapsedShowSource,
   collapsedFrames,
-  sourcePreviewByFrameId,
 }: FrameListProps) {
   const [showSystem, setShowSystem] = useState(false);
 
@@ -28,26 +25,12 @@ export function FrameList({
 
   if (!expanded) {
     if (collapsedFrames.length === 0) {
-      if (data.framesLoading && isFuture) {
-        return (
-          <div className="graph-node-frames graph-node-frames--loading">
-            <div className="graph-node-frame-skeleton" />
-          </div>
-        );
-      }
       return null;
     }
     return (
       <div className="graph-node-frames">
         {collapsedFrames.map((frame) => (
-          <FrameLineCollapsed
-            key={frame.frame_id}
-            frame={frame}
-            showSource={collapsedShowSource}
-            preloadedPreview={
-              frame.frame_id != null ? sourcePreviewByFrameId?.get(frame.frame_id) : undefined
-            }
-          />
+          <FrameLineCollapsed key={frame.frame_id} frame={frame} showSource={collapsedShowSource} />
         ))}
       </div>
     );
@@ -63,14 +46,7 @@ export function FrameList({
       <div className={hasSystemFrames ? "graph-node-frames-scroll" : undefined}>
         <div className="graph-node-frames">
           {effectiveFrames.map((frame) => (
-            <FrameLineExpanded
-              key={frame.frame_id}
-              frame={frame}
-              showSource={data.showSource}
-              preloadedPreview={
-                frame.frame_id != null ? sourcePreviewByFrameId?.get(frame.frame_id) : undefined
-              }
-            />
+            <FrameLineExpanded key={frame.frame_id} frame={frame} showSource={data.showSource} />
           ))}
         </div>
       </div>

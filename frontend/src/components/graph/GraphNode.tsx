@@ -1,8 +1,11 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { DurationDisplay } from "../../ui/primitives/DurationDisplay";
 import { kindIcon } from "../../nodeKindSpec";
-import type { SourcePreviewResponse } from "../../api/types.generated";
-import { getSourceLineSync, getSourcePreviewSync } from "../../api/sourceCache";
+import {
+  cachedFetchSourcePreview,
+  getSourceLineSync,
+  getSourcePreviewSync,
+} from "../../api/sourceCache";
 import { splitHighlightedHtml, collapseContextLines } from "../../utils/highlightedHtml";
 import { langIcon } from "./langIcon";
 import { canonicalNodeKind } from "../../nodeKindSpec";
@@ -41,26 +44,15 @@ function stopPropagation(e: React.MouseEvent) {
   e.stopPropagation();
 }
 
-function extractLineFromPreview(preview: SourcePreviewResponse): string | undefined {
-  if (preview.context_line) return preview.context_line;
-  const lines = splitHighlightedHtml(preview.html);
-  const targetIdx = preview.target_line - 1;
-  return targetIdx >= 0 && targetIdx < lines.length ? lines[targetIdx]?.trim() : undefined;
-}
-
 export function FrameLineCollapsed({
   frame,
   showSource,
-  preloadedPreview,
 }: {
   frame: GraphFrameData;
   showSource?: boolean;
-  preloadedPreview?: SourcePreviewResponse;
 }) {
-  const preloadedLine = preloadedPreview ? extractLineFromPreview(preloadedPreview) : undefined;
   const sourceHtml =
-    preloadedLine ??
-    (showSource && frame.frame_id != null ? getSourceLineSync(frame.frame_id) : undefined);
+    showSource && frame.frame_id != null ? getSourceLineSync(frame.frame_id) : undefined;
   const location = formatFileLocation(frame);
 
   const content = (() => {
@@ -71,9 +63,6 @@ export function FrameLineCollapsed({
           dangerouslySetInnerHTML={{ __html: sourceHtml }}
         />
       );
-    }
-    if (showSource) {
-      return <div className="graph-node-frame-skeleton" />;
     }
     return (
       <pre className="graph-node-frame graph-node-frame--text">
@@ -96,15 +85,12 @@ export function FrameLineCollapsed({
 export function FrameLineExpanded({
   frame,
   showSource,
-  preloadedPreview,
 }: {
   frame: GraphFrameData;
   showSource?: boolean;
-  preloadedPreview?: SourcePreviewResponse;
 }) {
   const preview =
-    preloadedPreview ??
-    (showSource && frame.frame_id != null ? getSourcePreviewSync(frame.frame_id) : undefined);
+    showSource && frame.frame_id != null ? getSourcePreviewSync(frame.frame_id) : undefined;
   const location = formatFileLocation(frame);
 
   const codeBlock = (() => {
@@ -172,14 +158,10 @@ export function GraphNode({
   data,
   expanded = false,
   expanding = false,
-  sourcePreviewByFrameId,
-  sourceLoading = false,
 }: {
   data: GraphNodeData;
   expanded?: boolean;
   expanding?: boolean;
-  sourcePreviewByFrameId?: Map<number, SourcePreviewResponse>;
-  sourceLoading?: boolean;
 }) {
   const showScopeColor =
     data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
@@ -195,8 +177,52 @@ export function GraphNode({
   const visibleFrames = expanded
     ? effectiveFrames
     : pickCollapsedFrames(data.kind, effectiveFrames);
+  const collapsedSourceFrameIds = useMemo(() => {
+    if (expanded) return [];
+    if (!collapsedShowSource) return [];
+    return visibleFrames
+      .map((frame) => frame.frame_id)
+      .filter((frameId): frameId is number => frameId != null);
+  }, [expanded, collapsedShowSource, visibleFrames]);
+  const collapsedSourceFrameIdsKey = collapsedSourceFrameIds.join(",");
+  const [collapsedSourceLoading, setCollapsedSourceLoading] = useState(false);
 
-  const showLoadingOverlay = expanding || (!expanded && sourceLoading);
+  useEffect(() => {
+    if (collapsedSourceFrameIds.length === 0) {
+      setCollapsedSourceLoading(false);
+      return;
+    }
+    const missingFrameIds = collapsedSourceFrameIds.filter(
+      (frameId) => getSourceLineSync(frameId) == null,
+    );
+    if (missingFrameIds.length === 0) {
+      setCollapsedSourceLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setCollapsedSourceLoading(true);
+    void Promise.allSettled(
+      missingFrameIds.map((frameId) => cachedFetchSourcePreview(frameId)),
+    ).then(() => {
+      if (cancelled) return;
+      setCollapsedSourceLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [collapsedSourceFrameIdsKey]);
+  const collapsedFramesMaxHeight = isFuture ? "2.2em" : "0px";
+  const cardStyle = {
+    "--graph-node-collapsed-frames-max-height": collapsedFramesMaxHeight,
+    ...(showScopeColor
+      ? {
+          "--scope-rgb-light": data.scopeRgbLight,
+          "--scope-rgb-dark": data.scopeRgbDark,
+        }
+      : {}),
+  } as React.CSSProperties;
+
+  const isLoading = expanding || collapsedSourceLoading;
 
   return (
     <div
@@ -205,6 +231,7 @@ export function GraphNode({
         "graph-node",
         expanded && "graph-node--expanded",
         expanding && "graph-node--expanding",
+        isLoading && "graph-node--loading",
         data.inCycle && "graph-node--cycle",
         data.statTone === "crit" && "graph-card--stat-crit",
         data.statTone === "warn" && "graph-card--stat-warn",
@@ -214,14 +241,7 @@ export function GraphNode({
         .filter(Boolean)
         .join(" ")}
       data-scroll-block={expanded ? "true" : undefined}
-      style={
-        showScopeColor
-          ? ({
-              "--scope-rgb-light": data.scopeRgbLight,
-              "--scope-rgb-dark": data.scopeRgbDark,
-            } as React.CSSProperties)
-          : undefined
-      }
+      style={cardStyle}
     >
       {showHeader && (
         <>
@@ -258,19 +278,15 @@ export function GraphNode({
           {data.sublabel && <div className="graph-node-sublabel">{data.sublabel}</div>}
         </>
       )}
-      <FrameList
-        data={data}
-        expanded={expanded}
-        isFuture={isFuture}
-        collapsedShowSource={collapsedShowSource}
-        collapsedFrames={visibleFrames}
-        sourcePreviewByFrameId={sourcePreviewByFrameId}
-      />
-      {showLoadingOverlay && (
-        <div className="graph-node-expand-overlay" aria-hidden="true">
-          <div className="graph-node-expand-spinner" />
-        </div>
-      )}
+      <div className="graph-node-frames-shell">
+        <FrameList
+          data={data}
+          expanded={expanded}
+          isFuture={isFuture}
+          collapsedShowSource={collapsedShowSource}
+          collapsedFrames={visibleFrames}
+        />
+      </div>
     </div>
   );
 }

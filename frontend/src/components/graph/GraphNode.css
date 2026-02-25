@@ -2,6 +2,7 @@
     --graph-card-bg: var(--bg-elevated);
     --graph-card-border-color: transparent;
     --graph-card-border-width: var(--graph-border-width);
+    --graph-node-padding: 6px;
     border-radius: var(--radius-control);
     corner-shape: squircle;
     font-family: var(--font-ui);
@@ -41,7 +42,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 8px 10px 6px;
+    padding: 0;
     gap: 0;
     font-family: var(--font-mono);
     user-select: none;
@@ -54,6 +55,7 @@
     flex-direction: column;
     align-items: center;
     gap: 4px;
+    padding: 4px;
 }
 
 .graph-node-icon {
@@ -127,11 +129,23 @@
     gap: 0;
 }
 
+.graph-node-frames-shell {
+    width: 100%;
+    overflow: hidden;
+    max-height: var(--graph-node-collapsed-frames-max-height, 0px);
+    transition: max-height 180ms ease-out;
+}
+
+.graph-node--expanded .graph-node-frames-shell {
+    max-height: 40em;
+}
+
 .graph-node-frame-row {
     display: flex;
     flex-direction: row;
     align-items: flex-start;
     gap: 4px;
+    padding: var(--graph-node-padding);
 }
 
 .graph-node-frame-icon {
@@ -192,19 +206,26 @@
     flex-direction: row;
     align-items: center;
     gap: 5px;
-    padding: 4px 0;
     margin: 2px 0;
     position: sticky;
     top: -4px;
     background: var(--graph-card-bg);
     z-index: 1;
+    padding: var(--graph-node-padding);
 }
 
 .graph-node-frame-section:not(:first-child) .graph-node-frame-sep {
-    border-top: 1px solid var(--border-edge);
-
-    padding-top: 0.4em;
+    padding-top: 0.6em;
     margin-top: 0.6em;
+}
+
+.graph-node-frame-section:not(:first-child) .graph-node-frame-sep::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -6px;
+    right: -6px;
+    border-top: 1px solid var(--border-subtle);
 }
 
 .graph-node-frame-sep__icon {
@@ -304,36 +325,9 @@
     z-index: 10;
 }
 
-.graph-node-expand-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    display: grid;
-    place-items: center;
-    border-radius: inherit;
-    background: light-dark(rgba(255, 255, 255, 0.38), rgba(0, 0, 0, 0.32));
-    backdrop-filter: blur(1px);
-    pointer-events: none;
-}
-
-.graph-node-expand-spinner {
-    width: 18px;
-    height: 18px;
-    border-radius: 999px;
-    border: 2px solid color-mix(in srgb, var(--text-primary) 30%, transparent);
-    border-top-color: var(--accent);
-    animation: graph-node-expand-spin 0.8s linear infinite;
-}
-
-@keyframes graph-node-expand-spin {
-    0% {
-        transform: rotate(0deg);
-    }
-    100% {
-        transform: rotate(360deg);
-    }
+.graph-node--loading,
+.graph-node--loading * {
+    cursor: progress;
 }
 
 /* ── Frame skeleton (loading state) ── */

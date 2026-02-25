@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, CircleNotch, FileRs, Package, Terminal } from "@phosphor-icons/react";
 import type { EntityDef } from "../../snapshot";
-import type { SourcePreviewResponse } from "../../api/types.generated";
 import { quoteFilterValue } from "../../graphFilter";
 import { canonicalNodeKind, kindDisplayName, kindIcon } from "../../nodeKindSpec";
 import { formatProcessLabel } from "../../processLabel";
@@ -38,8 +37,6 @@ export function GraphViewport({
   onAppendFilterToken,
   ghostNodeIds,
   ghostEdgeIds,
-  sourcePreviewByFrameId,
-  sourceLoadingNodeIds,
   expandedNodeId,
   expandingNodeId,
   onExpandedNodeChange,
@@ -61,8 +58,6 @@ export function GraphViewport({
   onAppendFilterToken: (token: string) => void;
   ghostNodeIds?: Set<string>;
   ghostEdgeIds?: Set<string>;
-  sourcePreviewByFrameId?: Map<number, SourcePreviewResponse>;
-  sourceLoadingNodeIds?: Set<string>;
   expandedNodeId?: string | null;
   expandingNodeId?: string | null;
   onExpandedNodeChange?: (id: string | null) => void;
@@ -269,8 +264,6 @@ export function GraphViewport({
               prevNodes={prevNodes}
               nodeExpandStates={nodeExpandStates}
               ghostNodeIds={effectiveGhostNodeIds}
-              sourcePreviewByFrameId={sourcePreviewByFrameId}
-              sourceLoadingNodeIds={sourceLoadingNodeIds}
               onNodeHover={(id) => {
                 if (id) {
                   // If a node is already expanded, hover on other nodes is blocked.
@@ -348,13 +341,20 @@ function NodeExpandPanner({
   const { panTo, animateCameraTo, getManualInteractionVersion, viewportHeight, camera } =
     useCameraContext();
   const prevStatesRef = useRef<Map<string, NodeExpandState>>(new Map());
+  const panDelayTimerRef = useRef<number | null>(null);
   // Camera position saved when expansion starts; restored on collapse unless user manually moved.
   const savedCameraRef = useRef<typeof camera | null>(null);
   const savedManualVersionRef = useRef<number | null>(null);
   const canRestoreRef = useRef(false);
   const didAutoPanRef = useRef(false);
+  const PAN_SYNC_DELAY_MS = 90;
 
   useEffect(() => {
+    if (panDelayTimerRef.current != null) {
+      clearTimeout(panDelayTimerRef.current);
+      panDelayTimerRef.current = null;
+    }
+
     const prev = prevStatesRef.current;
     const wasEmpty = prev.size === 0;
     const isEmpty = nodeExpandStates.size === 0;
@@ -400,10 +400,14 @@ function NodeExpandPanner({
           const node = nodes.find((n) => n.id === id);
           if (node) {
             const { x, y, width } = node.worldRect;
-            // Keep the node top around 20% viewport height so there is room for expanded content.
-            const offsetY = (viewportHeight * 0.3) / camera.zoom;
-            panTo(x + width / 2, y + offsetY);
-            didAutoPanRef.current = true;
+            // Delay pan slightly so camera motion lines up with the card's height reveal.
+            panDelayTimerRef.current = window.setTimeout(() => {
+              // Keep the node top around 20% viewport height so there is room for expanded content.
+              const offsetY = (viewportHeight * 0.3) / camera.zoom;
+              panTo(x + width / 2, y + offsetY);
+              didAutoPanRef.current = true;
+              panDelayTimerRef.current = null;
+            }, PAN_SYNC_DELAY_MS);
           }
         }
       }
@@ -419,6 +423,14 @@ function NodeExpandPanner({
     viewportHeight,
     camera,
   ]);
+
+  useEffect(() => {
+    return () => {
+      if (panDelayTimerRef.current != null) {
+        clearTimeout(panDelayTimerRef.current);
+      }
+    };
+  }, []);
 
   return null;
 }
