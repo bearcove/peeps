@@ -296,6 +296,43 @@
     letter-spacing: 2px;
 }
 
+/* ── Expanding state (loading indicator) ── */
+
+.graph-node--expanding {
+    z-index: 10;
+}
+
+.graph-node-expand-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    border-radius: 0 0 var(--radius-control) var(--radius-control);
+    overflow: hidden;
+    background: var(--border-subtle);
+}
+
+.graph-node-expand-progress::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -60%;
+    width: 60%;
+    height: 100%;
+    background: var(--accent);
+    animation: graph-node-expand-progress-sweep 1.2s ease-in-out infinite;
+}
+
+@keyframes graph-node-expand-progress-sweep {
+    0% {
+        left: -60%;
+    }
+    100% {
+        left: 160%;
+    }
+}
+
 /* ── Frame skeleton (loading state) ── */
 
 .graph-node-frame-skeleton {
@@ -303,7 +340,7 @@
     font-size: var(--font-size-xs);
     line-height: 1.3;
     height: 1lh;
-    border-radius: 3px;
+    border-radius: var(--radius-control);
     corner-shape: squircle;
     background: linear-gradient(
         90deg,

@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef } from "react";
+import React from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import type { GeometryNode } from "../geometry";
@@ -24,7 +24,6 @@ export interface NodeLayerProps {
   onNodeContextMenu?: (id: string, clientX: number, clientY: number) => void;
   onNodeHover?: (id: string | null) => void;
   ghostNodeIds?: Set<string>;
-  onExpandedNodeMeasured?: (id: string, width: number, height: number) => void;
 }
 
 type SubgraphScopeMode = "none" | "process" | "crate";
@@ -138,32 +137,6 @@ export async function measureGraphLayout(
   return { nodeSizes: sizes, subgraphHeaderHeight };
 }
 
-// ── Live size probe ─────────────────────────────────────────────
-
-/** Measures the rendered size of an expanded node from the live DOM and reports it once. */
-function ExpandedNodeProbe({
-  id,
-  onMeasured,
-}: {
-  id: string;
-  onMeasured: (id: string, width: number, height: number) => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    // Walk up to the foreignObject to get the actual rendered dimensions.
-    const fo = el.closest("foreignObject");
-    if (!fo) return;
-    const inner = fo.querySelector<HTMLElement>(".graph-node");
-    if (!inner) return;
-    const w = inner.offsetWidth;
-    const h = inner.offsetHeight;
-    if (w > 0 && h > 0) onMeasured(id, w, h);
-  });
-  return <div ref={ref} style={{ display: "none" }} />;
-}
-
 // ── NodeLayer ──────────────────────────────────────────────────
 
 export function NodeLayer({
@@ -173,7 +146,6 @@ export function NodeLayer({
   onNodeContextMenu,
   onNodeHover,
   ghostNodeIds,
-  onExpandedNodeMeasured,
 }: NodeLayerProps) {
   if (nodes.length === 0) return null;
 
@@ -190,11 +162,14 @@ export function NodeLayer({
       {ordered.map((node) => {
         const { x, y, width, height } = node.worldRect;
         const isGhost = !!(node.data?.ghost as boolean | undefined) || !!ghostNodeIds?.has(node.id);
-        const isExpanded = nodeExpandStates?.get(node.id) === "expanded";
+        const expandState = nodeExpandStates?.get(node.id);
+        const isExpanded = expandState === "expanded";
+        const isExpanding = expandState === "expanding";
         const cardContent = (
           <GraphNode
             data={{ ...(node.data as GraphNodeData), ghost: isGhost }}
             expanded={isExpanded}
+            expanding={isExpanding}
           />
         );
 
@@ -223,9 +198,6 @@ export function NodeLayer({
               className="nl-fo-wrapper"
             >
               {cardContent}
-              {isExpanded && onExpandedNodeMeasured && (
-                <ExpandedNodeProbe id={node.id} onMeasured={onExpandedNodeMeasured} />
-              )}
             </div>
           </foreignObject>
         );

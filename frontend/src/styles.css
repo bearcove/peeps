@@ -32,7 +32,6 @@
     --font-size-sm: calc(12px * var(--font-scale-ui));
     --font-size-md: calc(14px * var(--font-scale-ui));
     --font-size-lg: calc(18px * var(--font-scale-ui));
-    --radius-control: 3px;
     --control-height: 28px;
     --control-height-sm: 24px;
     --graph-border-width: 1.4px;
@@ -71,6 +70,8 @@
     --shadow-soft: rgba(0, 0, 0, 0.25);
     --shadow-strong: rgba(0, 0, 0, 0.45);
     --shadow-popover: 0 14px 30px var(--shadow-strong);
+
+    --radius-control: 8px;
 
     /* Shared radius for container/track elements (filter inputs, scope groups) */
     --radius-container: 8px;

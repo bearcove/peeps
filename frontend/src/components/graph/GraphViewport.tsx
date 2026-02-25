@@ -16,8 +16,8 @@ import {
   ContextMenuSeparator,
 } from "../../ui/primitives/ContextMenu";
 
-// Node interaction states: absent = collapsed, "expanded" = selected+expanded (triggers re-layout)
-export type NodeExpandState = "expanded";
+// Node interaction states: absent = collapsed, "expanding" = loading in progress, "expanded" = fully expanded
+export type NodeExpandState = "expanding" | "expanded";
 
 export function GraphViewport({
   entityDefs,
@@ -37,8 +37,8 @@ export function GraphViewport({
   ghostNodeIds,
   ghostEdgeIds,
   expandedNodeId,
+  expandingNodeId,
   onExpandedNodeChange,
-  onExpandedNodeMeasured,
 }: {
   entityDefs: EntityDef[];
   snapPhase: "idle" | "cutting" | "loading" | "ready" | "error";
@@ -57,8 +57,8 @@ export function GraphViewport({
   ghostNodeIds?: Set<string>;
   ghostEdgeIds?: Set<string>;
   expandedNodeId?: string | null;
+  expandingNodeId?: string | null;
   onExpandedNodeChange?: (id: string | null) => void;
-  onExpandedNodeMeasured?: (id: string, width: number, height: number) => void;
 }) {
   const effectiveGhostNodeIds = useMemo(() => {
     return ghostNodeIds;
@@ -81,12 +81,14 @@ export function GraphViewport({
   const isBusy = snapPhase === "cutting" || snapPhase === "loading";
   const isEmpty = entityDefs.length === 0;
   const closeNodeContextMenu = useCallback(() => setNodeContextMenu(null), []);
-  // Per-node expand state derived from the expandedNodeId prop (controlled by filter text).
+  // Per-node expand state derived from props (controlled by filter text + transient loading state).
   const nodeExpandStates = useMemo(() => {
     const m = new Map<string, NodeExpandState>();
+    // "expanding" takes priority while loading; once ELK lands it transitions to "expanded".
+    if (expandingNodeId) m.set(expandingNodeId, "expanding");
     if (expandedNodeId) m.set(expandedNodeId, "expanded");
     return m;
-  }, [expandedNodeId]);
+  }, [expandedNodeId, expandingNodeId]);
 
   const collapseAll = useCallback(() => {
     onExpandedNodeChange?.(null);
@@ -259,7 +261,6 @@ export function GraphViewport({
               nodes={nodes}
               nodeExpandStates={nodeExpandStates}
               ghostNodeIds={effectiveGhostNodeIds}
-              onExpandedNodeMeasured={onExpandedNodeMeasured}
               onNodeHover={(id) => {
                 if (id) {
                   // If a node is already expanded, hover on other nodes is blocked.

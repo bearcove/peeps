@@ -152,7 +152,7 @@ export function FrameLineExpanded({
   );
 }
 
-export function GraphNode({ data, expanded = false }: { data: GraphNodeData; expanded?: boolean }) {
+export function GraphNode({ data, expanded = false, expanding = false }: { data: GraphNodeData; expanded?: boolean; expanding?: boolean }) {
   const showScopeColor =
     data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
 
@@ -174,6 +174,7 @@ export function GraphNode({ data, expanded = false }: { data: GraphNodeData; exp
         "graph-card",
         "graph-node",
         expanded && "graph-node--expanded",
+        expanding && "graph-node--expanding",
         data.inCycle && "graph-node--cycle",
         data.statTone === "crit" && "graph-card--stat-crit",
         data.statTone === "warn" && "graph-card--stat-warn",
@@ -234,6 +235,7 @@ export function GraphNode({ data, expanded = false }: { data: GraphNodeData; exp
         collapsedShowSource={collapsedShowSource}
         collapsedFrames={visibleFrames}
       />
+      {expanding && <div className="graph-node-expand-progress" />}
     </div>
   );
 }

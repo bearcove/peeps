@@ -169,7 +169,6 @@
     border: none;
     border-radius: calc(var(--radius-control) - 1px) 0 0 calc(var(--radius-control) - 1px);
     corner-shape: squircle;
-    color: var(--accent);
     font: inherit;
     cursor: pointer;
     white-space: normal;

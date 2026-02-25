@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { FilterMenuItem } from "../../ui/primitives/FilterMenu";
 import type { EntityDef, EdgeDef } from "../../snapshot";
 import { layoutGraph, type SubgraphScopeMode } from "../../graph/elkAdapter";
@@ -93,13 +93,8 @@ export function GraphPanel({
     () => (expandedEntityId ? new Set([expandedEntityId]) : new Set<string>()),
     [expandedEntityId],
   );
-  // Optimistic size override for the expanding node, applied while ELK re-layout is in flight.
-  const [pendingExpandOverride, setPendingExpandOverride] = useState<{
-    id: string;
-    width: number;
-    height: number;
-    origY: number;
-  } | null>(null);
+  // Transient: the node that is currently loading (fetching source + running ELK).
+  const [expandingNodeId, setExpandingNodeId] = useState<string | null>(null);
 
   // Serialize expanded set for stable dependency tracking
   const expandedKey = [...expandedNodeIds].sort().join(",");
@@ -107,6 +102,8 @@ export function GraphPanel({
   useEffect(() => {
     if (unionFrameLayout) return;
     if (entityDefs.length === 0) return;
+    // Mark the newly-requested node as "expanding" so the UI shows a spinner immediately.
+    if (expandedEntityId) setExpandingNodeId(expandedEntityId);
     measureGraphLayout(entityDefs, subgraphScopeMode, labelByMode, showSource, expandedNodeIds)
       .then((measurements) =>
         layoutGraph(entityDefs, edgeDefs, measurements.nodeSizes, subgraphScopeMode, {
@@ -114,28 +111,12 @@ export function GraphPanel({
         }),
       )
       .then((geo) => {
-        setPendingExpandOverride(null);
+        setExpandingNodeId(null);
         setLayout(geo);
       })
       .catch(console.error);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- expandedKey is the serialized form of expandedNodeIds
   }, [entityDefs, edgeDefs, subgraphScopeMode, labelByMode, unionFrameLayout, showSource, expandedKey]);
-
-  const handleExpandedNodeMeasured = useCallback(
-    (id: string, width: number, height: number) => {
-      // Only act if this is the node currently being expanded and ELK hasn't landed yet.
-      if (!expandedNodeIds.has(id)) return;
-      // Find the node's current y in the layout so we can shift it up by the height delta.
-      const currentNode = layout?.nodes.find((n) => n.id === id);
-      if (!currentNode) return;
-      setPendingExpandOverride((prev) => {
-        // Don't thrash: if we already have an override for this node, only update if size changed.
-        if (prev?.id === id && prev.width === width && prev.height === height) return prev;
-        return { id, width, height, origY: currentNode.worldRect.y };
-      });
-    },
-    [expandedNodeIds, layout],
-  );
 
   const effectiveGeometry: GraphGeometry | null = unionFrameLayout?.geometry ?? layout;
   const entityById = useMemo(() => new Map(entityDefs.map((entity) => [entity.id, entity])), [entityDefs]);
@@ -153,23 +134,8 @@ export function GraphPanel({
       const scopeRgb = scopeKey ? scopeColorByKey.get(scopeKey) : undefined;
       const sublabel = entity && labelByMode ? computeNodeSublabel(entity, labelByMode) : undefined;
 
-      // While ELK re-layout is in flight, patch the expanding node's rect with live DOM measurements
-      // so the foreignObject is correctly sized and the node shifts up to stay visually centered.
-      let worldRect = n.worldRect;
-      if (pendingExpandOverride && pendingExpandOverride.id === n.id) {
-        const { width, height, origY } = pendingExpandOverride;
-        const heightDelta = height - n.worldRect.height;
-        worldRect = {
-          ...n.worldRect,
-          y: origY - heightDelta / 2,
-          width,
-          height,
-        };
-      }
-
       return {
         ...n,
-        worldRect,
         data: {
           ...n.data,
           scopeRgbLight: scopeRgb?.light,
@@ -179,7 +145,7 @@ export function GraphPanel({
         },
       };
     });
-  }, [effectiveGeometry, entityById, scopeColorByKey, scopeColorMode, labelByMode, showSource, pendingExpandOverride]);
+  }, [effectiveGeometry, entityById, scopeColorByKey, scopeColorMode, labelByMode, showSource]);
 
   const groupsWithScopeColor = useMemo(() => {
     if (!effectiveGeometry) return [];
@@ -258,11 +224,11 @@ export function GraphPanel({
         ghostNodeIds={unionFrameLayout?.ghostNodeIds}
         ghostEdgeIds={unionFrameLayout?.ghostEdgeIds}
         expandedNodeId={expandedEntityId}
+        expandingNodeId={expandingNodeId}
         onExpandedNodeChange={(id) => {
-          if (!id) setPendingExpandOverride(null);
+          if (!id) setExpandingNodeId(null);
           onExpandedEntityChange(id);
         }}
-        onExpandedNodeMeasured={handleExpandedNodeMeasured}
       />
     </div>
   );
