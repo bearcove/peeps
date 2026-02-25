@@ -42,18 +42,29 @@
     /* Role tokens */
     --bg-base: light-dark(
         color-mix(in oklab, var(--theme-bg), var(--theme-fg) 6%),
-        color-mix(in oklab, var(--theme-bg), black 30%)
+        var(--theme-bg)
     );
-    --bg-elevated: var(--theme-bg);
+    /* Dark mode elevation ladder (all derived from theme-fg/bg):
+       base (canvas) → 0%
+       surface (containers) → 7%
+       elevated (cards) → 12% */
+    --bg-elevated: light-dark(
+        var(--theme-bg),
+        color-mix(in oklab, var(--theme-fg) 12%, var(--theme-bg))
+    );
     --bg-surface: color-mix(in oklab, var(--theme-fg) 7%, var(--theme-bg));
 
-    --border-default: color-mix(in oklab, var(--theme-fg) 80%, var(--theme-bg));
+    --border-default: light-dark(
+        color-mix(in oklab, var(--theme-fg) 80%, var(--theme-bg)),
+        color-mix(in oklab, var(--theme-fg) 18%, var(--theme-bg))
+    );
     --border-subtle: color-mix(in oklab, var(--theme-fg) 25%, var(--theme-bg));
     --border-edge: color-mix(in oklab, var(--theme-fg) 10%, var(--theme-bg));
 
     --text-primary: var(--theme-fg);
     --text-secondary: light-dark(#3a3a3a, #e0e0e0);
-    --text-muted: var(--hl-c);
+    /* hl-c (comment) is too low-contrast in dark; use a brighter muted tone */
+    --text-muted: light-dark(var(--hl-c), #9399b2);
     --text-tertiary: var(--text-muted);
 
     --accent: var(--hl-k);
@@ -61,9 +72,11 @@
     --accent-active: color-mix(in oklab, var(--hl-k) 70%, var(--theme-bg));
     --accent-fg: var(--theme-bg);
 
-    --status-success: var(--hl-da);
+    /* hl-da/hl-dd (diff add/delete) are not defined in github-light or
+       catppuccin-mocha, so we provide explicit fallbacks here. */
+    --status-success: light-dark(#1a7f37, #a6e3a1);
     --status-warning: light-dark(#b8860b, color-mix(in oklab, #d4820a 70%, white));
-    --status-danger: var(--hl-dd);
+    --status-danger: light-dark(#cf222e, #f38ba8);
 
     --focus-ring: color-mix(in srgb, var(--accent) 30%, transparent);
 
@@ -81,34 +94,14 @@
 
     /* sm: chips, segmented selected options */
     --shadow-elevation-sm:
-        0 1px 2px
-            light-dark(
-                color-mix(in srgb, var(--_shadow-base) 22%, transparent),
-                color-mix(in srgb, var(--_shadow-base) 42%, transparent)
-            ),
-        0 2px 4px
-            light-dark(
-                color-mix(in srgb, var(--_shadow-base) 14%, transparent),
-                color-mix(in srgb, var(--_shadow-base) 26%, transparent)
-            );
+        0 1px 2px color-mix(in srgb, var(--_shadow-base) 22%, transparent),
+        0 2px 4px color-mix(in srgb, var(--_shadow-base) 14%, transparent);
 
     /* md: node cards in graph (higher elevation, 3 layers) */
     --shadow-elevation-md:
-        0 1px 2px
-            light-dark(
-                color-mix(in srgb, var(--_shadow-base) 22%, transparent),
-                color-mix(in srgb, var(--_shadow-base) 42%, transparent)
-            ),
-        0 3px 6px
-            light-dark(
-                color-mix(in srgb, var(--_shadow-base) 14%, transparent),
-                color-mix(in srgb, var(--_shadow-base) 26%, transparent)
-            ),
-        0 6px 12px
-            light-dark(
-                color-mix(in srgb, var(--_shadow-base) 8%, transparent),
-                color-mix(in srgb, var(--_shadow-base) 16%, transparent)
-            );
+        0 1px 2px color-mix(in srgb, var(--_shadow-base) 22%, transparent),
+        0 3px 6px color-mix(in srgb, var(--_shadow-base) 14%, transparent),
+        0 6px 12px color-mix(in srgb, var(--_shadow-base) 8%, transparent);
 
     --edge-stroke-default: light-dark(var(--border-default), var(--border-subtle));
     --edge-stroke-muted: var(--border-subtle);
@@ -119,6 +112,23 @@
     --scope-rgb-fallback-light: 191 224 255;
     --scope-rgb-fallback-dark: 79 163 255;
 }
+
+/* Dark mode: drop shadows don't read on dark backgrounds.
+   Replace with inset top-rim highlight + deeper ambient drop shadow. */
+/* @media (prefers-color-scheme: dark) {
+    :root {
+        --shadow-elevation-sm:
+            inset 0 1px 0 rgba(255, 255, 255, 0.07),
+            0 1px 2px rgba(0, 0, 0, 0.25),
+            0 2px 4px rgba(0, 0, 0, 0.15);
+
+        --shadow-elevation-md:
+            inset 0 1px 0 rgba(255, 255, 255, 0.08),
+            0 1px 3px rgba(0, 0, 0, 0.3),
+            0 4px 8px rgba(0, 0, 0, 0.2),
+            0 8px 16px rgba(0, 0, 0, 0.12);
+    }
+} */
 
 button,
 input {

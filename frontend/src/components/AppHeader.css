@@ -98,7 +98,7 @@
 }
 
 .proc-pill--connected {
-    background: var(--bg-elevated);
+    background: var(--bg-base);
     color: var(--text-primary);
 }
 

@@ -24,7 +24,7 @@ export function AppHeader({
   leftPaneTab,
   onLeftPaneTabChange,
   snap,
-  snapshotProcessCount,
+  snapshotProcessCount: _snapshotProcessCount,
   symbolicationProgress,
   recording,
   connCount,
@@ -76,7 +76,9 @@ export function AppHeader({
       <SegmentedGroup
         aria-label="Primary page"
         value={leftPaneTab}
-        onChange={(value) => onLeftPaneTabChange(value as "graph" | "scopes" | "entities" | "events")}
+        onChange={(value) =>
+          onLeftPaneTabChange(value as "graph" | "scopes" | "entities" | "events")
+        }
         options={[
           { value: "graph", label: "Graph" },
           {
@@ -94,17 +96,14 @@ export function AppHeader({
           onClick={onShowProcessModal}
           title="Click to see connected processes"
         >
-          {connCount} {connCount === 1 ? "process" : "processes"}
+          {connCount} connected
         </button>
       )}
       {apiMode === "lab" ? <span className="app-header-badge">mock data</span> : null}
-      {snap.phase === "ready" && (
-        <span className="app-header-badge">Snapshot: {snapshotProcessCount} processes</span>
-      )}
       {snap.phase === "ready" && symbolicationProgress && (
         <span className="app-header-badge app-header-badge--warn">
-          Symbolication: {symbolicationProgress.resolved}/{symbolicationProgress.total} resolved
-          ({symbolicationProgress.pending} pending)
+          Symbolication: {symbolicationProgress.resolved}/{symbolicationProgress.total} resolved (
+          {symbolicationProgress.pending} pending)
         </span>
       )}
       {snap.phase === "error" && <span className="app-header-error">{snap.message}</span>}

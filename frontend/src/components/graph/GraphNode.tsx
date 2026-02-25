@@ -173,7 +173,7 @@ export function GraphNode({ data, expanded = false, expanding = false }: { data:
       className={[
         "graph-card",
         "graph-node",
-        expanded && "graph-node--expanded",
+        (expanded || expanding) && "graph-node--expanded",
         expanding && "graph-node--expanding",
         data.inCycle && "graph-node--cycle",
         data.statTone === "crit" && "graph-card--stat-crit",
@@ -228,13 +228,23 @@ export function GraphNode({ data, expanded = false, expanding = false }: { data:
           {data.sublabel && <div className="graph-node-sublabel">{data.sublabel}</div>}
         </>
       )}
-      <FrameList
-        data={data}
-        expanded={expanded}
-        isFuture={isFuture}
-        collapsedShowSource={collapsedShowSource}
-        collapsedFrames={visibleFrames}
-      />
+      {expanding ? (
+        <div className="graph-node-expand-skeleton">
+          <div className="graph-node-expand-skeleton__bar" />
+          <div className="graph-node-expand-skeleton__bar" />
+          <div className="graph-node-expand-skeleton__bar" />
+          <div className="graph-node-expand-skeleton__bar" />
+          <div className="graph-node-expand-skeleton__bar" />
+        </div>
+      ) : (
+        <FrameList
+          data={data}
+          expanded={expanded}
+          isFuture={isFuture}
+          collapsedShowSource={collapsedShowSource}
+          collapsedFrames={visibleFrames}
+        />
+      )}
       {expanding && <div className="graph-node-expand-progress" />}
     </div>
   );

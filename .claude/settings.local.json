@@ -25,7 +25,8 @@
       "mcp__tracey__tracey_validate",
       "Bash(pnpm --filter frontend exec tsc:*)",
       "Bash(pnpm exec vitest:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(./node_modules/.bin/tsc:*)"
     ]
   }
 }

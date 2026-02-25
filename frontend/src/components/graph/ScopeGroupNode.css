@@ -4,7 +4,13 @@
     border-radius: var(--radius-container);
     corner-shape: squircle;
     border: var(--graph-border-width) solid var(--border-subtle);
-    background: var(--bg-base);
+    background-color: var(--bg-base);
+    background-image: radial-gradient(
+        circle,
+        color-mix(in srgb, var(--text-primary) 18%, transparent) 0.8px,
+        transparent 0.8px
+    );
+    background-size: 16px 16px;
     overflow: hidden;
 }
 
