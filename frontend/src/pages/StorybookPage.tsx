@@ -39,9 +39,6 @@ import { GraphNode } from "../components/graph/GraphNode";
 import { GraphFilterInput } from "../components/graph/GraphFilterInput";
 import { SampleGraph } from "../components/graph/SampleGraph";
 import "../components/graph/GraphPanel.css";
-import { InspectorPanel } from "../components/inspector/InspectorPanel";
-import { BacktraceRenderer } from "../components/inspector/BacktraceRenderer";
-import { STORYBOOK_BACKTRACE_FIXTURES } from "../fixtures/backtraceFixtures";
 import { CONTEXT_MENU_DEMO_NODES, type StorybookState } from "./useStorybookState";
 import { RelativeTimestamp } from "../ui/primitives/RelativeTimestamp";
 
@@ -86,8 +83,6 @@ export function StorybookPage({
     setShowLoners,
     isLive,
     setIsLive,
-    focusedEntityId,
-    setFocusedEntityId,
     fileInputRef,
     tones,
     filterKindItems,
@@ -109,7 +104,6 @@ export function StorybookPage({
     scopeDarkPalette,
     demoSnap,
     demoRecording,
-    inspectorEntity,
     showSearchResults,
     searchResults,
     graphFilterText,
@@ -318,18 +312,6 @@ export function StorybookPage({
                 onSolo={soloKind}
               />
             </div>
-            <div className="ui-floating-inspector">
-              <InspectorPanel
-                onClose={() => undefined}
-                selection={{ kind: "entity", id: inspectorEntity.id }}
-                entityDefs={[inspectorEntity]}
-                edgeDefs={[]}
-                backtracesById={new Map([[9001, STORYBOOK_BACKTRACE_FIXTURES[0]]])}
-                focusedEntityId={focusedEntityId}
-                onToggleFocusEntity={(id) => setFocusedEntityId(id)}
-                onOpenScopeKind={() => undefined}
-              />
-            </div>
             <div className="ui-graph-node-strip">
               <GraphNode
                 data={{
@@ -374,16 +356,6 @@ export function StorybookPage({
           </div>
         </Section>
 
-        <Section
-          title="Backtrace Renderer"
-          subtitle="Top frame preview, expandable user frames, expandable system frames, include/exclude filtering"
-          wide
-        >
-          <div className="ui-section-stack">
-            <BacktraceRenderer backtrace={STORYBOOK_BACKTRACE_FIXTURES[0]} />
-            <BacktraceRenderer backtrace={STORYBOOK_BACKTRACE_FIXTURES[1]} />
-          </div>
-        </Section>
 
         <Section
           title="Color System"

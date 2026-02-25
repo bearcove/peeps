@@ -25,17 +25,3 @@
     min-height: 0;
 }
 
-.app-inspector-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: clamp(300px, 26vw, 420px);
-    max-width: calc(100% - 24px);
-    max-height: calc(100% - 24px);
-    pointer-events: none;
-    z-index: 20;
-}
-
-.app-inspector-overlay > * {
-    pointer-events: auto;
-}

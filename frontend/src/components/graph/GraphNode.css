@@ -125,10 +125,6 @@
     align-items: flex-start;
     gap: 4px;
 }
-/*
-.graph-node-frame-row__collapsed {
-    width: 800px;
-}*/
 
 .graph-node-frame-icon {
     flex-shrink: 0;

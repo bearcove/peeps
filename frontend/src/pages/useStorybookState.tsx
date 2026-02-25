@@ -558,53 +558,6 @@ export function useStorybookState() {
     [],
   );
 
-  const inspectorEntity = useMemo<EntityDef>(() => {
-    const now = Date.now();
-    const base = {
-      processId: "101",
-      processName: "moire-examples",
-      processPid: 84025,
-      backtraceId: 9001,
-      source: fakeSource("roam-session", "/tokio_runtime.rs", 20),
-      krate: "roam-session",
-      birthPtime: 16,
-      ageMs: 739,
-      birthApproxUnixMs: now - 739,
-      inCycle: false,
-      meta: {},
-    };
-    const tx = {
-      ...base,
-      id: "chan_tx",
-      name: "roam_driver:tx",
-      kind: "mpsc_tx",
-      body: { mpsc_tx: { queue_len: 0, capacity: 256 } },
-      status: { label: "active", tone: "ok" as const },
-      stat: "0/256",
-      statTone: "ok" as const,
-    } as unknown as EntityDef;
-    const rx = {
-      ...base,
-      id: "chan_rx",
-      name: "roam_driver:rx",
-      kind: "mpsc_rx",
-      body: { mpsc_rx: {} },
-      status: { label: "active", tone: "ok" as const },
-    } as unknown as EntityDef;
-
-    return {
-      ...base,
-      id: "roam_driver",
-      name: "roam_driver",
-      kind: "channel_pair",
-      body: tx.body,
-      status: { label: "open", tone: "ok" as const },
-      stat: "0/256",
-      statTone: "ok" as const,
-      channelPair: { tx, rx },
-    } as unknown as EntityDef;
-  }, []);
-
   const sampleGraphEntities = useMemo<EntityDef[]>(() => {
     const now = Date.now();
     const base = {
@@ -775,7 +728,6 @@ export function useStorybookState() {
     scopeDarkPalette,
     demoSnap,
     demoRecording,
-    inspectorEntity,
     showSearchResults,
     searchResults,
     graphFilterText,

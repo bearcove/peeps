@@ -38,7 +38,6 @@ import {
   type GraphSelection,
   type ScopeColorMode,
 } from "./components/graph/GraphPanel";
-import { InspectorPanel } from "./components/inspector/InspectorPanel";
 import { ScopeTablePanel } from "./components/scopes/ScopeTablePanel";
 import { EntityTablePanel } from "./components/entities/EntityTablePanel";
 import { EventTablePanel } from "./components/events/EventTablePanel";
@@ -46,7 +45,7 @@ import { ProcessModal } from "./components/ProcessModal";
 import { AppHeader } from "./components/AppHeader";
 import { formatProcessLabel } from "./processLabel";
 import { canonicalNodeKind, kindDisplayName, kindIcon } from "./nodeKindSpec";
-import { canonicalScopeKind, scopeKindIcon } from "./scopeKindSpec";
+import { scopeKindIcon } from "./scopeKindSpec";
 import {
   appendFilterToken,
   parseGraphFilterQuery,
@@ -140,8 +139,6 @@ function entityMatchesScopeFilter(entity: EntityDef, scopeEntityIds: ReadonlySet
   return false;
 }
 
-const INSPECTOR_MARGIN = 12;
-
 // ── App ────────────────────────────────────────────────────────
 
 export function App() {
@@ -152,11 +149,7 @@ export function App() {
   const [selectedScope, setSelectedScope] = useState<ScopeDef | null>(null);
   const [scopeEntityFilter, setScopeEntityFilter] = useState<ScopeEntityFilter | null>(null);
   const [snap, setSnap] = useState<SnapshotState>({ phase: "idle" });
-  const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectorPosition, setInspectorPosition] = useState<{ x: number; y: number } | null>(null);
-  const [openBacktraceTrigger, setOpenBacktraceTrigger] = useState(0);
   const [selection, setSelection] = useState<GraphSelection>(null);
-  const [inspectedSelection, setInspectedSelection] = useState<GraphSelection>(null);
   const [pinnedNodeIds, setPinnedNodeIds] = useState<Set<string>>(new Set());
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
@@ -179,90 +172,7 @@ export function App() {
   const snapshotWireRef = useRef<SnapshotCutResponse | null>(null);
   const isLiveRef = useRef(isLive);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const mainPaneRef = useRef<HTMLDivElement>(null);
-  const inspectorOverlayRef = useRef<HTMLDivElement>(null);
 
-  const clampInspectorPosition = useCallback((x: number, y: number) => {
-    const main = mainPaneRef.current;
-    const overlay = inspectorOverlayRef.current;
-    if (!main || !overlay) return { x, y };
-    const maxX = Math.max(
-      INSPECTOR_MARGIN,
-      main.clientWidth - overlay.offsetWidth - INSPECTOR_MARGIN,
-    );
-    const maxY = Math.max(
-      INSPECTOR_MARGIN,
-      main.clientHeight - overlay.offsetHeight - INSPECTOR_MARGIN,
-    );
-    return {
-      x: Math.min(Math.max(x, INSPECTOR_MARGIN), maxX),
-      y: Math.min(Math.max(y, INSPECTOR_MARGIN), maxY),
-    };
-  }, []);
-
-  const computeDefaultInspectorPosition = useCallback(() => {
-    const main = mainPaneRef.current;
-    const overlay = inspectorOverlayRef.current;
-    if (!main || !overlay) return null;
-
-    const mainRect = main.getBoundingClientRect();
-    const graphFlow = main.querySelector(".graph-flow") as HTMLElement | null;
-    if (leftPaneTab === "graph") {
-      if (!graphFlow) return null;
-      const flowRect = graphFlow.getBoundingClientRect();
-      const flowLeft = flowRect.left - mainRect.left;
-      const flowTop = flowRect.top - mainRect.top;
-      const flowRight = flowRect.right - mainRect.left;
-      const flowBottom = flowRect.bottom - mainRect.top;
-      const toolbar = main.querySelector(".graph-toolbar") as HTMLElement | null;
-      const toolbarClearance = toolbar
-        ? toolbar.getBoundingClientRect().bottom - mainRect.top
-        : flowTop;
-      const preferredX = flowRight - overlay.offsetWidth - INSPECTOR_MARGIN;
-      const preferredY = toolbarClearance + INSPECTOR_MARGIN;
-      const clamped = clampInspectorPosition(preferredX, preferredY);
-      const minY = toolbarClearance + INSPECTOR_MARGIN;
-      const maxY = Math.max(minY, flowBottom - overlay.offsetHeight - INSPECTOR_MARGIN);
-      return {
-        x: Math.max(clamped.x, flowLeft + INSPECTOR_MARGIN),
-        y: Math.max(minY, Math.min(clamped.y, maxY)),
-      };
-    }
-
-    const startX = main.clientWidth - overlay.offsetWidth - INSPECTOR_MARGIN;
-    const startY = INSPECTOR_MARGIN;
-    return clampInspectorPosition(startX, startY);
-  }, [clampInspectorPosition, leftPaneTab]);
-
-  const handleInspectorHeaderPointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) return;
-      const main = mainPaneRef.current;
-      const overlay = inspectorOverlayRef.current;
-      if (!main || !overlay) return;
-      event.preventDefault();
-
-      const mainRect = main.getBoundingClientRect();
-      const overlayRect = overlay.getBoundingClientRect();
-      const offsetX = event.clientX - overlayRect.left;
-      const offsetY = event.clientY - overlayRect.top;
-
-      const onPointerMove = (moveEvent: PointerEvent) => {
-        const rawX = moveEvent.clientX - mainRect.left - offsetX;
-        const rawY = moveEvent.clientY - mainRect.top - offsetY;
-        setInspectorPosition(clampInspectorPosition(rawX, rawY));
-      };
-
-      const onPointerUp = () => {
-        window.removeEventListener("pointermove", onPointerMove);
-        window.removeEventListener("pointerup", onPointerUp);
-      };
-
-      window.addEventListener("pointermove", onPointerMove);
-      window.addEventListener("pointerup", onPointerUp);
-    },
-    [clampInspectorPosition],
-  );
 
   const allEntities = useMemo(() => (snap.phase === "ready" ? snap.entities : []), [snap]);
   const allEdges = useMemo(() => (snap.phase === "ready" ? snap.edges : []), [snap]);
@@ -501,8 +411,6 @@ export function App() {
     setSymbolicationProgress(null);
     setSnap({ phase: "cutting" });
     setSelection(null);
-    setInspectedSelection(null);
-    setInspectorOpen(false);
     setFocusedEntityFilter(null);
     try {
       const triggered = await apiClient.triggerCut();
@@ -1208,32 +1116,6 @@ export function App() {
   }, [snap.phase]);
 
   useEffect(() => {
-    if (!inspectorOpen || inspectorPosition) return;
-    const start = computeDefaultInspectorPosition();
-    if (!start) return;
-    setInspectorPosition(start);
-  }, [
-    inspectorOpen,
-    inspectorPosition,
-    computeDefaultInspectorPosition,
-    leftPaneTab,
-    entities.length,
-  ]);
-
-  useEffect(() => {
-    if (!inspectorOpen) return;
-    const onResize = () => {
-      if (!inspectorPosition) return;
-      setInspectorPosition((prev) => {
-        if (!prev) return prev;
-        return clampInspectorPosition(prev.x, prev.y);
-      });
-    };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [inspectorOpen, inspectorPosition, clampInspectorPosition]);
-
-  useEffect(() => {
     return () => {
       if (pollingRef.current !== null) {
         window.clearInterval(pollingRef.current);
@@ -1248,25 +1130,17 @@ export function App() {
         const tag = target.tagName;
         if (target.isContentEditable || tag === "INPUT" || tag === "TEXTAREA") return;
       }
-      if (e.key === "Escape" && inspectorOpen) {
-        setInspectorOpen(false);
-        setSelection(null);
-        setInspectedSelection(null);
-      } else if (e.key === "Escape" && focusedEntityId) {
+      if (e.key === "Escape" && focusedEntityId) {
         setFocusedEntityFilter(null);
       } else if (e.key === "f" || e.key === "F") {
         if (selection?.kind === "entity") {
           setFocusedEntityFilter(selection.id);
         }
-      } else if (e.key === "s" || e.key === "S") {
-        if (inspectorOpen) {
-          setOpenBacktraceTrigger((t) => t + 1);
-        }
       }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [focusedEntityId, inspectorOpen, selection, setFocusedEntityFilter]);
+  }, [focusedEntityId, selection, setFocusedEntityFilter]);
 
   useEffect(() => {
     window.__moire = {
@@ -1372,7 +1246,7 @@ export function App() {
             onRebuild={handleRebuildUnion}
           />
         )}
-      <div className="app-main" ref={mainPaneRef}>
+      <div className="app-main">
         <div className="app-left-pane">
           <div className="app-left-pane-body">
             {leftPaneTab === "graph" ? (
@@ -1384,11 +1258,6 @@ export function App() {
                 onSelect={(next) => {
                   setSelection(next);
                   if (next) {
-                    setInspectedSelection(next);
-                    if (!inspectorOpen) {
-                      setInspectorPosition(null);
-                      setInspectorOpen(true);
-                    }
                     setSelectedScopeKind(null);
                     setSelectedScope(null);
                   }
@@ -1397,8 +1266,6 @@ export function App() {
                 onExitFocus={() => {
                   setFocusedEntityFilter(null);
                   setSelection(null);
-                  setInspectedSelection(null);
-                  setInspectorOpen(false);
                 }}
                 waitingForProcesses={waitingForProcesses}
                 crateItems={crateItems}
@@ -1458,10 +1325,6 @@ export function App() {
                 eventDefs={snap.phase === "ready" ? snap.events : []}
                 onSelectEntity={(entityId) => {
                   setSelection({ kind: "entity", id: entityId });
-                  if (!inspectorOpen) {
-                    setInspectorPosition(null);
-                    setInspectorOpen(true);
-                  }
                   setLeftPaneTab("graph");
                 }}
               />
@@ -1473,60 +1336,13 @@ export function App() {
                 onClearScopeFilter={() => setScopeEntityFilter(null)}
                 onSelectEntity={(entityId) => {
                   setSelection({ kind: "entity", id: entityId });
-                  if (!inspectorOpen) {
-                    setInspectorPosition(null);
-                    setInspectorOpen(true);
-                  }
                   setLeftPaneTab("graph");
                 }}
               />
             )}
           </div>
         </div>
-        {inspectorOpen && (
-          <div
-            className="app-inspector-overlay"
-            ref={inspectorOverlayRef}
-            style={
-              inspectorPosition
-                ? { left: inspectorPosition.x, top: inspectorPosition.y }
-                : { visibility: "hidden", pointerEvents: "none" }
-            }
-          >
-            <InspectorPanel
-              onClose={() => {
-                setInspectorOpen(false);
-                setSelection(null);
-                setInspectedSelection(null);
-              }}
-              onHeaderPointerDown={handleInspectorHeaderPointerDown}
-              selection={inspectedSelection}
-              entityDefs={allEntities}
-              edgeDefs={allEdges}
-              backtracesById={backtracesById}
-              focusedEntityId={focusedEntityId}
-              onToggleFocusEntity={(id) => {
-                setFocusedEntityFilter(focusedEntityId === id ? null : id);
-              }}
-              onAppendFilterToken={appendFilterTokenCallback}
-              onOpenScopeKind={(kind) => {
-                setLeftPaneTab("scopes");
-                setSelection(null);
-                setSelectedScope(null);
-                setSelectedScopeKind(canonicalScopeKind(kind));
-              }}
-              scrubbingUnionLayout={
-                recording.phase === "scrubbing" ? recording.unionLayout : undefined
-              }
-              currentFrameIndex={
-                recording.phase === "scrubbing" ? recording.currentFrameIndex : undefined
-              }
-              selectedScopeKind={selectedScopeKind}
-              selectedScope={selectedScope}
-              openBacktraceTrigger={openBacktraceTrigger}
-            />
-          </div>
-        )}
+
       </div>
     </div>
   );
