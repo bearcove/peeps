@@ -271,6 +271,11 @@
 .graph-node-frame-block__line {
     display: flex;
     flex-direction: row;
+    cursor: pointer;
+}
+
+.graph-node-frame-block__line:hover {
+    background: light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.04));
 }
 
 .graph-node-frame-block__line--target {

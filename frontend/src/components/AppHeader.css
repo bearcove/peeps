@@ -45,7 +45,7 @@
 .app-header-badge--active {
     background: var(--bg-elevated);
     color: var(--text-primary);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border-subtle);
 }
 
 .app-header-badge--recording {
@@ -99,7 +99,7 @@
 .proc-pill--connected {
     background: var(--bg-elevated);
     color: var(--text-primary);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border-subtle);
 }
 
 .proc-pill--disconnected {

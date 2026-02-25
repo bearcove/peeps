@@ -116,6 +116,10 @@ export function FrameLineExpanded({
             <div
               key={entry.lineNum}
               className={`graph-node-frame-block__line${isTarget ? " graph-node-frame-block__line--target" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                window.location.href = zedHref(frame.source_file, entry.lineNum);
+              }}
             >
               <span className="graph-node-frame-block__gutter">{entry.lineNum}</span>
               {/* eslint-disable-next-line react/no-danger */}
@@ -148,13 +152,7 @@ export function FrameLineExpanded({
   );
 }
 
-export function GraphNode({
-  data,
-  expanded = false,
-}: {
-  data: GraphNodeData;
-  expanded?: boolean;
-}) {
+export function GraphNode({ data, expanded = false }: { data: GraphNodeData; expanded?: boolean }) {
   const showScopeColor =
     data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
 

@@ -6,7 +6,7 @@
     padding: 0 8px;
     height: var(--control-height);
     border-radius: var(--radius-control);
-    border: 1px solid var(--border-default);
+    border: 1px solid var(--border-subtle);
     background: var(--bg-surface);
     color: var(--text-primary);
     font-size: var(--font-size-sm);
@@ -19,7 +19,7 @@
 
 .ui-action-button:hover:not(.ui-action-button--primary):not(.ui-action-button--ghost) {
     background: color-mix(in srgb, white 4%, var(--bg-surface));
-    border-color: var(--border-default);
+    border-color: var(--border-subtle);
 }
 
 .ui-action-button:active:not(.ui-action-button--primary):not(.ui-action-button--ghost) {
@@ -62,7 +62,7 @@
 
 .ui-action-button--ghost:hover {
     background: color-mix(in srgb, white 4%, var(--bg-surface));
-    border-color: var(--border-default);
+    border-color: var(--border-subtle);
 }
 
 .ui-action-button--sm {
