@@ -117,33 +117,64 @@ fn arborium_language(path: &str) -> Option<&'static str> {
     }
 }
 
-static RUSTC_SYSROOT: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+static SYSROOT_BY_HASH: std::sync::OnceLock<std::collections::HashMap<String, String>> =
+    std::sync::OnceLock::new();
 
-fn rustc_sysroot() -> Option<&'static str> {
-    RUSTC_SYSROOT
-        .get_or_init(|| {
-            let out = std::process::Command::new("rustc")
-                .arg("--print")
-                .arg("sysroot")
-                .output()
-                .ok()?;
-            if !out.status.success() {
-                return None;
+/// Scans `~/.rustup/toolchains/`, runs `rustc -vV` for each, and builds a map
+/// from commit-hash → sysroot path. Cached after first call.
+fn sysroot_by_commit_hash() -> &'static std::collections::HashMap<String, String> {
+    SYSROOT_BY_HASH.get_or_init(|| {
+        let mut map = std::collections::HashMap::new();
+        let home = match std::env::var("RUSTUP_HOME")
+            .ok()
+            .or_else(|| std::env::var("HOME").ok().map(|h| format!("{h}/.rustup")))
+        {
+            Some(h) => h,
+            None => return map,
+        };
+        let toolchains_dir = format!("{home}/toolchains");
+        let entries = match std::fs::read_dir(&toolchains_dir) {
+            Ok(e) => e,
+            Err(_) => return map,
+        };
+        for entry in entries.flatten() {
+            // The commit hash appears in share/doc/rust/html/intro.html as a
+            // GitHub commit URL: /rust-lang/rust/commit/<hash>
+            let intro = entry.path().join("share/doc/rust/html/intro.html");
+            let html = match std::fs::read_to_string(&intro) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            let needle = "/rust-lang/rust/commit/";
+            let commit_hash = html.find(needle).and_then(|pos| {
+                let after = &html[pos + needle.len()..];
+                let end = after
+                    .find(|c: char| !c.is_ascii_hexdigit())
+                    .unwrap_or(after.len());
+                let hash = &after[..end];
+                if hash.len() == 40 {
+                    Some(hash.to_owned())
+                } else {
+                    None
+                }
+            });
+            if let Some(hash) = commit_hash {
+                let sysroot = entry.path().to_string_lossy().into_owned();
+                map.insert(hash, sysroot);
             }
-            Some(String::from_utf8(out.stdout).ok()?.trim().to_owned())
-        })
-        .as_deref()
+        }
+        map
+    })
 }
 
-/// Remaps `/rustc/{hash}/...` paths to the rust-src component under the active sysroot.
+/// Remaps `/rustc/{hash}/...` to the matching rustup toolchain's rust-src component.
 fn resolve_source_path(path: &str) -> std::borrow::Cow<'_, str> {
-    // Pattern: /rustc/<40-hex-chars>/rest
     if let Some(after_rustc) = path.strip_prefix("/rustc/") {
         if let Some(slash) = after_rustc.find('/') {
             let hash = &after_rustc[..slash];
             if hash.len() == 40 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
                 let rest = &after_rustc[slash + 1..];
-                if let Some(sysroot) = rustc_sysroot() {
+                if let Some(sysroot) = sysroot_by_commit_hash().get(hash) {
                     let remapped = format!("{sysroot}/lib/rustlib/src/rust/{rest}");
                     return std::borrow::Cow::Owned(remapped);
                 }

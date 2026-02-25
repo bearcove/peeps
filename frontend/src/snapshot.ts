@@ -56,6 +56,8 @@ export type EntityDef = {
   topFrame?: RenderTopFrame;
   /** All non-system resolved frames from the backtrace, outermost first. */
   frames: RenderTopFrame[];
+  /** All resolved frames including system/stdlib frames, outermost first. */
+  allFrames: RenderTopFrame[];
   /** True while symbolication is in progress and no user frames are resolved yet. */
   framesLoading: boolean;
   /** Process-relative birth time in ms (PTime). Not comparable across processes. */
@@ -211,32 +213,37 @@ function resolveBacktraceDisplay(
   backtraces: Map<number, ResolvedSnapshotBacktrace>,
   backtraceId: number,
   _context: string,
-): { source: RenderSource; topFrame?: RenderTopFrame; frames: RenderTopFrame[]; framesLoading: boolean } {
+): { source: RenderSource; topFrame?: RenderTopFrame; frames: RenderTopFrame[]; allFrames: RenderTopFrame[]; framesLoading: boolean } {
   const record = backtraces.get(backtraceId);
   if (!record) {
     return {
       source: backtraceSource(backtraceId),
       topFrame: undefined,
       frames: [],
+      allFrames: [],
       framesLoading: false,
     };
   }
 
   const frames: RenderTopFrame[] = [];
+  const allFrames: RenderTopFrame[] = [];
   for (let i = 0; i < record.frames.length; i++) {
     const f = record.frames[i];
     if (!isResolvedFrame(f)) continue;
     const krate = crateFromFunctionName(f.resolved.function_name);
-    if (SYSTEM_CRATES.has(krate)) continue;
     const fn_name = f.resolved.function_name;
-    frames.push({
+    const frame: RenderTopFrame = {
       function_name: fn_name,
       crate_name: krate,
       module_path: f.resolved.module_path,
       source_file: f.resolved.source_file,
       line: f.resolved.line,
       frame_id: record.frame_ids[i],
-    });
+    };
+    allFrames.push(frame);
+    if (!SYSTEM_CRATES.has(krate)) {
+      frames.push(frame);
+    }
   }
 
   const framesLoading = frames.length === 0 && record.frames.some(isPendingFrame);
@@ -268,6 +275,7 @@ function resolveBacktraceDisplay(
         frame_id: record.frame_ids[topFrameIndex],
       },
       frames,
+      allFrames,
       framesLoading,
     };
   }
@@ -282,6 +290,7 @@ function resolveBacktraceDisplay(
       },
       topFrame: undefined,
       frames,
+      allFrames,
       framesLoading,
     };
   }
@@ -290,6 +299,7 @@ function resolveBacktraceDisplay(
     source: backtraceSource(backtraceId),
     topFrame: undefined,
     frames,
+    allFrames,
     framesLoading,
   };
 }
@@ -752,6 +762,7 @@ export function convertSnapshot(
         krate: resolvedBacktrace.source.krate,
         topFrame: resolvedBacktrace.topFrame,
         frames: resolvedBacktrace.frames,
+        allFrames: resolvedBacktrace.allFrames,
         framesLoading: resolvedBacktrace.framesLoading,
         birthPtime: e.birth,
         ageMs,

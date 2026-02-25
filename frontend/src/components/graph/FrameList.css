@@ -1,0 +1,23 @@
+.frame-list-system-toggle {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 0 2px;
+    border-top: 1px solid var(--border-subtle);
+    font-family: var(--font-ui);
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.frame-list-system-toggle:hover {
+    color: var(--text-secondary);
+}
+
+.frame-list-system-toggle input[type="checkbox"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+    flex-shrink: 0;
+}

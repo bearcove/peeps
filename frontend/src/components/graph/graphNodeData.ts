@@ -22,6 +22,8 @@ export type GraphNodeData = {
   sublabel?: string;
   /** All non-system frames from the backtrace. */
   frames: GraphFrameData[];
+  /** All frames including system/stdlib frames. */
+  allFrames: GraphFrameData[];
   /** True while symbolication is in progress and no user frames are resolved yet. */
   framesLoading: boolean;
   /** The entity's own crate, used to pick the "main crate" frame. */
@@ -43,6 +45,7 @@ function frameDataFromRenderTopFrame(f: RenderTopFrame): GraphFrameData {
 
 export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
   const frames = def.frames.map(frameDataFromRenderTopFrame);
+  const allFrames = def.allFrames.map(frameDataFromRenderTopFrame);
   const skipEntryFrames = "future" in def.body ? (def.body.future.skip_entry_frames ?? 0) : 0;
   const framesLoading = def.framesLoading;
   if (def.channelPair) {
@@ -55,6 +58,7 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
       stat: def.stat,
       statTone: def.statTone,
       frames,
+      allFrames,
       framesLoading,
       entityCrate: def.krate,
       skipEntryFrames,
@@ -77,6 +81,7 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
       stat: `RESP ${respStatusKey}`,
       statTone: respTone,
       frames,
+      allFrames,
       framesLoading,
       entityCrate: def.krate,
       skipEntryFrames,
@@ -91,6 +96,7 @@ export function graphNodeDataFromEntity(def: EntityDef): GraphNodeData {
     stat: def.stat,
     statTone: def.statTone,
     frames,
+    allFrames,
     framesLoading,
     entityCrate: def.krate,
     skipEntryFrames,

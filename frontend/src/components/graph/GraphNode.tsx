@@ -7,6 +7,7 @@ import { splitHighlightedHtml, collapseContextLines } from "../../utils/highligh
 import { langIcon } from "./langIcon";
 import { canonicalNodeKind } from "../../nodeKindSpec";
 import type { GraphFrameData, GraphNodeData } from "./graphNodeData";
+import { FrameList } from "./FrameList";
 import "./GraphNode.css";
 
 /** Futures: no header, 2 source frames. Everything else: header, 0 frames. */
@@ -40,7 +41,7 @@ function stopPropagation(e: React.MouseEvent) {
   e.stopPropagation();
 }
 
-function FrameLineCollapsed({
+export function FrameLineCollapsed({
   frame,
   showSource,
 }: {
@@ -84,7 +85,7 @@ function FrameLineCollapsed({
   );
 }
 
-function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showSource?: boolean }) {
+export function FrameLineExpanded({ frame, showSource }: { frame: GraphFrameData; showSource?: boolean }) {
   const preview = useSourcePreview(showSource ? frame.frame_id : undefined);
   const location = formatFileLocation(frame);
 
@@ -221,25 +222,13 @@ export function GraphNode({ data, expanded = false, pinned = false }: { data: Gr
           {data.sublabel && <div className="graph-node-sublabel">{data.sublabel}</div>}
         </>
       )}
-      {visibleFrames.length > 0 ? (
-        <div className="graph-node-frames">
-          {visibleFrames.map((frame, _i) =>
-            expanded ? (
-              <FrameLineExpanded key={frame.frame_id} frame={frame} showSource={data.showSource} />
-            ) : (
-              <FrameLineCollapsed
-                key={frame.frame_id}
-                frame={frame}
-                showSource={collapsedShowSource}
-              />
-            ),
-          )}
-        </div>
-      ) : data.framesLoading && isFuture ? (
-        <div className="graph-node-frames graph-node-frames--loading">
-          <div className="graph-node-frame-skeleton" />
-        </div>
-      ) : null}
+      <FrameList
+        data={data}
+        expanded={expanded}
+        isFuture={isFuture}
+        collapsedShowSource={collapsedShowSource}
+        collapsedFrames={visibleFrames}
+      />
     </div>
   );
 }
