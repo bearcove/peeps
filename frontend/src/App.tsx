@@ -151,22 +151,28 @@ export function App() {
   const [scopeEntityFilter, setScopeEntityFilter] = useState<ScopeEntityFilter | null>(null);
   const [snap, setSnap] = useState<SnapshotState>({ phase: "idle" });
   const [selection, setSelection] = useState<GraphSelection>(null);
-const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
+  const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const DEFAULT_FILTER = "colorBy:crate groupBy:process";
   const graphFilterText = searchParams.get("filter") ?? DEFAULT_FILTER;
-  const setGraphFilterText = useCallback((next: string) => {
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (next === DEFAULT_FILTER) {
-        p.delete("filter");
-      } else {
-        p.set("filter", next);
-      }
-      return p;
-    }, { replace: true });
-  }, [setSearchParams]);
+  const setGraphFilterText = useCallback(
+    (next: string) => {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          if (next === DEFAULT_FILTER) {
+            p.delete("filter");
+          } else {
+            p.set("filter", next);
+          }
+          return p;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
   const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
   const [symbolicationProgress, setSymbolicationProgress] = useState<{
     resolved: number;
@@ -183,9 +189,9 @@ const [connections, setConnections] = useState<ConnectionsResponse | null>(null)
   const pollingRef = useRef<number | null>(null);
   const symbolicationStreamStopRef = useRef<(() => void) | null>(null);
   const snapshotWireRef = useRef<SnapshotCutResponse | null>(null);
+  const startupPollStartedRef = useRef(false);
   const isLiveRef = useRef(isLive);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
 
   const allEntities = useMemo(() => (snap.phase === "ready" ? snap.entities : []), [snap]);
   const allEdges = useMemo(() => (snap.phase === "ready" ? snap.edges : []), [snap]);
@@ -204,23 +210,29 @@ const [connections, setConnections] = useState<ConnectionsResponse | null>(null)
   const focusedEntityId = graphTextFilters.focusedNodeId ?? null;
   const expandedEntityId = graphTextFilters.expandedNodeId ?? null;
 
-  const setFocusedEntityFilter = useCallback((entityId: string | null) => {
-    const tokens = tokenizeFilterQuery(graphFilterText).filter((token) => {
-      const key = token.startsWith("+") || token.startsWith("-") ? token.slice(1) : token;
-      return !key.toLowerCase().startsWith("focus:");
-    });
-    if (entityId) tokens.push(`focus:${quoteFilterValue(entityId)}`);
-    setGraphFilterText(tokens.join(" "));
-  }, [graphFilterText, setGraphFilterText]);
+  const setFocusedEntityFilter = useCallback(
+    (entityId: string | null) => {
+      const tokens = tokenizeFilterQuery(graphFilterText).filter((token) => {
+        const key = token.startsWith("+") || token.startsWith("-") ? token.slice(1) : token;
+        return !key.toLowerCase().startsWith("focus:");
+      });
+      if (entityId) tokens.push(`focus:${quoteFilterValue(entityId)}`);
+      setGraphFilterText(tokens.join(" "));
+    },
+    [graphFilterText, setGraphFilterText],
+  );
 
-  const setExpandedEntityFilter = useCallback((entityId: string | null) => {
-    const tokens = tokenizeFilterQuery(graphFilterText).filter((token) => {
-      const key = token.startsWith("+") || token.startsWith("-") ? token.slice(1) : token;
-      return !key.toLowerCase().startsWith("expand:");
-    });
-    if (entityId) tokens.push(`expand:${quoteFilterValue(entityId)}`);
-    setGraphFilterText(tokens.join(" "));
-  }, [graphFilterText, setGraphFilterText]);
+  const setExpandedEntityFilter = useCallback(
+    (entityId: string | null) => {
+      const tokens = tokenizeFilterQuery(graphFilterText).filter((token) => {
+        const key = token.startsWith("+") || token.startsWith("-") ? token.slice(1) : token;
+        return !key.toLowerCase().startsWith("expand:");
+      });
+      if (entityId) tokens.push(`expand:${quoteFilterValue(entityId)}`);
+      setGraphFilterText(tokens.join(" "));
+    },
+    [graphFilterText, setGraphFilterText],
+  );
   const applyBaseFilters = useCallback(
     (ignore: "crate" | "process" | "kind" | "module" | null) => {
       let entities = allEntities.filter(
@@ -292,17 +304,28 @@ const [connections, setConnections] = useState<ConnectionsResponse | null>(null)
     ],
   );
 
-  const hideNodeViaTextFilter = useCallback((entityId: string) => {
-    setGraphFilterText(appendFilterToken(graphFilterText, `-node:${quoteFilterValue(entityId)}`));
-  }, [graphFilterText, setGraphFilterText]);
+  const hideNodeViaTextFilter = useCallback(
+    (entityId: string) => {
+      setGraphFilterText(appendFilterToken(graphFilterText, `-node:${quoteFilterValue(entityId)}`));
+    },
+    [graphFilterText, setGraphFilterText],
+  );
 
-  const hideLocationViaTextFilter = useCallback((location: string) => {
-    setGraphFilterText(appendFilterToken(graphFilterText, `-location:${quoteFilterValue(location)}`));
-  }, [graphFilterText, setGraphFilterText]);
+  const hideLocationViaTextFilter = useCallback(
+    (location: string) => {
+      setGraphFilterText(
+        appendFilterToken(graphFilterText, `-location:${quoteFilterValue(location)}`),
+      );
+    },
+    [graphFilterText, setGraphFilterText],
+  );
 
-  const appendFilterTokenCallback = useCallback((token: string) => {
-    setGraphFilterText(appendFilterToken(graphFilterText, token));
-  }, [graphFilterText, setGraphFilterText]);
+  const appendFilterTokenCallback = useCallback(
+    (token: string) => {
+      setGraphFilterText(appendFilterToken(graphFilterText, token));
+    },
+    [graphFilterText, setGraphFilterText],
+  );
 
   const crateItems = useMemo<FilterMenuItem[]>(() => {
     const counts = new Map<string, number>();
@@ -1013,6 +1036,12 @@ const [connections, setConnections] = useState<ConnectionsResponse | null>(null)
   }, []);
 
   useEffect(() => {
+    if (startupPollStartedRef.current) {
+      appLog("startup poll already initialized; skipping re-run");
+      return;
+    }
+    startupPollStartedRef.current = true;
+
     let cancelled = false;
     async function poll() {
       appLog("startup poll loop begin");
@@ -1360,7 +1389,6 @@ const [connections, setConnections] = useState<ConnectionsResponse | null>(null)
             )}
           </div>
         </div>
-
       </div>
     </div>
   );

@@ -11,3 +11,5 @@ if (typeof window !== "undefined" && import.meta.env.DEV) {
 export const appLog = createDebug("moire:app");
 export const apiLog = createDebug("moire:api");
 export const snapshotLog = createDebug("moire:snapshot");
+export const graphLog = createDebug("moire:graph");
+export const sourceLog = createDebug("moire:source");

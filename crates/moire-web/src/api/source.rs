@@ -1,4 +1,5 @@
-use axum::extract::{Json, RawQuery, State};
+use axum::body::Bytes;
+use axum::extract::{RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use facet::Facet;
@@ -70,10 +71,17 @@ pub async fn api_source_preview(
 }
 
 // r[impl api.source.previews]
-pub async fn api_source_previews(
-    State(state): State<AppState>,
-    Json(body): Json<SourcePreviewBatchRequest>,
-) -> impl IntoResponse {
+pub async fn api_source_previews(State(state): State<AppState>, body: Bytes) -> impl IntoResponse {
+    let body: SourcePreviewBatchRequest = match facet_json::from_slice(&body) {
+        Ok(request) => request,
+        Err(error) => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                format!("invalid request json: {error}"),
+            );
+        }
+    };
+
     if body.frame_ids.is_empty() {
         return json_error(
             StatusCode::BAD_REQUEST,

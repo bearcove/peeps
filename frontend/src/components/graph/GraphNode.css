@@ -15,7 +15,6 @@
     overscroll-behavior: none;
 
     --graph-code-card-width: 400px;
-    box-shadow: var(--shadow-elevation-md);
 }
 
 /*.graph-card--scope {

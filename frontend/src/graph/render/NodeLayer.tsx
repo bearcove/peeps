@@ -14,6 +14,7 @@ import { scopeKindIcon } from "../../scopeKindSpec";
 import type { GraphFilterLabelMode } from "../../graphFilter";
 import type { NodeExpandState } from "../../components/graph/GraphViewport";
 import { cachedFetchSourcePreviews } from "../../api/sourceCache";
+import { graphLog } from "../../debug";
 import "../../components/graph/ScopeGroupNode.css";
 import "./NodeLayer.css";
 
@@ -69,7 +70,10 @@ export async function measureGraphLayout(
         }
       }
     }
-    if (frameIdsToFetch.length > 0) await cachedFetchSourcePreviews(frameIdsToFetch);
+    if (frameIdsToFetch.length > 0) {
+      graphLog("[measure] preload collapsed source previews count=%d", frameIdsToFetch.length);
+      await cachedFetchSourcePreviews(frameIdsToFetch);
+    }
   }
 
   // Escape React's useEffect lifecycle so flushSync works on our measurement roots.
@@ -100,17 +104,26 @@ export async function measureGraphLayout(
 
       try {
         const sublabel = labelBy ? computeNodeSublabel(def, labelBy) : undefined;
+        const nodeData = graphNodeDataFromEntity(def);
         // During measurement, hooks won't complete async fetches in this render turn.
         flushSync(() =>
           root.render(
-            <GraphNode
-              data={{ ...graphNodeDataFromEntity(def), sublabel, showSource }}
-              expanded={isExpanded}
-            />,
+            <GraphNode data={{ ...nodeData, sublabel, showSource }} expanded={isExpanded} />,
           ),
         );
         const width = el.offsetWidth;
         const height = el.offsetHeight;
+        graphLog(
+          "[measure] node=%s expanded=%s size=%dx%d frames=%d allFrames=%d framesLoading=%s showSource=%s",
+          def.id,
+          isExpanded ? "yes" : "no",
+          width,
+          height,
+          nodeData.frames.length,
+          nodeData.allFrames.length,
+          nodeData.framesLoading ? "yes" : "no",
+          showSource ? "yes" : "no",
+        );
         if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
           throw new Error(
             `[graph-measure] invalid node size for ${def.id} (${def.kind}): ${width}x${height}`,

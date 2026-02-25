@@ -1,6 +1,7 @@
 import type { SourcePreviewResponse } from "./types.generated";
 import { apiClient } from "./index";
 import { splitHighlightedHtml } from "../utils/highlightedHtml";
+import { sourceLog } from "../debug";
 
 /** In-flight / resolved promise cache: frameId → promise. Survives unmount/remount. */
 const sourcePreviewCache = new Map<number, Promise<SourcePreviewResponse>>();
@@ -29,29 +30,28 @@ function extractLineFromPreview(res: SourcePreviewResponse): string | undefined 
 export function cachedFetchSourcePreview(frameId: number): Promise<SourcePreviewResponse> {
   let cached = sourcePreviewCache.get(frameId);
   if (!cached) {
-    const batchPromise = apiClient
-      .fetchSourcePreviews([frameId])
-      .then((batch) => {
-        const preview = batch.previews.find((entry) => entry.frame_id === frameId);
-        if (!preview) {
-          const unavailable = new Set(batch.unavailable_frame_ids);
-          if (unavailable.has(frameId)) {
-            throw new Error(`source preview unavailable for frame_id ${frameId}`);
-          }
-          throw new Error(
-            `source preview batch response missing frame_id ${frameId} in both previews and unavailable_frame_ids`,
-          );
+    sourceLog("[single] miss frame_id=%d", frameId);
+    cached = apiClient.fetchSourcePreviews([frameId]).then((batch) => {
+      sourceLog(
+        "[single] batch frame_id=%d previews=%d unavailable=%d",
+        frameId,
+        batch.previews.length,
+        batch.unavailable_frame_ids.length,
+      );
+      const preview = batch.previews.find((entry) => entry.frame_id === frameId);
+      if (!preview) {
+        const unavailable = new Set(batch.unavailable_frame_ids);
+        if (unavailable.has(frameId)) {
+          throw new Error(`source preview unavailable for frame_id ${frameId}`);
         }
-        seedPreviewCache(frameId, preview);
-        return preview;
-      })
-      .catch(async () => {
-        // Keep compatibility with older servers that only expose /api/source/preview.
-        const fallback = await apiClient.fetchSourcePreview(frameId);
-        seedPreviewCache(frameId, fallback);
-        return fallback;
-      });
-    cached = batchPromise;
+        throw new Error(
+          `source preview batch response missing frame_id ${frameId} in both previews and unavailable_frame_ids`,
+        );
+      }
+      seedPreviewCache(frameId, preview);
+      sourceLog("[single] cached frame_id=%d via batch", frameId);
+      return preview;
+    });
     cached.catch(() => sourcePreviewCache.delete(frameId));
     sourcePreviewCache.set(frameId, cached);
   }
@@ -60,7 +60,7 @@ export function cachedFetchSourcePreview(frameId: number): Promise<SourcePreview
 
 /**
  * Preload many source previews via one backend call when possible.
- * Never throws: caller can proceed with fallbacks for frames that are unavailable.
+ * Strict path: throws when batch fetch fails or response is inconsistent.
  */
 export async function cachedFetchSourcePreviews(frameIds: number[]): Promise<void> {
   const unique = [...new Set(frameIds)].filter((frameId) => Number.isFinite(frameId));
@@ -68,32 +68,41 @@ export async function cachedFetchSourcePreviews(frameIds: number[]): Promise<voi
   const missing = unique.filter(
     (frameId) => !resolvedPreviewCache.has(frameId) && !sourcePreviewCache.has(frameId),
   );
+  sourceLog(
+    "[batch] request unique=%d missing=%d cached=%d",
+    unique.length,
+    missing.length,
+    unique.length - missing.length,
+  );
   if (missing.length > 0) {
-    try {
-      const batch = await apiClient.fetchSourcePreviews(missing);
-      const previewById = new Map(batch.previews.map((entry) => [entry.frame_id, entry]));
-      const unavailableSet = new Set(batch.unavailable_frame_ids);
-      for (const frameId of missing) {
-        const preview = previewById.get(frameId);
-        if (preview) {
-          seedPreviewCache(frameId, preview);
-          sourcePreviewCache.set(frameId, Promise.resolve(preview));
-          continue;
-        }
-        if (unavailableSet.has(frameId)) {
-          sourcePreviewCache.delete(frameId);
-          continue;
-        }
-        throw new Error(
-          `source preview batch response missing frame_id ${frameId} in both previews and unavailable_frame_ids`,
-        );
+    const batch = await apiClient.fetchSourcePreviews(missing);
+    sourceLog(
+      "[batch] response requested=%d previews=%d unavailable=%d",
+      missing.length,
+      batch.previews.length,
+      batch.unavailable_frame_ids.length,
+    );
+    const previewById = new Map(batch.previews.map((entry) => [entry.frame_id, entry]));
+    const unavailableSet = new Set(batch.unavailable_frame_ids);
+    for (const frameId of missing) {
+      const preview = previewById.get(frameId);
+      if (preview) {
+        seedPreviewCache(frameId, preview);
+        sourcePreviewCache.set(frameId, Promise.resolve(preview));
+        sourceLog("[batch] cached frame_id=%d", frameId);
+        continue;
       }
-    } catch {
-      await Promise.allSettled(missing.map((frameId) => cachedFetchSourcePreview(frameId)));
+      if (unavailableSet.has(frameId)) {
+        sourceLog("[batch] unavailable frame_id=%d", frameId);
+        throw new Error(`source preview unavailable for frame_id ${frameId}`);
+      }
+      throw new Error(
+        `source preview batch response missing frame_id ${frameId} in both previews and unavailable_frame_ids`,
+      );
     }
   }
 
-  await Promise.allSettled(unique.map((frameId) => sourcePreviewCache.get(frameId)));
+  await Promise.all(unique.map((frameId) => sourcePreviewCache.get(frameId)));
 }
 
 export function getSourcePreviewSync(frameId: number): SourcePreviewResponse | undefined {

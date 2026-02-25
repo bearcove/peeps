@@ -13,6 +13,7 @@ import { GraphViewport } from "./GraphViewport";
 import { computeNodeSublabel, graphNodeDataFromEntity } from "./graphNodeData";
 import type { GraphFilterLabelMode } from "../../graphFilter";
 import { cachedFetchSourcePreviews } from "../../api/sourceCache";
+import { graphLog } from "../../debug";
 import "./GraphPanel.css";
 
 export type GraphSelection = { kind: "entity"; id: string } | { kind: "edge"; id: string } | null;
@@ -52,6 +53,30 @@ async function preloadExpandedSourcePreviews(
   const frameIds = collectExpandedFrameIds(defs, expandedNodeIds, showSource);
   if (frameIds.size === 0) return;
   await cachedFetchSourcePreviews([...frameIds]);
+}
+
+function frameSignature(def: EntityDef): string {
+  return def.frames
+    .map((frame) => {
+      return `${frame.frame_id ?? "none"}:${frame.function_name}:${frame.source_file}:${frame.line ?? ""}`;
+    })
+    .join("|");
+}
+
+function entityLayoutSignature(def: EntityDef): string {
+  const skipEntryFrames = "future" in def.body ? (def.body.future.skip_entry_frames ?? 0) : 0;
+  return [
+    def.id,
+    def.name,
+    def.kind,
+    def.status?.label ?? "",
+    def.status?.tone ?? "",
+    def.stat ?? "",
+    def.statTone ?? "",
+    String(def.framesLoading),
+    String(skipEntryFrames),
+    frameSignature(def),
+  ].join("::");
 }
 
 export function GraphPanel({
@@ -131,9 +156,7 @@ export function GraphPanel({
   // Serialize expanded set for stable dependency tracking
   const expandedKey = [...expandedNodeIds].sort().join(",");
   const layoutInputsKey = useMemo(() => {
-    const entityKey = entityDefs
-      .map((entity) => `${entity.id}:${entity.name}:${entity.kind}`)
-      .join("|");
+    const entityKey = entityDefs.map(entityLayoutSignature).join("|");
     const edgeKey = edgeDefs.map((edge) => `${edge.id}:${edge.source}->${edge.target}`).join("|");
     return `${entityKey}::${edgeKey}::${subgraphScopeMode}::${labelByMode ?? ""}::${showSource ? "1" : "0"}::${expandedKey}`;
   }, [entityDefs, edgeDefs, subgraphScopeMode, labelByMode, showSource, expandedKey]);
@@ -155,12 +178,21 @@ export function GraphPanel({
     const runExpandedEntityId = expandedEntityId;
     const shouldEnterExpanding =
       runExpandedEntityId != null && runExpandedEntityId !== lastLaidOutExpandedIdRef.current;
+    graphLog(
+      "[layout] run=%d start expanded=%s shouldEnterExpanding=%s entities=%d edges=%d",
+      runId,
+      runExpandedEntityId ?? "none",
+      shouldEnterExpanding ? "yes" : "no",
+      entityDefs.length,
+      edgeDefs.length,
+    );
     // Mark the newly-requested node as "expanding" so the UI shows a spinner immediately.
     if (shouldEnterExpanding) setExpandingNodeId(runExpandedEntityId);
 
     void preloadExpandedSourcePreviews(entityDefs, expandedNodeIds, showSource)
       .then(() => {
         if (cancelled || layoutRunIdRef.current !== runId) return null;
+        graphLog("[layout] run=%d expanded source preload complete", runId);
         return measureGraphLayout(
           entityDefs,
           subgraphScopeMode,
@@ -172,6 +204,11 @@ export function GraphPanel({
       .then((measurements) => {
         if (!measurements) return null;
         if (cancelled || layoutRunIdRef.current !== runId) return null;
+        graphLog(
+          "[layout] run=%d measurement complete nodeSizes=%d",
+          runId,
+          measurements.nodeSizes.size,
+        );
         return layoutGraph(entityDefs, edgeDefs, measurements.nodeSizes, subgraphScopeMode, {
           subgraphHeaderHeight: measurements.subgraphHeaderHeight,
         });
@@ -198,6 +235,13 @@ export function GraphPanel({
         // Save current layout as prev for FLIP animation before updating
         setPrevLayout(layoutRef.current);
         setLayout(geo);
+        graphLog(
+          "[layout] run=%d commit nodes=%d edges=%d expanded=%s",
+          runId,
+          geo.nodes.length,
+          geo.edges.length,
+          runExpandedEntityId ?? "none",
+        );
         lastLayoutInputsKeyRef.current = layoutInputsKey;
         lastLaidOutExpandedIdRef.current = runExpandedEntityId;
         clearActiveRun();
@@ -208,6 +252,12 @@ export function GraphPanel({
       .catch((error) => {
         if (cancelled || layoutRunIdRef.current !== runId) return;
         clearActiveRun();
+        graphLog(
+          "[layout] run=%d failed expanded=%s error=%s",
+          runId,
+          runExpandedEntityId ?? "none",
+          error instanceof Error ? error.message : String(error),
+        );
         if (shouldEnterExpanding) {
           setExpandingNodeId((current) => (current === runExpandedEntityId ? null : current));
         }

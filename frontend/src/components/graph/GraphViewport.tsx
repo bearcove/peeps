@@ -6,6 +6,7 @@ import { canonicalNodeKind, kindDisplayName, kindIcon } from "../../nodeKindSpec
 import { formatProcessLabel } from "../../processLabel";
 import { NodeChip } from "../../ui/primitives/NodeChip";
 import { GraphCanvas, useCameraContext } from "../../graph/canvas/GraphCanvas";
+import type { Camera as CameraState } from "../../graph/canvas/camera";
 import { GroupLayer } from "../../graph/render/GroupLayer";
 import { EdgeLayer } from "../../graph/render/EdgeLayer";
 import { NodeLayer } from "../../graph/render/NodeLayer";
@@ -647,11 +648,11 @@ function NodeExpandPanner({
   nodeExpandStates: Map<string, NodeExpandState>;
   transitionDurationMs: number;
 }) {
-  const { panTo, animateCameraTo, getManualInteractionVersion, viewportHeight, camera } =
+  const { panTo, animateCameraTo, getManualInteractionVersion, getCamera, getAnimationDestination, viewportHeight } =
     useCameraContext();
   const prevStatesRef = useRef<Map<string, NodeExpandState>>(new Map());
   // Camera position saved when expansion starts; restored on collapse unless user manually moved.
-  const savedCameraRef = useRef<typeof camera | null>(null);
+  const savedCameraRef = useRef<CameraState | null>(null);
   const savedManualVersionRef = useRef<number | null>(null);
   const canRestoreRef = useRef(false);
   const didAutoPanRef = useRef(false);
@@ -662,7 +663,9 @@ function NodeExpandPanner({
     const isEmpty = nodeExpandStates.size === 0;
 
     if (!isEmpty && wasEmpty) {
-      savedCameraRef.current = camera;
+      // If a pan-back animation is already running, save its destination — not the
+      // intermediate position — so a rapid click→collapse→click cycle restores correctly.
+      savedCameraRef.current = getAnimationDestination() ?? getCamera();
       savedManualVersionRef.current = getManualInteractionVersion();
       canRestoreRef.current = true;
       didAutoPanRef.current = false;
@@ -703,7 +706,7 @@ function NodeExpandPanner({
           if (node) {
             const { x, y, width } = node.worldRect;
             // Keep the node top around 20% viewport height so there is room for expanded content.
-            const offsetY = (viewportHeight * 0.3) / camera.zoom;
+            const offsetY = (viewportHeight * 0.3) / getCamera().zoom;
             panTo(x + width / 2, y + offsetY, transitionDurationMs);
             didAutoPanRef.current = true;
           }
@@ -718,8 +721,9 @@ function NodeExpandPanner({
     panTo,
     animateCameraTo,
     getManualInteractionVersion,
+    getCamera,
+    getAnimationDestination,
     viewportHeight,
-    camera,
     transitionDurationMs,
   ]);
 

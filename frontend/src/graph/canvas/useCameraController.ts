@@ -26,6 +26,10 @@ export function useCameraController(
   panTo: (worldX: number, worldY: number, durationMs?: number) => void;
   animateCameraTo: (target: Camera, durationMs?: number) => void;
   getManualInteractionVersion: () => number;
+  /** Returns the camera at the current moment, bypassing React render batching. */
+  getCamera: () => Camera;
+  /** Returns the destination of the in-progress animation, or null if the camera is settled. */
+  getAnimationDestination: () => Camera | null;
   handlers: {
     onWheel: (e: WheelEvent) => void;
     onPointerDown: (e: PointerEvent) => void;
@@ -42,6 +46,8 @@ export function useCameraController(
   const manualInteractionVersionRef = useRef(0);
   const onBackgroundClickRef = useRef(onBackgroundClick);
   onBackgroundClickRef.current = onBackgroundClick;
+  // Destination of the current animation; null when the camera is settled.
+  const animationDestinationRef = useRef<Camera | null>(null);
 
   const panState = useRef<{
     active: boolean;
@@ -72,6 +78,7 @@ export function useCameraController(
     const dy = target.y - start.y;
     const dz = target.zoom - start.zoom;
     if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(dz) < 0.001) return;
+    animationDestinationRef.current = target;
     const startTime = performance.now();
     const tick = () => {
       const elapsed = performance.now() - startTime;
@@ -85,12 +92,16 @@ export function useCameraController(
       });
       if (t < 1) {
         animFrameRef.current = requestAnimationFrame(tick);
+      } else {
+        animationDestinationRef.current = null;
       }
     };
     animFrameRef.current = requestAnimationFrame(tick);
   }, []);
 
   const getManualInteractionVersion = useCallback(() => manualInteractionVersionRef.current, []);
+  const getCamera = useCallback(() => cameraRef.current, []);
+  const getAnimationDestination = useCallback(() => animationDestinationRef.current, []);
 
   const onWheel = useCallback(
     (e: WheelEvent) => {
@@ -101,6 +112,7 @@ export function useCameraController(
 
       e.preventDefault();
       cancelAnimationFrame(animFrameRef.current);
+      animationDestinationRef.current = null;
       manualInteractionVersionRef.current += 1;
       const surface = surfaceRef.current;
       if (!surface) return;
@@ -142,6 +154,7 @@ export function useCameraController(
       if (target.closest('[data-pan-block="true"]')) return;
       e.preventDefault();
       cancelAnimationFrame(animFrameRef.current);
+      animationDestinationRef.current = null;
       if (surface.setPointerCapture) {
         surface.setPointerCapture(e.pointerId);
       }
@@ -159,6 +172,7 @@ export function useCameraController(
   const onPointerMove = useCallback((e: PointerEvent) => {
     const state = panState.current;
     if (!state.active) return;
+    animationDestinationRef.current = null;
     manualInteractionVersionRef.current += 1;
     const dx = e.clientX - state.startClientX;
     const dy = e.clientY - state.startClientY;
@@ -227,6 +241,8 @@ export function useCameraController(
     panTo,
     animateCameraTo,
     getManualInteractionVersion,
+    getCamera,
+    getAnimationDestination,
     handlers: {
       onWheel,
       onPointerDown,

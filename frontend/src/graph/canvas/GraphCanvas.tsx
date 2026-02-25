@@ -20,6 +20,8 @@ interface CameraContextValue {
   panTo: (worldX: number, worldY: number, durationMs?: number) => void;
   animateCameraTo: (target: Camera, durationMs?: number) => void;
   getManualInteractionVersion: () => number;
+  getCamera: () => Camera;
+  getAnimationDestination: () => Camera | null;
   clientToGraph: (clientX: number, clientY: number) => { x: number; y: number } | null;
   viewportWidth: number;
   viewportHeight: number;
@@ -76,6 +78,8 @@ export function GraphCanvas({
     panTo,
     animateCameraTo,
     getManualInteractionVersion,
+    getCamera,
+    getAnimationDestination,
     handlers,
   } = useCameraController(surfaceRef, geometry?.bounds ?? null, onBackgroundClick);
 
@@ -142,6 +146,8 @@ export function GraphCanvas({
       panTo,
       animateCameraTo,
       getManualInteractionVersion,
+      getCamera,
+      getAnimationDestination,
       clientToGraph,
       viewportWidth: viewportSize.width,
       viewportHeight: viewportSize.height,
@@ -153,6 +159,8 @@ export function GraphCanvas({
       panTo,
       animateCameraTo,
       getManualInteractionVersion,
+      getCamera,
+      getAnimationDestination,
       clientToGraph,
       viewportSize.width,
       viewportSize.height,

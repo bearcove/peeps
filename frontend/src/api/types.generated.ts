@@ -2,6 +2,18 @@
 // Do not edit by hand.
 
 /**
+ * Response for `POST /api/source/previews`.
+ */
+export interface SourcePreviewBatchResponse {
+  previews: SourcePreviewResponse[];
+  unavailable_frame_ids: FrameId[];
+}
+
+export type FrameId = number;
+
+export type u64 = number;
+
+/**
  * Response for `GET /api/source/preview`.
  */
 export interface SourcePreviewResponse {
@@ -40,9 +52,12 @@ export interface LineRange {
   end: number;
 }
 
-export type FrameId = number;
-
-export type u64 = number;
+/**
+ * Request body for `POST /api/source/previews`.
+ */
+export interface SourcePreviewBatchRequest {
+  frame_ids: FrameId[];
+}
 
 export interface RecordingImportBody {
   version: number;

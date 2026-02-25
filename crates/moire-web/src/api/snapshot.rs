@@ -18,7 +18,8 @@ use tracing::{error, info, warn};
 use crate::app::{AppState, ConnectionId, SnapshotPending, SnapshotStreamState, remember_snapshot};
 use crate::db::fetch_scope_entity_links_blocking;
 use crate::snapshot::table::{
-    collect_snapshot_backtrace_ids, is_pending_frame, load_snapshot_backtrace_table,
+    SnapshotBacktraceTable, collect_snapshot_backtrace_ids, is_pending_frame,
+    load_snapshot_backtrace_table,
 };
 use crate::symbolication::symbolicate_pending_frames_for_backtraces;
 use crate::util::http::{json_error, json_ok};
@@ -105,6 +106,7 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
             warn!(snapshot_id, %e, "symbolication pass failed");
         }
         let table = load_snapshot_backtrace_table(state.db.clone(), &backtrace_ids).await;
+        refresh_cached_snapshot_from_table(&state, snapshot_id, &table).await;
         let completed = table
             .frames
             .iter()
@@ -227,6 +229,40 @@ async fn snapshot_symbolication_ws_task(state: AppState, snapshot_id: i64, mut s
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+}
+
+async fn refresh_cached_snapshot_from_table(
+    state: &AppState,
+    snapshot_id: i64,
+    table: &SnapshotBacktraceTable,
+) {
+    let cached_json = {
+        let guard = state.inner.lock().await;
+        guard.last_snapshot_json.clone()
+    };
+    let Some(cached_json) = cached_json else {
+        return;
+    };
+
+    let mut cached_snapshot: SnapshotCutResponse = match facet_json::from_str(&cached_json) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            warn!(
+                snapshot_id,
+                %error,
+                "failed to decode cached snapshot while refreshing symbolication progress"
+            );
+            return;
+        }
+    };
+
+    if cached_snapshot.snapshot_id != snapshot_id {
+        return;
+    }
+
+    cached_snapshot.backtraces = table.backtraces.clone();
+    cached_snapshot.frames = table.frames.clone();
+    remember_snapshot(state, &cached_snapshot).await;
 }
 
 pub async fn take_snapshot_internal(state: &AppState) -> SnapshotCutResponse {

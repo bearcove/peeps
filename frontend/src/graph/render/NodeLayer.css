@@ -3,6 +3,10 @@
     top: 0;
     left: 0;
     overflow: hidden;
+
+    box-shadow: var(--shadow-elevation-md);
+    border-radius: var(--radius-control);
+    corner-shape: squircle;
 }
 
 .nl-node-content {
