@@ -116,14 +116,14 @@ export function FrameLine({
     if (!expanded) {
       if (frame.frame_id == null) return fallbackCollapsedLine;
       if (!preview) return fallbackExpandedLine;
-      const enclosingFn = preview.enclosing_fn;
-      if (enclosingFn) {
+      const frameHeader = preview.frame_header;
+      if (frameHeader) {
         return (
           <div className="graph-node-enclosing-fn arborium-hl">
             {/* eslint-disable-next-line react/no-danger */}
             <span
               className="graph-node-enclosing-fn__name"
-              dangerouslySetInnerHTML={{ __html: enclosingFn }}
+              dangerouslySetInnerHTML={{ __html: frameHeader }}
             />
           </div>
         );
@@ -216,7 +216,7 @@ export function FrameLine({
     <div className={`graph-node-frame-section${active ? " graph-node-frame-section--active" : ""}`}>
       <FrameSep
         frame={frame}
-        contextHtml={expanded && showSource ? preview?.enclosing_fn : undefined}
+        contextHtml={expanded && showSource ? preview?.frame_header : undefined}
         hideLocation={hideLocation}
       />
       {codeBlock}
@@ -382,7 +382,7 @@ export function GraphNode({
     !expanded &&
     isFutureKind &&
     showHeader &&
-    (futureTopPreview?.enclosing_fn || futureTopStatement);
+    (futureTopPreview?.frame_header || futureTopStatement);
 
   if (isEdgeEventKind && !expanded) {
     return (
@@ -458,12 +458,12 @@ export function GraphNode({
           </div>
           {showFutureSummary ? (
             <div className="graph-node-future-summary">
-              {futureTopPreview?.enclosing_fn && (
+              {futureTopPreview?.frame_header && (
                 <div className="graph-node-future-context arborium-hl">
                   {/* eslint-disable-next-line react/no-danger */}
                   <span
                     className="graph-node-future-context__name"
-                    dangerouslySetInnerHTML={{ __html: futureTopPreview.enclosing_fn }}
+                    dangerouslySetInnerHTML={{ __html: futureTopPreview.frame_header }}
                   />
                 </div>
               )}
