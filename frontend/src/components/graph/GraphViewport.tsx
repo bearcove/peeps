@@ -434,27 +434,6 @@ export function GraphViewport({
     return m;
   }, [expandedNodeId, expandingNodeId]);
 
-  // Keep the focused node anchored to its final ELK rect while the rest of the graph FLIPs.
-  // This avoids camera/position drift from interpolating the very node we pan to.
-  const renderedNodesForDisplay = useMemo(() => {
-    const focusedId =
-      [...nodeExpandStates].find(
-        ([, state]) => state === "expanded" || state === "expanding",
-      )?.[0] ?? null;
-    if (!focusedId) return renderedNodes;
-    const finalFocusedNode = nodes.find((node) => node.id === focusedId);
-    if (!finalFocusedNode) return renderedNodes;
-
-    let changed = false;
-    const pinned = renderedNodes.map((node) => {
-      if (node.id !== focusedId) return node;
-      if (sameRect(node.worldRect, finalFocusedNode.worldRect)) return node;
-      changed = true;
-      return { ...node, worldRect: finalFocusedNode.worldRect };
-    });
-    return changed ? pinned : renderedNodes;
-  }, [nodeExpandStates, nodes, renderedNodes]);
-
   const collapseAll = useCallback(() => {
     onExpandedNodeChange?.(null);
   }, [onExpandedNodeChange]);
@@ -688,7 +667,7 @@ export function GraphViewport({
               renderBodies={false}
             />
             <NodeLayer
-              nodes={renderedNodesForDisplay}
+              nodes={renderedNodes}
               prevNodes={prevNodes}
               nodeExpandStates={nodeExpandStates}
               activeExpandedFrameIndex={activeExpandedFrameIndex}

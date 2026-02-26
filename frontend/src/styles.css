@@ -51,7 +51,7 @@
        elevated (cards) → 12% */
     --bg-elevated: light-dark(
         var(--theme-bg),
-        color-mix(in oklab, var(--theme-fg) 12%, var(--theme-bg))
+        color-mix(in oklab, var(--theme-fg) 8%, var(--theme-bg))
     );
     --bg-surface: color-mix(in oklab, var(--theme-fg) 7%, var(--theme-bg));
 

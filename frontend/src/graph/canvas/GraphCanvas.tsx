@@ -181,6 +181,7 @@ export function GraphCanvas({
         <svg className="graph-canvas__background" aria-hidden="true">
           <rect width="100%" height="100%" fill="var(--bg-base)" data-background="true" />
         </svg>
+        <div className="graph-canvas__grain" aria-hidden="true" />
         <div className="graph-canvas__world" style={{ transform }}>
           {children}
         </div>

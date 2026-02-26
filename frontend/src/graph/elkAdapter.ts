@@ -26,10 +26,10 @@ const elkOptions = {
 };
 
 const subgraphPaddingBase = {
-  top: -10,
-  left: 10,
-  bottom: 10,
-  right: 10,
+  top: 0,
+  left: 25,
+  bottom: 25,
+  right: 25,
 };
 
 // Extra vertical keep-out above grouped content so edge routing is less likely

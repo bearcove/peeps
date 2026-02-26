@@ -13,8 +13,6 @@
     white-space: nowrap;
     background: var(--graph-card-bg);
 
-    border-left: 0 solid var(--graph-card-border-color);
-
     box-shadow: var(--graph-card-tone-shadow);
     color: var(--text-primary);
     position: relative;
@@ -25,10 +23,10 @@
     --graph-node-expanded-width: min(92vw, var(--graph-code-card-width));
 }
 
-.graph-card--scope {
+/*.graph-card--scope {
     box-shadow: inset 3px 0 0 0
         light-dark(rgb(var(--scope-rgb-light) / 0.95), rgb(var(--scope-rgb-dark) / 0.9));
-}
+}*/
 
 /*.graph-card--stat-crit {
     --graph-card-border-color: var(--status-danger);
