@@ -209,6 +209,8 @@ struct McpWaitEdge {
     pub waiter_source: Option<McpSourceContext>,
     #[facet(skip_unless_truthy)]
     pub blocked_on_source: Option<McpSourceContext>,
+    #[facet(skip_unless_truthy)]
+    pub wait_site_source: Option<McpSourceContext>,
 }
 
 #[derive(Facet)]
@@ -233,6 +235,8 @@ struct McpWaitChain {
 struct McpChainEdge {
     pub src_entity_id: String,
     pub dst_entity_id: String,
+    #[facet(skip_unless_truthy)]
+    pub wait_site_source: Option<McpSourceContext>,
 }
 
 #[derive(Facet)]
@@ -428,6 +432,7 @@ struct WaitEdgeRuntime {
     src_key: String,
     dst_key: String,
     dst_entity_id: String,
+    edge_frame_id: Option<FrameId>,
 }
 
 #[derive(Clone)]
@@ -518,7 +523,7 @@ impl MoireMcpHandler {
         let snapshot = self.load_snapshot(snapshot_id).await?;
         let (nodes, edges, _, _) = self.build_wait_graph(&snapshot)?;
         let sources = self
-            .load_source_for_nodes(&snapshot, nodes.values())
+            .load_source_for_graph(&snapshot, nodes.values(), &edges)
             .await?;
 
         let mut wait_edges = Vec::with_capacity(edges.len());
@@ -542,6 +547,9 @@ impl MoireMcpHandler {
                 edge_kind: String::from("waiting_on"),
                 waiter_source: source_for_node(src, &sources),
                 blocked_on_source: source_for_node(dst, &sources),
+                wait_site_source: edge
+                    .edge_frame_id
+                    .and_then(|id| sources.get(&id.as_u64()).cloned()),
             });
         }
 
@@ -559,10 +567,20 @@ impl MoireMcpHandler {
         max_depth: Option<u32>,
     ) -> Result<String, String> {
         let snapshot = self.load_snapshot(snapshot_id).await?;
-        let (nodes, _edges, adjacency, indegree) = self.build_wait_graph(&snapshot)?;
+        let (nodes, edges, adjacency, indegree) = self.build_wait_graph(&snapshot)?;
         let sources = self
-            .load_source_for_nodes(&snapshot, nodes.values())
+            .load_source_for_graph(&snapshot, nodes.values(), &edges)
             .await?;
+
+        let mut edge_wait_source: HashMap<(String, String), Option<McpSourceContext>> =
+            HashMap::new();
+        for edge in &edges {
+            edge_wait_source.insert(
+                (edge.src_key.clone(), edge.dst_key.clone()),
+                edge.edge_frame_id
+                    .and_then(|frame_id| sources.get(&frame_id.as_u64()).cloned()),
+            );
+        }
 
         let max_depth = max_depth
             .map(|v| v as usize)
@@ -603,6 +621,7 @@ impl MoireMcpHandler {
                 &mut chain_count,
                 &nodes,
                 &sources,
+                &edge_wait_source,
             );
         }
 
@@ -704,12 +723,14 @@ impl MoireMcpHandler {
                 incoming.push(McpChainEdge {
                     src_entity_id: edge.src.as_str().to_owned(),
                     dst_entity_id: edge.dst.as_str().to_owned(),
+                    wait_site_source: None,
                 });
             }
             if edge.src.as_str() == entity_id {
                 outgoing.push(McpChainEdge {
                     src_entity_id: edge.src.as_str().to_owned(),
                     dst_entity_id: edge.dst.as_str().to_owned(),
+                    wait_site_source: None,
                 });
             }
         }
@@ -1192,6 +1213,10 @@ impl MoireMcpHandler {
                         src_key: src_key.clone(),
                         dst_key: dst_key.clone(),
                         dst_entity_id: dst.id.as_str().to_owned(),
+                        edge_frame_id: primary_frame_for_backtrace_id(
+                            edge.backtrace.as_u64(),
+                            &backtrace_index,
+                        ),
                     });
                     adjacency
                         .entry(src_key.clone())
@@ -1232,6 +1257,36 @@ impl MoireMcpHandler {
             .map(|ctx| (ctx.frame_id, ctx))
             .collect::<HashMap<_, _>>();
 
+        let _ = snapshot;
+        Ok(by_frame)
+    }
+
+    async fn load_source_for_graph<'a>(
+        &self,
+        snapshot: &SnapshotCutResponse,
+        nodes: impl Iterator<Item = &'a WaitNode>,
+        edges: &[WaitEdgeRuntime],
+    ) -> Result<HashMap<u64, McpSourceContext>, String> {
+        let mut frame_ids = BTreeSet::new();
+        for node in nodes {
+            if let Some(frame_id) = node.frame_id {
+                frame_ids.insert(frame_id.as_u64());
+            }
+        }
+        for edge in edges {
+            if let Some(frame_id) = edge.edge_frame_id {
+                frame_ids.insert(frame_id.as_u64());
+            }
+        }
+        if frame_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let (contexts, _unavailable) = self.resolve_source_contexts(frame_ids).await?;
+        let by_frame = contexts
+            .into_iter()
+            .map(|ctx| (ctx.frame_id, ctx))
+            .collect::<HashMap<_, _>>();
         let _ = snapshot;
         Ok(by_frame)
     }
@@ -1360,6 +1415,7 @@ impl MoireMcpHandler {
         chain_count: &mut usize,
         nodes: &HashMap<String, WaitNode>,
         sources: &HashMap<u64, McpSourceContext>,
+        edge_wait_source: &HashMap<(String, String), Option<McpSourceContext>>,
     ) {
         if chains.len() >= DEFAULT_WAIT_CHAIN_MAX_RESULTS {
             return;
@@ -1378,6 +1434,7 @@ impl MoireMcpHandler {
                 false,
                 nodes,
                 sources,
+                edge_wait_source,
                 path.len() >= max_depth,
             ));
             return;
@@ -1394,6 +1451,7 @@ impl MoireMcpHandler {
                     true,
                     nodes,
                     sources,
+                    edge_wait_source,
                     false,
                 ));
                 if chains.len() >= DEFAULT_WAIT_CHAIN_MAX_RESULTS {
@@ -1412,6 +1470,7 @@ impl MoireMcpHandler {
                 chain_count,
                 nodes,
                 sources,
+                edge_wait_source,
             );
             path.pop();
 
@@ -1600,12 +1659,21 @@ fn primary_frame_for_entity(
     backtrace.frame_ids.get(index).copied()
 }
 
+fn primary_frame_for_backtrace_id(
+    backtrace_id: u64,
+    backtrace_index: &HashMap<u64, &SnapshotBacktrace>,
+) -> Option<FrameId> {
+    let backtrace = backtrace_index.get(&backtrace_id)?;
+    backtrace.frame_ids.first().copied()
+}
+
 fn make_chain(
     chain_num: usize,
     path: &[String],
     is_cycle: bool,
     nodes: &HashMap<String, WaitNode>,
     sources: &HashMap<u64, McpSourceContext>,
+    edge_wait_source: &HashMap<(String, String), Option<McpSourceContext>>,
     truncated: bool,
 ) -> McpWaitChain {
     let mut chain_nodes = Vec::new();
@@ -1634,6 +1702,10 @@ fn make_chain(
         edges.push(McpChainEdge {
             src_entity_id: src.entity_id.clone(),
             dst_entity_id: dst.entity_id.clone(),
+            wait_site_source: edge_wait_source
+                .get(&(pair[0].clone(), pair[1].clone()))
+                .cloned()
+                .flatten(),
         });
     }
 
