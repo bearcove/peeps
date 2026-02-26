@@ -63,6 +63,89 @@ export function collapseContextLines(lines: string[], startLineNum: number): Col
   return result;
 }
 
+function trimLeadingIndentFromHtmlLine(htmlLine: string, dedentCols: number): string {
+  if (dedentCols <= 0) return htmlLine;
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${htmlLine}</div>`, "text/html");
+  const container = doc.body.firstElementChild;
+  if (!container) return htmlLine;
+
+  let remaining = dedentCols;
+  let hitCode = false;
+
+  function visit(node: Node): void {
+    if (remaining <= 0 || hitCode) return;
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent ?? "";
+      if (text.length === 0) return;
+
+      let cut = 0;
+      while (cut < text.length && remaining > 0) {
+        const ch = text[cut];
+        if (ch === " ") {
+          cut += 1;
+          remaining -= 1;
+          continue;
+        }
+        if (ch === "\t") {
+          if (remaining < 4) {
+            hitCode = true;
+            return;
+          }
+          cut += 1;
+          remaining -= 4;
+          continue;
+        }
+        hitCode = true;
+        return;
+      }
+
+      if (cut > 0) {
+        node.textContent = text.slice(cut);
+      }
+      if (remaining <= 0) return;
+
+      const next = node.textContent ?? "";
+      if (next.length === 0) return;
+      const first = next[0];
+      if (first !== " " && first !== "\t") {
+        hitCode = true;
+      }
+      return;
+    }
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      for (const child of node.childNodes) {
+        visit(child);
+        if (remaining <= 0 || hitCode) return;
+      }
+    }
+  }
+
+  for (const child of container.childNodes) {
+    visit(child);
+    if (remaining <= 0 || hitCode) break;
+  }
+
+  return container.innerHTML;
+}
+
+export function dedentHighlightedHtmlLines(lines: string[]): string[] {
+  let minIndent = Number.POSITIVE_INFINITY;
+  for (const line of lines) {
+    const plain = stripHtmlTags(line);
+    if (plain.trim() === "") continue;
+    minIndent = Math.min(minIndent, leadingIndentCols(plain));
+  }
+  if (!Number.isFinite(minIndent) || minIndent <= 0) return lines;
+  return lines.map((line) => trimLeadingIndentFromHtmlLine(line, minIndent));
+}
+
+export function dedentHighlightedHtmlBlock(html: string): string {
+  const lines = splitHighlightedHtml(html);
+  if (lines.length === 0) return html;
+  return dedentHighlightedHtmlLines(lines).join("\n");
+}
+
 /**
  * Split arborium-highlighted HTML into per-line strings while preserving
  * tag nesting balance across line boundaries.

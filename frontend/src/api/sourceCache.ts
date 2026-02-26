@@ -1,6 +1,6 @@
 import type { SourcePreviewResponse } from "./types.generated";
 import { apiClient } from "./index";
-import { splitHighlightedHtml } from "../utils/highlightedHtml";
+import { dedentHighlightedHtmlBlock, splitHighlightedHtml } from "../utils/highlightedHtml";
 import { sourceLog } from "../debug";
 
 /** In-flight / resolved promise cache: frameId → promise. Survives unmount/remount. */
@@ -20,11 +20,12 @@ function seedPreviewCache(frameId: number, res: SourcePreviewResponse): void {
 
 function extractLineFromPreview(res: SourcePreviewResponse): string | undefined {
   // Prefer context_line: compact statement snippet (may be multi-line)
-  if (res.context_line) return res.context_line;
+  if (res.context_line) return dedentHighlightedHtmlBlock(res.context_line);
   // Fallback to full file target line
   const lines = splitHighlightedHtml(res.html);
   const targetIdx = res.target_line - 1;
-  return targetIdx >= 0 && targetIdx < lines.length ? lines[targetIdx]?.trim() : undefined;
+  const line = targetIdx >= 0 && targetIdx < lines.length ? lines[targetIdx]?.trim() : undefined;
+  return line ? dedentHighlightedHtmlBlock(line) : undefined;
 }
 
 export function cachedFetchSourcePreview(frameId: number): Promise<SourcePreviewResponse> {

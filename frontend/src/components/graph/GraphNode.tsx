@@ -6,7 +6,11 @@ import {
   getSourceLineSync,
   getSourcePreviewSync,
 } from "../../api/sourceCache";
-import { splitHighlightedHtml, collapseContextLines } from "../../utils/highlightedHtml";
+import {
+  splitHighlightedHtml,
+  collapseContextLines,
+  dedentHighlightedHtmlLines,
+} from "../../utils/highlightedHtml";
 import { langIcon } from "./langIcon";
 import { canonicalNodeKind } from "../../nodeKindSpec";
 import type { GraphFrameData, GraphNodeData } from "./graphNodeData";
@@ -145,10 +149,11 @@ export function FrameLine({
       : preview.context_range;
     const useCtx = contextHtml != null && contextRange != null;
     const rawLines = splitHighlightedHtml(useCtx ? contextHtml : preview.html);
+    const displayRawLines = useCompactContext ? dedentHighlightedHtmlLines(rawLines) : rawLines;
     const startLineNum = useCtx ? contextRange.start : 1;
     const lines = useCtx
-      ? collapseContextLines(rawLines, startLineNum)
-      : rawLines.map((html, i) => ({
+      ? collapseContextLines(displayRawLines, startLineNum)
+      : displayRawLines.map((html, i) => ({
           lineNum: startLineNum + i,
           html,
           isSeparator: false,
