@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# Handler::async fn handle(&mut self, req: Request, ctx: Context)
+# Handler::async fn handle(&mut self, req, ctx)
 # scope 3..3
 
    3 >|         spawn(async move { req });

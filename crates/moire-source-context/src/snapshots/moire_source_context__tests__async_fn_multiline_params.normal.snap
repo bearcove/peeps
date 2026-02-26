@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{normal_body}\")"
 ---
-# async fn establish_as_acceptor( &mut self, settings: ConnectionSettings, metadata: Metadata<'_>, ) -> Result<Handle>
+# async fn establish_as_acceptor(&mut self, settings, metadata) -> Result<Handle>
 # scope 6..9
 
    6  |     let handle = session

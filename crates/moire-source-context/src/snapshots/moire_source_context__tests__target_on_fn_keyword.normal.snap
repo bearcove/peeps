@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{normal_body}\")"
 ---
-# fn do_stuff(x: u32, y: u32) -> bool
+# fn do_stuff(x, y) -> bool
 # scope 2..3
 
    2  |     let z = x + y;

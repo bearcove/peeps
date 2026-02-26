@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# fn spawn_worker( task_name: &'static str, mutex: Arc<SyncMutex<()>>, )
+# fn spawn_worker(task_name, mutex)
 # scope 7..9
 
    7  |     moire::task::spawn(async move {

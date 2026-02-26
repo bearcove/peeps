@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# async fn run( session: &mut Session, permit: Permit, ) -> Result<(), String>
+# async fn run(session, permit) -> Result<(), String>
 # scope 7..12
 
    7  |     moire::task::spawn(

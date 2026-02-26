@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{normal_body}\")"
 ---
-# fn process(y: Option<u32>)
+# fn process(y)
 # scope 2..13
 
    2 >|     let x = match y {

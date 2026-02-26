@@ -608,75 +608,66 @@ fn collapse_ws_inline(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn strip_leading_visibility(signature: &str) -> &str {
-    let trimmed = signature.trim_start();
-    let Some(rest) = trimmed.strip_prefix("pub") else {
-        return trimmed;
-    };
+fn extract_function_signature_text(
+    content: &str,
+    fn_node: &tree_sitter::Node<'_>,
+) -> Option<String> {
+    let bytes = content.as_bytes();
 
-    if rest.starts_with(char::is_whitespace) {
-        return rest.trim_start();
+    // Qualifiers before the fn keyword (async, const, unsafe, extern).
+    // Tree-sitter groups them under a "function_modifiers" node.
+    let mut qualifiers: Vec<&str> = Vec::new();
+    for i in 0..fn_node.child_count() {
+        let child = fn_node.child(i)?;
+        match child.kind() {
+            "attribute_item" | "visibility_modifier" => continue,
+            "function_modifiers" => {
+                qualifiers.push(child.utf8_text(bytes).ok()?);
+            }
+            "fn" => break,
+            _ => {}
+        }
     }
 
-    if !rest.starts_with('(') {
-        return trimmed;
-    }
+    let name = fn_node.child_by_field_name("name")?.utf8_text(bytes).ok()?;
 
-    let mut depth = 0usize;
-    for (idx, ch) in rest.char_indices() {
-        match ch {
-            '(' => depth += 1,
-            ')' => {
-                if depth == 0 {
-                    return trimmed;
+    // Parameters: show self as-is, for others show only the pattern (name), not the type.
+    let params_node = fn_node.child_by_field_name("parameters")?;
+    let mut params: Vec<String> = Vec::new();
+    for i in 0..params_node.child_count() {
+        let child = params_node.child(i)?;
+        match child.kind() {
+            "parameter" => {
+                // pattern field is the name; omit the type
+                if let Some(pat) = child.child_by_field_name("pattern") {
+                    params.push(pat.utf8_text(bytes).ok()?.to_string());
                 }
-                depth -= 1;
-                if depth == 0 {
-                    return rest[idx + 1..].trim_start();
-                }
+            }
+            "self_parameter" | "shorthand_self" => {
+                // &self, &mut self, self, mut self
+                params.push(collapse_ws_inline(child.utf8_text(bytes).ok()?));
             }
             _ => {}
         }
     }
 
-    trimmed
-}
+    // Return type (optional)
+    let return_type = fn_node.child_by_field_name("return_type").and_then(|rt| {
+        let text = collapse_ws_inline(rt.utf8_text(bytes).ok()?);
+        Some(format!(" -> {text}"))
+    });
 
-fn extract_function_signature_text(
-    content: &str,
-    fn_node: &tree_sitter::Node<'_>,
-) -> Option<String> {
-    let (start, end) = {
-        let mut start = fn_node.start_byte();
-        for i in 0..fn_node.child_count() {
-            if let Some(child) = fn_node.child(i) {
-                if child.kind() == "attribute_item"
-                    || child.kind() == "attribute"
-                    || child.kind() == "attributes"
-                {
-                    continue;
-                }
-                start = child.start_byte();
-                break;
-            }
-        }
-        let end = fn_node
-            .child_by_field_name("body")
-            .map(|body| body.start_byte())
-            .unwrap_or_else(|| fn_node.end_byte());
-        (start, end)
+    let qualifiers_prefix = if qualifiers.is_empty() {
+        String::new()
+    } else {
+        format!("{} ", qualifiers.join(" "))
     };
 
-    if end <= start {
-        return None;
-    }
-    let raw = &content[start..end];
-    let collapsed = collapse_ws_inline(raw);
-    let signature = strip_leading_visibility(&collapsed);
-    if signature.is_empty() {
-        return None;
-    }
-    Some(signature.to_string())
+    let ret = return_type.as_deref().unwrap_or("");
+    Some(format!(
+        "{qualifiers_prefix}fn {name}({}){ret}",
+        params.join(", "),
+    ))
 }
 
 fn find_enclosing_impl_type_name(fn_node: &tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {

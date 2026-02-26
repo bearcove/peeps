@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{normal_body}\")"
 ---
-# fn process(a: u32, b: u32, c: u32, d: u32)
+# fn process(a, b, c, d)
 # scope 2..2
 
    2 >|     spawn(async move { a });

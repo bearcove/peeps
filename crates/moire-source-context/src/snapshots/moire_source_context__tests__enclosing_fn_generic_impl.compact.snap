@@ -2,7 +2,7 @@
 source: crates/moire-source-context/src/tests.rs
 expression: "format!(\"# {header}\\n{compact_body}\")"
 ---
-# Queue<T>::fn push(&mut self, value: T)
+# Queue<T>::fn push(&mut self, value)
 # scope 4..4
 
    4 >|         spawn(async move { value });
