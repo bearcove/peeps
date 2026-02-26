@@ -54,6 +54,7 @@ const DEFAULT_WAIT_CHAIN_MAX_RESULTS: usize = 200;
 const DEFAULT_SYMBOLICATION_WAIT_TIMEOUT: Duration = Duration::from_secs(3);
 const DEFAULT_SYMBOLICATION_WAIT_TICK: Duration = Duration::from_millis(100);
 const MAX_RENDERED_SOURCE_LINES: usize = 24;
+const SOURCE_FRAMES_PER_ITEM: usize = 3;
 const SYSTEM_CRATES: &[&str] = &[
     "std",
     "core",
@@ -270,9 +271,15 @@ struct McpWaitEdge {
     #[facet(skip_unless_truthy)]
     pub waiter_source: Option<McpSourceContext>,
     #[facet(skip_unless_truthy)]
+    pub waiter_sources: Vec<McpSourceContext>,
+    #[facet(skip_unless_truthy)]
     pub blocked_on_source: Option<McpSourceContext>,
     #[facet(skip_unless_truthy)]
+    pub blocked_on_sources: Vec<McpSourceContext>,
+    #[facet(skip_unless_truthy)]
     pub wait_site_source: Option<McpSourceContext>,
+    #[facet(skip_unless_truthy)]
+    pub wait_site_sources: Vec<McpSourceContext>,
 }
 
 #[derive(Facet)]
@@ -299,6 +306,8 @@ struct McpChainEdge {
     pub dst_entity_id: String,
     #[facet(skip_unless_truthy)]
     pub wait_site_source: Option<McpSourceContext>,
+    #[facet(skip_unless_truthy)]
+    pub wait_site_sources: Vec<McpSourceContext>,
 }
 
 #[derive(Facet)]
@@ -309,6 +318,8 @@ struct McpNodeSummary {
     pub kind: String,
     #[facet(skip_unless_truthy)]
     pub source: Option<McpSourceContext>,
+    #[facet(skip_unless_truthy)]
+    pub sources: Vec<McpSourceContext>,
 }
 
 #[derive(Facet)]
@@ -344,6 +355,8 @@ struct McpEntityResponse {
     pub scope_ids: Vec<String>,
     #[facet(skip_unless_truthy)]
     pub source: Option<McpSourceContext>,
+    #[facet(skip_unless_truthy)]
+    pub sources: Vec<McpSourceContext>,
 }
 
 #[derive(Facet)]
@@ -368,6 +381,8 @@ struct McpChannelState {
     pub lifecycle_hints: Option<String>,
     #[facet(skip_unless_truthy)]
     pub source: Option<McpSourceContext>,
+    #[facet(skip_unless_truthy)]
+    pub sources: Vec<McpSourceContext>,
 }
 
 #[derive(Facet)]
@@ -384,11 +399,14 @@ struct McpTaskState {
     pub entry_backtrace_id: u64,
     #[facet(skip_unless_truthy)]
     pub entry_frame_id: Option<u64>,
+    pub entry_frame_ids: Vec<u64>,
     #[facet(skip_unless_truthy)]
     pub awaiting_on_entity_id: Option<String>,
     pub scope_ids: Vec<String>,
     #[facet(skip_unless_truthy)]
     pub source: Option<McpSourceContext>,
+    #[facet(skip_unless_truthy)]
+    pub sources: Vec<McpSourceContext>,
 }
 
 #[derive(Facet)]
@@ -487,7 +505,7 @@ struct WaitNode {
     name: String,
     kind: String,
     birth_ms: u64,
-    frame_id: Option<FrameId>,
+    frame_ids: Vec<FrameId>,
 }
 
 #[derive(Clone)]
@@ -496,7 +514,7 @@ struct WaitEdgeRuntime {
     src_key: String,
     dst_key: String,
     dst_entity_id: String,
-    edge_frame_id: Option<FrameId>,
+    edge_frame_ids: Vec<FrameId>,
 }
 
 #[derive(Clone)]
@@ -844,10 +862,14 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
                 blocked_birth_ms: dst.birth_ms,
                 edge_kind: String::from("waiting_on"),
                 waiter_source: source_for_node(src, &sources),
+                waiter_sources: sources_for_node(src, &sources),
                 blocked_on_source: source_for_node(dst, &sources),
+                blocked_on_sources: sources_for_node(dst, &sources),
                 wait_site_source: edge
-                    .edge_frame_id
+                    .edge_frame_ids
+                    .first()
                     .and_then(|id| sources.get(&id.as_u64()).cloned()),
+                wait_site_sources: sources_for_frame_ids(&edge.edge_frame_ids, &sources),
             });
         }
 
@@ -875,12 +897,15 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
 
         let mut edge_wait_source: HashMap<(String, String), Option<McpSourceContext>> =
             HashMap::new();
+        let mut edge_wait_sources: HashMap<(String, String), Vec<McpSourceContext>> =
+            HashMap::new();
         for edge in &edges {
+            let wait_sources = sources_for_frame_ids(&edge.edge_frame_ids, &sources);
             edge_wait_source.insert(
                 (edge.src_key.clone(), edge.dst_key.clone()),
-                edge.edge_frame_id
-                    .and_then(|frame_id| sources.get(&frame_id.as_u64()).cloned()),
+                wait_sources.first().cloned(),
             );
+            edge_wait_sources.insert((edge.src_key.clone(), edge.dst_key.clone()), wait_sources);
         }
 
         let max_depth = max_depth
@@ -923,6 +948,7 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
                 &nodes,
                 &sources,
                 &edge_wait_source,
+                &edge_wait_sources,
             );
         }
 
@@ -990,6 +1016,7 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
                     name: node.name.clone(),
                     kind: node.kind.clone(),
                     source: source_for_node(node, &sources),
+                    sources: sources_for_node(node, &sources),
                 });
             }
 
@@ -1029,11 +1056,15 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
             .iter()
             .map(|entity| (entity.id.as_str(), entity))
             .collect();
+        let entity_frame_ids = selected_frames_for_entity(
+            located.1,
+            &backtrace_index,
+            &frame_catalog,
+            SOURCE_FRAMES_PER_ITEM,
+        );
 
         let mut frame_ids = BTreeSet::new();
-        if let Some(frame_id) =
-            primary_frame_for_entity(located.1, &backtrace_index, &frame_catalog)
-        {
+        for frame_id in &entity_frame_ids {
             frame_ids.insert(frame_id.as_u64());
         }
         for edge in &located.0.snapshot.edges {
@@ -1041,7 +1072,7 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
                 continue;
             }
             if edge.dst.as_str() == entity_id || edge.src.as_str() == entity_id {
-                if let Some(frame_id) = primary_frame_for_backtrace_id(
+                for frame_id in selected_frames_for_backtrace_id(
                     edge.backtrace.as_u64(),
                     &backtrace_index,
                     &frame_catalog,
@@ -1049,6 +1080,7 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
                         .get(edge.src.as_str())
                         .map(|entity| frame_start_index_for_entity(entity))
                         .unwrap_or(0),
+                    SOURCE_FRAMES_PER_ITEM,
                 ) {
                     frame_ids.insert(frame_id.as_u64());
                 }
@@ -1064,8 +1096,13 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
                 .map(|ctx| (ctx.frame_id, ctx))
                 .collect::<HashMap<_, _>>()
         };
-        let source = primary_frame_for_entity(located.1, &backtrace_index, &frame_catalog)
+        let source = entity_frame_ids
+            .first()
             .and_then(|frame_id| source_by_frame.get(&frame_id.as_u64()).cloned());
+        let sources = entity_frame_ids
+            .iter()
+            .filter_map(|frame_id| source_by_frame.get(&frame_id.as_u64()).cloned())
+            .collect::<Vec<_>>();
 
         let mut incoming = Vec::new();
         let mut outgoing = Vec::new();
@@ -1073,38 +1110,44 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
             if edge.kind != EdgeKind::WaitingOn {
                 continue;
             }
+            let wait_site_frame_ids = selected_frames_for_backtrace_id(
+                edge.backtrace.as_u64(),
+                &backtrace_index,
+                &frame_catalog,
+                local_entities
+                    .get(edge.src.as_str())
+                    .map(|entity| frame_start_index_for_entity(entity))
+                    .unwrap_or(0),
+                SOURCE_FRAMES_PER_ITEM,
+            );
             if edge.dst.as_str() == entity_id {
-                let wait_site_source = primary_frame_for_backtrace_id(
-                    edge.backtrace.as_u64(),
-                    &backtrace_index,
-                    &frame_catalog,
-                    local_entities
-                        .get(edge.src.as_str())
-                        .map(|entity| frame_start_index_for_entity(entity))
-                        .unwrap_or(0),
-                )
-                .and_then(|frame_id| source_by_frame.get(&frame_id.as_u64()).cloned());
+                let wait_site_source = wait_site_frame_ids
+                    .first()
+                    .and_then(|frame_id| source_by_frame.get(&frame_id.as_u64()).cloned());
+                let wait_site_sources = wait_site_frame_ids
+                    .iter()
+                    .filter_map(|frame_id| source_by_frame.get(&frame_id.as_u64()).cloned())
+                    .collect::<Vec<_>>();
                 incoming.push(McpChainEdge {
                     src_entity_id: edge.src.as_str().to_owned(),
                     dst_entity_id: edge.dst.as_str().to_owned(),
                     wait_site_source,
+                    wait_site_sources,
                 });
             }
             if edge.src.as_str() == entity_id {
-                let wait_site_source = primary_frame_for_backtrace_id(
-                    edge.backtrace.as_u64(),
-                    &backtrace_index,
-                    &frame_catalog,
-                    local_entities
-                        .get(edge.src.as_str())
-                        .map(|entity| frame_start_index_for_entity(entity))
-                        .unwrap_or(0),
-                )
-                .and_then(|frame_id| source_by_frame.get(&frame_id.as_u64()).cloned());
+                let wait_site_source = wait_site_frame_ids
+                    .first()
+                    .and_then(|frame_id| source_by_frame.get(&frame_id.as_u64()).cloned());
+                let wait_site_sources = wait_site_frame_ids
+                    .iter()
+                    .filter_map(|frame_id| source_by_frame.get(&frame_id.as_u64()).cloned())
+                    .collect::<Vec<_>>();
                 outgoing.push(McpChainEdge {
                     src_entity_id: edge.src.as_str().to_owned(),
                     dst_entity_id: edge.dst.as_str().to_owned(),
                     wait_site_source,
+                    wait_site_sources,
                 });
             }
         }
@@ -1141,6 +1184,7 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
             outgoing_wait_edges: outgoing,
             scope_ids,
             source,
+            sources,
         };
         Ok(render_entity_markdown(&response))
     }
@@ -1186,6 +1230,9 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
                     receiver_waiters,
                     lifecycle_hints,
                     source: node.and_then(|n| source_for_node(n, &sources)),
+                    sources: node
+                        .map(|n| sources_for_node(n, &sources))
+                        .unwrap_or_default(),
                 });
             }
         }
@@ -1254,20 +1301,28 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
 
                 let node_key = compose_node_key(&process.process_id, &entity.id);
                 let node = nodes.get(&node_key);
+                let entry_frame_ids = selected_frames_for_entity(
+                    entity,
+                    &backtrace_index,
+                    &frame_catalog,
+                    SOURCE_FRAMES_PER_ITEM,
+                );
                 tasks.push(McpTaskState {
                     process_id: process.process_id.as_str().to_owned(),
                     entity_id: entity.id.as_str().to_owned(),
                     name: entity.name.clone(),
                     entry_backtrace_id: entity.backtrace.as_u64(),
-                    entry_frame_id: primary_frame_for_entity(
-                        entity,
-                        &backtrace_index,
-                        &frame_catalog,
-                    )
-                    .map(|frame_id| frame_id.as_u64()),
+                    entry_frame_id: entry_frame_ids.first().map(|frame_id| frame_id.as_u64()),
+                    entry_frame_ids: entry_frame_ids
+                        .iter()
+                        .map(|frame_id| frame_id.as_u64())
+                        .collect(),
                     awaiting_on_entity_id: awaiting,
                     scope_ids,
                     source: node.and_then(|n| source_for_node(n, &sources)),
+                    sources: node
+                        .map(|n| sources_for_node(n, &sources))
+                        .unwrap_or_default(),
                 });
             }
         }
@@ -1708,11 +1763,12 @@ Call moire_backtrace first to list frame_ids for a backtrace."
                         src_key: src_key.clone(),
                         dst_key: dst_key.clone(),
                         dst_entity_id: dst.id.as_str().to_owned(),
-                        edge_frame_id: primary_frame_for_backtrace_id(
+                        edge_frame_ids: selected_frames_for_backtrace_id(
                             edge.backtrace.as_u64(),
                             &backtrace_index,
                             &frame_catalog,
                             frame_start_index_for_entity(src),
+                            SOURCE_FRAMES_PER_ITEM,
                         ),
                     });
                     adjacency
@@ -1740,7 +1796,7 @@ Call moire_backtrace first to list frame_ids for a backtrace."
     ) -> Result<HashMap<u64, McpSourceContext>, String> {
         let mut frame_ids = BTreeSet::new();
         for node in nodes {
-            if let Some(frame_id) = node.frame_id {
+            for frame_id in &node.frame_ids {
                 frame_ids.insert(frame_id.as_u64());
             }
         }
@@ -1766,12 +1822,12 @@ Call moire_backtrace first to list frame_ids for a backtrace."
     ) -> Result<HashMap<u64, McpSourceContext>, String> {
         let mut frame_ids = BTreeSet::new();
         for node in nodes {
-            if let Some(frame_id) = node.frame_id {
+            for frame_id in &node.frame_ids {
                 frame_ids.insert(frame_id.as_u64());
             }
         }
         for edge in edges {
-            if let Some(frame_id) = edge.edge_frame_id {
+            for frame_id in &edge.edge_frame_ids {
                 frame_ids.insert(frame_id.as_u64());
             }
         }
@@ -1897,6 +1953,7 @@ Call moire_backtrace first to list frame_ids for a backtrace."
         nodes: &HashMap<String, WaitNode>,
         sources: &HashMap<u64, McpSourceContext>,
         edge_wait_source: &HashMap<(String, String), Option<McpSourceContext>>,
+        edge_wait_sources: &HashMap<(String, String), Vec<McpSourceContext>>,
     ) {
         if chains.len() >= DEFAULT_WAIT_CHAIN_MAX_RESULTS {
             return;
@@ -1916,6 +1973,7 @@ Call moire_backtrace first to list frame_ids for a backtrace."
                 nodes,
                 sources,
                 edge_wait_source,
+                edge_wait_sources,
                 path.len() >= max_depth,
             ));
             return;
@@ -1933,6 +1991,7 @@ Call moire_backtrace first to list frame_ids for a backtrace."
                     nodes,
                     sources,
                     edge_wait_source,
+                    edge_wait_sources,
                     false,
                 ));
                 if chains.len() >= DEFAULT_WAIT_CHAIN_MAX_RESULTS {
@@ -1952,6 +2011,7 @@ Call moire_backtrace first to list frame_ids for a backtrace."
                 nodes,
                 sources,
                 edge_wait_source,
+                edge_wait_sources,
             );
             path.pop();
 
@@ -2169,22 +2229,25 @@ fn render_wait_edges_markdown(response: &McpWaitEdgesResponse) -> String {
             "   births_ms: waiter={} blocked={}",
             edge.waiter_birth_ms, edge.blocked_birth_ms
         );
-        append_optional_source(
+        append_source_set(
             &mut out,
-            "   waiter source",
+            "   waiter sources",
             edge.waiter_source.as_ref(),
+            &edge.waiter_sources,
             "   ",
         );
-        append_optional_source(
+        append_source_set(
             &mut out,
-            "   blocked_on source",
+            "   blocked_on sources",
             edge.blocked_on_source.as_ref(),
+            &edge.blocked_on_sources,
             "   ",
         );
-        append_optional_source(
+        append_source_set(
             &mut out,
-            "   wait-site source",
+            "   wait-site sources",
             edge.wait_site_source.as_ref(),
+            &edge.wait_site_sources,
             "   ",
         );
     }
@@ -2225,16 +2288,23 @@ fn render_wait_chains_markdown(response: &McpWaitChainsResponse) -> String {
                 "- {} [{}] id={} process={}",
                 node.name, node.kind, node.entity_id, node.process_id
             );
-            append_optional_source(&mut out, "  source", node.source.as_ref(), "  ");
+            append_source_set(
+                &mut out,
+                "  sources",
+                node.source.as_ref(),
+                &node.sources,
+                "  ",
+            );
         }
 
         let _ = writeln!(out, "edges:");
         for edge in &chain.edges {
             let _ = writeln!(out, "- {} -> {}", edge.src_entity_id, edge.dst_entity_id);
-            append_optional_source(
+            append_source_set(
                 &mut out,
-                "  wait-site source",
+                "  wait-site sources",
                 edge.wait_site_source.as_ref(),
+                &edge.wait_site_sources,
                 "  ",
             );
         }
@@ -2261,7 +2331,13 @@ fn render_deadlock_candidates_markdown(response: &McpDeadlockCandidatesResponse)
         }
         for node in &candidate.cycle_nodes {
             let _ = writeln!(out, "- {} [{}] id={}", node.name, node.kind, node.entity_id);
-            append_optional_source(&mut out, "  source", node.source.as_ref(), "  ");
+            append_source_set(
+                &mut out,
+                "  sources",
+                node.source.as_ref(),
+                &node.sources,
+                "  ",
+            );
         }
     }
 
@@ -2284,15 +2360,22 @@ fn render_entity_markdown(response: &McpEntityResponse) -> String {
     );
     let _ = writeln!(out, "scope_ids: {}", response.scope_ids.join(", "));
     let _ = writeln!(out, "entity_body: {}", response.entity_body_json);
-    append_optional_source(&mut out, "source", response.source.as_ref(), "");
+    append_source_set(
+        &mut out,
+        "sources",
+        response.source.as_ref(),
+        &response.sources,
+        "",
+    );
 
     let _ = writeln!(out, "\nincoming_wait_edges:");
     for edge in &response.incoming_wait_edges {
         let _ = writeln!(out, "- {} -> {}", edge.src_entity_id, edge.dst_entity_id);
-        append_optional_source(
+        append_source_set(
             &mut out,
-            "  wait-site source",
+            "  wait-site sources",
             edge.wait_site_source.as_ref(),
+            &edge.wait_site_sources,
             "  ",
         );
     }
@@ -2300,10 +2383,11 @@ fn render_entity_markdown(response: &McpEntityResponse) -> String {
     let _ = writeln!(out, "\noutgoing_wait_edges:");
     for edge in &response.outgoing_wait_edges {
         let _ = writeln!(out, "- {} -> {}", edge.src_entity_id, edge.dst_entity_id);
-        append_optional_source(
+        append_source_set(
             &mut out,
-            "  wait-site source",
+            "  wait-site sources",
             edge.wait_site_source.as_ref(),
+            &edge.wait_site_sources,
             "  ",
         );
     }
@@ -2336,7 +2420,13 @@ fn render_channel_state_markdown(response: &McpChannelStateResponse) -> String {
         if let Some(hints) = channel.lifecycle_hints.as_ref() {
             let _ = writeln!(out, "  lifecycle: {hints}");
         }
-        append_optional_source(&mut out, "  source", channel.source.as_ref(), "  ");
+        append_source_set(
+            &mut out,
+            "  sources",
+            channel.source.as_ref(),
+            &channel.sources,
+            "  ",
+        );
     }
     out.trim_end().to_string()
 }
@@ -2353,14 +2443,28 @@ fn render_task_state_markdown(response: &McpTaskStateResponse) -> String {
             task.name, task.entity_id, task.process_id
         );
         let _ = writeln!(out, "  entry_backtrace_id: {}", task.entry_backtrace_id);
-        if let Some(frame_id) = task.entry_frame_id {
+        if !task.entry_frame_ids.is_empty() {
+            let frame_ids = task
+                .entry_frame_ids
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let _ = writeln!(out, "  entry_frame_ids: {frame_ids}");
+        } else if let Some(frame_id) = task.entry_frame_id {
             let _ = writeln!(out, "  entry_frame_id: {frame_id}");
         }
         if let Some(awaiting) = task.awaiting_on_entity_id.as_ref() {
             let _ = writeln!(out, "  awaiting_on_entity_id: {awaiting}");
         }
         let _ = writeln!(out, "  scope_ids: {}", task.scope_ids.join(", "));
-        append_optional_source(&mut out, "  source", task.source.as_ref(), "  ");
+        append_source_set(
+            &mut out,
+            "  sources",
+            task.source.as_ref(),
+            &task.sources,
+            "  ",
+        );
     }
 
     out.trim_end().to_string()
@@ -2413,7 +2517,7 @@ fn render_backtrace_markdown(response: &McpBacktraceResponse) -> String {
             let _ = writeln!(out, "  unresolved_reason: {reason}");
         }
         if let Some(source) = frame.source.as_ref() {
-            append_optional_source(&mut out, "  context", Some(source), "  ");
+            append_source_set(&mut out, "  context", Some(source), &[], "  ");
         }
     }
     out.trim_end().to_string()
@@ -2462,20 +2566,36 @@ fn render_diff_snapshots_markdown(response: &McpDiffSnapshotsResponse) -> String
     out.trim_end().to_string()
 }
 
-fn append_optional_source(
+fn append_source_set(
     out: &mut String,
     label: &str,
     source: Option<&McpSourceContext>,
+    sources: &[McpSourceContext],
     indent: &str,
 ) {
+    let mut all = Vec::<McpSourceContext>::new();
+    if let Some(source) = source {
+        all.push(source.clone());
+    }
+    for source in sources {
+        if all.iter().any(|seen| seen.frame_id == source.frame_id) {
+            continue;
+        }
+        all.push(source.clone());
+    }
+
     let _ = writeln!(out, "{indent}{label}:");
-    match source {
-        Some(source) => {
-            append_rendered_block(out, &render_source_snippet(source), &format!("{indent}  "))
-        }
-        None => {
-            let _ = writeln!(out, "{indent}  <source unavailable>");
-        }
+    if all.is_empty() {
+        let _ = writeln!(out, "{indent}  <source unavailable>");
+        return;
+    }
+    for (idx, source) in all.iter().enumerate() {
+        let _ = writeln!(out, "{indent}  [{}] frame_id={}", idx + 1, source.frame_id);
+        append_rendered_block(
+            out,
+            &render_source_snippet(source),
+            &format!("{indent}    "),
+        );
     }
 }
 
@@ -2563,8 +2683,24 @@ fn source_for_node(
     node: &WaitNode,
     sources: &HashMap<u64, McpSourceContext>,
 ) -> Option<McpSourceContext> {
-    node.frame_id
-        .and_then(|id| sources.get(&id.as_u64()).cloned())
+    sources_for_node(node, sources).into_iter().next()
+}
+
+fn sources_for_node(
+    node: &WaitNode,
+    sources: &HashMap<u64, McpSourceContext>,
+) -> Vec<McpSourceContext> {
+    sources_for_frame_ids(&node.frame_ids, sources)
+}
+
+fn sources_for_frame_ids(
+    frame_ids: &[FrameId],
+    sources: &HashMap<u64, McpSourceContext>,
+) -> Vec<McpSourceContext> {
+    frame_ids
+        .iter()
+        .filter_map(|id| sources.get(&id.as_u64()).cloned())
+        .collect()
 }
 
 fn wait_node(
@@ -2573,7 +2709,12 @@ fn wait_node(
     backtrace_index: &HashMap<u64, &SnapshotBacktrace>,
     frame_catalog: &HashMap<u64, &SnapshotBacktraceFrame>,
 ) -> WaitNode {
-    let frame_id = primary_frame_for_entity(entity, backtrace_index, frame_catalog);
+    let frame_ids = selected_frames_for_entity(
+        entity,
+        backtrace_index,
+        frame_catalog,
+        SOURCE_FRAMES_PER_ITEM,
+    );
     WaitNode {
         process_id: process.process_id.as_str().to_owned(),
         ptime_now_ms: process.ptime_now_ms,
@@ -2581,7 +2722,7 @@ fn wait_node(
         name: entity.name.clone(),
         kind: entity_kind_name(&entity.body).to_owned(),
         birth_ms: entity.birth.as_millis(),
-        frame_id,
+        frame_ids,
     }
 }
 
@@ -2605,21 +2746,6 @@ fn frame_catalog(snapshot: &SnapshotCutResponse) -> HashMap<u64, &SnapshotBacktr
         .collect()
 }
 
-fn primary_frame_for_entity(
-    entity: &Entity,
-    backtrace_index: &HashMap<u64, &SnapshotBacktrace>,
-    frame_catalog: &HashMap<u64, &SnapshotBacktraceFrame>,
-) -> Option<FrameId> {
-    let backtrace = backtrace_index.get(&entity.backtrace.as_u64())?;
-    if backtrace.frame_ids.is_empty() {
-        return None;
-    }
-
-    let skip = frame_start_index_for_entity(entity);
-    let index = skip.min(backtrace.frame_ids.len().saturating_sub(1));
-    preferred_frame_for_backtrace(backtrace, frame_catalog, index)
-}
-
 fn frame_start_index_for_entity(entity: &Entity) -> usize {
     match &entity.body {
         EntityBody::Future(fut) => fut.skip_entry_frames.unwrap_or(0) as usize,
@@ -2627,44 +2753,89 @@ fn frame_start_index_for_entity(entity: &Entity) -> usize {
     }
 }
 
-fn primary_frame_for_backtrace_id(
+fn selected_frames_for_entity(
+    entity: &Entity,
+    backtrace_index: &HashMap<u64, &SnapshotBacktrace>,
+    frame_catalog: &HashMap<u64, &SnapshotBacktraceFrame>,
+    frame_count: usize,
+) -> Vec<FrameId> {
+    let Some(backtrace) = backtrace_index.get(&entity.backtrace.as_u64()) else {
+        return Vec::new();
+    };
+    select_frames_for_backtrace(
+        backtrace,
+        frame_catalog,
+        frame_start_index_for_entity(entity),
+        frame_count,
+    )
+}
+
+fn selected_frames_for_backtrace_id(
     backtrace_id: u64,
     backtrace_index: &HashMap<u64, &SnapshotBacktrace>,
     frame_catalog: &HashMap<u64, &SnapshotBacktraceFrame>,
-    start_index: usize,
-) -> Option<FrameId> {
-    let backtrace = backtrace_index.get(&backtrace_id)?;
-    preferred_frame_for_backtrace(backtrace, frame_catalog, start_index)
+    app_skip_count: usize,
+    frame_count: usize,
+) -> Vec<FrameId> {
+    let Some(backtrace) = backtrace_index.get(&backtrace_id) else {
+        return Vec::new();
+    };
+    select_frames_for_backtrace(backtrace, frame_catalog, app_skip_count, frame_count)
 }
 
-fn preferred_frame_for_backtrace(
+fn select_frames_for_backtrace(
     backtrace: &SnapshotBacktrace,
     frame_catalog: &HashMap<u64, &SnapshotBacktraceFrame>,
-    start_index: usize,
-) -> Option<FrameId> {
-    if backtrace.frame_ids.is_empty() {
-        return None;
+    app_skip_count: usize,
+    frame_count: usize,
+) -> Vec<FrameId> {
+    if backtrace.frame_ids.is_empty() || frame_count == 0 {
+        return Vec::new();
     }
-    let start_index = start_index.min(backtrace.frame_ids.len().saturating_sub(1));
-    let candidate_slice = &backtrace.frame_ids[start_index..];
-    let mut first_resolved = None;
-    for frame_id in candidate_slice {
+
+    let mut application_resolved = Vec::<FrameId>::new();
+    let mut resolved_all = Vec::<FrameId>::new();
+    for frame_id in &backtrace.frame_ids {
         let Some(frame) = frame_catalog.get(&frame_id.as_u64()) else {
             continue;
         };
         let SnapshotBacktraceFrame::Resolved(resolved) = frame else {
             continue;
         };
-        if first_resolved.is_none() {
-            first_resolved = Some(*frame_id);
-        }
+        resolved_all.push(*frame_id);
         let is_system =
             crate_from_function_name(resolved.function_name.as_str()).is_some_and(is_system_crate);
         if !is_system {
-            return Some(*frame_id);
+            application_resolved.push(*frame_id);
         }
     }
-    first_resolved.or_else(|| candidate_slice.first().copied())
+
+    let mut out = Vec::<FrameId>::new();
+    for frame_id in application_resolved.into_iter().skip(app_skip_count) {
+        if !out.contains(&frame_id) {
+            out.push(frame_id);
+        }
+        if out.len() >= frame_count {
+            return out;
+        }
+    }
+    for frame_id in resolved_all {
+        if !out.contains(&frame_id) {
+            out.push(frame_id);
+        }
+        if out.len() >= frame_count {
+            return out;
+        }
+    }
+    for frame_id in &backtrace.frame_ids {
+        if !out.contains(frame_id) {
+            out.push(*frame_id);
+        }
+        if out.len() >= frame_count {
+            return out;
+        }
+    }
+    out
 }
 
 fn crate_from_function_name(function_name: &str) -> Option<&str> {
@@ -2713,6 +2884,7 @@ fn make_chain(
     nodes: &HashMap<String, WaitNode>,
     sources: &HashMap<u64, McpSourceContext>,
     edge_wait_source: &HashMap<(String, String), Option<McpSourceContext>>,
+    edge_wait_sources: &HashMap<(String, String), Vec<McpSourceContext>>,
     truncated: bool,
 ) -> McpWaitChain {
     let mut chain_nodes = Vec::new();
@@ -2726,6 +2898,7 @@ fn make_chain(
                 name: node.name.clone(),
                 kind: node.kind.clone(),
                 source: source_for_node(node, sources),
+                sources: sources_for_node(node, sources),
             });
         }
     }
@@ -2745,6 +2918,10 @@ fn make_chain(
                 .get(&(pair[0].clone(), pair[1].clone()))
                 .cloned()
                 .flatten(),
+            wait_site_sources: edge_wait_sources
+                .get(&(pair[0].clone(), pair[1].clone()))
+                .cloned()
+                .unwrap_or_default(),
         });
     }
 
