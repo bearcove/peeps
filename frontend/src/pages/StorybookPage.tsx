@@ -38,7 +38,6 @@ import { Switch } from "../ui/primitives/Switch";
 import { GraphNode } from "../components/graph/GraphNode";
 import { GraphFilterInput } from "../components/graph/GraphFilterInput";
 import { SampleGraph } from "../components/graph/SampleGraph";
-import { fallbackElkLayoutAlgorithmOptions } from "../graph/elkAdapter";
 import "../components/graph/GraphPanel.css";
 import { CONTEXT_MENU_DEMO_NODES, type StorybookState } from "./useStorybookState";
 import { RelativeTimestamp } from "../ui/primitives/RelativeTimestamp";
@@ -117,7 +116,6 @@ export function StorybookPage({
   } = sharedState;
 
   const contextMenuContainerRef = useRef<HTMLDivElement>(null);
-  const [layoutAlgorithm, setLayoutAlgorithm] = useState("layered");
   const [contextMenuState, setContextMenuState] = useState<{
     x: number;
     y: number;
@@ -284,9 +282,6 @@ export function StorybookPage({
               onImportClick={() => fileInputRef.current?.click()}
               fileInputRef={fileInputRef}
               onImportFile={() => undefined}
-              layoutAlgorithm={layoutAlgorithm}
-              layoutAlgorithmOptions={fallbackElkLayoutAlgorithmOptions}
-              onLayoutAlgorithmChange={setLayoutAlgorithm}
             />
             <div className="ui-app-slice-controls">
               <Switch

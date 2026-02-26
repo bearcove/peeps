@@ -190,8 +190,13 @@ const edgeEventNodeMinWidth = 72;
 const edgeEventNodePadX = 8;
 const edgeEventNodeCharWidth = 7.4;
 const edgeEventNodeHeight = 24;
-const edgeEventInPortSuffix = ":in";
-const edgeEventOutPortSuffix = ":out";
+type PortSide = "NORTH" | "EAST" | "SOUTH" | "WEST";
+const edgeEventPortSuffixBySide: Record<PortSide, string> = {
+  NORTH: ":n",
+  EAST: ":e",
+  SOUTH: ":s",
+  WEST: ":w",
+};
 const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
 const isNear = (a: Point, b: Point): boolean => distance(a, b) < 1;
 
@@ -251,20 +256,29 @@ export function edgeEventNodeId(edgeId: string): string {
   return `${edgeEventNodePrefix}${edgeId}`;
 }
 
-function edgeEventInPortId(nodeId: string): string {
-  return `${nodeId}${edgeEventInPortSuffix}`;
+function edgeEventPortId(nodeId: string, side: PortSide): string {
+  return `${nodeId}${edgeEventPortSuffixBySide[side]}`;
 }
 
-function edgeEventOutPortId(nodeId: string): string {
-  return `${nodeId}${edgeEventOutPortSuffix}`;
+function chooseEventPortSide(eventCenter: Point, remoteCenter: Point): PortSide {
+  const dx = remoteCenter.x - eventCenter.x;
+  const dy = remoteCenter.y - eventCenter.y;
+  if (Math.abs(dx) > Math.abs(dy)) return dx < 0 ? "WEST" : "EAST";
+  return dy < 0 ? "NORTH" : "SOUTH";
 }
 
-function edgeEventInboundRef(nodeId: string, algorithm: ElkLayoutAlgorithm): string {
-  return algorithm === "layered" ? edgeEventInPortId(nodeId) : nodeId;
-}
-
-function edgeEventOutboundRef(nodeId: string, algorithm: ElkLayoutAlgorithm): string {
-  return algorithm === "layered" ? edgeEventOutPortId(nodeId) : nodeId;
+function collectElkNodeCenters(graph: any, out: Map<string, Point>) {
+  for (const child of graph.children ?? []) {
+    const id = String(child.id ?? "");
+    if (!id.startsWith("scope-group:")) {
+      const width = Number(child.width ?? 0);
+      const height = Number(child.height ?? 0);
+      const x = Number(child.x ?? 0);
+      const y = Number(child.y ?? 0);
+      out.set(id, { x: x + width / 2, y: y + height / 2 });
+    }
+    collectElkNodeCenters(child, out);
+  }
 }
 
 export function edgeMarkerSize(_edge: EdgeDef): number {
@@ -408,12 +422,18 @@ export async function layoutGraph(
   };
 
   const hasSubgraphs = subgraphScopeMode !== "none";
-  const elkAlgorithm = parseElkLayoutAlgorithm(
+  let elkAlgorithm = parseElkLayoutAlgorithm(
     options.layoutAlgorithm ??
       (typeof window === "undefined"
         ? undefined
         : (new URLSearchParams(window.location.search).get("elkLayout") ?? undefined)),
   );
+  if (hasSubgraphs && elkAlgorithm !== "layered") {
+    console.warn(
+      `[elk] algorithm '${elkAlgorithm}' does not support grouped layout (groupBy='${subgraphScopeMode}'); using 'layered' implicitly`,
+    );
+    elkAlgorithm = "layered";
+  }
   const elkOptions = rootElkOptionsFor(elkAlgorithm);
   const measuredHeaderHeight = Math.max(0, Math.ceil(options.subgraphHeaderHeight ?? 0));
   const elkScopeLabelHeight = Math.max(measuredHeaderHeight, 16);
@@ -470,7 +490,7 @@ export async function layoutGraph(
         sourceId: edge.source,
         targetId: eventNodeId,
         sourceRef: edge.source,
-        targetRef: edgeEventInboundRef(eventNodeId, elkAlgorithm),
+        targetRef: eventNodeId,
         sourceEdge: edge,
         markerSize: 0,
       },
@@ -478,7 +498,7 @@ export async function layoutGraph(
         id: `${edge.id}:b`,
         sourceId: eventNodeId,
         targetId: edge.target,
-        sourceRef: edgeEventOutboundRef(eventNodeId, elkAlgorithm),
+        sourceRef: eventNodeId,
         targetRef: edge.target,
         sourceEdge: edge,
         markerSize: edgeMarkerSize(edge),
@@ -527,7 +547,7 @@ export async function layoutGraph(
       },
       ports: [
         {
-          id: edgeEventInPortId(node.id),
+          id: edgeEventPortId(node.id, "NORTH"),
           x: width / 2,
           y: 0,
           layoutOptions: {
@@ -535,11 +555,27 @@ export async function layoutGraph(
           },
         },
         {
-          id: edgeEventOutPortId(node.id),
+          id: edgeEventPortId(node.id, "EAST"),
+          x: width,
+          y: height / 2,
+          layoutOptions: {
+            "elk.port.side": "EAST",
+          },
+        },
+        {
+          id: edgeEventPortId(node.id, "SOUTH"),
           x: width / 2,
           y: height,
           layoutOptions: {
             "elk.port.side": "SOUTH",
+          },
+        },
+        {
+          id: edgeEventPortId(node.id, "WEST"),
+          x: 0,
+          y: height / 2,
+          layoutOptions: {
+            "elk.port.side": "WEST",
           },
         },
       ],
@@ -625,16 +661,8 @@ export async function layoutGraph(
     ];
   })();
 
-  const result = await elk.layout({
-    id: "root",
-    layoutOptions: {
-      ...elkOptions,
-      ...(hasSubgraphs ? { "elk.hierarchyHandling": "INCLUDE_CHILDREN" } : {}),
-      "org.eclipse.elk.json.shapeCoords": "ROOT",
-      "org.eclipse.elk.json.edgeCoords": "ROOT",
-    },
-    children: groupedChildren,
-    edges: routedEdgeDefs.map((e) => {
+  const elkEdgesFor = (edges: RoutedEdgeDef[]) =>
+    edges.map((e) => {
       const touchesEventNode =
         e.sourceId.startsWith(edgeEventNodePrefix) || e.targetId.startsWith(edgeEventNodePrefix);
       const layoutOptions =
@@ -651,8 +679,68 @@ export async function layoutGraph(
         targets: [e.targetRef],
         ...(layoutOptions ? { layoutOptions } : {}),
       };
-    }),
-  });
+    });
+
+  const runElkLayout = (edges: RoutedEdgeDef[]) =>
+    elk.layout({
+      id: "root",
+      layoutOptions: {
+        ...elkOptions,
+        ...(hasSubgraphs ? { "elk.hierarchyHandling": "INCLUDE_CHILDREN" } : {}),
+        "org.eclipse.elk.json.shapeCoords": "ROOT",
+        "org.eclipse.elk.json.edgeCoords": "ROOT",
+      },
+      children: groupedChildren,
+      edges: elkEdgesFor(edges),
+    });
+
+  let result = await runElkLayout(routedEdgeDefs);
+  if (elkAlgorithm === "layered" && edgeEventNodeById.size > 0) {
+    const centers = new Map<string, Point>();
+    collectElkNodeCenters(result, centers);
+    let changedRefs = false;
+    for (const routed of routedEdgeDefs) {
+      if (
+        routed.targetId.startsWith(edgeEventNodePrefix) &&
+        !routed.sourceId.startsWith(edgeEventNodePrefix)
+      ) {
+        const sourceCenter = centers.get(routed.sourceId);
+        const eventCenter = centers.get(routed.targetId);
+        if (!sourceCenter || !eventCenter) {
+          throw new Error(
+            `[elk] missing centers for event edge ${routed.id} (${routed.sourceId} -> ${routed.targetId})`,
+          );
+        }
+        const side = chooseEventPortSide(eventCenter, sourceCenter);
+        const nextRef = edgeEventPortId(routed.targetId, side);
+        if (routed.targetRef !== nextRef) {
+          routed.targetRef = nextRef;
+          changedRefs = true;
+        }
+      }
+      if (
+        routed.sourceId.startsWith(edgeEventNodePrefix) &&
+        !routed.targetId.startsWith(edgeEventNodePrefix)
+      ) {
+        const eventCenter = centers.get(routed.sourceId);
+        const targetCenter = centers.get(routed.targetId);
+        if (!eventCenter || !targetCenter) {
+          throw new Error(
+            `[elk] missing centers for event edge ${routed.id} (${routed.sourceId} -> ${routed.targetId})`,
+          );
+        }
+        const side = chooseEventPortSide(eventCenter, targetCenter);
+        const nextRef = edgeEventPortId(routed.sourceId, side);
+        if (routed.sourceRef !== nextRef) {
+          routed.sourceRef = nextRef;
+          changedRefs = true;
+        }
+      }
+    }
+    if (changedRefs) {
+      result = await runElkLayout(routedEdgeDefs);
+    }
+  }
 
   type ElkSectionLike = {
     id?: string;
@@ -814,16 +902,6 @@ export async function layoutGraph(
           data: eventNodeData,
         });
         if (elkAlgorithm === "layered") {
-          const inPortId = edgeEventInPortId(eventNodeId);
-          const outPortId = edgeEventOutPortId(eventNodeId);
-          const inPort = (child.ports ?? []).find((port: any) => String(port.id) === inPortId);
-          const outPort = (child.ports ?? []).find((port: any) => String(port.id) === outPortId);
-          if (!inPort)
-            throw new Error(`[elk] event node ${eventNodeId}: missing inbound port ${inPortId}`);
-          if (!outPort) {
-            throw new Error(`[elk] event node ${eventNodeId}: missing outbound port ${outPortId}`);
-          }
-
           const resolvePortAnchor = (
             rawX: unknown,
             rawY: unknown,
@@ -852,13 +930,28 @@ export async function layoutGraph(
             return anchor;
           };
 
-          const expectedIn = { x: absX + nodeWidth / 2, y: absY };
-          const expectedOut = { x: absX + nodeWidth / 2, y: absY + nodeHeight };
-          portAnchorMap.set(inPortId, resolvePortAnchor(inPort.x, inPort.y, expectedIn, "inbound"));
-          portAnchorMap.set(
-            outPortId,
-            resolvePortAnchor(outPort.x, outPort.y, expectedOut, "outbound"),
+          const expectedBySide: Record<PortSide, Point> = {
+            NORTH: { x: absX + nodeWidth / 2, y: absY },
+            EAST: { x: absX + nodeWidth, y: absY + nodeHeight / 2 },
+            SOUTH: { x: absX + nodeWidth / 2, y: absY + nodeHeight },
+            WEST: { x: absX, y: absY + nodeHeight / 2 },
+          };
+          const portsById = new Map(
+            (child.ports ?? []).map((port: any) => [String(port.id), port] as const),
           );
+          for (const side of Object.keys(expectedBySide) as PortSide[]) {
+            const portId = edgeEventPortId(eventNodeId, side);
+            const port = portsById.get(portId);
+            if (!port) {
+              throw new Error(
+                `[elk] event node ${eventNodeId}: missing ${side.toLowerCase()} port ${portId}`,
+              );
+            }
+            portAnchorMap.set(
+              portId,
+              resolvePortAnchor(port.x, port.y, expectedBySide[side], side.toLowerCase()),
+            );
+          }
         }
         continue;
       }

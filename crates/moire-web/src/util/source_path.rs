@@ -46,15 +46,15 @@ fn sysroot_by_commit_hash() -> &'static std::collections::HashMap<String, String
 
 /// Remaps `/rustc/{hash}/...` to the matching rustup toolchain's rust-src component.
 pub fn resolve_source_path(path: &str) -> std::borrow::Cow<'_, str> {
-    if let Some(after_rustc) = path.strip_prefix("/rustc/") {
-        if let Some(slash) = after_rustc.find('/') {
-            let hash = &after_rustc[..slash];
-            if hash.len() == 40 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
-                let rest = &after_rustc[slash + 1..];
-                if let Some(sysroot) = sysroot_by_commit_hash().get(hash) {
-                    let remapped = format!("{sysroot}/lib/rustlib/src/rust/{rest}");
-                    return std::borrow::Cow::Owned(remapped);
-                }
+    if let Some(after_rustc) = path.strip_prefix("/rustc/")
+        && let Some(slash) = after_rustc.find('/')
+    {
+        let hash = &after_rustc[..slash];
+        if hash.len() == 40 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+            let rest = &after_rustc[slash + 1..];
+            if let Some(sysroot) = sysroot_by_commit_hash().get(hash) {
+                let remapped = format!("{sysroot}/lib/rustlib/src/rust/{rest}");
+                return std::borrow::Cow::Owned(remapped);
             }
         }
     }

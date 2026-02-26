@@ -23,13 +23,7 @@ import {
   type EventDef,
   type ScopeDef,
 } from "./snapshot";
-import {
-  defaultElkLayoutAlgorithm,
-  fallbackElkLayoutAlgorithmOptions,
-  knownElkLayoutAlgorithms,
-  type ElkLayoutAlgorithmOption,
-  type SubgraphScopeMode,
-} from "./graph/elkAdapter";
+import { type SubgraphScopeMode } from "./graph/elkAdapter";
 import {
   buildUnionLayout,
   computeChangeFrames,
@@ -160,12 +154,9 @@ export function App() {
   const [connections, setConnections] = useState<ConnectionsResponse | null>(null);
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
-  const DEFAULT_FILTER = "colorBy:crate groupBy:task loners:off";
+  const DEFAULT_FILTER = "colorBy:crate loners:off";
   const graphFilterText = searchParams.get("filter") ?? DEFAULT_FILTER;
-  const layoutAlgorithm = searchParams.get("layout") ?? defaultElkLayoutAlgorithm;
-  const [layoutAlgorithmOptions, setLayoutAlgorithmOptions] = useState<ElkLayoutAlgorithmOption[]>(
-    fallbackElkLayoutAlgorithmOptions,
-  );
+  const defaultUngroupedLayoutAlgorithm = "mrtree";
   const setGraphFilterText = useCallback(
     (next: string) => {
       setSearchParams(
@@ -175,23 +166,6 @@ export function App() {
             p.delete("filter");
           } else {
             p.set("filter", next);
-          }
-          return p;
-        },
-        { replace: true },
-      );
-    },
-    [setSearchParams],
-  );
-  const setLayoutAlgorithm = useCallback(
-    (next: string) => {
-      setSearchParams(
-        (prev) => {
-          const p = new URLSearchParams(prev);
-          if (next === defaultElkLayoutAlgorithm) {
-            p.delete("layout");
-          } else {
-            p.set("layout", next);
           }
           return p;
         },
@@ -220,21 +194,6 @@ export function App() {
   const isLiveRef = useRef(isLive);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    void knownElkLayoutAlgorithms()
-      .then((options) => {
-        if (cancelled) return;
-        setLayoutAlgorithmOptions(options);
-      })
-      .catch((error) => {
-        appLog("[elk] failed to read known layout algorithms: %o", error);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const allEntities = useMemo(() => (snap.phase === "ready" ? snap.entities : []), [snap]);
   const allEdges = useMemo(() => (snap.phase === "ready" ? snap.edges : []), [snap]);
   const backtracesById = useMemo(
@@ -242,18 +201,14 @@ export function App() {
     [snap],
   );
   const graphTextFilters = useMemo(() => parseGraphFilterQuery(graphFilterText), [graphFilterText]);
-  const effectiveLayoutAlgorithmOptions = useMemo(() => {
-    if (layoutAlgorithmOptions.some((opt) => opt.id === layoutAlgorithm)) {
-      return layoutAlgorithmOptions;
-    }
-    return [{ id: layoutAlgorithm, label: layoutAlgorithm }, ...layoutAlgorithmOptions];
-  }, [layoutAlgorithm, layoutAlgorithmOptions]);
   const effectiveHiddenKrates = graphTextFilters.excludeCrates;
   const effectiveHiddenProcesses = graphTextFilters.excludeProcesses;
   const effectiveHiddenKinds = graphTextFilters.excludeKinds;
   const effectiveShowLoners = graphTextFilters.showLoners ?? true;
   const effectiveScopeColorMode: ScopeColorMode = graphTextFilters.colorBy ?? "none";
   const effectiveSubgraphScopeMode: SubgraphScopeMode = graphTextFilters.groupBy ?? "none";
+  const effectiveLayoutAlgorithm =
+    effectiveSubgraphScopeMode === "none" ? defaultUngroupedLayoutAlgorithm : "layered";
   const effectiveLabelBy = graphTextFilters.labelBy;
   const focusedEntityId = graphTextFilters.focusedNodeId ?? null;
   const expandedEntityId = graphTextFilters.expandedNodeId ?? null;
@@ -1317,9 +1272,6 @@ export function App() {
         onImportClick={() => fileInputRef.current?.click()}
         fileInputRef={fileInputRef}
         onImportFile={handleImportFile}
-        layoutAlgorithm={layoutAlgorithm}
-        layoutAlgorithmOptions={effectiveLayoutAlgorithmOptions}
-        onLayoutAlgorithmChange={setLayoutAlgorithm}
       />
       {(recording.phase === "stopped" || recording.phase === "scrubbing") &&
         recording.frames.length > 0 && (
@@ -1374,7 +1326,7 @@ export function App() {
                 moduleItems={moduleItems}
                 scopeColorMode={effectiveScopeColorMode}
                 subgraphScopeMode={effectiveSubgraphScopeMode}
-                layoutAlgorithm={layoutAlgorithm}
+                layoutAlgorithm={effectiveLayoutAlgorithm}
                 labelByMode={effectiveLabelBy}
                 showSource={true}
                 scopeFilterLabel={scopeEntityFilter?.scopeToken ?? null}

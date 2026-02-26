@@ -197,8 +197,7 @@ fn cut_source_with_neighbor_count(
     }
 
     // Build cut_source by processing lines
-    let mut result_lines: Vec<String> =
-        Vec::with_capacity((scope_end_row - scope_start_row + 1) as usize);
+    let mut result_lines: Vec<String> = Vec::with_capacity(scope_end_row - scope_start_row + 1);
 
     // Determine which line ranges to cut (0-based rows)
     let mut cut_ranges: Vec<(usize, usize)> = Vec::new(); // inclusive start/end rows

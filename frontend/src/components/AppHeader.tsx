@@ -39,9 +39,6 @@ export function AppHeader({
   onImportClick,
   fileInputRef,
   onImportFile,
-  layoutAlgorithm,
-  layoutAlgorithmOptions,
-  onLayoutAlgorithmChange,
 }: {
   leftPaneTab: "graph" | "scopes" | "entities" | "events";
   onLeftPaneTabChange: (tab: "graph" | "scopes" | "entities" | "events") => void;
@@ -61,9 +58,6 @@ export function AppHeader({
   onImportClick: () => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onImportFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  layoutAlgorithm: string;
-  layoutAlgorithmOptions: Array<{ id: string; label: string }>;
-  onLayoutAlgorithmChange: (algorithm: string) => void;
 }) {
   const buttonLabel =
     snap.phase === "cutting" ? "Syncing…" : snap.phase === "loading" ? "Loading…" : "Take Snapshot";
@@ -95,23 +89,6 @@ export function AppHeader({
           { value: "events", label: "Events" },
         ]}
       />
-      <div className="app-header-layout">
-        <label className="app-header-layout-label" htmlFor="app-header-layout-select">
-          Layout
-        </label>
-        <select
-          id="app-header-layout-select"
-          className="app-header-layout-select"
-          value={layoutAlgorithm}
-          onChange={(e) => onLayoutAlgorithmChange(e.target.value)}
-        >
-          {layoutAlgorithmOptions.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
       {connCount > 0 && (
         <button
           type="button"
