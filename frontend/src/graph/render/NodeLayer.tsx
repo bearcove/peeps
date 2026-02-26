@@ -121,7 +121,11 @@ export async function measureGraphLayout(
         // During measurement, hooks won't complete async fetches in this render turn.
         flushSync(() =>
           root.render(
-            <GraphNode data={{ ...nodeData, sublabel, showSource }} expanded={isExpanded} />,
+            <GraphNode
+              data={{ ...nodeData, sublabel, showSource }}
+              expanded={isExpanded}
+              disableShellHeightAnimation
+            />,
           ),
         );
         const width = el.offsetWidth;
@@ -160,6 +164,7 @@ export async function measureGraphLayout(
             <GraphNode
               data={{ ...extra.data, showSource: extra.data.showSource ?? showSource }}
               expanded={isExpanded}
+              disableShellHeightAnimation
             />,
           ),
         );
@@ -263,6 +268,7 @@ export function NodeLayer({
         return (
           <div
             key={node.id}
+            data-node-id={node.id}
             data-pan-block="true"
             className="nl-node-shell"
             style={{

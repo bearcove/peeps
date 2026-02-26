@@ -39,7 +39,15 @@ export function useCameraController(
     onLostPointerCapture: () => void;
   };
 } {
-  const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
+  const [camera, setCamera_] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
+  const setCamera = useCallback((c: Camera | ((prev: Camera) => Camera)) => {
+    if (typeof c === "function") {
+      setCamera_((prev) => { const next = c(prev); console.log("[camera] setCamera fn", prev, "→", next, new Error().stack?.split("\n")[2]?.trim()); return next; });
+    } else {
+      console.log("[camera] setCamera", c, new Error().stack?.split("\n")[2]?.trim());
+      setCamera_(c);
+    }
+  }, []);
   const cameraRef = useRef<Camera>(camera);
   cameraRef.current = camera;
   const animFrameRef = useRef<number>(0);
@@ -68,16 +76,18 @@ export function useCameraController(
   const fitView = useCallback(() => {
     if (!bounds) return;
     const { width, height } = getViewportSize();
+    console.trace("[camera] fitView called");
     setCamera(fitBounds(bounds, width, height, 40));
   }, [bounds, getViewportSize]);
 
   const animateCameraTo = useCallback((target: Camera, durationMs: number = PAN_DURATION_MS) => {
     cancelAnimationFrame(animFrameRef.current);
     const start = cameraRef.current;
+    console.log("[camera] animateCameraTo start", start, "→ target", target);
     const dx = target.x - start.x;
     const dy = target.y - start.y;
     const dz = target.zoom - start.zoom;
-    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(dz) < 0.001) return;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(dz) < 0.001) { console.log("[camera] animateCameraTo skipped (already at target)"); return; }
     animationDestinationRef.current = target;
     const startTime = performance.now();
     const tick = () => {

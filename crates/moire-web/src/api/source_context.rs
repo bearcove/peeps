@@ -6,7 +6,8 @@ pub struct CutResult {
     /// Within that range, cut regions have their first line replaced with `/* ... */`
     /// and remaining lines empty. Line count = scope_range.end - scope_range.start + 1.
     pub cut_source: String,
-    /// 1-based inclusive line range of the containing scope in the original file.
+    /// 1-based inclusive line range of the displayed scope excerpt in the original file.
+    /// For function scopes, this starts at the function body (signature omitted).
     /// Line 1 of cut_source = line scope_range.start in the original.
     pub scope_range: LineRange,
 }
@@ -28,6 +29,31 @@ fn body_kind_for_scope(scope_kind: &str) -> &'static str {
     }
 }
 
+fn display_scope_rows(
+    scope: tree_sitter::Node<'_>,
+    body: Option<tree_sitter::Node<'_>>,
+    body_children: &[tree_sitter::Node<'_>],
+) -> (usize, usize) {
+    if scope.kind() != "function_item" {
+        return (scope.start_position().row, scope.end_position().row);
+    }
+
+    // For function items, avoid duplicating the signature by using body rows.
+    if let (Some(first), Some(last)) = (body_children.first(), body_children.last()) {
+        return (first.start_position().row, last.end_position().row);
+    }
+
+    // Empty-body fallback: keep a stable single line.
+    let mut row = body
+        .map(|body_node| body_node.start_position().row.saturating_add(1))
+        .unwrap_or_else(|| scope.start_position().row);
+    let scope_end_row = scope.end_position().row;
+    if row > scope_end_row {
+        row = scope_end_row;
+    }
+    (row, row)
+}
+
 /// Number of sibling statements to keep on each side of the target for
 /// regular (expanded) context rendering.
 const NEIGHBOR_COUNT: usize = 1;
@@ -41,8 +67,9 @@ const COMPACT_NEIGHBOR_COUNT: usize = 0;
 /// modified source with `/* ... */` placeholders for cut regions.
 ///
 /// The returned `cut_source` preserves the same number of lines as the
-/// scope in the original file (scope_range.end - scope_range.start + 1),
-/// making line numbers stable for gutter rendering.
+/// displayed scope excerpt in the original file
+/// (scope_range.end - scope_range.start + 1), making line numbers stable
+/// for gutter rendering.
 pub fn cut_source(
     content: &str,
     lang_name: &str,
@@ -99,25 +126,33 @@ fn cut_source_with_neighbor_count(
     let is_source_file = scope.kind() == "source_file";
 
     // Collect body children (the statements/items inside the scope)
-    let body_children: Vec<tree_sitter::Node> = if is_source_file {
-        // For source_file, all named children are body children
-        (0..scope.named_child_count())
-            .filter_map(|i| scope.named_child(i))
-            .collect()
-    } else {
-        // Find the body node (block or declaration_list)
-        let body = (0..scope.child_count())
-            .filter_map(|i| scope.child(i))
-            .find(|c| c.kind() == body_kind)?;
-        (0..body.named_child_count())
-            .filter_map(|i| body.named_child(i))
-            .collect()
-    };
+    let (body_node, body_children): (Option<tree_sitter::Node>, Vec<tree_sitter::Node>) =
+        if is_source_file {
+            // For source_file, all named children are body children
+            (
+                None,
+                (0..scope.named_child_count())
+                    .filter_map(|i| scope.named_child(i))
+                    .collect(),
+            )
+        } else {
+            // Find the body node (block or declaration_list)
+            let body = (0..scope.child_count())
+                .filter_map(|i| scope.child(i))
+                .find(|c| c.kind() == body_kind)?;
+            let children = (0..body.named_child_count())
+                .filter_map(|i| body.named_child(i))
+                .collect();
+            (Some(body), children)
+        };
+    let is_function_scope = scope.kind() == "function_item";
+    let (mut scope_start_row, mut scope_end_row) =
+        display_scope_rows(scope, body_node, &body_children);
 
     // If few enough children, no cutting needed — just return the scope as-is
     if body_children.len() <= (neighbor_count * 2 + 1) {
-        let scope_start = scope.start_position().row as u32 + 1;
-        let scope_end = scope.end_position().row as u32 + 1;
+        let scope_start = scope_start_row as u32 + 1;
+        let scope_end = scope_end_row as u32 + 1;
         let cut = source_lines[(scope_start - 1) as usize..scope_end as usize].join("\n");
         return Some(CutResult {
             cut_source: cut,
@@ -156,9 +191,10 @@ fn cut_source_with_neighbor_count(
     let keep_start = target_idx.saturating_sub(neighbor_count);
     let keep_end = (target_idx + neighbor_count + 1).min(body_children.len());
 
-    // Build the scope range
-    let scope_start_row = scope.start_position().row; // 0-based
-    let scope_end_row = scope.end_position().row; // 0-based
+    if is_function_scope {
+        scope_start_row = body_children[keep_start].start_position().row;
+        scope_end_row = body_children[keep_end - 1].end_position().row;
+    }
 
     // Build cut_source by processing lines
     let mut result_lines: Vec<String> =
@@ -174,7 +210,7 @@ fn cut_source_with_neighbor_count(
 
     if !body_children.is_empty() {
         // Before the keep range: cut children [0..keep_start)
-        if keep_start > 0 {
+        if keep_start > 0 && !is_function_scope {
             let cut_start = body_children[0].start_position().row;
             let cut_end = if keep_start < body_children.len() {
                 body_children[keep_start]
@@ -190,7 +226,7 @@ fn cut_source_with_neighbor_count(
         }
 
         // After the keep range: cut children [keep_end..len)
-        if keep_end < body_children.len() {
+        if keep_end < body_children.len() && !is_function_scope {
             let cut_start = body_children[keep_end].start_position().row;
             let cut_end = body_children[body_children.len() - 1].end_position().row;
             if cut_end >= cut_start {
@@ -857,20 +893,23 @@ mod tests {
 }"#;
         // target_line = 6 (1-based), the `let target = 5;` line
         let result = cut_source(src, "rust", 6, None).expect("should find scope");
-        assert_eq!(result.scope_range.start, 1);
-        assert_eq!(result.scope_range.end, 12);
+        assert_eq!(result.scope_range.start, 5);
+        assert_eq!(result.scope_range.end, 7);
         assert_line_count_invariant(src, &result);
 
-        // The cut_source should contain `/* ... */` for cut regions
+        // Function context should be trimmed to the kept statement neighborhood.
         let lines: Vec<&str> = result.cut_source.lines().collect();
         assert!(
-            lines.iter().any(|l| l.trim() == "/* ... */"),
-            "expected cut marker in output"
+            !result.cut_source.contains("fn example"),
+            "function signature should be omitted from function context"
         );
-        // Target line should be preserved
         assert!(
             lines.iter().any(|l| l.contains("let target = 5")),
             "target line should be preserved"
+        );
+        assert!(
+            !lines.iter().any(|l| l.trim() == "/* ... */"),
+            "function-window slicing should not emit outer cut markers"
         );
     }
 
@@ -885,13 +924,15 @@ mod tests {
 }"#;
         let result = cut_source_compact(src, "rust", 4, None).expect("should find scope");
         let lines: Vec<&str> = result.cut_source.lines().collect();
+        assert_eq!(result.scope_range.start, 4);
+        assert_eq!(result.scope_range.end, 4);
         assert!(
             lines.iter().any(|l| l.contains("let target = 3")),
             "target line should be preserved"
         );
         assert!(
-            lines.iter().filter(|l| l.trim() == "/* ... */").count() >= 2,
-            "compact mode should cut both before and after the target"
+            !lines.iter().any(|l| l.trim() == "/* ... */"),
+            "function-window compact mode should not emit outer cut markers"
         );
         assert_line_count_invariant(src, &result);
     }
@@ -923,6 +964,88 @@ mod tests {
         assert!(
             !result.cut_source.contains("println!(\"line 5\")"),
             "deep closure interior should not be present"
+        );
+        assert_line_count_invariant(src, &result);
+    }
+
+    #[test]
+    fn cut_source_omits_function_signature_from_context() {
+        let src = r#"pub async fn run(
+    session: &mut Session,
+    permit: Permit,
+) -> Result<(), String> {
+    let setup = 1;
+    let before = 2;
+    moire::task::spawn(
+        async move {
+            work().await;
+        },
+    )
+    .named("permit_waiter");
+    let after = 3;
+    Ok(())
+}"#;
+        let result = cut_source(src, "rust", 12, None).expect("should find scope");
+        assert_eq!(
+            result.scope_range.start, 6,
+            "context should start at body, not fn signature"
+        );
+        assert_eq!(
+            result.scope_range.end, 13,
+            "context should end before function brace"
+        );
+        assert!(
+            !result.cut_source.contains("pub async fn run"),
+            "function signature must be omitted from cut context"
+        );
+        assert!(
+            !result.cut_source.contains("\n}"),
+            "function closing brace must be omitted from cut context"
+        );
+        assert!(
+            result.cut_source.contains(".named(\"permit_waiter\")"),
+            "target statement should still be present"
+        );
+        assert_line_count_invariant(src, &result);
+    }
+
+    #[test]
+    fn cut_source_compact_omits_function_signature_from_context() {
+        let src = r#"pub async fn run(
+    session: &mut Session,
+    permit: Permit,
+) -> Result<(), String> {
+    let setup = 1;
+    let before = 2;
+    moire::task::spawn(
+        async move {
+            work().await;
+        },
+    )
+    .named("permit_waiter");
+    let after = 3;
+    Ok(())
+}"#;
+        let result = cut_source_compact(src, "rust", 12, None).expect("should find scope");
+        assert_eq!(
+            result.scope_range.start, 7,
+            "compact context should start at body"
+        );
+        assert_eq!(
+            result.scope_range.end, 12,
+            "compact context should end at kept statement"
+        );
+        assert!(
+            !result.cut_source.contains("pub async fn run"),
+            "function signature must be omitted from compact cut context"
+        );
+        assert!(
+            !result.cut_source.contains("\n}"),
+            "function closing brace must be omitted from compact cut context"
+        );
+        assert!(
+            result.cut_source.contains(".named(\"permit_waiter\")"),
+            "target statement should still be present in compact context"
         );
         assert_line_count_invariant(src, &result);
     }
@@ -1367,7 +1490,7 @@ impl<T: Send> Queue<T> {
         // target_line = 5 (inside closure with 1 statement)
         // Should walk up to outer function
         let result = cut_source(src, "rust", 5, None).expect("should find scope");
-        assert_eq!(result.scope_range.start, 1); // outer function
+        assert_eq!(result.scope_range.start, 3); // outer function window around target
         assert_line_count_invariant(src, &result);
     }
 
@@ -1430,11 +1553,8 @@ fn unrelated_b() {
             result.scope_range
         );
         // Scope should contain the short_fn body
-        assert!(
-            result.scope_range.start <= 7 && result.scope_range.end >= 9,
-            "scope should cover short_fn (lines 7-9), got {:?}",
-            result.scope_range
-        );
+        assert_eq!(result.scope_range.start, 8);
+        assert_eq!(result.scope_range.end, 8);
         assert_line_count_invariant(src, &result);
     }
 
@@ -1450,8 +1570,8 @@ fn unrelated_b() {
         let total_lines = src.lines().count() as u32;
         // target = closing `}` on last line
         let result = cut_source(src, "rust", total_lines, None).expect("should find scope");
-        assert_eq!(result.scope_range.start, 1);
-        assert_eq!(result.scope_range.end, total_lines);
+        assert_eq!(result.scope_range.start, 5);
+        assert_eq!(result.scope_range.end, 6);
         assert_line_count_invariant(src, &result);
     }
 
@@ -1525,7 +1645,10 @@ impl Foo {
 }"#;
         // target_line = 5 — INSIDE the closure body, not on brace
         let result = cut_source(src, "rust", 5, None).expect("should find scope");
-        assert_eq!(result.scope_range.start, 1, "should walk up to outer fn");
+        assert_eq!(
+            result.scope_range.start, 3,
+            "should walk up to outer fn body"
+        );
         assert_line_count_invariant(src, &result);
     }
 }

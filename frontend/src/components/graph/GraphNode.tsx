@@ -224,11 +224,13 @@ export function GraphNode({
   expanded = false,
   expanding = false,
   activeFrameIndex,
+  disableShellHeightAnimation = false,
 }: {
   data: GraphNodeData;
   expanded?: boolean;
   expanding?: boolean;
   activeFrameIndex?: number;
+  disableShellHeightAnimation?: boolean;
 }) {
   const showScopeColor = data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined;
 
@@ -308,6 +310,7 @@ export function GraphNode({
   }, [futureTopFrameId, futureTopPreview, futureTopStatement, isFutureKind]);
 
   useLayoutEffect(() => {
+    if (disableShellHeightAnimation) return;
     const el = framesShellRef.current;
     if (!el) return;
     const prevExpanded = prevExpandedRef.current;
@@ -344,7 +347,7 @@ export function GraphNode({
     return () => {
       el.removeEventListener("transitionend", onTransitionEnd);
     };
-  }, [expanded]);
+  }, [disableShellHeightAnimation, expanded]);
 
   useLayoutEffect(() => {
     const el = framesShellRef.current;

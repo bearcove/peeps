@@ -673,19 +673,7 @@ export function GraphViewport({
               activeExpandedFrameIndex={activeExpandedFrameIndex}
               ghostNodeIds={effectiveGhostNodeIds}
               nodeOpacityById={renderedNodeOpacityById}
-              onNodeHover={(id) => {
-                if (id) {
-                  // If a node is already expanded, hover on other nodes is blocked.
-                  if (nodeExpandStates.size > 0 && !nodeExpandStates.has(id)) return;
-                  onSelect({ kind: "entity", id });
-                } else {
-                  // Mouse left all nodes: deselect unless a node is expanded
-                  const selectedId = selection?.kind === "entity" ? selection.id : null;
-                  if (selectedId && !nodeExpandStates.has(selectedId)) {
-                    onSelect(null);
-                  }
-                }
-              }}
+              onNodeHover={undefined}
               onNodeClick={(id) => {
                 closeNodeContextMenu();
                 onExpandedNodeChange?.(expandedNodeId === id ? null : id);
@@ -811,10 +799,59 @@ function NodeExpandPanner({
         if (justFinishedExpand || switchedExpandedNode) {
           const node = nodes.find((n) => n.id === id);
           if (node) {
-            const { x, y, width } = node.worldRect;
-            // Keep the node top around 20% viewport height so there is room for expanded content.
-            const offsetY = (viewportHeight * 0.3) / getCamera().zoom;
-            panTo(x + width / 2, y + offsetY, transitionDurationMs);
+            const { x, y, width, height } = node.worldRect;
+            const cam = getCamera();
+            const viewportPadding = 16;
+            const maxTopScreenY = viewportHeight - height * cam.zoom - viewportPadding;
+            const desiredTopScreenY = Math.max(
+              viewportPadding,
+              Math.min(viewportHeight * 0.3, maxTopScreenY),
+            );
+            // Start from world-space math, then refine with real DOM pixel position so the
+            // one-shot pan lands exactly where the user sees the expanded node.
+            let targetWorldY = y + (viewportHeight / 2 - desiredTopScreenY) / cam.zoom;
+            const nodeEl = [...document.querySelectorAll<HTMLElement>(".nl-node-shell")].find(
+              (el) => el.dataset.nodeId === id,
+            );
+            const canvasEl = nodeEl?.closest(".graph-canvas");
+            if (nodeEl && canvasEl instanceof HTMLElement) {
+              const nodeTopInCanvas =
+                nodeEl.getBoundingClientRect().top - canvasEl.getBoundingClientRect().top;
+              const deltaScreenY = desiredTopScreenY - nodeTopInCanvas;
+              targetWorldY = cam.y - deltaScreenY / cam.zoom;
+            }
+            const predictedTopAtTarget = (y - targetWorldY) * cam.zoom + viewportHeight / 2;
+            console.log(
+              "[pan] id=%s y=%.2f h=%.2f zoom=%.4f vh=%.2f desiredTop=%.2f predictedTop=%.2f camY(start)=%.2f camY(target)=%.2f",
+              id,
+              y,
+              height,
+              cam.zoom,
+              viewportHeight,
+              desiredTopScreenY,
+              predictedTopAtTarget,
+              cam.y,
+              targetWorldY,
+            );
+            panTo(x + width / 2, targetWorldY, transitionDurationMs);
+            window.setTimeout(() => {
+              const latestCam = getCamera();
+              const latestNodeEl = [
+                ...document.querySelectorAll<HTMLElement>(".nl-node-shell"),
+              ].find((el) => el.dataset.nodeId === id);
+              const latestCanvasEl = latestNodeEl?.closest(".graph-canvas");
+              if (latestNodeEl && latestCanvasEl instanceof HTMLElement) {
+                const nodeTopInCanvas =
+                  latestNodeEl.getBoundingClientRect().top -
+                  latestCanvasEl.getBoundingClientRect().top;
+                console.log(
+                  "[pan:post] id=%s nodeTopInCanvas=%.2f camY(now)=%.2f",
+                  id,
+                  nodeTopInCanvas,
+                  latestCam.y,
+                );
+              }
+            }, transitionDurationMs + 40);
             didAutoPanRef.current = true;
           }
         }
