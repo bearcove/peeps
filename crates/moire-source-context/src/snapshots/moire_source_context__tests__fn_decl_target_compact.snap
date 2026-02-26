@@ -1,0 +1,7 @@
+---
+source: crates/moire-source-context/src/tests.rs
+expression: "format!(\"# {header}\\n\\n{}\",\nformat_context_lines(&text_context_lines(&compact)))"
+---
+# fn spawn_worker( task_name: &'static str, first_name: &'static str, first: u32, second_name: &'static str, second: u32, ready: bool, done_tx: u32, )
+
+  12 |     let x = 1;

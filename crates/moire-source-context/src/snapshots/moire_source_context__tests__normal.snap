@@ -1,0 +1,20 @@
+---
+source: crates/moire-source-context/src/tests.rs
+expression: "format!(\"# {header}\\n\\n{}\",\nformat_context_lines(&text_context_lines(&normal)))"
+---
+# fn spawn_lock_order_worker( task_name: &'static str, first_name: &'static str, first: Arc<SyncMutex<()>>, second_name: &'static str, second: Arc<SyncMutex<()>>, ready_barrier: Arc<Barrier>, completed_tx: oneshot::Sender<()>, )
+
+  12 |     moire::task::spawn(async move {
+  13 |         let _first_guard = first.lock();
+  14 |         println!("{task_name} locked {first_name}; waiting for peer");
+  15 | 
+  16 |         ready_barrier.wait();
+  17 | 
+  18 |         println!(
+  19 |             "{task_name} attempting {second_name}; this should deadlock due to lock-order inversion"
+  20 |         );
+  21 |         let _second_guard = second.lock();
+  22 | 
+  23 |         println!("{task_name} unexpectedly acquired {second_name}; deadlock did not occur");
+  24 |         let _ = completed_tx.send(());
+  25 |     }.named(task_name));

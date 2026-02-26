@@ -313,8 +313,8 @@ pub(crate) fn lookup_source_in_db(
         )
     });
 
-    // Enclosing function context for compact display (highlighted HTML).
-    let enclosing_fn = lang.and_then(|lang_name| {
+    // Frame header: identifies the enclosing function/method for display.
+    let frame_header = lang.and_then(|lang_name| {
         let context = extract_enclosing_fn(&content, lang_name, target_line, target_col)?;
         let mut hl = arborium::Highlighter::new();
         Some(
@@ -333,6 +333,6 @@ pub(crate) fn lookup_source_in_db(
         context_lines,
         compact_context_lines,
         context_line,
-        enclosing_fn,
+        frame_header,
     }))
 }

@@ -1,5 +1,20 @@
 use super::*;
 
+fn format_context_lines(lines: &[moire_types::SourceContextLine]) -> String {
+    let mut out = String::new();
+    for line in lines {
+        match line {
+            moire_types::SourceContextLine::Line(l) => {
+                out.push_str(&format!("{:>4} | {}\n", l.line_num, l.html));
+            }
+            moire_types::SourceContextLine::Separator(_) => {
+                out.push_str("     | ...\n");
+            }
+        }
+    }
+    out
+}
+
 /// Dump tree-sitter node structure for a parsed statement. Call from any
 /// test when debugging — e.g. `dump_node_tree(src, "rust", 3, Some(0));`
 #[allow(dead_code)]
@@ -825,12 +840,10 @@ fn single_stmt_closure_target_inside_still_walks_up() {
 }
 
 #[test]
-fn long_param_list_is_truncated_in_compact_cut_source() {
-    // Simulate what the graph node sees: a function with many params and one
-    // body statement, targeted at the fn declaration line.  find_scope walks
-    // up to source_file, making the function_item a kept "body child" of the
-    // file scope.  collect_compact_block_elision_ranges must elide the extra
-    // parameters so the card stays compact.
+fn long_param_list_is_truncated_in_compact_cut_source1() {
+    // When target is the `fn` declaration line, find_scope stops at the
+    // function_item (terminal scope), so the context is the function body —
+    // the signature is the frame_header, not shown in the body.
     let src = r#"fn helper() {}
 
 fn spawn_worker(
@@ -847,26 +860,67 @@ fn spawn_worker(
 
 fn other() {}"#;
     // Target line 3: the `fn spawn_worker(` declaration.
-    let result = cut_source_compact(src, "rust", 3, None).expect("should find scope");
-    assert!(
-        result.cut_source.contains("task_name"),
-        "first param should be kept:\n{}",
-        result.cut_source
+    let header =
+        extract_enclosing_fn(src, "rust", 3, None).unwrap_or_default();
+    let compact = cut_source_compact(src, "rust", 3, None).expect("compact");
+    assert_line_count_invariant(src, &compact);
+    insta::assert_snapshot!(
+        "fn_decl_target_compact",
+        format!("# {header}\n\n{}", format_context_lines(&text_context_lines(&compact)))
     );
-    assert!(
-        result.cut_source.contains("/* ... */"),
-        "remaining params should be elided:\n{}",
-        result.cut_source
+    let normal = cut_source(src, "rust", 3, None).expect("normal");
+    assert_line_count_invariant(src, &normal);
+    insta::assert_snapshot!(
+        "fn_decl_target_normal",
+        format!("# {header}\n\n{}", format_context_lines(&text_context_lines(&normal)))
     );
-    assert!(
-        !result.cut_source.contains("second_name"),
-        "non-first params should be gone:\n{}",
-        result.cut_source
+}
+
+#[test]
+fn long_param_list_is_truncated_in_compact_cut_source2() {
+    let src = r#"fn helper() {}
+
+fn spawn_lock_order_worker(
+    task_name: &'static str,
+    first_name: &'static str,
+    first: Arc<SyncMutex<()>>,
+    second_name: &'static str,
+    second: Arc<SyncMutex<()>>,
+    ready_barrier: Arc<Barrier>,
+    completed_tx: oneshot::Sender<()>,
+) {
+    moire::task::spawn(async move {
+        let _first_guard = first.lock();
+        println!("{task_name} locked {first_name}; waiting for peer");
+
+        ready_barrier.wait();
+
+        println!(
+            "{task_name} attempting {second_name}; this should deadlock due to lock-order inversion"
+        );
+        let _second_guard = second.lock();
+
+        println!("{task_name} unexpectedly acquired {second_name}; deadlock did not occur");
+        let _ = completed_tx.send(());
+    }.named(task_name));
+}
+
+fn other() {}"#;
+
+    // target: `.named(task_name)` line
+    let target_line = 25;
+
+    let header = extract_enclosing_fn(src, "rust", target_line, None).unwrap_or_default();
+
+    let compact = cut_source_compact(src, "rust", target_line, None).expect("compact");
+    insta::assert_snapshot!(
+        "compact",
+        format!("# {header}\n\n{}", format_context_lines(&text_context_lines(&compact)))
     );
-    assert!(
-        !result.cut_source.contains("done_tx"),
-        "last param should be gone:\n{}",
-        result.cut_source
+
+    let normal = cut_source(src, "rust", target_line, None).expect("normal");
+    insta::assert_snapshot!(
+        "normal",
+        format!("# {header}\n\n{}", format_context_lines(&text_context_lines(&normal)))
     );
-    assert_line_count_invariant(src, &result);
 }

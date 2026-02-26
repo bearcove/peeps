@@ -9,6 +9,7 @@ members = [
   "crates/moire-wasm",
   "crates/moire-runtime",
   "crates/moire-web",
+  "crates/moire-source-context",
   "crates/moire-types",
   "crates/moire-trace-types",
   "crates/moire-trace-capture",
@@ -34,6 +35,7 @@ moire-tokio = { path = "crates/moire-tokio" }
 moire-wasm = { path = "crates/moire-wasm" }
 moire-runtime = { path = "crates/moire-runtime" }
 moire-types = { path = "crates/moire-types" }
+moire-source-context = { path = "crates/moire-source-context" }
 moire-trace-types = { path = "crates/moire-trace-types" }
 moire-trace-capture = { path = "crates/moire-trace-capture" }
 moire-wire = { path = "crates/moire-wire" }

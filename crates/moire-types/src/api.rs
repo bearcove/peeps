@@ -245,14 +245,14 @@ pub struct SourcePreviewResponse {
     /// Used for compact collapsed-frame display.
     #[facet(skip_unless_truthy)]
     pub context_line: Option<String>,
-    /// Highlighted HTML for enclosing function context.
+    /// Highlighted HTML for the frame header — the label identifying which
+    /// function or method this frame belongs to.
     ///
-    /// Includes module path and impl type (when present) plus full function
-    /// signature (parameters + return type), compacted to one line.
-    /// Visibility modifiers (`pub`, `pub(crate)`, etc.) are omitted.
-    /// Currently only populated for Rust source files.
+    /// Format: `fn name(params...)` for free functions,
+    /// `Type::fn name(params...)` for impl methods (module path included when present).
+    /// Visibility modifiers are omitted. Currently only populated for Rust.
     #[facet(skip_unless_truthy)]
-    pub enclosing_fn: Option<String>,
+    pub frame_header: Option<String>,
 }
 
 /// Request body for `POST /api/source/previews`.

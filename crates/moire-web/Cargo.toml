@@ -19,6 +19,7 @@ facet-value.workspace = true
 figue.workspace = true
 moire-sqlite-facet.workspace = true
 moire-types.workspace = true
+moire-source-context.workspace = true
 moire-trace-types.workspace = true
 moire-wire.workspace = true
 rusqlite.workspace = true
@@ -41,6 +42,7 @@ serde_json = "1.0"
 object = "0.36"
 ur-taking-me-with-you.workspace = true
 arborium-theme = "2"
+
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

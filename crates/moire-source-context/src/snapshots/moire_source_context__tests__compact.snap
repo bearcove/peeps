@@ -1,0 +1,9 @@
+---
+source: crates/moire-source-context/src/tests.rs
+expression: "format!(\"# {header}\\n\\n{}\",\nformat_context_lines(&text_context_lines(&compact)))"
+---
+# fn spawn_lock_order_worker( task_name: &'static str, first_name: &'static str, first: Arc<SyncMutex<()>>, second_name: &'static str, second: Arc<SyncMutex<()>>, ready_barrier: Arc<Barrier>, completed_tx: oneshot::Sender<()>, )
+
+  12 |     moire::task::spawn(async move {
+     | ...
+  25 |     }.named(task_name));
