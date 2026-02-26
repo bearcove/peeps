@@ -49,6 +49,13 @@ const DEFAULT_WAIT_CHAIN_MAX_DEPTH: usize = 16;
 const DEFAULT_WAIT_CHAIN_MAX_RESULTS: usize = 200;
 
 #[mcp_tool(
+    name = "moire_help",
+    description = "Read this first. Explains deadlock workflow, entity kinds, common hang patterns, and how to use all moire MCP tools effectively."
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct HelpTool {}
+
+#[mcp_tool(
     name = "moire_cut_fresh",
     description = "Trigger a coordinated cut and capture a fresh snapshot. Returns cut_id + snapshot metadata."
 )]
@@ -162,6 +169,7 @@ pub struct DiffSnapshotsTool {
 tool_box!(
     MoireTools,
     [
+        HelpTool,
         CutFreshTool,
         WaitEdgesTool,
         WaitChainsTool,
@@ -184,6 +192,39 @@ struct McpCutFreshResponse {
     pub captured_at_unix_ms: i64,
     pub process_count: usize,
     pub timed_out_count: usize,
+}
+
+#[derive(Facet)]
+struct McpHelpResponse {
+    pub read_this_first: String,
+    pub first_steps: Vec<String>,
+    pub tool_guide: Vec<McpHelpToolGuide>,
+    pub entity_kinds: Vec<McpHelpEntityKind>,
+    pub hang_patterns: Vec<McpHelpHangPattern>,
+    pub interpretation_notes: Vec<String>,
+}
+
+#[derive(Facet)]
+struct McpHelpToolGuide {
+    pub tool: String,
+    pub purpose: String,
+    pub when_to_use: String,
+    pub typical_args: String,
+}
+
+#[derive(Facet)]
+struct McpHelpEntityKind {
+    pub kind: String,
+    pub means: String,
+    pub hang_signal: String,
+}
+
+#[derive(Facet)]
+struct McpHelpHangPattern {
+    pub name: String,
+    pub signature: String,
+    pub likely_cause: String,
+    pub next_calls: Vec<String>,
 }
 
 #[derive(Facet)]
@@ -451,6 +492,7 @@ impl MoireMcpHandler {
         args: &JsonMap<String, JsonValue>,
     ) -> Result<String, String> {
         match tool_name {
+            "moire_help" => self.tool_help().await,
             "moire_cut_fresh" => self.tool_cut_fresh().await,
             "moire_wait_edges" => {
                 let snapshot_id = optional_i64(args, "snapshot_id")?;
@@ -503,6 +545,232 @@ impl MoireMcpHandler {
             }
             other => Err(format!("unknown tool: {other}")),
         }
+    }
+
+    async fn tool_help(&self) -> Result<String, String> {
+        to_pretty_json(&McpHelpResponse {
+            read_this_first: String::from(
+                "Run moire_help first in every new session, then run moire_cut_fresh. \
+Use the returned snapshot_id for all follow-up calls to stay on one coherent cut.",
+            ),
+            first_steps: vec![
+                String::from("1) moire_help"),
+                String::from("2) moire_cut_fresh"),
+                String::from("3) moire_wait_chains { snapshot_id }"),
+                String::from("4) moire_deadlock_candidates { snapshot_id }"),
+                String::from(
+                    "5) moire_entity / moire_channel_state / moire_task_state on interesting nodes",
+                ),
+                String::from(
+                    "6) moire_diff_snapshots { from_snapshot_id, to_snapshot_id } if you need to prove no progress",
+                ),
+            ],
+            tool_guide: vec![
+                McpHelpToolGuide {
+                    tool: String::from("moire_cut_fresh"),
+                    purpose: String::from("Capture a new coordinated cut and snapshot anchor."),
+                    when_to_use: String::from("Always first for live debugging."),
+                    typical_args: String::from("{}"),
+                },
+                McpHelpToolGuide {
+                    tool: String::from("moire_wait_edges"),
+                    purpose: String::from("Flat waiting_on edges with node + wait-site source."),
+                    when_to_use: String::from("Need low-level raw wait graph facts."),
+                    typical_args: String::from("{ snapshot_id }"),
+                },
+                McpHelpToolGuide {
+                    tool: String::from("moire_wait_chains"),
+                    purpose: String::from("Precomputed dependency chains with cycle detection."),
+                    when_to_use: String::from("Primary traversal view for hangs."),
+                    typical_args: String::from("{ snapshot_id, roots?, max_depth? }"),
+                },
+                McpHelpToolGuide {
+                    tool: String::from("moire_deadlock_candidates"),
+                    purpose: String::from("SCC-based deadlock candidates with confidence/reasons."),
+                    when_to_use: String::from("Need probable root-cause candidates quickly."),
+                    typical_args: String::from("{ snapshot_id }"),
+                },
+                McpHelpToolGuide {
+                    tool: String::from("moire_entity"),
+                    purpose: String::from(
+                        "Inspect one entity with incoming/outgoing waits + scopes.",
+                    ),
+                    when_to_use: String::from("Drilling into one suspicious node."),
+                    typical_args: String::from("{ snapshot_id, entity_id }"),
+                },
+                McpHelpToolGuide {
+                    tool: String::from("moire_channel_state"),
+                    purpose: String::from(
+                        "Inspect channel occupancy/capacity and waiter pressure.",
+                    ),
+                    when_to_use: String::from("Suspected producer/consumer stall."),
+                    typical_args: String::from("{ snapshot_id, entity_id? }"),
+                },
+                McpHelpToolGuide {
+                    tool: String::from("moire_task_state"),
+                    purpose: String::from("Inspect task/future await target + scope context."),
+                    when_to_use: String::from("Suspected task/future parking issue."),
+                    typical_args: String::from("{ snapshot_id, entity_id? }"),
+                },
+                McpHelpToolGuide {
+                    tool: String::from("moire_source_context"),
+                    purpose: String::from("Direct frame source lookup in text/plain."),
+                    when_to_use: String::from("Need ad-hoc source for specific frame_ids."),
+                    typical_args: String::from(
+                        "{ snapshot_id?, frame_ids, format: \"text/plain\" }",
+                    ),
+                },
+                McpHelpToolGuide {
+                    tool: String::from("moire_backtrace"),
+                    purpose: String::from("Expand one backtrace, optionally with source snippets."),
+                    when_to_use: String::from("Need full call stack context."),
+                    typical_args: String::from("{ snapshot_id, backtrace_id, with_source? }"),
+                },
+                McpHelpToolGuide {
+                    tool: String::from("moire_diff_snapshots"),
+                    purpose: String::from("Show progress/no-progress across two cuts."),
+                    when_to_use: String::from("Need to prove stasis or identify transitions."),
+                    typical_args: String::from("{ from_snapshot_id, to_snapshot_id }"),
+                },
+            ],
+            entity_kinds: vec![
+                McpHelpEntityKind {
+                    kind: String::from("future"),
+                    means: String::from("A task/future execution state."),
+                    hang_signal: String::from(
+                        "Long wait chain roots; waiting_on edges that never clear.",
+                    ),
+                },
+                McpHelpEntityKind {
+                    kind: String::from("mpsc_tx / mpsc_rx"),
+                    means: String::from("Bounded/unbounded MPSC channel endpoints."),
+                    hang_signal: String::from(
+                        "tx waits with full buffer or rx waits with no producer progress.",
+                    ),
+                },
+                McpHelpEntityKind {
+                    kind: String::from("broadcast_tx / broadcast_rx"),
+                    means: String::from("Broadcast channel endpoints."),
+                    hang_signal: String::from(
+                        "Receivers lagging or waiting while sender path is blocked.",
+                    ),
+                },
+                McpHelpEntityKind {
+                    kind: String::from("watch_tx / watch_rx"),
+                    means: String::from("Watch channel update/read endpoints."),
+                    hang_signal: String::from("rx waiting with no tx updates."),
+                },
+                McpHelpEntityKind {
+                    kind: String::from("oneshot_tx / oneshot_rx"),
+                    means: String::from("Single-message synchronization."),
+                    hang_signal: String::from("rx waiting and tx never reaches send."),
+                },
+                McpHelpEntityKind {
+                    kind: String::from("lock / semaphore / notify / once_cell"),
+                    means: String::from("Synchronization primitives."),
+                    hang_signal: String::from(
+                        "Cycles through holders/waiters or no external wake source.",
+                    ),
+                },
+                McpHelpEntityKind {
+                    kind: String::from("net_* / request / response"),
+                    means: String::from("I/O and RPC boundary operations."),
+                    hang_signal: String::from(
+                        "Can be real external wait; confirm with snapshot diff before calling deadlock.",
+                    ),
+                },
+                McpHelpEntityKind {
+                    kind: String::from("custom / aether"),
+                    means: String::from("User-defined or synthetic placeholder entities."),
+                    hang_signal: String::from(
+                        "Use source snippets + neighboring edges for interpretation.",
+                    ),
+                },
+            ],
+            hang_patterns: vec![
+                McpHelpHangPattern {
+                    name: String::from("Pure wait cycle"),
+                    signature: String::from(
+                        "SCC with >=2 nodes and no clear external wake source.",
+                    ),
+                    likely_cause: String::from("Logical deadlock or handshake ordering bug."),
+                    next_calls: vec![
+                        String::from("moire_deadlock_candidates { snapshot_id }"),
+                        String::from("moire_wait_chains { snapshot_id }"),
+                        String::from("moire_entity { snapshot_id, entity_id }"),
+                    ],
+                },
+                McpHelpHangPattern {
+                    name: String::from("Producer starvation"),
+                    signature: String::from(
+                        "Receivers waiting on channel while upstream producer chain is blocked.",
+                    ),
+                    likely_cause: String::from(
+                        "Missed spawn, gated branch, or upstream await cycle.",
+                    ),
+                    next_calls: vec![
+                        String::from("moire_channel_state { snapshot_id }"),
+                        String::from("moire_wait_chains { snapshot_id }"),
+                        String::from("moire_task_state { snapshot_id }"),
+                    ],
+                },
+                McpHelpHangPattern {
+                    name: String::from("Backpressure stall"),
+                    signature: String::from(
+                        "Senders blocked with high/at-capacity channel occupancy.",
+                    ),
+                    likely_cause: String::from(
+                        "Consumer slow or consumer blocked on unrelated wait.",
+                    ),
+                    next_calls: vec![
+                        String::from("moire_channel_state { snapshot_id }"),
+                        String::from("moire_wait_edges { snapshot_id }"),
+                        String::from("moire_task_state { snapshot_id }"),
+                    ],
+                },
+                McpHelpHangPattern {
+                    name: String::from("Looks deadlocked but is external wait"),
+                    signature: String::from(
+                        "Chains terminate in net/request/response-style boundary nodes.",
+                    ),
+                    likely_cause: String::from(
+                        "Remote dependency or I/O latency rather than internal cycle.",
+                    ),
+                    next_calls: vec![
+                        String::from(
+                            "moire_backtrace { snapshot_id, backtrace_id, with_source: true }",
+                        ),
+                        String::from("moire_diff_snapshots { from_snapshot_id, to_snapshot_id }"),
+                    ],
+                },
+                McpHelpHangPattern {
+                    name: String::from("No progress across cuts"),
+                    signature: String::from(
+                        "Repeated snapshots show same waiting_on graph and same hot entities.",
+                    ),
+                    likely_cause: String::from("Stable deadlock or starvation."),
+                    next_calls: vec![
+                        String::from("moire_cut_fresh"),
+                        String::from("moire_diff_snapshots { from_snapshot_id, to_snapshot_id }"),
+                        String::from("moire_deadlock_candidates { snapshot_id }"),
+                    ],
+                },
+            ],
+            interpretation_notes: vec![
+                String::from(
+                    "Prefer snapshot_id-pinned queries. Avoid mixing latest and pinned data in one diagnosis.",
+                ),
+                String::from(
+                    "Waiting_on is the primary deadlock edge. Pairing/ownership edges are contextual but non-blocking by themselves.",
+                ),
+                String::from(
+                    "Source snippets are best-effort from symbolication + tree-sitter extraction; missing snippets are explicit, not fabricated.",
+                ),
+                String::from(
+                    "Treat single-cut deadlock conclusions as provisional; confirm with moire_diff_snapshots when possible.",
+                ),
+            ],
+        })
     }
 
     async fn tool_cut_fresh(&self) -> Result<String, String> {
@@ -1623,7 +1891,10 @@ fn server_details() -> InitializeResult {
         server_info: Implementation {
             name: "moire-web".into(),
             version: env!("CARGO_PKG_VERSION").into(),
-            description: Some("Moire runtime graph server with deadlock-focused MCP tools".into()),
+            description: Some(
+                "Moire runtime graph server with deadlock-focused MCP tools. Run moire_help first."
+                    .into(),
+            ),
             title: Some("moire-web MCP".into()),
             icons: vec![],
             website_url: Some("https://github.com/bearcove/moire".into()),
@@ -1634,7 +1905,8 @@ fn server_details() -> InitializeResult {
         },
         protocol_version: LATEST_PROTOCOL_VERSION.into(),
         instructions: Some(
-            "Use moire MCP tools to capture fresh cuts, inspect wait chains, identify deadlocks, and read embedded source context."
+            "Run moire_help first. It defines the recommended workflow, entity semantics, and hang patterns. \
+Then run moire_cut_fresh and keep using its snapshot_id for all follow-up calls."
                 .into(),
         ),
         meta: None,
