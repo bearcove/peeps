@@ -6,6 +6,7 @@ target
 .swiftpm
 *.png
 .playwright-mcp/
+.claude/settings.local.json
 
 node_modules
 
