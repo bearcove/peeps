@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use facet::Facet;
@@ -20,6 +21,7 @@ struct Cli {
 
 const REAPER_PIPE_FD_ENV: &str = "MOIRE_REAPER_PIPE_FD";
 const REAPER_PGID_ENV: &str = "MOIRE_REAPER_PGID";
+const FRONTEND_DIST_ENV: &str = "MOIRE_FRONTEND_DIST";
 
 fn main() {
     // Reaper mode: watch the pipe, kill the process group when it closes.
@@ -88,15 +90,15 @@ async fn run() -> Result<(), String> {
     // r[impl config.web.vite-addr]
     let vite_addr = std::env::var("MOIRE_VITE_ADDR").unwrap_or_else(|_| DEFAULT_VITE_ADDR.into());
     // r[impl config.web.db-path]
-    let db_path = std::path::PathBuf::from(
-        std::env::var("MOIRE_DB").unwrap_or_else(|_| "moire-web.sqlite".into()),
-    );
+    let db_path =
+        PathBuf::from(std::env::var("MOIRE_DB").unwrap_or_else(|_| "moire-web.sqlite".into()));
     let db = Db::new(db_path);
     init_sqlite(&db).map_err(|e| format!("failed to init sqlite at {:?}: {e}", db.path()))?;
     let next_conn_id = load_next_connection_id(&db)
         .map_err(|e| format!("failed to load next connection id at {:?}: {e}", db.path()))?;
 
     let mut dev_vite_child = None;
+    let mut frontend_dist = None;
     let dev_proxy = if cli.dev {
         let child = start_vite_dev_server(&vite_addr).await?;
         info!(vite_addr = %vite_addr, "moire-web --dev launched Vite");
@@ -105,10 +107,13 @@ async fn run() -> Result<(), String> {
             base_url: Arc::new(format!("http://{vite_addr}")),
         })
     } else {
+        let dist = resolve_frontend_dist()?;
+        info!(frontend_dist = %dist.display(), "moire-web bundled frontend ready");
+        frontend_dist = Some(dist);
         None
     };
 
-    let state = AppState::new(db, next_conn_id, dev_proxy);
+    let state = AppState::new(db, next_conn_id, dev_proxy, frontend_dist.clone());
 
     let tcp_listener = TcpListener::bind(&tcp_addr)
         .await
@@ -121,7 +126,14 @@ async fn run() -> Result<(), String> {
     if cli.dev {
         info!(%http_addr, vite_addr = %vite_addr, "moire-web HTTP API + Vite proxy ready");
     } else {
-        info!(%http_addr, "moire-web HTTP API ready");
+        let dist = frontend_dist
+            .as_ref()
+            .ok_or("frontend dist was not resolved in non-dev mode")?;
+        info!(
+            %http_addr,
+            frontend_dist = %dist.display(),
+            "moire-web HTTP API + bundled frontend ready"
+        );
     }
     let mcp_listener = TcpListener::bind(&mcp_addr)
         .await
@@ -132,6 +144,7 @@ async fn run() -> Result<(), String> {
         &tcp_addr,
         &mcp_addr,
         if cli.dev { Some(&vite_addr) } else { None },
+        frontend_dist.as_deref(),
     );
 
     let app = build_router(state.clone());
@@ -170,17 +183,27 @@ fn parse_cli() -> Result<Cli, String> {
     Ok(cli.value)
 }
 
-fn print_startup_hints(http_addr: &str, tcp_addr: &str, mcp_addr: &str, vite_addr: Option<&str>) {
+fn print_startup_hints(
+    http_addr: &str,
+    tcp_addr: &str,
+    mcp_addr: &str,
+    vite_addr: Option<&str>,
+    frontend_dist: Option<&Path>,
+) {
     let mode = if vite_addr.is_some() {
         "dev proxy"
     } else {
-        "api only"
+        "bundled ui"
     };
     println!();
     println!();
 
     if let Some(vite_addr) = vite_addr {
         println!("  Vite dev server (managed): http://{vite_addr}");
+        println!();
+    }
+    if let Some(frontend_dist) = frontend_dist {
+        println!("  Frontend bundle: {}", frontend_dist.display());
         println!();
     }
 
@@ -193,4 +216,64 @@ fn print_startup_hints(http_addr: &str, tcp_addr: &str, mcp_addr: &str, vite_add
     println!("    \x1b[32mMOIRE_DASHBOARD={tcp_addr}\x1b[0m <your-binary>");
     println!();
     println!();
+}
+
+fn resolve_frontend_dist() -> Result<PathBuf, String> {
+    if let Ok(path) = std::env::var(FRONTEND_DIST_ENV) {
+        return validate_frontend_dist(PathBuf::from(path), FRONTEND_DIST_ENV);
+    }
+
+    let mut candidates: Vec<(&str, PathBuf)> = Vec::new();
+    if let Ok(exe_path) = std::env::current_exe()
+        && let Some(exe_dir) = exe_path.parent()
+    {
+        candidates.push((
+            "installed bundle next to executable",
+            exe_dir.join("moire-web.dist"),
+        ));
+    }
+    candidates.push((
+        "workspace frontend dist",
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../frontend/dist"),
+    ));
+
+    for (source, candidate) in &candidates {
+        if candidate.exists() {
+            return validate_frontend_dist(candidate.clone(), source);
+        }
+    }
+
+    let tried = candidates
+        .iter()
+        .map(|(source, candidate)| format!("  - {source}: {}", candidate.display()))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    Err(format!(
+        "frontend bundle not found. looked in:\n{tried}\nset {FRONTEND_DIST_ENV} to a valid frontend dist directory or run `cargo xtask install`."
+    ))
+}
+
+fn validate_frontend_dist(path: PathBuf, source: &str) -> Result<PathBuf, String> {
+    if !path.is_dir() {
+        return Err(format!(
+            "frontend bundle from {source} is not a directory: {}",
+            path.display()
+        ));
+    }
+    let index_html = path.join("index.html");
+    if !index_html.is_file() {
+        return Err(format!(
+            "frontend bundle from {source} is missing {}",
+            index_html.display()
+        ));
+    }
+    let assets_dir = path.join("assets");
+    if !assets_dir.is_dir() {
+        return Err(format!(
+            "frontend bundle from {source} is missing assets directory {}",
+            assets_dir.display()
+        ));
+    }
+    Ok(path)
 }

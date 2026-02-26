@@ -1,8 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::Router;
 use axum::routing::{any, get, post};
+use tower_http::services::{ServeDir, ServeFile};
 
 use crate::api::connections::{api_connections, api_cut_status, api_trigger_cut};
 use crate::api::recording::{
@@ -29,6 +31,7 @@ pub struct AppState {
     pub inner: Arc<Mutex<ServerState>>,
     pub db: Arc<Db>,
     pub dev_proxy: Option<DevProxyState>,
+    pub frontend_dist: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -96,11 +99,17 @@ impl ServerState {
 }
 
 impl AppState {
-    pub fn new(db: Db, next_conn_id: ConnectionId, dev_proxy: Option<DevProxyState>) -> Self {
+    pub fn new(
+        db: Db,
+        next_conn_id: ConnectionId,
+        dev_proxy: Option<DevProxyState>,
+        frontend_dist: Option<PathBuf>,
+    ) -> Self {
         Self {
             inner: Arc::new(Mutex::new(ServerState::new(next_conn_id))),
             db: Arc::new(db),
             dev_proxy,
+            frontend_dist,
         }
     }
 }
@@ -133,6 +142,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/arborium-theme.css", get(api_arborium_theme_css));
     if state.dev_proxy.is_some() {
         app = app.fallback(any(proxy_vite));
+    } else if let Some(frontend_dist) = &state.frontend_dist {
+        let spa = ServeDir::new(frontend_dist)
+            .not_found_service(ServeFile::new(frontend_dist.join("index.html")));
+        app = app.fallback_service(spa);
     }
     app.with_state(state)
 }

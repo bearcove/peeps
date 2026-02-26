@@ -29,6 +29,7 @@ tracing-subscriber.workspace = true
 ureq.workspace = true
 addr2line.workspace = true
 arborium.workspace = true
+tower-http = { version = "0.6", features = ["fs"] }
 rust-mcp-sdk = { version = "0.8", default-features = false, features = [
   "server",
   "macros",

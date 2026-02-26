@@ -2,6 +2,9 @@
 # r[impl process.frame-pointers]
 rustflags = ["-C", "force-frame-pointers=yes"]
 
+[alias]
+xtask = "run -p xtask --"
+
 [env]
 CFLAGS = "-fno-omit-frame-pointer"
 CXXFLAGS = "-fno-omit-frame-pointer"
