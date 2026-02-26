@@ -9,7 +9,7 @@ use axum::response::Response;
 use axum::routing::get;
 use axum::{Extension, Router};
 use facet::Facet;
-use moire_trace_types::FrameId;
+use moire_trace_types::{BacktraceId, FrameId};
 use moire_types::{
     BacktraceFrameResolved, BacktraceFrameUnresolved, CutId, EdgeKind, Entity, EntityBody,
     EntityId, ProcessId, ProcessSnapshotView, SnapshotBacktrace, SnapshotBacktraceFrame,
@@ -38,15 +38,20 @@ use crate::api::source::lookup_source_text_location_in_db;
 use crate::api::source_context::{
     cut_source_compact, extract_enclosing_fn, extract_target_statement,
 };
-use crate::app::{AppState, CutState};
+use crate::app::{AppState, CutState, remember_snapshot};
 use crate::db::persist_cut_request;
-use crate::snapshot::table::lookup_frame_source_by_raw;
+use crate::snapshot::table::{
+    is_pending_frame, load_snapshot_backtrace_table, lookup_frame_source_by_raw,
+};
+use crate::symbolication::symbolicate_pending_frames_for_backtraces;
 use crate::util::time::now_nanos;
 
 const DEFAULT_MCP_ENDPOINT: &str = "/mcp";
 const DEFAULT_MCP_PING_INTERVAL: Duration = Duration::from_secs(12);
 const DEFAULT_WAIT_CHAIN_MAX_DEPTH: usize = 16;
 const DEFAULT_WAIT_CHAIN_MAX_RESULTS: usize = 200;
+const DEFAULT_SYMBOLICATION_WAIT_TIMEOUT: Duration = Duration::from_secs(3);
+const DEFAULT_SYMBOLICATION_WAIT_TICK: Duration = Duration::from_millis(100);
 
 #[mcp_tool(
     name = "moire_help",
@@ -361,6 +366,8 @@ struct McpTaskState {
     pub entity_id: String,
     pub name: String,
     pub entry_backtrace_id: u64,
+    #[facet(skip_unless_truthy)]
+    pub entry_frame_id: Option<u64>,
     #[facet(skip_unless_truthy)]
     pub awaiting_on_entity_id: Option<String>,
     pub scope_ids: Vec<String>,
@@ -788,7 +795,9 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
     }
 
     async fn tool_wait_edges(&self, snapshot_id: Option<i64>) -> Result<String, String> {
-        let snapshot = self.load_snapshot(snapshot_id).await?;
+        let snapshot = self
+            .ensure_symbolication_ready(self.load_snapshot(snapshot_id).await?)
+            .await?;
         let (nodes, edges, _, _) = self.build_wait_graph(&snapshot)?;
         let sources = self
             .load_source_for_graph(&snapshot, nodes.values(), &edges)
@@ -834,7 +843,9 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
         roots: Option<Vec<String>>,
         max_depth: Option<u32>,
     ) -> Result<String, String> {
-        let snapshot = self.load_snapshot(snapshot_id).await?;
+        let snapshot = self
+            .ensure_symbolication_ready(self.load_snapshot(snapshot_id).await?)
+            .await?;
         let (nodes, edges, adjacency, indegree) = self.build_wait_graph(&snapshot)?;
         let sources = self
             .load_source_for_graph(&snapshot, nodes.values(), &edges)
@@ -901,7 +912,9 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
     }
 
     async fn tool_deadlock_candidates(&self, snapshot_id: Option<i64>) -> Result<String, String> {
-        let snapshot = self.load_snapshot(snapshot_id).await?;
+        let snapshot = self
+            .ensure_symbolication_ready(self.load_snapshot(snapshot_id).await?)
+            .await?;
         let (nodes, _edges, adjacency, _indegree) = self.build_wait_graph(&snapshot)?;
         let sources = self
             .load_source_for_nodes(&snapshot, nodes.values())
@@ -979,7 +992,9 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
         snapshot_id: Option<i64>,
         entity_id: String,
     ) -> Result<String, String> {
-        let snapshot = self.load_snapshot(snapshot_id).await?;
+        let snapshot = self
+            .ensure_symbolication_ready(self.load_snapshot(snapshot_id).await?)
+            .await?;
         let located = self.find_entity(&snapshot, &entity_id)?;
         let backtrace_index = backtrace_index(&snapshot);
 
@@ -1080,7 +1095,9 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
         snapshot_id: Option<i64>,
         entity_id: Option<String>,
     ) -> Result<String, String> {
-        let snapshot = self.load_snapshot(snapshot_id).await?;
+        let snapshot = self
+            .ensure_symbolication_ready(self.load_snapshot(snapshot_id).await?)
+            .await?;
         let (nodes, edges, _adjacency, _indegree) = self.build_wait_graph(&snapshot)?;
         let sources = self
             .load_source_for_nodes(&snapshot, nodes.values())
@@ -1141,8 +1158,11 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
         snapshot_id: Option<i64>,
         entity_id: Option<String>,
     ) -> Result<String, String> {
-        let snapshot = self.load_snapshot(snapshot_id).await?;
+        let snapshot = self
+            .ensure_symbolication_ready(self.load_snapshot(snapshot_id).await?)
+            .await?;
         let (nodes, _edges, _adjacency, _indegree) = self.build_wait_graph(&snapshot)?;
+        let backtrace_index = backtrace_index(&snapshot);
         let sources = self
             .load_source_for_nodes(&snapshot, nodes.values())
             .await?;
@@ -1182,6 +1202,8 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
                     entity_id: entity.id.as_str().to_owned(),
                     name: entity.name.clone(),
                     entry_backtrace_id: entity.backtrace.as_u64(),
+                    entry_frame_id: primary_frame_for_entity(entity, &backtrace_index)
+                        .map(|frame_id| frame_id.as_u64()),
                     awaiting_on_entity_id: awaiting,
                     scope_ids,
                     source: node.and_then(|n| source_for_node(n, &sources)),
@@ -1213,19 +1235,41 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
         frame_ids: Vec<u64>,
         format: String,
     ) -> Result<String, String> {
-        let snapshot = self.load_snapshot(snapshot_id).await?;
+        let snapshot = self
+            .ensure_symbolication_ready(self.load_snapshot(snapshot_id).await?)
+            .await?;
         if frame_ids.is_empty() {
             return Err("frame_ids must be non-empty".to_string());
         }
-        if format != "text/plain" {
+        let format = if format == "text/plain" || format == "text" {
+            String::from("text/plain")
+        } else {
             return Err(format!(
                 "unsupported format `{format}`; supported values: text/plain"
             ));
-        }
+        };
 
         let (previews, unavailable_frame_ids) = self
             .resolve_source_contexts(frame_ids.into_iter().collect::<BTreeSet<_>>())
             .await?;
+
+        if previews.is_empty() && !unavailable_frame_ids.is_empty() {
+            let backtrace_ids = snapshot
+                .backtraces
+                .iter()
+                .map(|bt| bt.backtrace_id.as_u64())
+                .collect::<HashSet<_>>();
+            let all_look_like_backtrace_ids = unavailable_frame_ids
+                .iter()
+                .all(|id| backtrace_ids.contains(id));
+            if all_look_like_backtrace_ids {
+                return Err(
+                    "frame_ids expects FRAME ids, but received values look like BACKTRACE ids. \
+Call moire_backtrace first to list frame_ids for a backtrace."
+                        .to_string(),
+                );
+            }
+        }
 
         to_pretty_json(&McpSourceContextResponse {
             snapshot_id: snapshot.snapshot_id,
@@ -1241,7 +1285,9 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
         backtrace_id_raw: u64,
         with_source: bool,
     ) -> Result<String, String> {
-        let snapshot = self.load_snapshot(snapshot_id).await?;
+        let snapshot = self
+            .ensure_symbolication_ready(self.load_snapshot(snapshot_id).await?)
+            .await?;
         let Some(backtrace) = snapshot
             .backtraces
             .iter()
@@ -1474,6 +1520,62 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
 
         facet_json::from_str::<SnapshotCutResponse>(&snapshot_json)
             .map_err(|error| format!("decode cached snapshot json: {error}"))
+    }
+
+    async fn ensure_symbolication_ready(
+        &self,
+        mut snapshot: SnapshotCutResponse,
+    ) -> Result<SnapshotCutResponse, String> {
+        if snapshot.backtraces.is_empty() || snapshot.frames.is_empty() {
+            return Ok(snapshot);
+        }
+
+        if snapshot
+            .frames
+            .iter()
+            .all(|record| !is_pending_frame(&record.frame))
+        {
+            return Ok(snapshot);
+        }
+
+        let backtrace_ids: Vec<BacktraceId> = snapshot
+            .backtraces
+            .iter()
+            .map(|bt| bt.backtrace_id)
+            .collect();
+        let deadline = tokio::time::Instant::now() + DEFAULT_SYMBOLICATION_WAIT_TIMEOUT;
+
+        loop {
+            if let Err(error) =
+                symbolicate_pending_frames_for_backtraces(self.state.db.clone(), &backtrace_ids)
+                    .await
+            {
+                warn!(
+                    snapshot_id = snapshot.snapshot_id,
+                    %error,
+                    "symbolication pass failed for MCP"
+                );
+            }
+
+            let table = load_snapshot_backtrace_table(self.state.db.clone(), &backtrace_ids).await;
+            snapshot.backtraces = table.backtraces;
+            snapshot.frames = table.frames;
+            remember_snapshot(&self.state, &snapshot).await;
+
+            if snapshot
+                .frames
+                .iter()
+                .all(|record| !is_pending_frame(&record.frame))
+            {
+                break;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                break;
+            }
+            tokio::time::sleep(DEFAULT_SYMBOLICATION_WAIT_TICK).await;
+        }
+
+        Ok(snapshot)
     }
 
     fn build_wait_graph(
