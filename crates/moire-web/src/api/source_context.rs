@@ -418,7 +418,7 @@ const MAX_PARAM_LIST_ROWS: usize = 3;
 ///
 /// - Preserves formatting/newlines (not whitespace-collapsed).
 /// - Strips leading Rust attributes on the statement.
-/// - Aggressively elides long block interiors as `/* ... */` to keep cards compact.
+/// - Aggressively elides long block interiors with a placeholder to keep cards compact.
 pub fn extract_target_statement(
     content: &str,
     lang_name: &str,

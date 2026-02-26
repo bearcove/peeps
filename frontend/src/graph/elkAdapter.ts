@@ -936,8 +936,12 @@ export async function layoutGraph(
             SOUTH: { x: absX + nodeWidth / 2, y: absY + nodeHeight },
             WEST: { x: absX, y: absY + nodeHeight / 2 },
           };
-          const portsById = new Map(
-            (child.ports ?? []).map((port: any) => [String(port.id), port] as const),
+          type PortCoordinates = { id: unknown; x: unknown; y: unknown };
+          const portsById = new Map<string, PortCoordinates>(
+            (child.ports ?? []).map((port: unknown) => {
+              const typedPort = port as PortCoordinates;
+              return [String(typedPort.id), typedPort] as const;
+            }),
           );
           for (const side of Object.keys(expectedBySide) as PortSide[]) {
             const portId = edgeEventPortId(eventNodeId, side);

@@ -52,7 +52,7 @@ export interface SourcePreviewResponse {
    * Highlighted HTML for a compact target-statement snippet.
    *
    * Preserves statement structure (may include newlines) and aggressively
-   * elides long inner block bodies as `/* ... */`.
+   * elides long inner block bodies with a placeholder.
    * Used for compact collapsed-frame display.
    */
   context_line?: string;

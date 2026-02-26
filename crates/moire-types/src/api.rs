@@ -228,7 +228,7 @@ pub struct SourcePreviewResponse {
     /// Highlighted HTML for a compact target-statement snippet.
     ///
     /// Preserves statement structure (may include newlines) and aggressively
-    /// elides long inner block bodies as `/* ... */`.
+    /// elides long inner block bodies with a placeholder.
     /// Used for compact collapsed-frame display.
     #[facet(skip_unless_truthy)]
     pub context_line: Option<String>,

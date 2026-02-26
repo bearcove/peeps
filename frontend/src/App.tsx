@@ -21,6 +21,7 @@ import {
   type EntityDef,
   type EdgeDef,
   type EventDef,
+  type SnapshotGroupMode,
   type ScopeDef,
 } from "./snapshot";
 import { type SubgraphScopeMode } from "./graph/elkAdapter";
@@ -207,6 +208,8 @@ export function App() {
   const effectiveShowLoners = graphTextFilters.showLoners ?? true;
   const effectiveScopeColorMode: ScopeColorMode = graphTextFilters.colorBy ?? "none";
   const effectiveSubgraphScopeMode: SubgraphScopeMode = graphTextFilters.groupBy ?? "none";
+  const snapshotGroupMode: SnapshotGroupMode =
+    effectiveSubgraphScopeMode === "cycle" ? "none" : effectiveSubgraphScopeMode;
   const effectiveLayoutAlgorithm =
     effectiveSubgraphScopeMode === "none" ? defaultUngroupedLayoutAlgorithm : "layered";
   const effectiveLabelBy = graphTextFilters.labelBy;
@@ -492,7 +495,7 @@ export function App() {
         snapshot.processes.length,
         snapshot.timed_out_processes.length,
       );
-      const converted = convertSnapshot(snapshot, effectiveSubgraphScopeMode);
+      const converted = convertSnapshot(snapshot, snapshotGroupMode);
       snapshotLog(
         "snapshot converted entities=%d edges=%d",
         converted.entities.length,
@@ -526,7 +529,7 @@ export function App() {
             if (!current || current.snapshot_id !== update.snapshot_id) return;
             const next = applySymbolicationUpdateToSnapshot(current, update);
             snapshotWireRef.current = next;
-            const nextConverted = convertSnapshot(next, effectiveSubgraphScopeMode);
+            const nextConverted = convertSnapshot(next, snapshotGroupMode);
             setSnap({
               phase: "ready",
               ...nextConverted,
@@ -573,7 +576,7 @@ export function App() {
       snapshotLog("takeSnapshot failed %O", err);
       setSnap({ phase: "error", message: err instanceof Error ? err.message : String(err) });
     }
-  }, [effectiveSubgraphScopeMode, setFocusedEntityFilter]);
+  }, [snapshotGroupMode, setFocusedEntityFilter]);
 
   const handleStartRecording = useCallback(async () => {
     if (symbolicationStreamStopRef.current) {
@@ -612,7 +615,7 @@ export function App() {
             if (isLiveRef.current && current.session.frame_count > 0) {
               const frameIndex = current.session.frame_count - 1;
               const frame = await apiClient.fetchRecordingFrame(frameIndex);
-              const converted = convertSnapshot(frame, effectiveSubgraphScopeMode);
+              const converted = convertSnapshot(frame, snapshotGroupMode);
               setSnap({
                 phase: "ready",
                 ...converted,
@@ -629,7 +632,7 @@ export function App() {
     } catch (err) {
       console.error(err);
     }
-  }, [effectiveSubgraphScopeMode]);
+  }, [snapshotGroupMode]);
 
   const handleStopRecording = useCallback(async () => {
     if (symbolicationStreamStopRef.current) {
@@ -662,7 +665,7 @@ export function App() {
       if (session.frame_count > 0) {
         const lastFrameIndex = session.frame_count - 1;
         const lastFrame = await apiClient.fetchRecordingFrame(lastFrameIndex);
-        const converted = convertSnapshot(lastFrame, effectiveSubgraphScopeMode);
+        const converted = convertSnapshot(lastFrame, snapshotGroupMode);
         setSnap({
           phase: "ready",
           ...converted,
@@ -681,7 +684,7 @@ export function App() {
             });
           },
           autoInterval,
-          effectiveSubgraphScopeMode,
+          snapshotGroupMode,
         );
         setRecording((prev) => {
           if (prev.phase !== "stopped") return prev;
@@ -719,7 +722,7 @@ export function App() {
     focusedEntityId,
     ghostMode,
     effectiveShowLoners,
-    effectiveSubgraphScopeMode,
+    snapshotGroupMode,
   ]);
 
   const handleExport = useCallback(async () => {
@@ -765,7 +768,7 @@ export function App() {
         if (session.frames.length > 0) {
           const lastFrameIndex = session.frames[session.frames.length - 1].frame_index;
           const lastFrame = await apiClient.fetchRecordingFrame(lastFrameIndex);
-          const converted = convertSnapshot(lastFrame, effectiveSubgraphScopeMode);
+          const converted = convertSnapshot(lastFrame, snapshotGroupMode);
           setSnap({
             phase: "ready",
             ...converted,
@@ -784,7 +787,7 @@ export function App() {
               });
             },
             autoInterval,
-            effectiveSubgraphScopeMode,
+            snapshotGroupMode,
           );
           setRecording((prev) => {
             if (prev.phase !== "stopped") return prev;
@@ -823,7 +826,7 @@ export function App() {
       focusedEntityId,
       ghostMode,
       effectiveShowLoners,
-      effectiveSubgraphScopeMode,
+      snapshotGroupMode,
     ],
   );
 
@@ -917,7 +920,7 @@ export function App() {
           });
         },
         downsampleInterval,
-        effectiveSubgraphScopeMode,
+        snapshotGroupMode,
       );
       setBuiltDownsampleInterval(downsampleInterval);
       setRecording((prev) => {
@@ -968,7 +971,7 @@ export function App() {
     focusedEntityId,
     ghostMode,
     effectiveShowLoners,
-    effectiveSubgraphScopeMode,
+    snapshotGroupMode,
   ]);
 
   // Re-render union frame when filters change during playback.
@@ -1062,7 +1065,7 @@ export function App() {
           if (cancelled) break;
           if (existingSnapshot) {
             snapshotWireRef.current = existingSnapshot;
-            const converted = convertSnapshot(existingSnapshot, effectiveSubgraphScopeMode);
+            const converted = convertSnapshot(existingSnapshot, snapshotGroupMode);
             setSnap({
               phase: "ready",
               ...converted,
@@ -1094,7 +1097,7 @@ export function App() {
                   if (!current || current.snapshot_id !== update.snapshot_id) return;
                   const next = applySymbolicationUpdateToSnapshot(current, update);
                   snapshotWireRef.current = next;
-                  const nextConverted = convertSnapshot(next, effectiveSubgraphScopeMode);
+                  const nextConverted = convertSnapshot(next, snapshotGroupMode);
                   setSnap({
                     phase: "ready",
                     ...nextConverted,
@@ -1157,7 +1160,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [takeSnapshot, effectiveSubgraphScopeMode]);
+  }, [takeSnapshot, snapshotGroupMode]);
 
   useEffect(() => {
     isLiveRef.current = isLive;
