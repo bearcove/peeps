@@ -783,6 +783,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7a1e2f27636f116493b8b860f5546edb47c8d8f8ea73e1d2a20be88e28d1fea"
 
 [[package]]
+name = "datatest-mini"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d062a9cc8c06b78557d11246945ebe0ad619f88bc2c5527663fd75c77b3e79c"
+dependencies = [
+ "regex",
+]
+
+[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1901,6 +1910,7 @@ name = "moire-source-context"
 version = "0.1.0"
 dependencies = [
  "arborium",
+ "datatest-mini",
  "insta",
  "moire-types",
 ]

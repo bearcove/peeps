@@ -109,6 +109,14 @@ function resamplePolyline(points: Point[], sampleCount: number): Point[] {
 
 function interpolatePolyline(from: Point[], to: Point[], t: number): Point[] {
   if (from.length < 2 || to.length < 2) return to;
+  // Same topology: interpolate waypoint-to-waypoint directly.
+  // This preserves the orthogonal structure so polylineToPath can round corners correctly.
+  // Resampling both paths to a common point count breaks structural correspondence and
+  // produces phantom kinks where sample #N lands on different legs of each path.
+  if (from.length === to.length) {
+    return from.map((p, i) => lerpPoint(p, to[i], t));
+  }
+  // Different topology (waypoint count changed): fall back to arc-length resampling.
   const fromResampled = resamplePolyline(from, EDGE_SAMPLE_POINTS);
   const toResampled = resamplePolyline(to, EDGE_SAMPLE_POINTS);
   if (fromResampled.length !== toResampled.length) {

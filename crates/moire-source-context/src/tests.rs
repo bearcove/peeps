@@ -1,4 +1,5 @@
 use super::*;
+use std::path::Path;
 
 fn format_context_lines(lines: &[moire_types::SourceContextLine]) -> String {
     let mut out = String::new();
@@ -13,6 +14,61 @@ fn format_context_lines(lines: &[moire_types::SourceContextLine]) -> String {
         }
     }
     out
+}
+
+fn run_fixture(path: &Path, contents: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let sep = contents
+        .find("\n---\n")
+        .ok_or("fixture missing '---' separator")?;
+    let header_str = &contents[..sep];
+    let source = &contents[sep + 5..];
+    let source = source.strip_suffix('\n').unwrap_or(source);
+
+    let mut target_line: Option<u32> = None;
+    let mut target_col: Option<u32> = None;
+
+    for line in header_str.lines() {
+        if let Some(val) = line.strip_prefix("target_line:") {
+            target_line = Some(val.trim().parse()?);
+        } else if let Some(val) = line.strip_prefix("target_col:") {
+            target_col = Some(val.trim().parse()?);
+        }
+    }
+
+    let target_line = target_line.ok_or("fixture missing 'target_line'")?;
+
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("fixture");
+
+    let header = extract_enclosing_fn(source, "rust", target_line, target_col).unwrap_or_default();
+
+    let compact = cut_source_compact(source, "rust", target_line, target_col)
+        .ok_or_else(|| format!("{stem}: cut_source_compact returned None"))?;
+    insta::assert_snapshot!(
+        format!("{stem}.compact"),
+        format!(
+            "# {header}\n\n{}",
+            format_context_lines(&text_context_lines(&compact))
+        )
+    );
+
+    let normal = cut_source(source, "rust", target_line, target_col)
+        .ok_or_else(|| format!("{stem}: cut_source returned None"))?;
+    insta::assert_snapshot!(
+        format!("{stem}.normal"),
+        format!(
+            "# {header}\n\n{}",
+            format_context_lines(&text_context_lines(&normal))
+        )
+    );
+
+    Ok(())
+}
+
+datatest_mini::harness! {
+    { test = run_fixture, root = "tests/fixtures", pattern = r"^[^/]+\.txt$" },
 }
 
 /// Dump tree-sitter node structure for a parsed statement. Call from any
@@ -837,90 +893,4 @@ fn single_stmt_closure_target_inside_still_walks_up() {
         "should walk up to outer fn body"
     );
     assert_line_count_invariant(src, &result);
-}
-
-#[test]
-fn long_param_list_is_truncated_in_compact_cut_source1() {
-    // When target is the `fn` declaration line, find_scope stops at the
-    // function_item (terminal scope), so the context is the function body —
-    // the signature is the frame_header, not shown in the body.
-    let src = r#"fn helper() {}
-
-fn spawn_worker(
-    task_name: &'static str,
-    first_name: &'static str,
-    first: u32,
-    second_name: &'static str,
-    second: u32,
-    ready: bool,
-    done_tx: u32,
-) {
-    let x = 1;
-}
-
-fn other() {}"#;
-    // Target line 3: the `fn spawn_worker(` declaration.
-    let header =
-        extract_enclosing_fn(src, "rust", 3, None).unwrap_or_default();
-    let compact = cut_source_compact(src, "rust", 3, None).expect("compact");
-    assert_line_count_invariant(src, &compact);
-    insta::assert_snapshot!(
-        "fn_decl_target_compact",
-        format!("# {header}\n\n{}", format_context_lines(&text_context_lines(&compact)))
-    );
-    let normal = cut_source(src, "rust", 3, None).expect("normal");
-    assert_line_count_invariant(src, &normal);
-    insta::assert_snapshot!(
-        "fn_decl_target_normal",
-        format!("# {header}\n\n{}", format_context_lines(&text_context_lines(&normal)))
-    );
-}
-
-#[test]
-fn long_param_list_is_truncated_in_compact_cut_source2() {
-    let src = r#"fn helper() {}
-
-fn spawn_lock_order_worker(
-    task_name: &'static str,
-    first_name: &'static str,
-    first: Arc<SyncMutex<()>>,
-    second_name: &'static str,
-    second: Arc<SyncMutex<()>>,
-    ready_barrier: Arc<Barrier>,
-    completed_tx: oneshot::Sender<()>,
-) {
-    moire::task::spawn(async move {
-        let _first_guard = first.lock();
-        println!("{task_name} locked {first_name}; waiting for peer");
-
-        ready_barrier.wait();
-
-        println!(
-            "{task_name} attempting {second_name}; this should deadlock due to lock-order inversion"
-        );
-        let _second_guard = second.lock();
-
-        println!("{task_name} unexpectedly acquired {second_name}; deadlock did not occur");
-        let _ = completed_tx.send(());
-    }.named(task_name));
-}
-
-fn other() {}"#;
-
-    // target: `.named(task_name)` line
-    let target_line = 25;
-
-    let header = extract_enclosing_fn(src, "rust", target_line, None).unwrap_or_default();
-
-    let compact = cut_source_compact(src, "rust", target_line, None).expect("compact");
-    insta::assert_snapshot!(
-        "compact",
-        format!("# {header}\n\n{}", format_context_lines(&text_context_lines(&compact)))
-    );
-
-    let normal = cut_source(src, "rust", target_line, None).expect("normal");
-    insta::assert_snapshot!(
-        "normal",
-        format!("# {header}\n\n{}", format_context_lines(&text_context_lines(&normal)))
-    );
 }

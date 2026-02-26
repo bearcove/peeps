@@ -36,9 +36,6 @@ use tracing::{info, warn};
 
 use crate::api::snapshot::take_snapshot_internal;
 use crate::api::source::lookup_source_text_location_in_db;
-use crate::api::source_context::{
-    cut_source_compact, extract_enclosing_fn, extract_target_statement,
-};
 use crate::app::{AppState, CutState, remember_snapshot};
 use crate::db::persist_cut_request;
 use crate::snapshot::table::{
@@ -46,6 +43,7 @@ use crate::snapshot::table::{
 };
 use crate::symbolication::symbolicate_pending_frames_for_backtraces;
 use crate::util::time::now_nanos;
+use moire_source_context::{cut_source_compact, extract_enclosing_fn, extract_target_statement};
 
 const DEFAULT_MCP_ENDPOINT: &str = "/mcp";
 const DEFAULT_MCP_PING_INTERVAL: Duration = Duration::from_secs(12);

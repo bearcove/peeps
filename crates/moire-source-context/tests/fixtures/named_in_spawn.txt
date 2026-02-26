@@ -1,0 +1,30 @@
+target_line: 25
+---
+fn helper() {}
+
+fn spawn_lock_order_worker(
+    task_name: &'static str,
+    first_name: &'static str,
+    first: Arc<SyncMutex<()>>,
+    second_name: &'static str,
+    second: Arc<SyncMutex<()>>,
+    ready_barrier: Arc<Barrier>,
+    completed_tx: oneshot::Sender<()>,
+) {
+    moire::task::spawn(async move {
+        let _first_guard = first.lock();
+        println!("{task_name} locked {first_name}; waiting for peer");
+
+        ready_barrier.wait();
+
+        println!(
+            "{task_name} attempting {second_name}; this should deadlock due to lock-order inversion"
+        );
+        let _second_guard = second.lock();
+
+        println!("{task_name} unexpectedly acquired {second_name}; deadlock did not occur");
+        let _ = completed_tx.send(());
+    }.named(task_name));
+}
+
+fn other() {}

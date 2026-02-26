@@ -46,14 +46,14 @@ export interface SourcePreviewResponse {
    */
   context_line?: string;
   /**
-   * Highlighted HTML for enclosing function context.
+   * Highlighted HTML for the frame header — the label identifying which
+   * function or method this frame belongs to.
    *
-   * Includes module path and impl type (when present) plus full function
-   * signature (parameters + return type), compacted to one line.
-   * Visibility modifiers (`pub`, `pub(crate)`, etc.) are omitted.
-   * Currently only populated for Rust source files.
+   * Format: `fn name(params...)` for free functions,
+   * `Type::fn name(params...)` for impl methods (module path included when present).
+   * Visibility modifiers are omitted. Currently only populated for Rust.
    */
-  enclosing_fn?: string;
+  frame_header?: string;
 }
 
 /**

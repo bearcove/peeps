@@ -7,15 +7,15 @@ use moire_trace_types::{FrameId, RelPc};
 use moire_types::{SourcePreviewBatchRequest, SourcePreviewBatchResponse, SourcePreviewResponse};
 use rusqlite_facet::ConnectionFacetExt;
 
-use crate::api::source_context::{
-    cut_source, cut_source_compact, extract_enclosing_fn, extract_target_statement,
-    highlighted_context_lines,
-};
 use crate::app::AppState;
 use crate::db::Db;
 use crate::snapshot::table::lookup_frame_source_by_raw;
 use crate::util::http::{json_error, json_ok};
 use crate::util::source_path::resolve_source_path;
+use moire_source_context::{
+    cut_source, cut_source_compact, extract_enclosing_fn, extract_target_statement,
+    highlighted_context_lines,
+};
 
 #[derive(Facet)]
 struct SymbolicationCacheRow {
