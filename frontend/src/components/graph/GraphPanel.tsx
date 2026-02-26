@@ -5,6 +5,7 @@ import {
   edgeEventNodeId,
   edgeEventNodeLabel,
   layoutGraph,
+  type ElkLayoutAlgorithm,
   type SubgraphScopeMode,
 } from "../../graph/elkAdapter";
 import { measureGraphLayout, type MeasuredGraphNode } from "../../graph/render/NodeLayer";
@@ -117,6 +118,7 @@ export function GraphPanel({
   moduleItems,
   scopeColorMode,
   subgraphScopeMode,
+  layoutAlgorithm,
   labelByMode,
   showSource,
   scopeFilterLabel,
@@ -146,6 +148,7 @@ export function GraphPanel({
   moduleItems: FilterMenuItem[];
   scopeColorMode: ScopeColorMode;
   subgraphScopeMode: SubgraphScopeMode;
+  layoutAlgorithm: ElkLayoutAlgorithm;
   labelByMode?: GraphFilterLabelMode;
   showSource?: boolean;
   scopeFilterLabel?: string | null;
@@ -192,8 +195,16 @@ export function GraphPanel({
   const layoutInputsKey = useMemo(() => {
     const entityKey = entityDefs.map(entityLayoutSignature).join("|");
     const edgeKey = edgeDefs.map((edge) => `${edge.id}:${edge.source}->${edge.target}`).join("|");
-    return `${entityKey}::${edgeKey}::${subgraphScopeMode}::${labelByMode ?? ""}::${showSource ? "1" : "0"}::${expandedKey}`;
-  }, [entityDefs, edgeDefs, subgraphScopeMode, labelByMode, showSource, expandedKey]);
+    return `${entityKey}::${edgeKey}::${subgraphScopeMode}::${layoutAlgorithm}::${labelByMode ?? ""}::${showSource ? "1" : "0"}::${expandedKey}`;
+  }, [
+    entityDefs,
+    edgeDefs,
+    subgraphScopeMode,
+    layoutAlgorithm,
+    labelByMode,
+    showSource,
+    expandedKey,
+  ]);
 
   useEffect(() => {
     if (unionFrameLayout) {
@@ -246,6 +257,7 @@ export function GraphPanel({
         );
         return layoutGraph(entityDefs, edgeDefs, measurements.nodeSizes, subgraphScopeMode, {
           subgraphHeaderHeight: measurements.subgraphHeaderHeight,
+          layoutAlgorithm,
         });
       })
       .then((geo) => {
@@ -308,6 +320,7 @@ export function GraphPanel({
     entityDefs,
     edgeDefs,
     subgraphScopeMode,
+    layoutAlgorithm,
     labelByMode,
     unionFrameLayout,
     showSource,

@@ -292,6 +292,24 @@ fn collect_compact_block_elision_ranges(
         }
     }
 
+    // Elide long parameter lists: keep only the first parameter.
+    if node.kind() == "parameters" && node.parent().is_some_and(|p| p.kind() == "function_item") {
+        let start_row = node.start_position().row;
+        let end_row = node.end_position().row;
+        if end_row > start_row + MAX_PARAM_LIST_ROWS {
+            let first_param_end_row = (0..node.named_child_count())
+                .filter_map(|i| node.named_child(i))
+                .next()
+                .map(|p| p.end_position().row)
+                .unwrap_or(start_row);
+            let elide_start = first_param_end_row + 1;
+            let elide_end = end_row.saturating_sub(1);
+            if elide_end >= elide_start {
+                ranges.push((elide_start, elide_end));
+            }
+        }
+    }
+
     for i in 0..node.child_count() {
         if let Some(child) = node.child(i) {
             collect_compact_block_elision_ranges(child, ranges);
@@ -392,6 +410,10 @@ const STATEMENT_KINDS: &[&str] = &[
 
 /// Maximum number of interior lines (`{ ... }` body only) before we elide a block.
 const STATEMENT_BLOCK_INTERIOR_MAX_LINES: usize = 4;
+
+/// If a function's parameter list spans more than this many rows, elide all
+/// parameters after the first one, leaving a single `/* ... */` placeholder.
+const MAX_PARAM_LIST_ROWS: usize = 3;
 
 /// Extract a compact, context-aware statement snippet around the target position.
 ///
@@ -701,6 +723,24 @@ fn collect_statement_elision_ranges(node: tree_sitter::Node<'_>, ranges: &mut Ve
                 || interior_len > STATEMENT_BLOCK_INTERIOR_MAX_LINES;
             if should_elide {
                 ranges.push((interior_start, interior_end));
+            }
+        }
+    }
+
+    // Elide long parameter lists: keep only the first parameter.
+    if node.kind() == "parameters" && node.parent().is_some_and(|p| p.kind() == "function_item") {
+        let start_row = node.start_position().row;
+        let end_row = node.end_position().row;
+        if end_row > start_row + MAX_PARAM_LIST_ROWS {
+            let first_param_end_row = (0..node.named_child_count())
+                .filter_map(|i| node.named_child(i))
+                .next()
+                .map(|p| p.end_position().row)
+                .unwrap_or(start_row);
+            let elide_start = first_param_end_row + 1;
+            let elide_end = end_row.saturating_sub(1);
+            if elide_end >= elide_start {
+                ranges.push((elide_start, elide_end));
             }
         }
     }
@@ -1648,6 +1688,53 @@ impl Foo {
         assert_eq!(
             result.scope_range.start, 3,
             "should walk up to outer fn body"
+        );
+        assert_line_count_invariant(src, &result);
+    }
+
+    #[test]
+    fn long_param_list_is_truncated_in_compact_cut_source() {
+        // Simulate what the graph node sees: a function with many params and one
+        // body statement, targeted at the fn declaration line.  find_scope walks
+        // up to source_file, making the function_item a kept "body child" of the
+        // file scope.  collect_compact_block_elision_ranges must elide the extra
+        // parameters so the card stays compact.
+        let src = r#"fn helper() {}
+
+fn spawn_worker(
+    task_name: &'static str,
+    first_name: &'static str,
+    first: u32,
+    second_name: &'static str,
+    second: u32,
+    ready: bool,
+    done_tx: u32,
+) {
+    let x = 1;
+}
+
+fn other() {}"#;
+        // Target line 3: the `fn spawn_worker(` declaration.
+        let result = cut_source_compact(src, "rust", 3, None).expect("should find scope");
+        assert!(
+            result.cut_source.contains("task_name"),
+            "first param should be kept:\n{}",
+            result.cut_source
+        );
+        assert!(
+            result.cut_source.contains("/* ... */"),
+            "remaining params should be elided:\n{}",
+            result.cut_source
+        );
+        assert!(
+            !result.cut_source.contains("second_name"),
+            "non-first params should be gone:\n{}",
+            result.cut_source
+        );
+        assert!(
+            !result.cut_source.contains("done_tx"),
+            "last param should be gone:\n{}",
+            result.cut_source
         );
         assert_line_count_invariant(src, &result);
     }

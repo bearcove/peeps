@@ -90,39 +90,42 @@ export function useCameraController(
     const { width, height } = getViewportSize();
     console.trace("[camera] fitView called");
     setCamera(fitBounds(bounds, width, height, 40));
-  }, [bounds, getViewportSize]);
+  }, [bounds, getViewportSize, setCamera]);
 
-  const animateCameraTo = useCallback((target: Camera, durationMs: number = PAN_DURATION_MS) => {
-    cancelAnimationFrame(animFrameRef.current);
-    const start = cameraRef.current;
-    console.log("[camera] animateCameraTo start", start, "→ target", target);
-    const dx = target.x - start.x;
-    const dy = target.y - start.y;
-    const dz = target.zoom - start.zoom;
-    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(dz) < 0.001) {
-      console.log("[camera] animateCameraTo skipped (already at target)");
-      return;
-    }
-    animationDestinationRef.current = target;
-    const startTime = performance.now();
-    const tick = () => {
-      const elapsed = performance.now() - startTime;
-      const t = durationMs <= 0 ? 1 : Math.min(1, elapsed / durationMs);
-      // ease-out cubic
-      const ease = 1 - (1 - t) ** 3;
-      setCamera({
-        x: start.x + dx * ease,
-        y: start.y + dy * ease,
-        zoom: start.zoom + dz * ease,
-      });
-      if (t < 1) {
-        animFrameRef.current = requestAnimationFrame(tick);
-      } else {
-        animationDestinationRef.current = null;
+  const animateCameraTo = useCallback(
+    (target: Camera, durationMs: number = PAN_DURATION_MS) => {
+      cancelAnimationFrame(animFrameRef.current);
+      const start = cameraRef.current;
+      console.log("[camera] animateCameraTo start", start, "→ target", target);
+      const dx = target.x - start.x;
+      const dy = target.y - start.y;
+      const dz = target.zoom - start.zoom;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(dz) < 0.001) {
+        console.log("[camera] animateCameraTo skipped (already at target)");
+        return;
       }
-    };
-    animFrameRef.current = requestAnimationFrame(tick);
-  }, []);
+      animationDestinationRef.current = target;
+      const startTime = performance.now();
+      const tick = () => {
+        const elapsed = performance.now() - startTime;
+        const t = durationMs <= 0 ? 1 : Math.min(1, elapsed / durationMs);
+        // ease-out cubic
+        const ease = 1 - (1 - t) ** 3;
+        setCamera({
+          x: start.x + dx * ease,
+          y: start.y + dy * ease,
+          zoom: start.zoom + dz * ease,
+        });
+        if (t < 1) {
+          animFrameRef.current = requestAnimationFrame(tick);
+        } else {
+          animationDestinationRef.current = null;
+        }
+      };
+      animFrameRef.current = requestAnimationFrame(tick);
+    },
+    [setCamera],
+  );
 
   const getManualInteractionVersion = useCallback(() => manualInteractionVersionRef.current, []);
   const getCamera = useCallback(() => cameraRef.current, []);
@@ -167,7 +170,7 @@ export function useCameraController(
         };
       });
     },
-    [getViewportSize, surfaceRef],
+    [getViewportSize, setCamera, surfaceRef],
   );
 
   const onPointerDown = useCallback(
@@ -194,25 +197,28 @@ export function useCameraController(
     [camera, surfaceRef],
   );
 
-  const onPointerMove = useCallback((e: PointerEvent) => {
-    const state = panState.current;
-    if (!state.active) return;
-    animationDestinationRef.current = null;
-    manualInteractionVersionRef.current += 1;
-    const dx = e.clientX - state.startClientX;
-    const dy = e.clientY - state.startClientY;
-    if (
-      !didDragRef.current &&
-      (Math.abs(dx) > DRAG_THRESHOLD_PX || Math.abs(dy) > DRAG_THRESHOLD_PX)
-    ) {
-      didDragRef.current = true;
-    }
-    setCamera({
-      ...state.startCamera,
-      x: state.startCamera.x - dx / state.startCamera.zoom,
-      y: state.startCamera.y - dy / state.startCamera.zoom,
-    });
-  }, []);
+  const onPointerMove = useCallback(
+    (e: PointerEvent) => {
+      const state = panState.current;
+      if (!state.active) return;
+      animationDestinationRef.current = null;
+      manualInteractionVersionRef.current += 1;
+      const dx = e.clientX - state.startClientX;
+      const dy = e.clientY - state.startClientY;
+      if (
+        !didDragRef.current &&
+        (Math.abs(dx) > DRAG_THRESHOLD_PX || Math.abs(dy) > DRAG_THRESHOLD_PX)
+      ) {
+        didDragRef.current = true;
+      }
+      setCamera({
+        ...state.startCamera,
+        x: state.startCamera.x - dx / state.startCamera.zoom,
+        y: state.startCamera.y - dy / state.startCamera.zoom,
+      });
+    },
+    [setCamera],
+  );
 
   const onPointerUp = useCallback(
     (e: PointerEvent) => {

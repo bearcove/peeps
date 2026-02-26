@@ -12,6 +12,7 @@
     font-family: var(--font-ui);
     white-space: nowrap;
     background: var(--graph-card-bg);
+    outline: 1px solid var(--graph-card-border-color);
 
     box-shadow: var(--graph-card-tone-shadow);
     color: var(--text-primary);
@@ -19,7 +20,7 @@
     overscroll-behavior: none;
 
     --graph-code-card-width: 600px;
-    --graph-node-collapsed-max-width: 20rem;
+    --graph-node-collapsed-max-width: 25rem;
     --graph-node-expanded-width: min(92vw, var(--graph-code-card-width));
 }
 
@@ -547,11 +548,11 @@
 /* ── Status/cycle tones ── */
 
 .graph-node--cycle {
-    --graph-card-border-width: 2px;
-    --graph-card-border-color: var(--status-danger);
-    --graph-card-bg: color-mix(in srgb, var(--status-danger) 14%, var(--bg-elevated));
-    --graph-card-tone-shadow: inset 0 0 0 2px
-        color-mix(in srgb, var(--status-danger) 70%, transparent);
+    /*--graph-card-border-width: 2px;*/
+    /*--graph-card-border-color: var(--status-danger);*/
+    /*--graph-card-bg: color-mix(in srgb, var(--status-danger) 14%, var(--bg-elevated));*/
+    /*--graph-card-tone-shadow: inset 0 0 0 2px
+        color-mix(in srgb, var(--status-danger) 70%, transparent);*/
 }
 
 .graph-node--cycle .graph-node-icon {
@@ -584,4 +585,21 @@
 .graph-card--stat-crit .graph-node-icon,
 .graph-card--stat-warn .graph-node-icon {
     color: var(--text-secondary);
+}
+
+/* ── Scope color dot ── */
+
+.graph-card-scope-dot {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: light-dark(
+        rgb(var(--scope-rgb-light) / 0.85),
+        rgb(var(--scope-rgb-dark) / 0.85)
+    );
+    pointer-events: none;
+    flex-shrink: 0;
 }

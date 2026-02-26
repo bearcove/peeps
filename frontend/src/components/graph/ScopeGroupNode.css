@@ -3,7 +3,7 @@
     height: 100%;
     border-radius: var(--radius-container);
     corner-shape: squircle;
-    border: 2px dashed var(--border-edge);
+    border: 1px solid var(--border-edge);
     background-color: var(--bg-base);
     overflow: hidden;
 }
@@ -15,7 +15,7 @@
     font-family: var(--font-mono);
     font-size: var(--font-size-xs);
     font-weight: 400;
-    color: var(--text-secondary);
+    color: var(--text-tertiary);
     letter-spacing: 0;
     position: absolute;
     top: -0.6em;

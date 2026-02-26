@@ -419,6 +419,7 @@ export function GraphNode({
       data-scroll-block={expanded ? "true" : undefined}
       style={cardStyle}
     >
+      {showScopeColor && <div className="graph-card-scope-dot" />}
       {showHeader && (
         <>
           {/* Header row: icon + main info + file:line badge */}

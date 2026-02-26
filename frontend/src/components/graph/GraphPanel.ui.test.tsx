@@ -50,6 +50,7 @@ function Harness({ initialFilter }: { initialFilter: string }) {
       moduleItems={[]}
       scopeColorMode={"none"}
       subgraphScopeMode={subgraphScopeMode}
+      layoutAlgorithm="layered"
       scopeFilterLabel={null}
       onClearScopeFilter={() => {}}
       unionFrameLayout={undefined}

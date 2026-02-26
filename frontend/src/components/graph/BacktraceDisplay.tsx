@@ -41,6 +41,21 @@ export function BacktraceDisplay({
     () => displayFrames.map((f) => f.frame_id).filter((id): id is number => id != null),
     [displayFrames],
   );
+  const frameRenderItems = useMemo(() => {
+    const seen = new Map<string, number>();
+    return displayFrames.map((frame) => {
+      const baseKey =
+        frame.frame_id != null
+          ? `id:${frame.frame_id}`
+          : `sig:${frame.function_name}:${frame.source_file}:${frame.line ?? "none"}`;
+      const nextCount = (seen.get(baseKey) ?? 0) + 1;
+      seen.set(baseKey, nextCount);
+      return {
+        frame,
+        key: `${baseKey}:occurrence:${nextCount}`,
+      };
+    });
+  }, [displayFrames]);
 
   useEffect(() => {
     if (!showSource || frameIds.length === 0) return;
@@ -146,9 +161,9 @@ export function BacktraceDisplay({
   return (
     <>
       <div className="graph-node-frames" ref={framesRootRef}>
-        {displayFrames.map((frame, index) => (
+        {frameRenderItems.map(({ frame, key }, index) => (
           <FrameLine
-            key={`${frame.frame_id ?? "none"}:${index}`}
+            key={key}
             frame={frame}
             expanded={true}
             showSource={showSource}
