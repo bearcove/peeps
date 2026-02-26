@@ -14,7 +14,7 @@ import { FrameList } from "./FrameList";
 import "./GraphNode.css";
 
 /** Futures: no header, 2 source frames. Everything else: header, 0 frames. */
-const FRAMELESS_HEADER_KINDS = new Set(["future"]);
+const FRAMELESS_HEADER_KINDS: Set<string> = new Set([]);
 
 export function collapsedFrameCount(kind: string): number {
   return FRAMELESS_HEADER_KINDS.has(canonicalNodeKind(kind)) ? 1 : 0;
@@ -88,9 +88,13 @@ export function FrameLine({
       const enclosingFn = preview.enclosing_fn;
       if (enclosingFn) {
         return (
-          <div className="graph-node-enclosing-fn">
+          <div className="graph-node-enclosing-fn arborium-hl">
             <span className="graph-node-enclosing-fn__in">in </span>
-            <span className="graph-node-enclosing-fn__name">{enclosingFn}</span>
+            {/* eslint-disable-next-line react/no-danger */}
+            <span
+              className="graph-node-enclosing-fn__name"
+              dangerouslySetInnerHTML={{ __html: enclosingFn }}
+            />
           </div>
         );
       }
@@ -174,13 +178,17 @@ export function GraphNode({
     data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
 
   const canonical = canonicalNodeKind(data.kind);
-  const isFuture = FRAMELESS_HEADER_KINDS.has(canonical);
+  const isFutureKind = canonical === "future" || canonical === "futures";
+  const isFramelessHeaderKind = FRAMELESS_HEADER_KINDS.has(canonical);
   // Futures always show source; other kinds only when explicitly toggled
-  const collapsedShowSource = data.showSource || isFuture;
-  const showHeader = !isFuture;
+  const collapsedShowSource = data.showSource || isFramelessHeaderKind;
+  const showHeader = !isFramelessHeaderKind;
 
   const effectiveFrames =
     data.skipEntryFrames > 0 ? data.frames.slice(data.skipEntryFrames) : data.frames;
+  const futureTopFrameId = isFutureKind ? effectiveFrames[0]?.frame_id : undefined;
+  const futureTopPreview = futureTopFrameId != null ? getSourcePreviewSync(futureTopFrameId) : null;
+  const futureTopStatement = futureTopFrameId != null ? getSourceLineSync(futureTopFrameId) : null;
   const collapsedFrameSlotCount = collapsedFrameCount(data.kind);
   const visibleFrames = expanded
     ? effectiveFrames
@@ -193,6 +201,7 @@ export function GraphNode({
       .filter((frameId): frameId is number => frameId != null);
   }, [expanded, collapsedShowSource, visibleFrames]);
   const [collapsedSourceLoading, setCollapsedSourceLoading] = useState(false);
+  const [futureTopSourceLoading, setFutureTopSourceLoading] = useState(false);
   const framesShellRef = useRef<HTMLDivElement | null>(null);
   const lastFramesShellHeightRef = useRef(0);
   const prevExpandedRef = useRef(expanded);
@@ -220,6 +229,26 @@ export function GraphNode({
       cancelled = true;
     };
   }, [collapsedSourceFrameIds]);
+
+  useEffect(() => {
+    if (!isFutureKind || futureTopFrameId == null) {
+      setFutureTopSourceLoading(false);
+      return;
+    }
+    if (futureTopPreview && futureTopStatement) {
+      setFutureTopSourceLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setFutureTopSourceLoading(true);
+    void cachedFetchSourcePreviews([futureTopFrameId]).then(() => {
+      if (cancelled) return;
+      setFutureTopSourceLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [futureTopFrameId, futureTopPreview, futureTopStatement, isFutureKind]);
 
   useLayoutEffect(() => {
     const el = framesShellRef.current;
@@ -281,7 +310,9 @@ export function GraphNode({
       } as React.CSSProperties)
     : undefined;
 
-  const isLoading = expanding || collapsedSourceLoading;
+  const isLoading = expanding || collapsedSourceLoading || futureTopSourceLoading;
+  const showFutureSummary =
+    isFutureKind && showHeader && (futureTopPreview?.enclosing_fn || futureTopStatement);
 
   return (
     <div
@@ -306,7 +337,7 @@ export function GraphNode({
         <>
           {/* Header row: icon + main info + file:line badge */}
           <div className="graph-node-header">
-            <span className="graph-node-icon">{kindIcon(data.kind, 30)}</span>
+            <span className="graph-node-icon">{kindIcon(data.kind, 18)}</span>
             <div className="graph-node-main">
               <span className="graph-node-label">{data.label}</span>
             </div>
@@ -334,7 +365,29 @@ export function GraphNode({
               )}
             </div>
           </div>
-          {data.sublabel && <div className="graph-node-sublabel">{data.sublabel}</div>}
+          {showFutureSummary ? (
+            <div className="graph-node-future-summary">
+              {futureTopPreview?.enclosing_fn && (
+                <div className="graph-node-future-context arborium-hl">
+                  <span className="graph-node-future-context__in">in </span>
+                  {/* eslint-disable-next-line react/no-danger */}
+                  <span
+                    className="graph-node-future-context__name"
+                    dangerouslySetInnerHTML={{ __html: futureTopPreview.enclosing_fn }}
+                  />
+                </div>
+              )}
+              {futureTopStatement && (
+                // eslint-disable-next-line react/no-danger
+                <div
+                  className="graph-node-future-statement arborium-hl"
+                  dangerouslySetInnerHTML={{ __html: futureTopStatement }}
+                />
+              )}
+            </div>
+          ) : (
+            data.sublabel && <div className="graph-node-sublabel">{data.sublabel}</div>
+          )}
         </>
       )}
       <div ref={framesShellRef} className="graph-node-frames-shell">

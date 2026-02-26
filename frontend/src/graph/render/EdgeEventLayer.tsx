@@ -76,6 +76,7 @@ export function EdgeEventLayer({ edges, selectedEdgeId, onEdgeClick }: EdgeEvent
       {selectedEntry && (
         <div
           data-pan-block="true"
+          data-scroll-block="true"
           className="edge-event-inspector"
           style={{ left: selectedEntry.point.x, top: selectedEntry.point.y + 20 }}
           onClick={(event) => event.stopPropagation()}

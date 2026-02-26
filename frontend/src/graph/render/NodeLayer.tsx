@@ -61,8 +61,14 @@ export async function measureGraphLayout(
     for (const def of defs) {
       const isExpanded = expandedNodeIds?.has(def.id) ?? false;
       if (isExpanded) continue;
-      const needsSource = showSource || canonicalNodeKind(def.kind) === "future";
+      const canonicalKind = canonicalNodeKind(def.kind);
+      const needsSource = showSource || canonicalKind === "future";
       if (!needsSource) continue;
+      if (canonicalKind === "future") {
+        const skipEntryFrames = "future" in def.body ? (def.body.future.skip_entry_frames ?? 0) : 0;
+        const topFrame = def.frames[skipEntryFrames];
+        if (topFrame?.frame_id != null) frameIdsToFetch.push(topFrame.frame_id);
+      }
       const frames = def.frames.slice(0, collapsedFrameCount(def.kind));
       for (const frame of frames) {
         if (frame.frame_id != null) {

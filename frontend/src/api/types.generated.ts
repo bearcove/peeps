@@ -43,8 +43,10 @@ export interface SourcePreviewResponse {
    */
   context_line?: string;
   /**
-   * Plain-text collapsed signature of the enclosing function/method.
-   * e.g. `"run()"` or `"SomeType::run(&self, config, handle)"`.
+   * Highlighted HTML for enclosing function context.
+   *
+   * Includes module path and impl type (when present) plus full function
+   * signature (parameters + return type), compacted to one line.
    * Currently only populated for Rust source files.
    */
   enclosing_fn?: string;
@@ -283,9 +285,7 @@ export interface CustomEventKind {
 
 export type Json = string;
 
-export type EventTarget =
-  | { entity: EntityId }
-  | { scope: ScopeId };
+export type EventTarget = { entity: EntityId } | { scope: ScopeId };
 
 export type ScopeId = string;
 
@@ -482,15 +482,9 @@ export interface ResponseEntity {
   status: ResponseStatus;
 }
 
-export type ResponseStatus =
-  | "pending"
-  | { ok: Json }
-  | { error: ResponseError }
-  | "cancelled";
+export type ResponseStatus = "pending" | { ok: Json } | { error: ResponseError } | "cancelled";
 
-export type ResponseError =
-  | { internal: string }
-  | { user_json: Json };
+export type ResponseError = { internal: string } | { user_json: Json };
 
 /**
  * Correlation token for RPC is the request entity id propagated in metadata.
@@ -556,7 +550,15 @@ export interface FileOpEntity {
   path: string;
 }
 
-export type FileOpKind = "open" | "read" | "write" | "sync" | "metadata" | "remove" | "rename" | "other";
+export type FileOpKind =
+  | "open"
+  | "read"
+  | "write"
+  | "sync"
+  | "metadata"
+  | "remove"
+  | "rename"
+  | "other";
 
 export interface CommandEntity {
   /**
@@ -706,4 +708,3 @@ export interface ConnectionsResponse {
   connected_processes: number;
   processes: ConnectedProcessInfo[];
 }
-

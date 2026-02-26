@@ -272,7 +272,8 @@ fn lookup_source_in_db(
         None => (None, None),
     };
 
-    // Single-line collapsed statement for compact display
+    // Compact statement snippet for compact display (may be multi-line).
+    // Long inner block bodies are elided in source_context extraction.
     let context_line = lang.and_then(|lang_name| {
         let stmt = extract_target_statement(&content, lang_name, target_line, target_col)?;
         let mut hl = arborium::Highlighter::new();
@@ -282,9 +283,15 @@ fn lookup_source_in_db(
         )
     });
 
-    // Enclosing function context for compact "in run()" display
-    let enclosing_fn = lang
-        .and_then(|lang_name| extract_enclosing_fn(&content, lang_name, target_line, target_col));
+    // Enclosing function context for compact display (highlighted HTML).
+    let enclosing_fn = lang.and_then(|lang_name| {
+        let context = extract_enclosing_fn(&content, lang_name, target_line, target_col)?;
+        let mut hl = arborium::Highlighter::new();
+        Some(
+            hl.highlight(lang_name, &context)
+                .unwrap_or_else(|_| html_escape(&context)),
+        )
+    });
 
     Ok(Some(SourcePreviewResponse {
         frame_id,

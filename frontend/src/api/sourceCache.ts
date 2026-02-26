@@ -9,7 +9,7 @@ const sourcePreviewCache = new Map<number, Promise<SourcePreviewResponse>>();
 /** Resolved preview cache: frameId → response, populated when the promise settles. */
 const resolvedPreviewCache = new Map<number, SourcePreviewResponse>();
 
-/** Resolved single-line cache: frameId → extracted highlighted HTML line. */
+/** Resolved statement-snippet cache: frameId → extracted highlighted HTML snippet. */
 const resolvedLineCache = new Map<number, string>();
 
 function seedPreviewCache(frameId: number, res: SourcePreviewResponse): void {
@@ -19,7 +19,7 @@ function seedPreviewCache(frameId: number, res: SourcePreviewResponse): void {
 }
 
 function extractLineFromPreview(res: SourcePreviewResponse): string | undefined {
-  // Prefer context_line: the whole target statement collapsed to one line
+  // Prefer context_line: compact statement snippet (may be multi-line)
   if (res.context_line) return res.context_line;
   // Fallback to full file target line
   const lines = splitHighlightedHtml(res.html);

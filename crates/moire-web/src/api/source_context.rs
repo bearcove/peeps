@@ -294,11 +294,14 @@ const STATEMENT_KINDS: &[&str] = &[
     "return_expression",
 ];
 
-/// Extract the target statement and collapse it to a single line.
+/// Maximum number of interior lines (`{ ... }` body only) before we elide a block.
+const STATEMENT_BLOCK_INTERIOR_MAX_LINES: usize = 4;
+
+/// Extract a compact, context-aware statement snippet around the target position.
 ///
-/// Finds the statement containing the target position, extracts its full text,
-/// and collapses whitespace so a multi-line `let x = foo\n    .await;` becomes
-/// `let x = foo .await;`.
+/// - Preserves formatting/newlines (not whitespace-collapsed).
+/// - Strips leading Rust attributes on the statement.
+/// - Aggressively elides long block interiors as `/* ... */` to keep cards compact.
 pub fn extract_target_statement(
     content: &str,
     lang_name: &str,
@@ -362,10 +365,28 @@ pub fn extract_target_statement(
         current
     };
 
+    // Prefer the outermost statement before we hit a scope boundary.
+    // Example: if target is inside `match` in `let x = match ...`, show the whole `let`.
+    let statement = {
+        let mut outer = statement;
+        while let Some(parent) = outer.parent() {
+            if SCOPE_KINDS.contains(&parent.kind()) {
+                break;
+            }
+            if STATEMENT_KINDS.contains(&parent.kind()) {
+                outer = parent;
+                continue;
+            }
+            break;
+        }
+        outer
+    };
+
     // Skip leading attribute children so compact view doesn't show
     // `#[moire::instrument] pub async fn foo()` — just `pub async fn foo()`.
-    let text_start = {
+    let (text_start, text_start_row) = {
         let mut start = statement.start_byte();
+        let mut row = statement.start_position().row;
         for i in 0..statement.child_count() {
             if let Some(child) = statement.child(i) {
                 if child.kind() == "attribute_item"
@@ -375,31 +396,32 @@ pub fn extract_target_statement(
                     continue;
                 }
                 start = child.start_byte();
+                row = child.start_position().row;
                 break;
             }
         }
-        start
+        (start, row)
     };
 
     let text = &content[text_start..statement.end_byte()];
-
-    let collapsed = collapse_whitespace(text);
-    if collapsed.is_empty() {
+    let snippet = compact_statement_text(statement, text, text_start_row);
+    if snippet.is_empty() {
         return None;
     }
 
-    Some(collapsed)
+    Some(snippet)
 }
 
 /// Extract the collapsed enclosing-function context for compact display.
 ///
 /// Walks up the syntax tree from the target location to find the nearest
 /// enclosing `function_item` (named function or method, not closure).
-/// Returns a string like:
-///   `run()`
-///   `SomeType::process(&self, config, handle, …)`
 ///
-/// Parameters are name-only (type stripped), up to 3, then `…`.
+/// Returns a compact single-line signature context that includes:
+/// - enclosing module path (if any)
+/// - enclosing impl type (if any)
+/// - full function signature (with parameter + return types)
+///
 /// Currently only implemented for Rust; returns `None` for other languages.
 pub fn extract_enclosing_fn(
     content: &str,
@@ -441,152 +463,225 @@ pub fn extract_enclosing_fn(
         }
     }?;
 
-    // Check if this fn is inside an impl_item and get the implementing type name
-    let impl_type_name = {
-        let mut c = fn_node;
-        let mut found: Option<String> = None;
-        while let Some(parent) = c.parent() {
-            if parent.kind() == "impl_item" {
-                found = extract_impl_type_name(&parent, bytes);
-                break;
-            }
-            c = parent;
-        }
-        found
-    };
-
-    let fn_name = fn_node
-        .child_by_field_name("name")
-        .and_then(|n| n.utf8_text(bytes).ok())?;
-
-    let params = collapse_fn_params(&fn_node, bytes);
-
-    let mut result = String::new();
-    if let Some(impl_type) = impl_type_name {
-        result.push_str(&impl_type);
-        result.push_str("::");
+    let signature = extract_function_signature_text(content, &fn_node)?;
+    let mut qualifiers = collect_module_qualifiers(&fn_node, bytes);
+    if let Some(impl_type) = find_enclosing_impl_type_name(&fn_node, bytes) {
+        qualifiers.push(impl_type);
     }
-    result.push_str(fn_name);
-    result.push('(');
-    result.push_str(&params);
-    result.push(')');
 
-    Some(result)
-}
-
-/// Extract the plain type identifier from an impl_item's `type` field.
-fn extract_impl_type_name(impl_node: &tree_sitter::Node, bytes: &[u8]) -> Option<String> {
-    let type_node = impl_node.child_by_field_name("type")?;
-    unwrap_to_type_identifier(&type_node, bytes)
-}
-
-/// Recursively unwrap generic/scoped type nodes to the base `type_identifier`.
-fn unwrap_to_type_identifier(node: &tree_sitter::Node, bytes: &[u8]) -> Option<String> {
-    match node.kind() {
-        "type_identifier" | "identifier" => node.utf8_text(bytes).ok().map(|s| s.to_string()),
-        "generic_type" | "scoped_type_identifier" => {
-            if let Some(inner) = node.child_by_field_name("type") {
-                unwrap_to_type_identifier(&inner, bytes)
-            } else {
-                node.named_child(0)
-                    .as_ref()
-                    .and_then(|n| unwrap_to_type_identifier(n, bytes))
-            }
-        }
-        _ => node
-            .named_child(0)
-            .as_ref()
-            .and_then(|n| unwrap_to_type_identifier(n, bytes)),
+    if qualifiers.is_empty() {
+        Some(signature)
+    } else {
+        Some(format!("{}::{}", qualifiers.join("::"), signature))
     }
 }
 
-/// Collapse a function's parameter list to names-only, up to 3, then `…`.
-///
-/// - `self` / `&self` / `&mut self` kept as-is (whitespace collapsed)
-/// - regular parameters: only the pattern name, type stripped
-/// - more than 3 params: trailing `, …` appended
-fn collapse_fn_params(fn_node: &tree_sitter::Node, bytes: &[u8]) -> String {
-    let params_node = match fn_node.child_by_field_name("parameters") {
-        Some(n) => n,
-        None => return String::new(),
-    };
+fn collapse_ws_inline(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
 
-    let mut names: Vec<String> = Vec::new();
-    let mut has_more = false;
-
-    for i in 0..params_node.named_child_count() {
-        let child = match params_node.named_child(i) {
-            Some(c) => c,
-            None => continue,
-        };
-
-        let name: Option<String> = match child.kind() {
-            "self_parameter" => child
-                .utf8_text(bytes)
-                .ok()
-                .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" ")),
-            "parameter" => child
-                .child_by_field_name("pattern")
-                .and_then(|p| p.utf8_text(bytes).ok())
-                .map(|s| s.to_string()),
-            "variadic_parameter" => Some("..".to_string()),
-            _ => continue,
-        };
-
-        if let Some(n) = name {
-            if names.len() < 3 {
-                names.push(n);
-            } else {
-                has_more = true;
+fn extract_function_signature_text(
+    content: &str,
+    fn_node: &tree_sitter::Node<'_>,
+) -> Option<String> {
+    let (start, end) = {
+        let mut start = fn_node.start_byte();
+        for i in 0..fn_node.child_count() {
+            if let Some(child) = fn_node.child(i) {
+                if child.kind() == "attribute_item"
+                    || child.kind() == "attribute"
+                    || child.kind() == "attributes"
+                {
+                    continue;
+                }
+                start = child.start_byte();
                 break;
             }
         }
-    }
+        let end = fn_node
+            .child_by_field_name("body")
+            .map(|body| body.start_byte())
+            .unwrap_or_else(|| fn_node.end_byte());
+        (start, end)
+    };
 
-    let mut result = names.join(", ");
-    if has_more {
-        if !result.is_empty() {
-            result.push_str(", ");
-        }
-        result.push('…');
+    if end <= start {
+        return None;
     }
-    result
+    let raw = &content[start..end];
+    let signature = collapse_ws_inline(raw);
+    if signature.is_empty() {
+        return None;
+    }
+    Some(signature)
 }
 
-/// Collapse whitespace between tokens, suppressing the space where it would
-/// look wrong in a single-line rendering:
-///   - before `.` `;` `?` `)` `]` `>` `,` `:`
-///   - after  `(` `[` `<` `.`
-fn collapse_whitespace(text: &str) -> String {
-    let tokens: Vec<&str> = text.split_whitespace().collect();
-    if tokens.is_empty() {
+fn find_enclosing_impl_type_name(fn_node: &tree_sitter::Node<'_>, bytes: &[u8]) -> Option<String> {
+    let mut current = *fn_node;
+    while let Some(parent) = current.parent() {
+        if parent.kind() == "impl_item" {
+            let type_node = parent.child_by_field_name("type")?;
+            let raw = type_node.utf8_text(bytes).ok()?;
+            let collapsed = collapse_ws_inline(raw);
+            if collapsed.is_empty() {
+                return None;
+            }
+            return Some(collapsed);
+        }
+        current = parent;
+    }
+    None
+}
+
+fn collect_module_qualifiers(fn_node: &tree_sitter::Node<'_>, bytes: &[u8]) -> Vec<String> {
+    let mut rev_modules: Vec<String> = Vec::new();
+    let mut current = *fn_node;
+    while let Some(parent) = current.parent() {
+        if parent.kind() == "mod_item"
+            && let Some(name_node) = parent.child_by_field_name("name")
+            && let Ok(name) = name_node.utf8_text(bytes)
+        {
+            let collapsed = collapse_ws_inline(name);
+            if !collapsed.is_empty() {
+                rev_modules.push(collapsed);
+            }
+        }
+        current = parent;
+    }
+    rev_modules.reverse();
+    rev_modules
+}
+
+fn is_block_like_statement_node(kind: &str) -> bool {
+    kind == "block" || kind == "declaration_list" || kind == "match_block"
+}
+
+fn collect_statement_elision_ranges(node: tree_sitter::Node<'_>, ranges: &mut Vec<(usize, usize)>) {
+    if is_block_like_statement_node(node.kind()) {
+        let start_row = node.start_position().row;
+        let end_row = node.end_position().row;
+        if end_row > start_row + 1 {
+            let interior_start = start_row + 1;
+            let interior_end = end_row - 1;
+            let interior_len = interior_end - interior_start + 1;
+            let should_elide = node
+                .parent()
+                .is_some_and(|parent| parent.kind() == "function_item")
+                || interior_len > STATEMENT_BLOCK_INTERIOR_MAX_LINES;
+            if should_elide {
+                ranges.push((interior_start, interior_end));
+            }
+        }
+    }
+
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            collect_statement_elision_ranges(child, ranges);
+        }
+    }
+}
+
+fn merge_line_ranges(mut ranges: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+    if ranges.len() <= 1 {
+        return ranges;
+    }
+    ranges.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+
+    let mut merged: Vec<(usize, usize)> = Vec::with_capacity(ranges.len());
+    for (start, end) in ranges {
+        if let Some((_, last_end)) = merged.last_mut()
+            && start <= *last_end + 1
+        {
+            if end > *last_end {
+                *last_end = end;
+            }
+            continue;
+        }
+        merged.push((start, end));
+    }
+    merged
+}
+
+fn leading_ws_byte_len(line: &str) -> usize {
+    line.char_indices()
+        .find_map(|(idx, ch)| if ch.is_whitespace() { None } else { Some(idx) })
+        .unwrap_or(line.len())
+}
+
+fn normalize_statement_lines(lines: Vec<String>) -> String {
+    let Some(first_non_empty) = lines.iter().position(|line| !line.trim().is_empty()) else {
+        return String::new();
+    };
+    let Some(last_non_empty) = lines.iter().rposition(|line| !line.trim().is_empty()) else {
+        return String::new();
+    };
+
+    let slice = &lines[first_non_empty..=last_non_empty];
+    let continuation_indent = slice
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, line)| {
+            if idx == 0 || line.trim().is_empty() {
+                return None;
+            }
+            Some(leading_ws_byte_len(line))
+        })
+        .min()
+        .unwrap_or(0);
+
+    let mut out = Vec::with_capacity(slice.len());
+    for (idx, line) in slice.iter().enumerate() {
+        let trimmed_end = line.trim_end_matches([' ', '\t']);
+        if trimmed_end.trim().is_empty() {
+            out.push(String::new());
+            continue;
+        }
+        let drop = if idx == 0 {
+            0
+        } else {
+            continuation_indent.min(leading_ws_byte_len(trimmed_end))
+        };
+        out.push(trimmed_end[drop..].to_string());
+    }
+    out.join("\n")
+}
+
+fn compact_statement_text(
+    statement: tree_sitter::Node<'_>,
+    text: &str,
+    text_start_row: usize,
+) -> String {
+    let mut lines: Vec<String> = text.lines().map(|line| line.to_string()).collect();
+    if lines.is_empty() {
         return String::new();
     }
 
-    let mut out = String::with_capacity(text.len());
-    out.push_str(tokens[0]);
+    let mut ranges = Vec::new();
+    collect_statement_elision_ranges(statement, &mut ranges);
+    let merged_ranges = merge_line_ranges(ranges);
 
-    for window in tokens.windows(2) {
-        let prev = window[0];
-        let next = window[1];
-
-        let suppress = next.starts_with('.')
-            || next.starts_with(';')
-            || next.starts_with('?')
-            || next.starts_with(')')
-            || next.starts_with(']')
-            || next.starts_with(',')
-            || prev.ends_with('(')
-            || prev.ends_with('[')
-            || prev.ends_with('.');
-
-        if !suppress {
-            out.push(' ');
+    for (start_row, end_row) in merged_ranges.into_iter().rev() {
+        if end_row < text_start_row {
+            continue;
         }
-        out.push_str(next);
+        let local_start = start_row.saturating_sub(text_start_row);
+        if local_start >= lines.len() {
+            continue;
+        }
+        let mut local_end = end_row.saturating_sub(text_start_row);
+        if local_end >= lines.len() {
+            local_end = lines.len() - 1;
+        }
+        if local_end < local_start {
+            continue;
+        }
+
+        let indent_len = leading_ws_byte_len(&lines[local_start]);
+        let indent = &lines[local_start][..indent_len];
+        lines.splice(local_start..=local_end, [format!("{indent}/* ... */")]);
     }
 
-    out
+    normalize_statement_lines(lines)
 }
 
 #[cfg(test)]
@@ -766,10 +861,17 @@ impl Foo {
 }"#;
         // target on the .await line (line 3, 0-indexed row 2)
         let result = extract_target_statement(src, "rust", 3, None).expect("should find statement");
-        // Method chains should not have spaces before `.`
-        assert_eq!(
-            result,
-            "let handle = session.establish_as_acceptor(self.root_settings, self.metadata).await?;"
+        assert!(
+            result.contains('\n'),
+            "should preserve statement structure, got: {result}"
+        );
+        assert!(
+            result.contains("let handle = session"),
+            "should include let binding head, got: {result}"
+        );
+        assert!(
+            result.contains(".await?;"),
+            "should include await tail, got: {result}"
         );
     }
 
@@ -785,8 +887,8 @@ impl Foo {
     #[test]
     fn extract_target_on_fn_signature_line() {
         // When the target is the fn signature line itself (e.g. from a backtrace
-        // pointing at `async fn recv(&mut self)`), we should get the full
-        // signature collapsed, NOT just `(&mut self)`.
+        // pointing at `async fn recv(&mut self)`), we should still get the
+        // signature (not just `(&mut self)`), with an aggressively collapsed body.
         let src = r#"impl Session {
     async fn recv(&mut self) -> Result<Option<SelfRef<Msg<'static>>>, Self::Error> {
         let backing = match self
@@ -803,8 +905,65 @@ impl Foo {
             "should contain fn signature, got: {result}"
         );
         assert!(
-            !result.contains('\n'),
-            "should be collapsed to one line: {result}"
+            result.contains("/* ... */"),
+            "function body should be elided aggressively, got: {result}"
+        );
+    }
+
+    #[test]
+    fn extract_long_match_statement_elides_body() {
+        let src = r#"fn process(y: Option<u32>) {
+    let x = match y {
+        Some(1) => 1,
+        Some(2) => 2,
+        Some(3) => 3,
+        Some(4) => 4,
+        Some(5) => 5,
+        Some(6) => 6,
+        Some(7) => 7,
+        Some(8) => 8,
+        _ => 0,
+    };
+    println!("{x}");
+}"#;
+        let result =
+            extract_target_statement(src, "rust", 2, Some(12)).expect("should find statement");
+        assert!(
+            result.contains("let x = match y {"),
+            "should include statement head, got: {result}"
+        );
+        assert!(
+            result.contains("/* ... */"),
+            "should elide long block body, got: {result}"
+        );
+        assert!(
+            result.contains("};"),
+            "should include statement tail, got: {result}"
+        );
+    }
+
+    #[test]
+    fn extract_statement_dedents_continuation_lines() {
+        let src = r#"fn run() {
+    spawn(async move {
+        println!("hello");
+        let _ = idle_rx.recv().await;
+    })
+    .named("blocked_receiver");
+}"#;
+        let result =
+            extract_target_statement(src, "rust", 2, Some(4)).expect("should find statement");
+        assert!(
+            result.starts_with("spawn(async move {"),
+            "head should be left-anchored, got: {result}"
+        );
+        assert!(
+            result.contains("\n    println!(\"hello\");"),
+            "body lines should be dedented to one continuation level, got: {result}"
+        );
+        assert!(
+            result.contains("\n.named(\"blocked_receiver\");"),
+            "trailing chain should be dedented, got: {result}"
         );
     }
 
@@ -924,7 +1083,7 @@ async fn recv(&mut self) -> Result<Option<Msg>> {
     spawn(async move { a });
 }"#;
         let result = extract_enclosing_fn(src, "rust", 3, None).expect("should find fn");
-        assert_eq!(result, "run()");
+        assert_eq!(result, "fn run()");
     }
 
     #[test]
@@ -937,7 +1096,7 @@ impl Foo {
     }
 }"#;
         let result = extract_enclosing_fn(src, "rust", 5, None).expect("should find fn");
-        assert_eq!(result, "Foo::run(&self)");
+        assert_eq!(result, "Foo::pub async fn run(&self)");
     }
 
     #[test]
@@ -946,7 +1105,7 @@ impl Foo {
     spawn(async move { a });
 }"#;
         let result = extract_enclosing_fn(src, "rust", 2, None).expect("should find fn");
-        assert_eq!(result, "process(a, b, c, …)");
+        assert_eq!(result, "fn process(a: u32, b: u32, c: u32, d: u32)");
     }
 
     #[test]
@@ -955,7 +1114,7 @@ impl Foo {
     spawn(async move { a });
 }"#;
         let result = extract_enclosing_fn(src, "rust", 2, None).expect("should find fn");
-        assert_eq!(result, "process(a, b, c)");
+        assert_eq!(result, "fn process(a: u32, b: u32, c: u32)");
     }
 
     #[test]
@@ -967,7 +1126,7 @@ impl Foo {
     });
 }"#;
         let result = extract_enclosing_fn(src, "rust", 4, None).expect("should find fn");
-        assert_eq!(result, "run()");
+        assert_eq!(result, "fn run()");
     }
 
     #[test]
@@ -979,7 +1138,7 @@ impl<T: Send> Queue<T> {
     }
 }"#;
         let result = extract_enclosing_fn(src, "rust", 4, None).expect("should find fn");
-        assert_eq!(result, "Queue::push(&mut self, value)");
+        assert_eq!(result, "Queue<T>::fn push(&mut self, value: T)");
     }
 
     #[test]
@@ -997,7 +1156,26 @@ impl<T: Send> Queue<T> {
     }
 }"#;
         let result = extract_enclosing_fn(src, "rust", 3, None).expect("should find fn");
-        assert_eq!(result, "Handler::handle(&mut self, req, ctx)");
+        assert_eq!(
+            result,
+            "Handler::async fn handle(&mut self, req: Request, ctx: Context)"
+        );
+    }
+
+    #[test]
+    fn enclosing_fn_includes_module_and_return_type() {
+        let src = r#"mod demo {
+    impl Worker {
+        pub fn run(&self) -> Result<(), String> {
+            do_stuff();
+        }
+    }
+}"#;
+        let result = extract_enclosing_fn(src, "rust", 4, None).expect("should find fn");
+        assert_eq!(
+            result,
+            "demo::Worker::pub fn run(&self) -> Result<(), String>"
+        );
     }
 
     #[test]

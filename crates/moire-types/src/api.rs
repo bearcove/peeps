@@ -216,12 +216,17 @@ pub struct SourcePreviewResponse {
     /// Line 1 of context_html = line context_range.start in the original.
     #[facet(skip_unless_truthy)]
     pub context_range: Option<LineRange>,
-    /// Single-line highlighted HTML of the target statement, whitespace-collapsed.
+    /// Highlighted HTML for a compact target-statement snippet.
+    ///
+    /// Preserves statement structure (may include newlines) and aggressively
+    /// elides long inner block bodies as `/* ... */`.
     /// Used for compact collapsed-frame display.
     #[facet(skip_unless_truthy)]
     pub context_line: Option<String>,
-    /// Plain-text collapsed signature of the enclosing function/method.
-    /// e.g. `"run()"` or `"SomeType::run(&self, config, handle)"`.
+    /// Highlighted HTML for enclosing function context.
+    ///
+    /// Includes module path and impl type (when present) plus full function
+    /// signature (parameters + return type), compacted to one line.
     /// Currently only populated for Rust source files.
     #[facet(skip_unless_truthy)]
     pub enclosing_fn: Option<String>,
