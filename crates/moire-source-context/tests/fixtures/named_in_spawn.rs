@@ -1,5 +1,3 @@
-target_line: 25
----
 fn helper() {}
 
 fn spawn_lock_order_worker(
@@ -24,7 +22,7 @@ fn spawn_lock_order_worker(
 
         println!("{task_name} unexpectedly acquired {second_name}; deadlock did not occur");
         let _ = completed_tx.send(());
-    }.named(task_name));
+👉  }.named(task_name));
 }
 
 fn other() {}

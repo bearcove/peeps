@@ -1,0 +1,1 @@
+👉 function run() { spawn(async () => {}); }

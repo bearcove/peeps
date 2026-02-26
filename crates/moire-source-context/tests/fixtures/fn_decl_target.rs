@@ -1,8 +1,6 @@
-target_line: 3
----
 fn helper() {}
 
-fn spawn_worker(
+👉 fn spawn_worker(
     task_name: &'static str,
     first_name: &'static str,
     first: u32,
