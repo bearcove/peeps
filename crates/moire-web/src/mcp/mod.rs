@@ -790,6 +790,9 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
                     "Source snippets are best-effort from symbolication + tree-sitter extraction; missing snippets are explicit, not fabricated.",
                 ),
                 String::from(
+                    "Do not conclude root cause from graph shape alone. Verify concrete caller code around highlighted wait sites.",
+                ),
+                String::from(
                     "Treat single-cut deadlock conclusions as provisional; confirm with moire_diff_snapshots when possible.",
                 ),
             ],
@@ -1019,6 +1022,13 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
         let located = self.find_entity(&snapshot, &entity_id)?;
         let backtrace_index = backtrace_index(&snapshot);
         let frame_catalog = frame_catalog(&snapshot);
+        let local_entities: HashMap<&str, &Entity> = located
+            .0
+            .snapshot
+            .entities
+            .iter()
+            .map(|entity| (entity.id.as_str(), entity))
+            .collect();
 
         let mut frame_ids = BTreeSet::new();
         if let Some(frame_id) =
@@ -1035,7 +1045,10 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
                     edge.backtrace.as_u64(),
                     &backtrace_index,
                     &frame_catalog,
-                    0,
+                    local_entities
+                        .get(edge.src.as_str())
+                        .map(|entity| frame_start_index_for_entity(entity))
+                        .unwrap_or(0),
                 ) {
                     frame_ids.insert(frame_id.as_u64());
                 }
@@ -1065,7 +1078,10 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
                     edge.backtrace.as_u64(),
                     &backtrace_index,
                     &frame_catalog,
-                    0,
+                    local_entities
+                        .get(edge.src.as_str())
+                        .map(|entity| frame_start_index_for_entity(entity))
+                        .unwrap_or(0),
                 )
                 .and_then(|frame_id| source_by_frame.get(&frame_id.as_u64()).cloned());
                 incoming.push(McpChainEdge {
@@ -1079,7 +1095,10 @@ Use the returned snapshot_id for all follow-up calls to stay on one coherent cut
                     edge.backtrace.as_u64(),
                     &backtrace_index,
                     &frame_catalog,
-                    0,
+                    local_entities
+                        .get(edge.src.as_str())
+                        .map(|entity| frame_start_index_for_entity(entity))
+                        .unwrap_or(0),
                 )
                 .and_then(|frame_id| source_by_frame.get(&frame_id.as_u64()).cloned());
                 outgoing.push(McpChainEdge {
@@ -1693,7 +1712,7 @@ Call moire_backtrace first to list frame_ids for a backtrace."
                             edge.backtrace.as_u64(),
                             &backtrace_index,
                             &frame_catalog,
-                            0,
+                            frame_start_index_for_entity(src),
                         ),
                     });
                     adjacency
@@ -2511,7 +2530,9 @@ fn source_body_for_render(source: &McpSourceContext) -> (u32, String) {
         source.compact_scope_text.as_ref(),
         source.compact_scope_range.as_ref(),
     ) {
-        return (range.start, compact_scope_text.clone());
+        if compact_target_line_visible(compact_scope_text, range, source.target_line) {
+            return (range.start, compact_scope_text.clone());
+        }
     }
     if let Some(statement_text) = source.statement_text.as_ref()
         && !statement_text.trim().is_empty()
@@ -2524,6 +2545,18 @@ fn source_body_for_render(source: &McpSourceContext) -> (u32, String) {
         return (source.target_line, enclosing_fn_text.clone());
     }
     (source.target_line, String::new())
+}
+
+fn compact_target_line_visible(text: &str, range: &McpLineRange, target_line: u32) -> bool {
+    if target_line < range.start || target_line > range.end {
+        return false;
+    }
+    let index = target_line.saturating_sub(range.start) as usize;
+    let Some(line) = text.lines().nth(index) else {
+        return false;
+    };
+    let trimmed = line.trim();
+    !trimmed.is_empty() && trimmed != "/* ... */"
 }
 
 fn source_for_node(
@@ -2582,12 +2615,16 @@ fn primary_frame_for_entity(
         return None;
     }
 
-    let skip = match &entity.body {
-        EntityBody::Future(fut) => fut.skip_entry_frames.unwrap_or(0) as usize,
-        _ => 0,
-    };
+    let skip = frame_start_index_for_entity(entity);
     let index = skip.min(backtrace.frame_ids.len().saturating_sub(1));
     preferred_frame_for_backtrace(backtrace, frame_catalog, index)
+}
+
+fn frame_start_index_for_entity(entity: &Entity) -> usize {
+    match &entity.body {
+        EntityBody::Future(fut) => fut.skip_entry_frames.unwrap_or(0) as usize,
+        _ => 0,
+    }
 }
 
 fn primary_frame_for_backtrace_id(
