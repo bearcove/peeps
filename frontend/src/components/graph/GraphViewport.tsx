@@ -138,6 +138,42 @@ function makeStableInterpolatedGraph(
   };
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
+}
+
+function edgeRecencyRank(edgeId: string): number {
+  const match = /^e(\d+)-/.exec(edgeId);
+  return match ? Number(match[1]) : -1;
+}
+
+function pickMostRecentConnectedNode(
+  edges: GraphGeometry["edges"],
+  nodeId: string,
+  direction: "out" | "in",
+): string | null {
+  let picked: { nodeId: string; rank: number; edgeId: string } | null = null;
+  for (const edge of edges) {
+    const neighborId =
+      direction === "out"
+        ? edge.sourceId === nodeId
+          ? edge.targetId
+          : null
+        : edge.targetId === nodeId
+          ? edge.sourceId
+          : null;
+    if (!neighborId) continue;
+    const rank = edgeRecencyRank(edge.id);
+    if (!picked || rank > picked.rank || (rank === picked.rank && edge.id > picked.edgeId)) {
+      picked = { nodeId: neighborId, rank, edgeId: edge.id };
+    }
+  }
+  return picked?.nodeId ?? null;
+}
+
 export function GraphViewport({
   entityDefs,
   snapPhase,
@@ -380,6 +416,7 @@ export function GraphViewport({
     x: number;
     y: number;
   } | null>(null);
+  const [activeExpandedFrameIndex, setActiveExpandedFrameIndex] = useState(0);
 
   const geometryKey = geometry ? geometry.nodes.map((n) => n.id).join(",") : "";
   const isBusy = snapPhase === "cutting" || snapPhase === "loading";
@@ -405,14 +442,57 @@ export function GraphViewport({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (isEditableTarget(e.target)) return;
       collapseAll();
       onSelect(null);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [collapseAll, onSelect]);
+
+  useEffect(() => {
+    setActiveExpandedFrameIndex(0);
+  }, [expandedNodeId]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!expandedNodeId) return;
+
+      if (e.key === "j" || e.key === "k") {
+        const entity = entityById.get(expandedNodeId);
+        if (!entity) return;
+        const skipEntryFrames =
+          "future" in entity.body ? (entity.body.future.skip_entry_frames ?? 0) : 0;
+        const frameCount = entity.frames.slice(skipEntryFrames).length;
+        if (frameCount === 0) return;
+        e.preventDefault();
+        setActiveExpandedFrameIndex((prev) => {
+          const delta = e.key === "j" ? 1 : -1;
+          return (prev + delta + frameCount) % frameCount;
+        });
+        return;
+      }
+
+      if (e.key === "n" || e.key === "p") {
+        const currentGeometry = renderedGeometry;
+        if (!currentGeometry) return;
+        const direction = e.key === "n" ? "out" : "in";
+        const nextNodeId = pickMostRecentConnectedNode(
+          currentGeometry.edges,
+          expandedNodeId,
+          direction,
+        );
+        if (!nextNodeId) return;
+        e.preventDefault();
+        onExpandedNodeChange?.(nextNodeId);
+        onSelect({ kind: "entity", id: nextNodeId });
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [entityById, expandedNodeId, onExpandedNodeChange, onSelect, renderedGeometry]);
 
   return (
     <div className="graph-flow" ref={graphFlowRef}>
@@ -575,6 +655,7 @@ export function GraphViewport({
               nodes={renderedNodes}
               prevNodes={prevNodes}
               nodeExpandStates={nodeExpandStates}
+              activeExpandedFrameIndex={activeExpandedFrameIndex}
               ghostNodeIds={effectiveGhostNodeIds}
               nodeOpacityById={renderedNodeOpacityById}
               onNodeHover={(id) => {

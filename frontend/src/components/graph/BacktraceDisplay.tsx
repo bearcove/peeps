@@ -11,6 +11,7 @@ export type BacktraceDisplayProps = {
   showSource?: boolean;
   useCompactContext?: boolean;
   hideLocation?: boolean;
+  activeFrameIndex?: number;
 };
 
 export function BacktraceDisplay({
@@ -20,12 +21,18 @@ export function BacktraceDisplay({
   showSource,
   useCompactContext,
   hideLocation,
+  activeFrameIndex,
 }: BacktraceDisplayProps) {
   const [showSystem, setShowSystem] = useState(false);
   const [, setSourceVersion] = useState(0);
+  const framesRootRef = React.useRef<HTMLDivElement | null>(null);
 
   const hasSystemFrames = allFrames.length > frames.length;
   const displayFrames = showSystem ? allFrames : frames;
+  const normalizedActiveFrameIndex =
+    displayFrames.length === 0
+      ? 0
+      : Math.max(0, Math.min(activeFrameIndex ?? 0, displayFrames.length - 1));
 
   const frameIds = useMemo(
     () => displayFrames.map((f) => f.frame_id).filter((id): id is number => id != null),
@@ -44,6 +51,15 @@ export function BacktraceDisplay({
       cancelled = true;
     };
   }, [frameIds, showSource]);
+
+  useEffect(() => {
+    const root = framesRootRef.current;
+    if (!root || displayFrames.length === 0) return;
+    const sections = root.querySelectorAll<HTMLElement>(".graph-node-frame-section");
+    const activeSection = sections[normalizedActiveFrameIndex];
+    if (!activeSection) return;
+    activeSection.scrollIntoView({ block: "nearest" });
+  }, [displayFrames.length, normalizedActiveFrameIndex]);
 
   if (displayFrames.length === 0) {
     if (!framesLoading) return null;
@@ -64,7 +80,7 @@ export function BacktraceDisplay({
 
   return (
     <>
-      <div className="graph-node-frames">
+      <div className="graph-node-frames" ref={framesRootRef}>
         {displayFrames.map((frame, index) => (
           <FrameLine
             key={`${frame.frame_id ?? "none"}:${index}`}
@@ -73,6 +89,7 @@ export function BacktraceDisplay({
             showSource={showSource}
             useCompactContext={useCompactContext}
             hideLocation={hideLocation}
+            active={index === normalizedActiveFrameIndex}
           />
         ))}
       </div>

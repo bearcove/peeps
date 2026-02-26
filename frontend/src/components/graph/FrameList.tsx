@@ -10,6 +10,7 @@ type FrameListProps = {
   collapsedShowSource: boolean;
   collapsedFrameSlotCount: number;
   collapsedUseBacktraceDisplay?: boolean;
+  activeFrameIndex?: number;
   /** Frames to show in collapsed mode (pre-sliced by caller). */
   collapsedFrames: GraphFrameData[];
 };
@@ -20,6 +21,7 @@ export function FrameList({
   collapsedShowSource,
   collapsedFrameSlotCount,
   collapsedUseBacktraceDisplay,
+  activeFrameIndex,
   collapsedFrames,
 }: FrameListProps) {
   if (!expanded) {
@@ -81,6 +83,7 @@ export function FrameList({
         allFrames={allFrames}
         framesLoading={data.framesLoading}
         showSource={data.showSource}
+        activeFrameIndex={activeFrameIndex}
       />
     </div>
   );

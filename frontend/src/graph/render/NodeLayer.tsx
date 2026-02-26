@@ -23,6 +23,7 @@ export interface NodeLayerProps {
   prevNodes?: GeometryNode[];
   nodeExpandStates?: Map<string, NodeExpandState>;
   nodeOpacityById?: Map<string, number>;
+  activeExpandedFrameIndex?: number;
   onNodeClick?: (id: string) => void;
   onNodeContextMenu?: (id: string, clientX: number, clientY: number) => void;
   onNodeHover?: (id: string | null) => void;
@@ -189,6 +190,7 @@ export function NodeLayer({
   prevNodes: _prevNodes,
   nodeExpandStates,
   nodeOpacityById,
+  activeExpandedFrameIndex,
   onNodeClick,
   onNodeContextMenu,
   onNodeHover,
@@ -220,6 +222,7 @@ export function NodeLayer({
             data={{ ...(node.data as GraphNodeData), ghost: isGhost }}
             expanded={isExpanded}
             expanding={isExpanding}
+            activeFrameIndex={isExpanded ? activeExpandedFrameIndex : undefined}
           />
         );
 

@@ -55,7 +55,7 @@ export function FrameSep({
   const location = formatFileLocation(frame);
   return (
     <div className="graph-node-frame-sep">
-      {langIcon(frame.source_file, 12, "graph-node-frame-sep__icon")}
+      {langIcon(frame.source_file, 14, "graph-node-frame-sep__icon")}
       {contextHtml ? (
         <>
           {/* eslint-disable-next-line react/no-danger */}
@@ -87,12 +87,14 @@ export function FrameLine({
   showSource,
   useCompactContext,
   hideLocation,
+  active,
 }: {
   frame: GraphFrameData;
   expanded: boolean;
   showSource?: boolean;
   useCompactContext?: boolean;
   hideLocation?: boolean;
+  active?: boolean;
 }) {
   const fallbackCollapsedLine = (
     <pre className="graph-node-frame graph-node-frame--text graph-node-frame--fallback">
@@ -201,7 +203,7 @@ export function FrameLine({
   })();
 
   return (
-    <div className="graph-node-frame-section">
+    <div className={`graph-node-frame-section${active ? " graph-node-frame-section--active" : ""}`}>
       <FrameSep
         frame={frame}
         contextHtml={expanded && showSource ? preview?.enclosing_fn : undefined}
@@ -216,10 +218,12 @@ export function GraphNode({
   data,
   expanded = false,
   expanding = false,
+  activeFrameIndex,
 }: {
   data: GraphNodeData;
   expanded?: boolean;
   expanding?: boolean;
+  activeFrameIndex?: number;
 }) {
   const showScopeColor =
     data.scopeRgbLight !== undefined && data.scopeRgbDark !== undefined && !data.inCycle;
@@ -391,8 +395,8 @@ export function GraphNode({
         <>
           {/* Header row: icon + main info + file:line badge */}
           <div className="graph-node-header">
+            <span className="graph-node-icon">{kindIcon(data.kind, 30)}</span>
             <div className="graph-node-main">
-              <span className="graph-node-icon">{kindIcon(data.kind, 18)}</span>
               <span className="graph-node-label">{data.label}</span>
             </div>
             <div className="graph-node-main">
@@ -403,7 +407,6 @@ export function GraphNode({
               )}
               {data.stat && (
                 <>
-                  <span className="graph-node-dot">&middot;</span>
                   <span
                     className={[
                       "graph-node-stat",
@@ -451,6 +454,7 @@ export function GraphNode({
           collapsedFrameSlotCount={isFutureKind ? 1 : collapsedFrameSlotCount}
           collapsedUseBacktraceDisplay={showCollapsedFutureBacktrace}
           collapsedFrames={visibleFrames}
+          activeFrameIndex={activeFrameIndex}
         />
       </div>
     </div>
