@@ -807,51 +807,8 @@ function NodeExpandPanner({
               viewportPadding,
               Math.min(viewportHeight * 0.3, maxTopScreenY),
             );
-            // Start from world-space math, then refine with real DOM pixel position so the
-            // one-shot pan lands exactly where the user sees the expanded node.
-            let targetWorldY = y + (viewportHeight / 2 - desiredTopScreenY) / cam.zoom;
-            const nodeEl = [...document.querySelectorAll<HTMLElement>(".nl-node-shell")].find(
-              (el) => el.dataset.nodeId === id,
-            );
-            const canvasEl = nodeEl?.closest(".graph-canvas");
-            if (nodeEl && canvasEl instanceof HTMLElement) {
-              const nodeTopInCanvas =
-                nodeEl.getBoundingClientRect().top - canvasEl.getBoundingClientRect().top;
-              const deltaScreenY = desiredTopScreenY - nodeTopInCanvas;
-              targetWorldY = cam.y - deltaScreenY / cam.zoom;
-            }
-            const predictedTopAtTarget = (y - targetWorldY) * cam.zoom + viewportHeight / 2;
-            console.log(
-              "[pan] id=%s y=%.2f h=%.2f zoom=%.4f vh=%.2f desiredTop=%.2f predictedTop=%.2f camY(start)=%.2f camY(target)=%.2f",
-              id,
-              y,
-              height,
-              cam.zoom,
-              viewportHeight,
-              desiredTopScreenY,
-              predictedTopAtTarget,
-              cam.y,
-              targetWorldY,
-            );
+            const targetWorldY = y + (viewportHeight / 2 - desiredTopScreenY) / cam.zoom;
             panTo(x + width / 2, targetWorldY, transitionDurationMs);
-            window.setTimeout(() => {
-              const latestCam = getCamera();
-              const latestNodeEl = [
-                ...document.querySelectorAll<HTMLElement>(".nl-node-shell"),
-              ].find((el) => el.dataset.nodeId === id);
-              const latestCanvasEl = latestNodeEl?.closest(".graph-canvas");
-              if (latestNodeEl && latestCanvasEl instanceof HTMLElement) {
-                const nodeTopInCanvas =
-                  latestNodeEl.getBoundingClientRect().top -
-                  latestCanvasEl.getBoundingClientRect().top;
-                console.log(
-                  "[pan:post] id=%s nodeTopInCanvas=%.2f camY(now)=%.2f",
-                  id,
-                  nodeTopInCanvas,
-                  latestCam.y,
-                );
-              }
-            }, transitionDurationMs + 40);
             didAutoPanRef.current = true;
           }
         }

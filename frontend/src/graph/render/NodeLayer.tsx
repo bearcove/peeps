@@ -268,7 +268,6 @@ export function NodeLayer({
         return (
           <div
             key={node.id}
-            data-node-id={node.id}
             data-pan-block="true"
             className="nl-node-shell"
             style={{
