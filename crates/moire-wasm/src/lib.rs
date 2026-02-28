@@ -42,6 +42,8 @@ pub mod __internal {
 /// Task utilities matching `moire::task` on native.
 pub mod task {
     use std::future::Future;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
 
     /// No-op extension trait matching the native `FutureExt`.
     pub trait FutureExt: Future + Sized {
@@ -51,6 +53,54 @@ pub mod task {
     }
 
     impl<F: Future + Sized> FutureExt for F {}
+
+    /// Wasm equivalent of `tokio::task::JoinHandle`.
+    ///
+    /// On wasm, `spawn_local` returns `()` so we wrap a oneshot receiver.
+    /// The task sends `()` when it completes; awaiting the handle waits for that.
+    pub struct JoinHandle<T> {
+        rx: futures_channel::oneshot::Receiver<T>,
+    }
+
+    impl<T> JoinHandle<T> {
+        /// No-op rename for API parity.
+        pub fn named(self, _name: impl Into<String>) -> Self {
+            self
+        }
+
+        pub fn abort(&self) {
+            // No abort support on wasm; tasks run to completion.
+        }
+    }
+
+    impl<T> Future for JoinHandle<T> {
+        type Output = Result<T, futures_channel::oneshot::Canceled>;
+
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            let rx = unsafe { Pin::new_unchecked(&mut self.get_unchecked_mut().rx) };
+            rx.poll(cx)
+        }
+    }
+
+    impl<T> std::fmt::Debug for JoinHandle<T> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("JoinHandle").finish_non_exhaustive()
+        }
+    }
+
+    /// Spawn a task and return a [`JoinHandle`].
+    pub fn spawn<F, T>(future: F) -> JoinHandle<T>
+    where
+        F: Future<Output = T> + 'static,
+        T: 'static,
+    {
+        let (tx, rx) = futures_channel::oneshot::channel();
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = future.await;
+            let _ = tx.send(result);
+        });
+        JoinHandle { rx }
+    }
 }
 
 /// Sync primitives matching `moire::sync` on native.
@@ -67,6 +117,41 @@ pub mod sync {
         #[inline]
         pub fn lock(&self) -> std::sync::MutexGuard<'_, T> {
             self.0.lock().expect("wasm mutex poisoned; cannot continue")
+        }
+    }
+
+    /// Synchronous mutex — on wasm, identical to [`Mutex`].
+    ///
+    /// On native this uses `parking_lot::Mutex` for lock-free fast path; on wasm
+    /// `std::sync::Mutex` is fine since there is no thread contention.
+    pub type SyncMutex<T> = Mutex<T>;
+    pub type SyncMutexGuard<'a, T> = std::sync::MutexGuard<'a, T>;
+
+    /// Async notify primitive (wasm backend via `event-listener`).
+    #[derive(Clone)]
+    pub struct Notify(std::sync::Arc<event_listener::Event>);
+
+    impl Notify {
+        pub fn new(_name: impl Into<String>) -> Self {
+            Self(std::sync::Arc::new(event_listener::Event::new()))
+        }
+
+        pub async fn notified(&self) {
+            self.0.listen().await;
+        }
+
+        pub fn notify_one(&self) {
+            self.0.notify(1);
+        }
+
+        pub fn notify_waiters(&self) {
+            self.0.notify(usize::MAX);
+        }
+    }
+
+    impl std::fmt::Debug for Notify {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("Notify").finish_non_exhaustive()
         }
     }
 
@@ -106,54 +191,96 @@ pub mod sync {
         }
     }
 
-    /// Wrapper around `async-channel::Sender`.
-    pub struct Sender<T>(async_channel::Sender<T>);
+    /// Mpsc sender — either bounded (slot-reserving) or unbounded.
+    pub enum Sender<T> {
+        Bounded(mpsc::bounded::Sender<T>),
+        Unbounded(async_channel::Sender<T>),
+    }
 
     impl<T> Clone for Sender<T> {
         fn clone(&self) -> Self {
-            Self(self.0.clone())
+            match self {
+                Self::Bounded(s) => Self::Bounded(s.clone()),
+                Self::Unbounded(s) => Self::Unbounded(s.clone()),
+            }
+        }
+    }
+
+    impl<T> std::fmt::Debug for Sender<T> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("Sender").finish_non_exhaustive()
         }
     }
 
     impl<T> Sender<T> {
         pub async fn send(&self, value: T) -> Result<(), SendError<T>> {
-            self.0.send(value).await.map_err(|e| SendError(e.0))
+            match self {
+                Self::Bounded(s) => s.send(value).await,
+                Self::Unbounded(s) => s.send(value).await.map_err(|e| SendError(e.0)),
+            }
         }
 
         pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
-            self.0.try_send(value).map_err(|e| match e {
-                async_channel::TrySendError::Full(v) => TrySendError::Full(v),
-                async_channel::TrySendError::Closed(v) => TrySendError::Closed(v),
-            })
+            match self {
+                Self::Bounded(s) => s.try_send(value),
+                Self::Unbounded(s) => s.try_send(value).map_err(|e| match e {
+                    async_channel::TrySendError::Full(v) => TrySendError::Full(v),
+                    async_channel::TrySendError::Closed(v) => TrySendError::Closed(v),
+                }),
+            }
         }
 
         pub fn is_closed(&self) -> bool {
-            self.0.is_closed()
+            match self {
+                Self::Bounded(s) => s.is_closed(),
+                Self::Unbounded(s) => s.is_closed(),
+            }
+        }
+
+        pub async fn reserve_owned(self) -> Result<mpsc::OwnedPermit<T>, SendError<()>> {
+            match self {
+                Self::Bounded(s) => s
+                    .reserve_owned()
+                    .await
+                    .map(|p| mpsc::OwnedPermit(p))
+                    .map_err(|_| SendError(())),
+                Self::Unbounded(_) => panic!("reserve_owned called on unbounded channel"),
+            }
         }
     }
 
-    /// Wrapper around `async-channel::Receiver`.
-    pub struct Receiver<T>(async_channel::Receiver<T>);
+    /// Mpsc receiver — either bounded (slot-reserving) or unbounded.
+    pub enum Receiver<T> {
+        Bounded(mpsc::bounded::Receiver<T>),
+        Unbounded(async_channel::Receiver<T>),
+    }
 
     impl<T> Receiver<T> {
         pub async fn recv(&mut self) -> Option<T> {
-            self.0.recv().await.ok()
+            match self {
+                Self::Bounded(r) => r.recv().await,
+                Self::Unbounded(r) => r.recv().await.ok(),
+            }
         }
     }
 
-    /// Instrumented mpsc channel primitives (wasm no-op backend).
+    /// Instrumented mpsc channel primitives (wasm backend).
+    ///
+    /// Bounded channels use a hand-rolled slot-reserving implementation so that
+    /// `OwnedPermit` has real semantics: `reserve_owned()` claims a slot in the
+    /// queue and the permit holder is guaranteed that `send()` will not block.
+    /// This works because wasm is single-threaded — `Rc<RefCell<...>>` suffices.
     pub mod mpsc {
-        pub use super::{Receiver, Sender};
+        pub use super::{Receiver, SendError, Sender};
 
         /// Unbounded sender — alias for [`Sender`].
         pub type UnboundedSender<T> = Sender<T>;
         /// Unbounded receiver — alias for [`Receiver`].
         pub type UnboundedReceiver<T> = Receiver<T>;
 
-        /// Create a bounded mpsc channel.
+        /// Create a bounded mpsc channel with slot-reserving semantics.
         pub fn channel<T>(_name: impl Into<String>, buffer: usize) -> (Sender<T>, Receiver<T>) {
-            let (tx, rx) = async_channel::bounded(buffer);
-            (Sender(tx), Receiver(rx))
+            bounded::channel(buffer)
         }
 
         /// Create an unbounded mpsc channel.
@@ -161,7 +288,233 @@ pub mod sync {
             _name: impl Into<String>,
         ) -> (UnboundedSender<T>, UnboundedReceiver<T>) {
             let (tx, rx) = async_channel::unbounded();
-            (Sender(tx), Receiver(rx))
+            (Sender::Unbounded(tx), Receiver::Unbounded(rx))
+        }
+
+        /// An owned send permit — holds a reserved slot in the channel.
+        ///
+        /// Created by [`Sender::reserve_owned`]. Sending consumes the permit and
+        /// releases the reserved slot.
+        pub struct OwnedPermit<T>(pub(super) bounded::OwnedPermit<T>);
+
+        impl<T> OwnedPermit<T> {
+            /// Send a value using this permit, consuming it.
+            pub fn send(self, value: T) -> Result<(), SendError<T>> {
+                self.0.send(value)
+            }
+        }
+
+        pub(super) mod bounded {
+            use std::cell::RefCell;
+            use std::collections::VecDeque;
+            use std::future::Future;
+            use std::pin::Pin;
+            use std::rc::Rc;
+            use std::task::{Context, Poll, Waker};
+
+            struct Inner<T> {
+                buf: VecDeque<T>,
+                /// Slots claimed by outstanding OwnedPermits but not yet sent.
+                reserved: usize,
+                capacity: usize,
+                /// Set when all Senders are dropped.
+                closed: bool,
+                recv_waker: Option<Waker>,
+                send_wakers: VecDeque<Waker>,
+            }
+
+            impl<T> Inner<T> {
+                fn available(&self) -> usize {
+                    self.capacity.saturating_sub(self.buf.len() + self.reserved)
+                }
+            }
+
+            pub struct Sender<T> {
+                inner: Rc<RefCell<Inner<T>>>,
+            }
+
+            impl<T> Clone for Sender<T> {
+                fn clone(&self) -> Self {
+                    Self {
+                        inner: Rc::clone(&self.inner),
+                    }
+                }
+            }
+
+            impl<T> Drop for Sender<T> {
+                fn drop(&mut self) {
+                    // Only close when the last Sender drops (Rc count hits 1 = just Receiver).
+                    if Rc::strong_count(&self.inner) == 2 {
+                        let mut inner = self.inner.borrow_mut();
+                        inner.closed = true;
+                        if let Some(w) = inner.recv_waker.take() {
+                            w.wake();
+                        }
+                    }
+                }
+            }
+
+            impl<T> Sender<T> {
+                pub async fn send(&self, value: T) -> Result<(), super::SendError<T>> {
+                    let reserve = ReserveFuture {
+                        inner: Rc::clone(&self.inner),
+                    };
+                    if reserve.await.is_err() {
+                        return Err(super::SendError(value));
+                    }
+                    let mut inner = self.inner.borrow_mut();
+                    // reserved was already bumped by ReserveFuture; undo it and push directly.
+                    inner.reserved -= 1;
+                    inner.buf.push_back(value);
+                    if let Some(w) = inner.recv_waker.take() {
+                        w.wake();
+                    }
+                    Ok(())
+                }
+
+                pub fn try_send(&self, value: T) -> Result<(), super::super::TrySendError<T>> {
+                    let mut inner = self.inner.borrow_mut();
+                    if inner.closed {
+                        return Err(super::super::TrySendError::Closed(value));
+                    }
+                    if inner.available() == 0 {
+                        return Err(super::super::TrySendError::Full(value));
+                    }
+                    inner.buf.push_back(value);
+                    if let Some(w) = inner.recv_waker.take() {
+                        w.wake();
+                    }
+                    Ok(())
+                }
+
+                pub fn is_closed(&self) -> bool {
+                    self.inner.borrow().closed
+                }
+
+                pub async fn reserve_owned(self) -> Result<OwnedPermit<T>, ChannelClosed> {
+                    let reserve = ReserveFuture {
+                        inner: Rc::clone(&self.inner),
+                    };
+                    reserve.await?;
+                    // Clone inner for the permit; self drops here (may trigger close check, but
+                    // only if this was the last sender, which callers should not do).
+                    Ok(OwnedPermit {
+                        inner: Rc::clone(&self.inner),
+                    })
+                }
+            }
+
+            /// Future that waits until a slot is available and claims it.
+            struct ReserveFuture<T> {
+                inner: Rc<RefCell<Inner<T>>>,
+            }
+
+            /// Error from [`ReserveFuture`] — channel closed before a slot was available.
+            pub struct ChannelClosed;
+
+            impl<T> Future for ReserveFuture<T> {
+                type Output = Result<(), ChannelClosed>;
+
+                fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+                    let mut inner = self.inner.borrow_mut();
+                    if inner.closed {
+                        return Poll::Ready(Err(ChannelClosed));
+                    }
+                    if inner.available() > 0 {
+                        inner.reserved += 1;
+                        Poll::Ready(Ok(()))
+                    } else {
+                        inner.send_wakers.push_back(cx.waker().clone());
+                        Poll::Pending
+                    }
+                }
+            }
+
+            pub struct OwnedPermit<T> {
+                inner: Rc<RefCell<Inner<T>>>,
+            }
+
+            impl<T> OwnedPermit<T> {
+                pub fn send(self, value: T) -> Result<(), super::SendError<T>> {
+                    let mut inner = self.inner.borrow_mut();
+                    // We hold a reserved slot — push the value and release the reservation.
+                    inner.reserved -= 1;
+                    inner.buf.push_back(value);
+                    if let Some(w) = inner.recv_waker.take() {
+                        w.wake();
+                    }
+                    Ok(())
+                }
+            }
+
+            impl<T> Drop for OwnedPermit<T> {
+                fn drop(&mut self) {
+                    // If dropped without sending, release the reserved slot and wake a sender.
+                    let mut inner = self.inner.borrow_mut();
+                    if inner.reserved > 0 {
+                        inner.reserved -= 1;
+                        if let Some(w) = inner.send_wakers.pop_front() {
+                            w.wake();
+                        }
+                    }
+                }
+            }
+
+            pub struct Receiver<T> {
+                inner: Rc<RefCell<Inner<T>>>,
+            }
+
+            impl<T> Receiver<T> {
+                pub async fn recv(&mut self) -> Option<T> {
+                    RecvFuture {
+                        inner: Rc::clone(&self.inner),
+                    }
+                    .await
+                }
+            }
+
+            struct RecvFuture<T> {
+                inner: Rc<RefCell<Inner<T>>>,
+            }
+
+            impl<T> Future for RecvFuture<T> {
+                type Output = Option<T>;
+
+                fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+                    let mut inner = self.inner.borrow_mut();
+                    if let Some(value) = inner.buf.pop_front() {
+                        // A slot opened up — wake a waiting sender.
+                        if let Some(w) = inner.send_wakers.pop_front() {
+                            w.wake();
+                        }
+                        Poll::Ready(Some(value))
+                    } else if inner.closed {
+                        Poll::Ready(None)
+                    } else {
+                        inner.recv_waker = Some(cx.waker().clone());
+                        Poll::Pending
+                    }
+                }
+            }
+
+            pub fn channel<T>(
+                capacity: usize,
+            ) -> (super::super::Sender<T>, super::super::Receiver<T>) {
+                let inner = Rc::new(RefCell::new(Inner {
+                    buf: VecDeque::new(),
+                    reserved: 0,
+                    capacity,
+                    closed: false,
+                    recv_waker: None,
+                    send_wakers: VecDeque::new(),
+                }));
+                (
+                    super::super::Sender::Bounded(Sender {
+                        inner: Rc::clone(&inner),
+                    }),
+                    super::super::Receiver::Bounded(Receiver { inner }),
+                )
+            }
         }
     }
 
@@ -327,12 +680,16 @@ pub mod sync {
         /// Wrapper around `futures-channel` oneshot receiver for API parity.
         pub struct Receiver<T>(futures_channel::oneshot::Receiver<T>);
 
-        impl<T> std::future::IntoFuture for Receiver<T> {
+        impl<T> std::future::Future for Receiver<T> {
             type Output = Result<T, futures_channel::oneshot::Canceled>;
-            type IntoFuture = futures_channel::oneshot::Receiver<T>;
 
-            fn into_future(self) -> Self::IntoFuture {
-                self.0
+            fn poll(
+                self: std::pin::Pin<&mut Self>,
+                cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Self::Output> {
+                let inner =
+                    unsafe { std::pin::Pin::new_unchecked(&mut self.get_unchecked_mut().0) };
+                inner.poll(cx)
             }
         }
 
